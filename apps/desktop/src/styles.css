@@ -1708,3 +1708,89 @@ body[data-shell-dragging="true"] {
   font-size: 12px;
   cursor: pointer;
 }
+
+/* ─── Icon strip ──────────────────────────────────────── */
+.icon-strip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 26px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: #0d0d1a;
+  border-right: 1px solid #111128;
+  z-index: 200;
+  padding: 6px 0;
+}
+
+.icon-strip__nav,
+.icon-strip__bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.icon-strip__btn {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  color: #3a3a6e;
+  padding: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.icon-strip__btn:hover {
+  color: #9090c0;
+  background: #1a1a30;
+}
+
+.icon-strip__btn[data-active="true"] {
+  color: #7c6fff;
+  background: #1e1a40;
+}
+
+.icon-strip__btn svg {
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+}
+
+/* ─── Status bar ──────────────────────────────────────── */
+.status-bar {
+  height: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  background: #080812;
+  border-top: 1px solid #111128;
+  font-size: 10px;
+  color: #2e2e50;
+  user-select: none;
+  position: relative;
+}
+
+.status-bar__centre {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.status-bar kbd {
+  font-size: 9px;
+  background: #111128;
+  border: 1px solid #1e1e35;
+  border-radius: 2px;
+  padding: 0 3px;
+  color: #3a3a60;
+}
