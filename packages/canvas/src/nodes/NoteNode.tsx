@@ -1,4 +1,4 @@
-import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
+import { Handle, NodeResizer, Position, type Node, type NodeProps } from "@xyflow/react";
 import { AdaptiveNode } from "./AdaptiveNode";
 import type { AdaptiveNodeStyle } from "./AdaptiveNode";
 
@@ -15,6 +15,13 @@ export type NoteNodeType = Node<NoteNodeData, "note">;
 export function NoteNode({ data, selected }: NodeProps<NoteNodeType>) {
   return (
     <>
+      <NodeResizer
+        minWidth={120}
+        minHeight={60}
+        isVisible={selected}
+        lineStyle={{ borderColor: "rgba(74, 74, 255, 0.5)" }}
+        handleStyle={{ borderColor: "rgba(74, 74, 255, 0.8)", background: "#0e0e22" }}
+      />
       <Handle type="target" position={Position.Top} className="flow-handle" />
       <AdaptiveNode
         nodeType="note"

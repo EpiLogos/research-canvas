@@ -65,6 +65,7 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   selectProject: (projectId: string) => void;
   selectedEntryId: string | null;
   selectedNodeId: string | null;
+  resizeNode: (nodeId: string, width: number, height: number) => void;
   updateNodeContent: (nodeId: string, content: string) => void;
   updateNodeStyle: (nodeId: string, style: { dotColour?: string; bgColour?: string; textColour?: string; thumbnail?: string }) => void;
   workingRoot: string | null;
@@ -406,6 +407,9 @@ export function CanvasWorkspaceProvider({
       selectProject: setActiveProjectId,
       selectedEntryId,
       selectedNodeId,
+      resizeNode: (nodeId, width, height) => {
+        stores.store.getState().updateNodeSize(nodeId, { width, height });
+      },
       updateNodeContent: (nodeId, content) => {
         stores.store.getState().updateNodeContent(nodeId, content);
       },

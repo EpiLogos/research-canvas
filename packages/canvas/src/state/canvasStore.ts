@@ -61,6 +61,7 @@ export interface CanvasStoreState {
     textColour?: string;
     thumbnail?: string;
   }) => void;
+  updateNodeSize: (nodeId: string, size: { width: number; height: number }) => void;
   updateNodeTitle: (nodeId: string, title: string) => void;
 }
 
@@ -237,6 +238,12 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
       set((state) => ({
         nodes: state.nodes.map((n) =>
           n.id === nodeId ? { ...n, ...style, updatedAt: now() } : n,
+        ),
+      })),
+    updateNodeSize: (nodeId, size) =>
+      set((state) => ({
+        nodes: state.nodes.map((n) =>
+          n.id === nodeId ? { ...n, size, updatedAt: now() } : n,
         ),
       })),
     updateNodeTitle: (nodeId, title) =>

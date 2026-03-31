@@ -129,6 +129,9 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick }: CanvasScreenPr
             onDeleteEdge={(edgeId) => {
               workspace.deleteEdge(edgeId);
             }}
+            onResizeNode={(nodeId, width, height) => {
+              workspace.resizeNode(nodeId, width, height);
+            }}
             onCreateResourceFromFile={(entry, position) => {
               workspace.addResourceNode(entry, position);
             }}

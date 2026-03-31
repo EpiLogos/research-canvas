@@ -12,6 +12,7 @@ import {
   ConnectionMode,
   type Edge,
   type Node,
+  type NodeChange,
   type NodeTypes
 } from "@xyflow/react";
 import type { ComponentType } from "react";
@@ -41,6 +42,7 @@ interface CanvasViewProps {
   onNodeDoubleClick?: (nodeId: string) => void;
   onConnectNodes?: (input: { sourceNodeId: string; targetNodeId: string; relationKind: string }) => void;
   onDeleteEdge?: (edgeId: string) => void;
+  onResizeNode?: (nodeId: string, width: number, height: number) => void;
 }
 
 const nodeTypes: NodeTypes = {
@@ -75,7 +77,8 @@ function CanvasViewInner({
   fileEntries,
   onNodeDoubleClick,
   onConnectNodes,
-  onDeleteEdge
+  onDeleteEdge,
+  onResizeNode
 }: CanvasViewProps) {
   const { screenToFlowPosition, setCenter, getZoom } = useReactFlow();
 
@@ -123,6 +126,17 @@ function CanvasViewInner({
       });
     },
     [onConnectNodes],
+  );
+
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      for (const change of changes) {
+        if (change.type === "dimensions" && change.resizing && change.dimensions) {
+          onResizeNode?.(change.id, change.dimensions.width, change.dimensions.height);
+        }
+      }
+    },
+    [onResizeNode],
   );
 
   const handleNodeMouseDown = useCallback(
@@ -250,6 +264,7 @@ function CanvasViewInner({
         onNodeDoubleClick={(_e, node) => {
           onNodeDoubleClick?.(node.id);
         }}
+        onNodesChange={handleNodesChange}
         onConnect={handleConnect}
         connectOnClick={false}
         connectionMode={ConnectionMode.Loose}
