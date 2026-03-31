@@ -36,36 +36,6 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick }: CanvasScreenPr
     });
   }, [workspace.sequenceStore, workspace.sequences]);
 
-  const addLatestNodesToSequence = useCallback(() => {
-    const sequence =
-      workspace.sequences[0] ??
-      workspace.sequenceStore.getState().createSequence({
-        kind: "storyboard",
-        name: "Episode flow"
-      });
-    const existingSteps = workspace.sequenceStore.getState().stepsForSequence(sequence.id);
-    if (existingSteps.length > 0) {
-      return;
-    }
-
-    const latestNodes = workspace.nodes.slice(-2);
-    if (latestNodes.length < 2) {
-      return;
-    }
-
-    workspace.sequenceStore.getState().setActiveSequence(sequence.id);
-    workspace.sequenceStore.getState().addNodeStep(sequence.id, {
-      caption: "Start with the thesis",
-      targetId: latestNodes[0].id,
-      viewport: { x: 0, y: 0, zoom: 1 }
-    });
-    workspace.sequenceStore.getState().addNodeStep(sequence.id, {
-      caption: "Support it with the report",
-      targetId: latestNodes[1].id,
-      viewport: { x: 160, y: 40, zoom: 1.2 }
-    });
-  }, [workspace.sequenceStore, workspace.sequences, workspace.nodes]);
-
   if (!workspace.isHydrated) {
     return (
       <div className="canvas-workspace">
@@ -114,9 +84,6 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick }: CanvasScreenPr
               </button>
               <button onClick={createSequence} type="button">
                 Create sequence
-              </button>
-              <button onClick={addLatestNodesToSequence} type="button">
-                Add latest nodes to sequence
               </button>
             </div>
           </header>
