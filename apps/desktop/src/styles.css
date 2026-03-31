@@ -1794,3 +1794,148 @@ body[data-shell-dragging="true"] {
   padding: 0 3px;
   color: #3a3a60;
 }
+
+/* ─── Left overlay ────────────────────────────────────── */
+.left-overlay {
+  position: absolute;
+  top: 0;
+  left: 26px;
+  bottom: 0;
+  width: var(--left-width, 240px);
+  transform: translateX(calc(-100% - 26px));
+  transition: transform 180ms ease-out;
+  z-index: 100;
+  display: flex;
+  pointer-events: none;
+}
+
+.left-overlay[data-open="true"] {
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.left-overlay__inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 10, 22, 0.97);
+  border-right: 1px solid #1a1a35;
+  backdrop-filter: blur(12px);
+  overflow: hidden;
+}
+
+.left-overlay__resize-handle {
+  width: 5px;
+  cursor: ew-resize;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.left-overlay__resize-handle:hover {
+  background: rgba(124, 111, 255, 0.25);
+}
+
+.lo-section {
+  padding: 8px 0 4px;
+  border-bottom: 1px solid #111128;
+}
+
+.lo-section--grow {
+  flex: 1;
+  overflow-y: auto;
+  border-bottom: none;
+}
+
+.lo-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px 4px;
+}
+
+.lo-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #3a3a6e;
+}
+
+.lo-icon-btn {
+  background: none;
+  border: none;
+  color: #3a3a6e;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.lo-icon-btn:hover {
+  color: #7c6fff;
+}
+
+.lo-project-name {
+  padding: 2px 10px 4px;
+  font-size: 11px;
+  color: #9090c0;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lo-canvas-item {
+  padding: 3px 10px;
+  font-size: 10px;
+  color: #5a5a90;
+  cursor: pointer;
+  border-radius: 3px;
+  margin: 0 6px 1px;
+}
+
+.lo-canvas-item:hover,
+.lo-canvas-item--active {
+  color: #9090c0;
+  background: #141428;
+}
+
+.lo-root-row,
+.lo-file-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  font-size: 10px;
+  color: #5a5a90;
+  height: 22px;
+  cursor: default;
+}
+
+.lo-root-row:hover,
+.lo-file-row:hover {
+  color: #9090c0;
+  background: #0e0e20;
+}
+
+.lo-root-icon,
+.lo-file-icon {
+  font-size: 9px;
+  color: #3a3a6e;
+  width: 10px;
+  flex-shrink: 0;
+}
+
+.lo-root-path,
+.lo-file-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lo-empty {
+  padding: 3px 10px;
+  font-size: 10px;
+  color: #2e2e50;
+  font-style: italic;
+}
