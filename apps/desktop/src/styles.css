@@ -2104,3 +2104,120 @@ body[data-shell-dragging="true"] {
   color: #2e2e50;
   font-family: monospace;
 }
+
+/* ─── Adaptive nodes ──────────────────────────────────── */
+.adaptive-node {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: opacity 150ms ease;
+}
+
+.adaptive-node--dot {
+  width: 12px;
+  height: 12px;
+}
+
+.adaptive-node--dot .an-label,
+.adaptive-node--dot .an-type,
+.adaptive-node--dot .an-summary,
+.adaptive-node--dot .an-thumbnail {
+  display: none;
+}
+
+.adaptive-node--pill {
+  background: var(--node-bg, #111128);
+  border: 1px solid #252545;
+  border-radius: 4px;
+  padding: 3px 8px 3px 5px;
+  min-width: 60px;
+  max-width: 200px;
+}
+
+.adaptive-node--pill[data-selected="true"] {
+  border-color: #7c6fff;
+  box-shadow: 0 0 0 1px #7c6fff33;
+}
+
+.adaptive-node--card {
+  background: var(--node-bg, #0e0e22);
+  border: 1px solid #252545;
+  border-radius: 5px;
+  padding: 6px 9px;
+  min-width: 120px;
+  max-width: 240px;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.adaptive-node--card[data-selected="true"] {
+  border-color: #7c6fff;
+  box-shadow: 0 0 0 1px #7c6fff33;
+}
+
+.an-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dot-colour, #4a4aff);
+  flex-shrink: 0;
+  display: block;
+}
+
+.adaptive-node--dot .an-dot {
+  width: 12px;
+  height: 12px;
+}
+
+.an-label {
+  font-size: 10px;
+  color: var(--node-text, #c0c0e0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.an-type {
+  font-size: 8px;
+  color: #3a3a6e;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  width: 100%;
+  order: -1;
+}
+
+.an-summary {
+  font-size: 9px;
+  color: #4a4a80;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.an-thumbnail {
+  width: 100%;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 3px;
+  margin-top: 3px;
+  order: 10;
+}
+
+.flow-handle {
+  width: 8px !important;
+  height: 8px !important;
+  background: #7c6fff !important;
+  border: 1px solid rgba(255,255,255,0.2) !important;
+  border-radius: 50% !important;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.react-flow__node:hover .flow-handle,
+.react-flow__node.selected .flow-handle {
+  opacity: 1;
+}
