@@ -6,6 +6,8 @@ import {
   MarkerType,
   MiniMap,
   ReactFlow,
+  type Connection,
+  ConnectionMode,
   type Edge,
   type Node,
   type NodeTypes
@@ -35,6 +37,7 @@ interface CanvasViewProps {
   onCreateResourceFromFile?: (entry: FileEntry, position: { x: number; y: number }) => void;
   fileEntries?: FileEntry[];
   onNodeDoubleClick?: (nodeId: string) => void;
+  onConnectNodes?: (input: { sourceNodeId: string; targetNodeId: string; relationKind: string }) => void;
 }
 
 const nodeTypes: NodeTypes = {
@@ -59,7 +62,8 @@ export function CanvasView({
   onCreateGroup,
   onCreateResourceFromFile,
   fileEntries,
-  onNodeDoubleClick
+  onNodeDoubleClick,
+  onConnectNodes
 }: CanvasViewProps) {
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -77,6 +81,29 @@ export function CanvasView({
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
   const closeFilePicker = useCallback(() => setShowFilePicker(null), []);
+
+  const [_pendingConnectionSource, setPendingConnectionSource] = useState<string | null>(null);
+
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target) return;
+      onConnectNodes?.({
+        sourceNodeId: connection.source,
+        targetNodeId: connection.target,
+        relationKind: "reference",
+      });
+    },
+    [onConnectNodes],
+  );
+
+  const handleNodeMouseDown = useCallback(
+    (e: React.MouseEvent, nodeId: string) => {
+      if (!e.shiftKey) return;
+      e.stopPropagation();
+      setPendingConnectionSource(nodeId);
+    },
+    [],
+  );
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -136,7 +163,16 @@ export function CanvasView({
   }));
 
   return (
-    <div className="canvas-flow">
+    <div
+      className="canvas-flow"
+      onMouseDown={(e: React.MouseEvent) => {
+        const nodeEl = (e.target as HTMLElement).closest?.(".react-flow__node") as HTMLElement | null;
+        if (nodeEl && e.shiftKey) {
+          const nodeId = nodeEl.dataset["id"];
+          if (nodeId) handleNodeMouseDown(e, nodeId);
+        }
+      }}
+    >
       <ReactFlow
         defaultViewport={{ x: 0, y: 0, zoom: 1 }}
         edgeTypes={edgeTypes}
@@ -155,6 +191,9 @@ export function CanvasView({
         onNodeDoubleClick={(_e, node) => {
           onNodeDoubleClick?.(node.id);
         }}
+        onConnect={handleConnect}
+        connectOnClick={false}
+        connectionMode={ConnectionMode.Loose}
         onContextMenu={(e) => {
           e.preventDefault();
           setContextMenu({ x: e.clientX, y: e.clientY, kind: "canvas" });

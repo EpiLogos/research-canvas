@@ -2219,7 +2219,7 @@ body[data-shell-dragging="true"] {
 
 .react-flow__node:hover .flow-handle,
 .react-flow__node.selected .flow-handle {
-  opacity: 1;
+  opacity: 1 !important;
 }
 
 /* ─── Context menu ────────────────────────────────────── */
