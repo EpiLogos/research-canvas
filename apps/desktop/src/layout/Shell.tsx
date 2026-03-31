@@ -12,6 +12,7 @@ export function Shell() {
   const layout = useShellLayout();
   const workspace = useCanvasWorkspace();
   const [fullScreenOpen, setFullScreenOpen] = useState(false);
+  const closeFullScreen = useCallback(() => setFullScreenOpen(false), []);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -92,7 +93,7 @@ export function Shell() {
         />
 
         {fullScreenOpen && (
-          <FullScreenReader onClose={() => setFullScreenOpen(false)} />
+          <FullScreenReader onClose={closeFullScreen} />
         )}
       </div>
 
