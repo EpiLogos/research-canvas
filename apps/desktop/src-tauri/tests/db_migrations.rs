@@ -45,7 +45,7 @@ fn db_migrations_applies_initial_migration_to_a_real_temp_database() {
             row.get(0)
         })
         .expect("migration count");
-    assert_eq!(applied_migrations, 3);
+    assert_eq!(applied_migrations, 4);
 }
 
 #[test]
@@ -60,5 +60,5 @@ fn db_migrations_migration_runner_is_idempotent_and_deterministic() {
             row.get(0)
         })
         .expect("migration count");
-    assert_eq!(applied_migrations, 3);
+    assert_eq!(applied_migrations, 4);
 }
