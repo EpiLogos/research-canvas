@@ -187,6 +187,17 @@ pub fn batch_create(
                 node_req.x,
                 node_req.y,
             ),
+            "resource" => graph.create_resource_node(
+                &canvas_id,
+                &node_req.title,
+                node_req.absolute_path.as_deref().unwrap_or(""),
+                node_req.relative_path.as_deref().unwrap_or(""),
+                node_req.resource_kind.as_deref().unwrap_or("binary"),
+                "application/octet-stream",
+                "",
+                node_req.x,
+                node_req.y,
+            ),
             other => return Err(format!("node[{}]: unknown node_type '{}'", i, other)),
         }
         .map_err(|e| format!("node[{}]: {}", i, e))?;

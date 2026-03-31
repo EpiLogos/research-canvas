@@ -52,6 +52,10 @@ pub struct BatchNodeItem {
     pub bg_colour: Option<String>,
     pub text_colour: Option<String>,
     pub color: Option<String>,
+    // resource-specific
+    pub absolute_path: Option<String>,
+    pub relative_path: Option<String>,
+    pub resource_kind: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
