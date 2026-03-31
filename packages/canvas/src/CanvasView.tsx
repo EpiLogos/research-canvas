@@ -7,10 +7,11 @@ import {
   MiniMap,
   ReactFlow,
   type Edge,
-  type Node
+  type Node,
+  type NodeTypes
 } from "@xyflow/react";
 import type { ComponentType } from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import type { CanvasEdge, CanvasNode } from "@research-canvas/schema";
 
@@ -31,12 +32,12 @@ interface CanvasViewProps {
   onDuplicateNode?: (nodeId: string) => void;
   onCreateNote?: (position?: { x: number; y: number }) => void;
   onCreateGroup?: (position?: { x: number; y: number }) => void;
-  onCreateResourceFromFile?: (entry: FileEntry, position?: { x: number; y: number }) => void;
+  onCreateResourceFromFile?: (entry: FileEntry, position: { x: number; y: number }) => void;
   fileEntries?: FileEntry[];
   onNodeDoubleClick?: (nodeId: string) => void;
 }
 
-const nodeTypes: Record<string, ComponentType<any>> = {
+const nodeTypes: NodeTypes = {
   group: GroupNode,
   note: NoteNode,
   resource: ResourceNode
@@ -74,8 +75,15 @@ export function CanvasView({
     canvasPos?: { x: number; y: number };
   } | null>(null);
 
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  const closeFilePicker = useCallback(() => setShowFilePicker(null), []);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return;
+      }
       if (!(e.target as HTMLElement)?.closest?.(".react-flow")) return;
       if (e.key === "Delete" || e.key === "Backspace") {
         const selected = nodes.find((n) => n.id === selectedNodeId);
@@ -166,7 +174,7 @@ export function CanvasView({
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          onClose={() => setContextMenu(null)}
+          onClose={closeContextMenu}
           items={[
             { type: "item", label: "Add note", shortcut: "N", onClick: () => onCreateNote?.() },
             {
@@ -189,7 +197,7 @@ export function CanvasView({
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          onClose={() => setContextMenu(null)}
+          onClose={closeContextMenu}
           items={(() => {
             const nodeId = contextMenu.nodeId!;
             return [
@@ -217,10 +225,10 @@ export function CanvasView({
           anchorY={showFilePicker.y}
           entries={fileEntries ?? []}
           onSelect={(entry) => {
-            onCreateResourceFromFile?.(entry);
+            onCreateResourceFromFile?.(entry, { x: showFilePicker.x, y: showFilePicker.y });
             setShowFilePicker(null);
           }}
-          onClose={() => setShowFilePicker(null)}
+          onClose={closeFilePicker}
         />
       )}
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export interface FileEntry {
@@ -31,8 +31,12 @@ export function FuzzyFilePicker({ anchorX, anchorY, entries, onSelect, onClose }
   const [query, setQuery] = useState("");
   const [activeIdx, setActiveIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const filtered = entries.filter((e) => fuzzyMatch(query, e.name)).slice(0, 8);
+  const filtered = useMemo(
+    () => entries.filter((e) => fuzzyMatch(query, e.name)).slice(0, 8),
+    [entries, query]
+  );
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -41,6 +45,17 @@ export function FuzzyFilePicker({ anchorX, anchorY, entries, onSelect, onClose }
   useEffect(() => {
     setActiveIdx(0);
   }, [query]);
+
+  // Outside-click dismissal
+  useEffect(() => {
+    const handleMouseDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
+  }, [onClose]);
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
@@ -64,7 +79,7 @@ export function FuzzyFilePicker({ anchorX, anchorY, entries, onSelect, onClose }
   const adjustedY = Math.min(anchorY, window.innerHeight - 260);
 
   return createPortal(
-    <div className="fuzzy-picker" style={{ position: "fixed", left: adjustedX, top: adjustedY, zIndex: 10000 }}>
+    <div ref={containerRef} className="fuzzy-picker" style={{ position: "fixed", left: adjustedX, top: adjustedY, zIndex: 10000 }}>
       <input
         ref={inputRef}
         className="fuzzy-picker-input"
@@ -87,7 +102,7 @@ export function FuzzyFilePicker({ anchorX, anchorY, entries, onSelect, onClose }
             >
               <span className="fuzzy-picker__icon">{entry.kind === "directory" ? "▸" : "·"}</span>
               <span className="fuzzy-picker__name">{entry.name}</span>
-              <span className="fuzzy-picker__path">{entry.path.replace(entry.name, "")}</span>
+              <span className="fuzzy-picker__path">{entry.name ? entry.path.slice(0, entry.path.lastIndexOf(entry.name)) : entry.path}</span>
             </div>
           ))
         )}

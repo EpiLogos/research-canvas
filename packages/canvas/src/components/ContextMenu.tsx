@@ -25,8 +25,27 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   const adjustedY = Math.min(y, window.innerHeight - items.length * 28 - 16);
 
   useEffect(() => {
+    // Focus first item on mount
+    const firstBtn = ref.current?.querySelector<HTMLButtonElement>(
+      'button.context-menu-item:not([disabled])'
+    );
+    firstBtn?.focus();
+
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const btns = Array.from(
+          ref.current?.querySelectorAll<HTMLButtonElement>(
+            'button.context-menu-item:not([disabled])'
+          ) ?? []
+        );
+        const idx = btns.indexOf(document.activeElement as HTMLButtonElement);
+        const next = e.key === 'ArrowDown'
+          ? (idx + 1) % btns.length
+          : (idx - 1 + btns.length) % btns.length;
+        btns[next]?.focus();
+      }
     };
     const handleClick = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
@@ -47,8 +66,8 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
       role="menu"
     >
       {items.map((item, i) => {
-        if (item.type === "separator") return <div key={i} className="context-menu-separator" />;
-        if (item.type === "header") return <div key={i} className="context-menu-header">{item.label}</div>;
+        if (item.type === "separator") return <div key={i} className="context-menu-separator" role="separator" />;
+        if (item.type === "header") return <div key={i} className="context-menu-header" role="presentation">{item.label}</div>;
         return (
           <button
             key={i}
