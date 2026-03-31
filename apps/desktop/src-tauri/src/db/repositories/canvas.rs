@@ -372,7 +372,7 @@ impl<'conn> CanvasGraphRepository<'conn> {
         Ok(CanvasSnapshotRecord { nodes, edges })
     }
 
-    fn get_node_by_id(&self, node_id: &str) -> Result<Option<CanvasNodeRecord>> {
+    pub fn get_node_by_id(&self, node_id: &str) -> Result<Option<CanvasNodeRecord>> {
         self.connection
             .query_row(
                 "SELECT
@@ -410,10 +410,6 @@ impl<'conn> CanvasGraphRepository<'conn> {
             .optional()
     }
 
-    pub fn get_node_by_id_public(&self, node_id: &str) -> Result<Option<CanvasNodeRecord>> {
-        self.get_node_by_id(node_id)
-    }
-
     pub fn update_node_style(
         &self,
         node_id: &str,
@@ -433,6 +429,9 @@ impl<'conn> CanvasGraphRepository<'conn> {
              WHERE id = ?6",
             params![dot_colour, bg_colour, text_colour, thumbnail, now, node_id],
         )?;
+        if self.connection.changes() == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
         Ok(())
     }
 

@@ -101,8 +101,9 @@ fn style_fields_round_trip() {
         .update_node_style(&node.id, Some("#4a4aff"), Some("#0e0e22"), None, None)
         .unwrap();
 
-    let updated = graph.get_node_by_id_public(&node.id).unwrap().unwrap();
+    let updated = graph.get_node_by_id(&node.id).unwrap().unwrap();
     assert_eq!(updated.dot_colour.as_deref(), Some("#4a4aff"));
     assert_eq!(updated.bg_colour.as_deref(), Some("#0e0e22"));
     assert_eq!(updated.text_colour, None);
+    assert_eq!(updated.thumbnail, None);
 }
