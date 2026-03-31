@@ -15,7 +15,7 @@ import {
   type NodeTypes
 } from "@xyflow/react";
 import type { ComponentType } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { CanvasEdge, CanvasNode } from "@research-canvas/schema";
 
@@ -77,7 +77,21 @@ function CanvasViewInner({
   onConnectNodes,
   onDeleteEdge
 }: CanvasViewProps) {
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, setCenter, getZoom } = useReactFlow();
+
+  const prevNodeCountRef = useRef(nodes.length);
+  useEffect(() => {
+    if (nodes.length > prevNodeCountRef.current) {
+      const newest = nodes[nodes.length - 1];
+      if (newest) {
+        setCenter(newest.position.x + 80, newest.position.y + 60, {
+          duration: 350,
+          zoom: Math.max(1, getZoom()),
+        });
+      }
+    }
+    prevNodeCountRef.current = nodes.length;
+  }, [nodes, setCenter, getZoom]);
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;

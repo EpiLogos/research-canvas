@@ -2236,6 +2236,11 @@ body[data-shell-dragging="true"] {
   opacity: 1 !important;
 }
 
+/* Smooth node repositioning (not during drag — React Flow adds .dragging) */
+.react-flow__node:not(.dragging) {
+  transition: transform 0.12s ease;
+}
+
 /* ─── Context menu ────────────────────────────────────── */
 .context-menu {
   background: #0e0e22;
