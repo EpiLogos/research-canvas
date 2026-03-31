@@ -342,6 +342,10 @@ export function CanvasWorkspaceProvider({
       },
       deleteNode: (nodeId) => {
         stores.store.getState().deleteNode(nodeId);
+        // If deleted node was selected, clear selection
+        if (selectedNodeId === nodeId) {
+          setSelectedNodeId(null);
+        }
       },
       duplicateNode: (nodeId) => {
         stores.store.getState().duplicateNode(nodeId);

@@ -30,6 +30,7 @@ export function ContentTab({ onFullScreen }: ContentTabProps) {
             className="content-tab__note-editor"
             defaultValue={node.content ?? ""}
             placeholder="Write a note…"
+            onChange={(e) => workspace.updateNodeContent?.(node.id, e.target.value)}
           />
         ) : (
           <div className="content-tab__placeholder">

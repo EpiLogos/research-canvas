@@ -6,6 +6,7 @@ import {
   MarkerType,
   MiniMap,
   ReactFlow,
+  useReactFlow,
   type Connection,
   ConnectionMode,
   type Edge,
@@ -65,6 +66,8 @@ export function CanvasView({
   onNodeDoubleClick,
   onConnectNodes
 }: CanvasViewProps) {
+  const { screenToFlowPosition } = useReactFlow();
+
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -269,7 +272,8 @@ export function CanvasView({
           anchorY={showFilePicker.y}
           entries={fileEntries ?? []}
           onSelect={(entry) => {
-            onCreateResourceFromFile?.(entry, { x: showFilePicker.x, y: showFilePicker.y });
+            const canvasPos = screenToFlowPosition({ x: showFilePicker.x, y: showFilePicker.y });
+            onCreateResourceFromFile?.(entry, canvasPos);
             setShowFilePicker(null);
           }}
           onClose={closeFilePicker}
