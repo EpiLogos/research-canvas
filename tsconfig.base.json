@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": false,
+    "resolveJsonModule": true,
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@research-canvas/canvas": ["packages/canvas/src/index.ts"],
+      "@research-canvas/exporter": ["packages/exporter/src/index.ts"],
+      "@research-canvas/desktop-api": ["packages/desktop-api/src/index.ts"],
+      "@research-canvas/search": ["packages/search/src/index.ts"],
+      "@research-canvas/schema": ["packages/schema/src/index.ts"],
+      "@research-canvas/viewers": ["packages/viewers/src/index.ts"],
+      "@research-canvas/public-viewer": ["apps/public-viewer/src/App.tsx"]
+    }
+  }
+}

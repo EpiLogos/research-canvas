@@ -1,0 +1,29 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/canvas"
+    },
+    {
+      "path": "./packages/exporter"
+    },
+    {
+      "path": "./packages/desktop-api"
+    },
+    {
+      "path": "./packages/search"
+    },
+    {
+      "path": "./packages/viewers"
+    },
+    {
+      "path": "./packages/schema"
+    },
+    {
+      "path": "./apps/desktop"
+    },
+    {
+      "path": "./apps/public-viewer"
+    }
+  ]
+}

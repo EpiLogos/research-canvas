@@ -1,0 +1,27 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tsbuildinfo",
+    "noEmit": true,
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
+  },
+  "references": [
+    {
+      "path": "../../packages/canvas"
+    },
+    {
+      "path": "../../packages/desktop-api"
+    },
+    {
+      "path": "../../packages/search"
+    },
+    {
+      "path": "../../packages/schema"
+    },
+    {
+      "path": "../../packages/viewers"
+    }
+  ],
+  "include": ["src", "vite.config.ts"]
+}

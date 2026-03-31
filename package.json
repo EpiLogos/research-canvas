@@ -1,0 +1,29 @@
+{
+  "name": "research-canvas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.25.0",
+  "scripts": {
+    "dev": "pnpm --filter @research-canvas/desktop dev",
+    "desktop:dev": "pnpm --filter @research-canvas/desktop dev",
+    "public-viewer:dev": "pnpm --filter @research-canvas/public-viewer dev",
+    "typecheck": "tsc -b tsconfig.json",
+    "test": "pnpm vitest run",
+    "test:e2e": "playwright test",
+    "build": "pnpm -r --if-present build"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@testing-library/jest-dom": "^6.8.0",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^24.6.0",
+    "@types/react": "^19.1.17",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react-swc": "^4.1.0",
+    "jsdom": "^27.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.6",
+    "vitest": "^3.2.4"
+  }
+}

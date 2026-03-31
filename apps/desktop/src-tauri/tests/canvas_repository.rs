@@ -1,0 +1,68 @@
+use research_canvas_desktop_lib::db::{
+    connection::Database,
+    repositories::{CanvasGraphRepository, ProjectRepository},
+};
+use tempfile::{tempdir, TempDir};
+
+fn open_temp_database() -> (TempDir, Database) {
+    let dir = tempdir().expect("temp dir");
+    let path = dir.path().join("research-canvas.sqlite");
+    let database = Database::open(&path).expect("database open");
+    (dir, database)
+}
+
+#[test]
+fn persists_nodes_edges_and_edge_notes_for_a_canvas_snapshot() {
+    let (_dir, database) = open_temp_database();
+    let projects = ProjectRepository::new(database.connection());
+    let project = projects
+        .create(
+            "Episode 0.2".to_string(),
+            "episode-0-2".to_string(),
+            None,
+            "/tmp/episode-0-2".to_string(),
+            Some("A research-heavy episode".to_string()),
+            None,
+            serde_json::json!({"published": false}),
+        )
+        .expect("create project");
+    let canvas_id = project.primary_canvas_id.expect("primary canvas");
+
+    let repository = CanvasGraphRepository::new(database.connection());
+    let note_node = repository
+        .create_note_node(
+            &canvas_id,
+            "Opening note",
+            "The thesis starts here.",
+            120.0,
+            180.0,
+        )
+        .expect("create note node");
+    let resource_node = repository
+        .create_resource_node(
+            &canvas_id,
+            "Report",
+            "/tmp/report.md",
+            "report.md",
+            "markdown",
+            "text/markdown",
+            "fingerprint-1",
+            480.0,
+            220.0,
+        )
+        .expect("create resource node");
+
+    let edge = repository
+        .connect_nodes(&canvas_id, &note_node.id, &resource_node.id, "supports")
+        .expect("connect nodes");
+    repository
+        .update_edge_note(&edge.id, "Primary supporting source")
+        .expect("update edge note");
+
+    let snapshot = repository
+        .load_canvas_snapshot(&canvas_id)
+        .expect("load snapshot");
+    assert_eq!(snapshot.nodes.len(), 2);
+    assert_eq!(snapshot.edges.len(), 1);
+    assert_eq!(snapshot.edges[0].note, "Primary supporting source");
+}

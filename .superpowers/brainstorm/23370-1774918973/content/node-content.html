@@ -1,0 +1,247 @@
+<h2>Node Content & Customisation</h2>
+<p class="subtitle">Nodes hold real content. Two questions: where does it open, and how do you customise the node's look?</p>
+
+<style>
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 14px; }
+.section-title { font-size: 11px; font-weight: 700; color: #7c6fff; letter-spacing: 0.08em; text-transform: uppercase; margin: 22px 0 10px; border-bottom: 1px solid #1e1e35; padding-bottom: 6px; }
+.card { border: 2px solid #252540; border-radius: 8px; overflow: hidden; cursor: pointer; transition: border-color 0.2s; }
+.card:hover { border-color: #444; }
+.card.selected { border-color: #7c6fff; }
+.card-label { background: #111128; padding: 8px 12px; font-size: 11px; font-weight: 600; color: #9090c0; }
+.caption { font-size: 11px; color: #777; padding: 8px 12px 10px; line-height: 1.5; }
+.tag { display: inline-block; background: #1e1e35; color: #7c6fff; font-size: 10px; padding: 2px 7px; border-radius: 10px; margin: 2px 2px 0 0; }
+.preview { background: #07070e; height: 150px; position: relative; overflow: hidden; display: flex; align-items: stretch; }
+
+/* shell chrome */
+.icon-strip { width: 22px; background: #0d0d1a; border-right: 1px solid #111128; flex-shrink: 0; }
+.canvas-bg { background: #07070e; flex: 1; position: relative; display: flex; align-items: center; justify-content: center; }
+.right-panel { background: #0d0d1e; border-left: 1px solid #1a1a35; }
+.rp-tabs { display: flex; border-bottom: 1px solid #1a1a35; }
+.rp-tab { flex: 1; font-size: 7px; padding: 3px 4px; text-align: center; color: #444; }
+.rp-tab.on { color: #7c6fff; border-bottom: 1px solid #7c6fff; background: #101025; }
+
+/* nodes on canvas */
+.n { position: absolute; }
+.n-pill { display: inline-flex; align-items: center; gap: 4px; background: #111128; border: 1px solid #252545; border-radius: 3px; padding: 3px 7px; font-size: 8px; color: #c0c0e0; white-space: nowrap; }
+.n-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+/* content viewer styles */
+.md-content { font-size: 7px; color: #9090b0; line-height: 1.5; padding: 6px 8px; }
+.md-h { font-size: 8px; font-weight: 700; color: #c0c0e0; margin-bottom: 3px; }
+.md-p { margin-bottom: 3px; color: #7070a0; }
+.md-code { background: #0a0a1a; border-radius: 2px; padding: 2px 4px; color: #5599ff; font-family: monospace; font-size: 6px; }
+
+/* image node preview */
+.img-thumb { width: 100%; height: 50px; object-fit: cover; border-radius: 2px; background: linear-gradient(135deg, #1a1a3e 0%, #0d1a2e 50%, #1a0d2e 100%); display: flex; align-items: center; justify-content: center; font-size: 16px; color: #333; }
+
+/* modal overlay */
+.modal-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 10; }
+.modal-box { background: #0e0e22; border: 1px solid #2a2a50; border-radius: 6px; padding: 8px; width: 120px; max-height: 110px; overflow: hidden; }
+
+/* split view */
+.split-canvas { flex: 1; background: #07070e; position: relative; }
+.split-viewer { width: 100px; background: #0c0c1e; border-left: 1px solid #1a1a35; padding: 5px; overflow: hidden; }
+
+/* customisation UI */
+.colour-swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; flex-shrink: 0; }
+.colour-row { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.custom-node-preview { background: #111128; border: 1px solid #252545; border-radius: 4px; padding: 5px 8px; display: inline-flex; align-items: center; gap: 5px; font-size: 9px; }
+.inspector-row { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; font-size: 8px; color: #666; }
+.inspector-label { width: 42px; color: #444; font-size: 7px; text-align: right; flex-shrink: 0; }
+.inspector-val { flex: 1; background: #0a0a18; border: 1px solid #1e1e35; border-radius: 2px; padding: 2px 5px; color: #9090c0; font-size: 7px; }
+</style>
+
+<!-- SECTION 1 -->
+<div class="section-title">1 — Clicking a node: where does the content open?</div>
+<div class="two-col">
+
+  <div class="card" data-choice="open-rightpanel" onclick="toggleSelect(this)">
+    <div class="card-label">A — Loads in right panel (same view)</div>
+    <div class="preview">
+      <div class="icon-strip"></div>
+      <div class="canvas-bg">
+        <div class="n" style="left:30px;top:35px;">
+          <div class="n-pill" style="border-color:#4a4aff88;box-shadow:0 0 6px #4a4aff33;">
+            <div class="n-dot" style="background:#4a4aff;"></div>Chapter One
+          </div>
+        </div>
+        <div class="n" style="left:20px;top:75px;">
+          <div class="n-pill"><div class="n-dot" style="background:#9b59b6;"></div>Rev 13</div>
+        </div>
+        <svg style="position:absolute;inset:0;width:100%;height:100%;overflow:visible;opacity:0.3;pointer-events:none;">
+          <line x1="60" y1="43" x2="45" y2="83" stroke="#4a4aff" stroke-width="1"/>
+        </svg>
+      </div>
+      <div class="right-panel" style="width:105px;">
+        <div class="rp-tabs">
+          <div class="rp-tab on">Content</div>
+          <div class="rp-tab">Terminal</div>
+        </div>
+        <div class="md-content">
+          <div class="md-h">Chapter One</div>
+          <div class="md-p">In the beginning was the word and the word was with...</div>
+          <div class="md-p">The <span class="md-code">first seal</span> was broken at dawn. Four riders emerged from...</div>
+        </div>
+      </div>
+    </div>
+    <div class="caption">Single click → content loads in right panel (replaces inspector temporarily, or Inspector/Content/Terminal are all tabs). Canvas stays visible. Good for quick reading while keeping spatial context.
+    <br><span class="tag">my recommendation</span><span class="tag">stays in flow</span><span class="tag">canvas visible</span></div>
+  </div>
+
+  <div class="card" data-choice="open-modal" onclick="toggleSelect(this)">
+    <div class="card-label">B — Opens centred overlay/modal</div>
+    <div class="preview" style="position:relative;">
+      <div class="icon-strip"></div>
+      <div class="canvas-bg" style="position:relative;">
+        <div class="n" style="left:20px;top:30px;opacity:0.3;">
+          <div class="n-pill"><div class="n-dot" style="background:#4a4aff;"></div>Chapter One</div>
+        </div>
+        <div class="modal-overlay">
+          <div class="modal-box">
+            <div style="font-size:9px;font-weight:600;color:#c0c0e0;margin-bottom:4px;border-bottom:1px solid #1e1e35;padding-bottom:3px;display:flex;justify-content:space-between;">
+              Chapter One <span style="color:#333;cursor:pointer;">✕</span>
+            </div>
+            <div class="md-content" style="padding:0;">
+              <div class="md-h" style="font-size:7px;">Chapter One</div>
+              <div class="md-p">In the beginning was the word...</div>
+              <div class="md-p">The first seal was broken at dawn.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="caption">Click → dimmed overlay + centred content box. Full focus on content. Close to return to canvas. Feels like a lightbox. Disruptive but clear.
+    <br><span class="tag">focused reading</span><span class="tag">interrupts flow</span></div>
+  </div>
+
+  <div class="card" data-choice="open-split" onclick="toggleSelect(this)">
+    <div class="card-label">C — Canvas splits: viewer takes half</div>
+    <div class="preview">
+      <div class="icon-strip"></div>
+      <div class="split-canvas">
+        <div style="position:absolute;left:10px;top:35px;">
+          <div class="n-pill" style="border-color:#4a4aff88;"><div class="n-dot" style="background:#4a4aff;"></div>Chapter One</div>
+        </div>
+        <div style="position:absolute;left:10px;top:75px;">
+          <div class="n-pill" style="opacity:0.4;"><div class="n-dot" style="background:#9b59b6;"></div>Rev 13</div>
+        </div>
+        <div style="position:absolute;top:40px;left:60px;right:-1px;bottom:0;background:#080816;border-top:1px solid #1a1a35;border-left:1px solid #1a1a35;">
+          <div style="font-size:7px;color:#444;padding:3px 6px;border-bottom:1px solid #111128;">Chapter One.md</div>
+          <div class="md-content" style="padding:4px 6px;">
+            <div class="md-h">Chapter One</div>
+            <div class="md-p">In the beginning was the word and the word...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="caption">Canvas splits vertically or horizontally. Left/top = graph, right/bottom = content. Both visible, both interactive. Resize the divider.
+    <br><span class="tag">both visible</span><span class="tag">more complex</span></div>
+  </div>
+
+  <div class="card" data-choice="open-double" onclick="toggleSelect(this)">
+    <div class="card-label">D — Single click = right panel · Double = full screen</div>
+    <div class="preview" style="flex-direction:column;gap:0;">
+      <div style="display:flex;flex:1;align-items:stretch;">
+        <div class="icon-strip"></div>
+        <div class="canvas-bg" style="font-size:7px;color:#333;">single click → right panel</div>
+        <div class="right-panel" style="width:80px;">
+          <div class="rp-tabs"><div class="rp-tab on" style="font-size:6px;">Content</div><div class="rp-tab" style="font-size:6px;">Term</div></div>
+          <div style="font-size:7px;color:#555;padding:4px 5px;line-height:1.4;">Chapter One<br><span style="color:#444;">preview...</span></div>
+        </div>
+      </div>
+      <div style="flex:0;background:#0a0a18;border-top:1px solid #111128;font-size:7px;color:#333;padding:2px 8px;display:flex;justify-content:space-between;">
+        <span>double-click → full screen reader</span><span style="color:#444;">esc to return</span>
+      </div>
+    </div>
+    <div class="caption">Single click previews in right panel. Double-click expands to full-screen content reader (markdown, image, PDF). Esc or back arrow returns to canvas.
+    <br><span class="tag">two levels of focus</span><span class="tag">progressive disclosure</span></div>
+  </div>
+
+</div>
+
+<!-- SECTION 2 -->
+<div class="section-title">2 — Node customisation (colour + image/text on the node box)</div>
+<p style="font-size:11px;color:#777;margin-bottom:12px;">When you select a node, the inspector lets you customise its visual appearance. How much control?</p>
+
+<div class="two-col">
+
+  <div class="card" data-choice="custom-colour" onclick="toggleSelect(this)">
+    <div class="card-label">A — Dot colour + label text colour only</div>
+    <div class="preview" style="flex-direction:column;align-items:center;justify-content:center;gap:10px;">
+      <div style="background:#111128;border:1px solid #1e1e35;border-radius:6px;padding:10px 14px;width:160px;">
+        <div class="inspector-row">
+          <div class="inspector-label">dot colour</div>
+          <div class="colour-row">
+            <div class="colour-swatch" style="background:#4a4aff;"></div>
+            <div class="colour-swatch" style="background:#9b59b6;"></div>
+            <div class="colour-swatch" style="background:#27ae60;"></div>
+            <div class="colour-swatch" style="background:#e67e22;"></div>
+            <div class="colour-swatch" style="background:#e74c3c;"></div>
+            <div class="colour-swatch" style="background:#1abc9c;"></div>
+            <div class="colour-swatch" style="background:#f39c12;"></div>
+            <div class="colour-swatch" style="background:#888;border:1px solid #555;font-size:7px;display:flex;align-items:center;justify-content:center;color:#ccc;">+</div>
+          </div>
+        </div>
+        <div class="inspector-row">
+          <div class="inspector-label">label colour</div>
+          <div class="colour-row">
+            <div class="colour-swatch" style="background:#c0c0e0;"></div>
+            <div class="colour-swatch" style="background:#ffffff;"></div>
+            <div class="colour-swatch" style="background:#888;"></div>
+            <div class="colour-swatch" style="background:#7c6fff;"></div>
+            <div class="colour-swatch" style="background:#888;border:1px solid #555;font-size:7px;display:flex;align-items:center;justify-content:center;color:#ccc;">+</div>
+          </div>
+        </div>
+      </div>
+      <div class="custom-node-preview">
+        <div class="n-dot" style="background:#e67e22;"></div>
+        <span style="color:#e67e22;">Chapter One</span>
+      </div>
+    </div>
+    <div class="caption">Preset palette + custom picker for dot and text colour. Fast, minimal. The dot carries the semantic colour coding across zoom levels.
+    <br><span class="tag">fast</span><span class="tag">lean</span></div>
+  </div>
+
+  <div class="card" data-choice="custom-full" onclick="toggleSelect(this)">
+    <div class="card-label">B — Full: dot · background · text · thumbnail image</div>
+    <div class="preview" style="flex-direction:column;align-items:center;justify-content:center;gap:8px;">
+      <div style="background:#111128;border:1px solid #1e1e35;border-radius:6px;padding:8px 12px;width:170px;">
+        <div class="inspector-row">
+          <div class="inspector-label">dot</div>
+          <div class="colour-row">
+            <div class="colour-swatch" style="background:#e74c3c;"></div>
+            <div class="colour-swatch" style="background:#4a4aff;"></div>
+            <div class="colour-swatch" style="background:#27ae60;"></div>
+            <div class="colour-swatch" style="background:#888;border:1px solid #555;font-size:7px;display:flex;align-items:center;justify-content:center;color:#ccc;">+</div>
+          </div>
+        </div>
+        <div class="inspector-row">
+          <div class="inspector-label">bg colour</div>
+          <div class="colour-row">
+            <div class="colour-swatch" style="background:#1a0a0a;"></div>
+            <div class="colour-swatch" style="background:#0a1a0a;"></div>
+            <div class="colour-swatch" style="background:#0a0a1a;"></div>
+            <div class="colour-swatch" style="background:#1a1a0a;"></div>
+            <div class="colour-swatch" style="background:#888;border:1px solid #555;font-size:7px;display:flex;align-items:center;justify-content:center;color:#ccc;">+</div>
+          </div>
+        </div>
+        <div class="inspector-row">
+          <div class="inspector-label">text colour</div>
+          <div class="colour-row">
+            <div class="colour-swatch" style="background:#ffffff;"></div>
+            <div class="colour-swatch" style="background:#e74c3c;"></div>
+            <div class="colour-swatch" style="background:#f39c12;"></div>
+            <div class="colour-swatch" style="background:#888;border:1px solid #555;font-size:7px;display:flex;align-items:center;justify-content:center;color:#ccc;">+</div>
+          </div>
+        </div>
+        <div class="inspector-row">
+          <div class="inspector-label">thumbnail</div>
+          <div style="background:#0a0a18;border:1px solid #1e1e35;border-radius:2px;padding:2px 6px;font-size:7px;color:#444;cursor:pointer;">set image or icon…</div>
+        </div>
+      </div>
+    </div>
+    <div class="caption">Full control: dot colour, node background, text colour, and a thumbnail/icon shown on the node card (visible when zoomed in). Lets the canvas become a visual map.
+    <br><span class="tag">my recommendation</span><span class="tag">rich canvas</span><span class="tag">visual meaning</span></div>
+  </div>
+
+</div>

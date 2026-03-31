@@ -1,0 +1,238 @@
+<h2>Refined Layout — Panel System</h2>
+<p class="subtitle">Canvas dominant. Right panel is a switchable slot: Inspector or Terminal. Left is an overlay menu. Two questions here.</p>
+
+<style>
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 16px; }
+.section-title { font-size: 11px; font-weight: 700; color: #7c6fff; letter-spacing: 0.08em; text-transform: uppercase; margin: 24px 0 10px; border-bottom: 1px solid #1e1e35; padding-bottom: 6px; }
+.layout-card { border: 2px solid #333; border-radius: 8px; overflow: hidden; cursor: pointer; transition: border-color 0.2s; }
+.layout-card:hover { border-color: #555; }
+.layout-card.selected { border-color: #7c6fff; }
+.layout-label { background: #1a1a2e; padding: 8px 12px; font-size: 12px; font-weight: 600; color: #a0a0c0; letter-spacing: 0.04em; }
+.caption { font-size: 11px; color: #888; padding: 8px 12px 10px; line-height: 1.5; }
+.tag { display: inline-block; background: #1e1e35; color: #7c6fff; font-size: 10px; padding: 2px 7px; border-radius: 10px; margin: 2px 2px 0 0; }
+
+/* Shell mockup base */
+.shell { background: #08080f; height: 200px; position: relative; display: flex; flex-direction: column; }
+.titlebar { height: 14px; background: #0d0d1a; display: flex; align-items: center; padding: 0 8px; gap: 4px; flex-shrink: 0; border-bottom: 1px solid #111128; }
+.tb-dot { width: 5px; height: 5px; border-radius: 50%; }
+.canvas-area { flex: 1; position: relative; overflow: hidden; }
+
+/* icon strip */
+.icon-strip { position: absolute; left: 0; top: 0; bottom: 0; width: 26px; background: #0d0d1a; border-right: 1px solid #111128; display: flex; flex-direction: column; align-items: center; padding-top: 6px; gap: 4px; z-index: 10; }
+.icon-btn { width: 14px; height: 14px; background: #1e1e35; border-radius: 2px; }
+.icon-btn.active { background: #3a3a7e; }
+
+/* sliding left panel (overlay) */
+.left-panel { position: absolute; left: 26px; top: 0; bottom: 0; width: 80px; background: rgba(13,13,26,0.96); border-right: 1px solid #1e1e35; z-index: 9; padding: 5px 4px; display: flex; flex-direction: column; gap: 2px; }
+.left-panel.hidden { display: none; }
+.lp-header { height: 6px; background: #252550; border-radius: 1px; margin-bottom: 4px; }
+.lp-item { height: 5px; background: #151530; border-radius: 1px; }
+.lp-item.indent { margin-left: 6px; }
+.lp-item.active { background: #252550; }
+
+/* right panel slot */
+.right-panel { position: absolute; right: 0; top: 0; bottom: 0; width: 90px; background: rgba(12,12,24,0.97); border-left: 1px solid #1e1e35; z-index: 9; }
+.rp-tabs { display: flex; height: 16px; border-bottom: 1px solid #1e1e35; }
+.rp-tab { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 7px; color: #444; background: #0a0a1a; cursor: pointer; }
+.rp-tab.active { color: #7c6fff; background: #111128; border-bottom: 1px solid #7c6fff; }
+.rp-content { padding: 4px; display: flex; flex-direction: column; gap: 2px; }
+.rp-row { height: 4px; background: #151530; border-radius: 1px; }
+.rp-block { height: 16px; background: #0d0d1f; border: 1px solid #1e1e35; border-radius: 2px; margin: 3px 0; }
+
+/* terminal in right panel */
+.rp-terminal { padding: 4px 5px; height: calc(100% - 17px); display: flex; flex-direction: column; gap: 2px; }
+.term-line { height: 4px; background: #0f1a0f; border-radius: 1px; }
+.term-prompt { height: 4px; background: #0a1a0a; border-radius: 1px; display: flex; align-items: center; }
+
+/* canvas nodes */
+.node { width: 10px; height: 10px; background: #4a4aff; border-radius: 50%; position: absolute; }
+
+/* resize handle hint */
+.resize-handle { position: absolute; top: 0; bottom: 0; width: 4px; background: transparent; cursor: ew-resize; z-index: 20; }
+.resize-handle:hover { background: rgba(124,111,255,0.3); }
+.resize-hint { width: 2px; height: 30px; background: #252545; border-radius: 1px; margin: auto; position: absolute; top: 50%; left: 1px; transform: translateY(-50%); }
+</style>
+
+<!-- SECTION 1: THE LAYOUT -->
+<div class="section-title">1 — The shell (agreed direction, showing it built out)</div>
+
+<div style="border: 2px solid #7c6fff33; border-radius: 8px; overflow: hidden; background: #0a0a14;">
+  <div class="layout-label" style="background: #12122a; color: #9090d0;">The canvas shell — panels slide in, right panel switchable</div>
+  <div class="shell" style="height: 220px;">
+    <div class="titlebar">
+      <div class="tb-dot" style="background:#ff5f57"></div>
+      <div class="tb-dot" style="background:#febc2e"></div>
+      <div class="tb-dot" style="background:#28c840"></div>
+      <div style="flex:1;"></div>
+      <div style="font-size:7px;color:#333;background:#111128;padding:1px 6px;border-radius:2px;">⌘K</div>
+    </div>
+    <div class="canvas-area">
+      <!-- icon strip -->
+      <div class="icon-strip">
+        <div class="icon-btn active" title="Files"></div>
+        <div class="icon-btn" title="Search"></div>
+        <div class="icon-btn" title="Sequences"></div>
+        <div style="flex:1;"></div>
+        <div class="icon-btn" style="margin-bottom:4px;" title="Settings"></div>
+      </div>
+
+      <!-- left panel (slide-in overlay) -->
+      <div class="left-panel">
+        <div class="lp-header"></div>
+        <div class="lp-item active"></div>
+        <div class="lp-item indent"></div>
+        <div class="lp-item indent"></div>
+        <div class="lp-item"></div>
+        <div class="lp-item indent"></div>
+        <div class="lp-item"></div>
+        <div class="lp-item indent"></div>
+        <div class="lp-item indent"></div>
+        <!-- resize handle on right edge -->
+        <div class="resize-handle" style="left:auto;right:-2px;"><div class="resize-hint"></div></div>
+      </div>
+
+      <!-- right panel with tabs: Inspector / Terminal -->
+      <div class="right-panel">
+        <div class="rp-tabs">
+          <div class="rp-tab active">Inspector</div>
+          <div class="rp-tab">Terminal</div>
+        </div>
+        <div class="rp-content">
+          <div class="rp-row"></div>
+          <div class="rp-row" style="width:70%"></div>
+          <div class="rp-block"></div>
+          <div class="rp-row"></div>
+          <div class="rp-row" style="width:60%"></div>
+          <div class="rp-row"></div>
+        </div>
+        <!-- resize handle on left edge -->
+        <div class="resize-handle" style="left:0;"><div class="resize-hint"></div></div>
+      </div>
+
+      <!-- canvas content -->
+      <div style="position:absolute;left:110px;right:95px;top:0;bottom:0;display:flex;align-items:center;justify-content:center;">
+        <div style="position:relative;width:120px;height:90px;">
+          <div class="node" style="top:10px;left:50px;width:12px;height:12px;box-shadow:0 0 8px #4a4aff66;"></div>
+          <div class="node" style="top:38px;left:10px;background:#9b59b6;width:10px;height:10px;"></div>
+          <div class="node" style="top:38px;left:80px;background:#27ae60;width:10px;height:10px;"></div>
+          <div class="node" style="top:65px;left:50px;background:#e67e22;width:10px;height:10px;"></div>
+          <svg style="position:absolute;inset:0;width:100%;height:100%;overflow:visible;opacity:0.4;">
+            <line x1="56" y1="22" x2="15" y2="43" stroke="#4a4aff" stroke-width="1"/>
+            <line x1="56" y1="22" x2="85" y2="43" stroke="#4a4aff" stroke-width="1"/>
+            <line x1="15" y1="48" x2="55" y2="70" stroke="#9b59b6" stroke-width="1"/>
+            <line x1="85" y1="48" x2="55" y2="70" stroke="#27ae60" stroke-width="1"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- bottom status bar -->
+      <div style="position:absolute;bottom:0;left:26px;right:0;height:12px;background:#0a0a18;border-top:1px solid #111128;display:flex;align-items:center;padding:0 8px;gap:8px;">
+        <div style="font-size:7px;color:#333;">4 nodes · 4 edges</div>
+        <div style="flex:1;"></div>
+        <div style="font-size:7px;color:#333;">⌘T terminal</div>
+      </div>
+    </div>
+  </div>
+  <div class="caption">
+    Icon strip (26px, always visible) triggers left overlay. Right panel has <strong>Inspector / Terminal tabs</strong> — drag its left edge to resize. Left overlay has its own drag handle. Both panels can be closed entirely, giving full canvas. ⌘T opens/focuses the Terminal tab.
+    <br><span class="tag">agreed</span><span class="tag">canvas-first</span><span class="tag">right panel = inspector or terminal</span><span class="tag">both resizable</span>
+  </div>
+</div>
+
+<!-- SECTION 2: NODE ADD UX -->
+<div class="section-title">2 — Adding a node: how do you want to attach files/resources?</div>
+<p style="font-size:12px;color:#888;margin-bottom:12px;">When you double-click on canvas (or right-click → add node), how should file/resource selection work?</p>
+
+<div class="two-col">
+
+  <div class="layout-card" data-choice="nodeadd-a" onclick="toggleSelect(this)">
+    <div class="layout-label">A — Type-then-pick inline</div>
+    <div style="background:#0d0d1a;padding:12px;height:110px;position:relative;display:flex;align-items:center;justify-content:center;">
+      <!-- inline node creation widget -->
+      <div style="background:#111128;border:1px solid #7c6fff;border-radius:6px;padding:8px 10px;width:140px;box-shadow:0 4px 20px rgba(0,0,0,0.6);">
+        <div style="font-size:8px;color:#666;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.05em;">New node</div>
+        <div style="background:#0a0a18;border:1px solid #252545;border-radius:3px;padding:4px 6px;font-size:8px;color:#aaa;margin-bottom:6px;">Research note...</div>
+        <div style="display:flex;gap:4px;margin-bottom:6px;">
+          <div style="flex:1;background:#1a1a35;border-radius:2px;padding:3px;font-size:7px;color:#555;text-align:center;border:1px solid #252545;">note</div>
+          <div style="flex:1;background:#252545;border-radius:2px;padding:3px;font-size:7px;color:#9090c0;text-align:center;border:1px solid #3a3a6e;">resource</div>
+          <div style="flex:1;background:#1a1a35;border-radius:2px;padding:3px;font-size:7px;color:#555;text-align:center;border:1px solid #252545;">group</div>
+        </div>
+        <div style="background:#0a1020;border:1px solid #1e2e35;border-radius:3px;padding:3px 6px;font-size:7px;color:#3a6080;">+ attach file or folder...</div>
+      </div>
+    </div>
+    <div class="caption">
+      Double-click canvas → small creation widget appears at cursor. Pick type, name it, then "attach file" opens a native file picker (or fuzzy search of indexed files). Clean, contained.
+      <br><span class="tag">minimal</span><span class="tag">one flow</span>
+    </div>
+  </div>
+
+  <div class="layout-card" data-choice="nodeadd-b" onclick="toggleSelect(this)">
+    <div class="layout-label">B — Drag from file overlay</div>
+    <div style="background:#0d0d1a;padding:12px;height:110px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:10px;">
+      <!-- file list panel snippet -->
+      <div style="width:70px;background:#111120;border:1px solid #1e1e35;border-radius:4px;padding:5px;display:flex;flex-direction:column;gap:2px;">
+        <div style="font-size:7px;color:#555;margin-bottom:2px;">FILES</div>
+        <div style="height:8px;background:#1a1a35;border-radius:1px;display:flex;align-items:center;padding:0 3px;"><span style="font-size:6px;color:#4a4aff;">📄</span></div>
+        <div style="height:8px;background:#252545;border-radius:1px;border:1px dashed #4a4aff55;display:flex;align-items:center;padding:0 3px;"><span style="font-size:6px;color:#4a4aff;">📄 ←drag</span></div>
+        <div style="height:8px;background:#1a1a35;border-radius:1px;display:flex;align-items:center;padding:0 3px;"><span style="font-size:6px;color:#4a4aff;">📁</span></div>
+        <div style="height:8px;background:#1a1a35;border-radius:1px;display:flex;align-items:center;padding:0 3px;"><span style="font-size:6px;color:#4a4aff;">📄</span></div>
+      </div>
+      <!-- arrow -->
+      <div style="font-size:14px;color:#333;">→</div>
+      <!-- canvas drop zone -->
+      <div style="width:80px;height:70px;background:#08080f;border:1px solid #1e1e35;border-radius:4px;position:relative;display:flex;align-items:center;justify-content:center;">
+        <div style="border:1px dashed #4a4aff55;border-radius:3px;padding:4px 6px;font-size:7px;color:#4a4aff55;">drop here</div>
+        <div class="node" style="top:8px;left:12px;width:8px;height:8px;"></div>
+        <div class="node" style="bottom:8px;right:12px;width:8px;height:8px;background:#27ae60"></div>
+      </div>
+    </div>
+    <div class="caption">
+      Open left file panel → drag any file/folder directly onto canvas → node created at drop point with file already attached. Also works from OS Finder drag.
+      <br><span class="tag">spatial</span><span class="tag">requires panel open</span>
+    </div>
+  </div>
+
+  <div class="layout-card" data-choice="nodeadd-c" onclick="toggleSelect(this)">
+    <div class="layout-label">C — Right-click context menu → fuzzy search</div>
+    <div style="background:#0d0d1a;padding:8px;height:110px;position:relative;display:flex;align-items:center;justify-content:center;">
+      <div style="position:relative;width:160px;">
+        <!-- context menu -->
+        <div style="background:#111128;border:1px solid #252545;border-radius:5px;box-shadow:0 6px 24px rgba(0,0,0,0.7);overflow:hidden;font-size:8px;width:110px;">
+          <div style="padding:4px 10px;color:#7c6fff;background:#0f0f22;font-size:7px;letter-spacing:0.06em;text-transform:uppercase;">Add node</div>
+          <div style="padding:4px 10px;color:#aaa;border-bottom:1px solid #1a1a35;">Note</div>
+          <div style="padding:4px 10px;color:#aaa;background:#16162e;">Resource from file... <span style="color:#444;float:right;">⌘R</span></div>
+          <div style="padding:4px 10px;color:#aaa;">Group</div>
+          <div style="padding:4px 10px;color:#555;border-top:1px solid #1a1a35;">Draw edge</div>
+        </div>
+        <!-- fuzzy search popup that appears on "Resource from file" -->
+        <div style="position:absolute;left:112px;top:18px;width:100px;background:#0e0e20;border:1px solid #3a3a6e;border-radius:4px;box-shadow:0 4px 16px rgba(0,0,0,0.8);padding:4px;">
+          <div style="background:#0a0a18;border:1px solid #252545;border-radius:2px;padding:2px 4px;font-size:7px;color:#888;margin-bottom:3px;">search files...</div>
+          <div style="font-size:7px;color:#7c6fff;padding:2px 4px;background:#1a1a30;border-radius:1px;">chapter-1.md</div>
+          <div style="font-size:7px;color:#666;padding:2px 4px;">diagram.png</div>
+          <div style="font-size:7px;color:#666;padding:2px 4px;">refs/bible.pdf</div>
+        </div>
+      </div>
+    </div>
+    <div class="caption">
+      Right-click canvas → context menu → "Resource from file" → inline fuzzy search popup over the indexed files. No panel needed. Fastest path for keyboard users.
+      <br><span class="tag">keyboard-native</span><span class="tag">no panel needed</span><span class="tag">my recommendation</span>
+    </div>
+  </div>
+
+  <div class="layout-card" data-choice="nodeadd-d" onclick="toggleSelect(this)">
+    <div class="layout-label">D — All three (drag + right-click + widget)</div>
+    <div style="background:#0d0d1a;padding:8px;height:110px;display:flex;align-items:center;justify-content:center;">
+      <div style="display:flex;flex-direction:column;gap:4px;font-size:8px;color:#888;">
+        <div style="display:flex;align-items:center;gap:6px;"><span style="color:#4a4aff;font-size:10px;">①</span> Drag file from left panel → creates node</div>
+        <div style="display:flex;align-items:center;gap:6px;"><span style="color:#9b59b6;font-size:10px;">②</span> Right-click canvas → add → fuzzy search</div>
+        <div style="display:flex;align-items:center;gap:6px;"><span style="color:#27ae60;font-size:10px;">③</span> Double-click canvas → type-then-pick widget</div>
+        <div style="display:flex;align-items:center;gap:6px;"><span style="color:#e67e22;font-size:10px;">④</span> OS drag from Finder → auto-import + node</div>
+      </div>
+    </div>
+    <div class="caption">
+      All entry points supported. The UX is consistent — they all land in the same place. Power users pick what fits their flow.
+      <br><span class="tag">flexible</span><span class="tag">most work to build</span>
+    </div>
+  </div>
+
+</div>

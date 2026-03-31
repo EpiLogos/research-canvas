@@ -1,0 +1,263 @@
+<h2>Core Layout Structure</h2>
+<p class="subtitle">Canvas dominates. Everything else is subordinate. Which shell pattern fits?</p>
+
+<style>
+.layout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 16px; }
+.layout-card { border: 2px solid #333; border-radius: 8px; overflow: hidden; cursor: pointer; transition: border-color 0.2s; }
+.layout-card:hover { border-color: #666; }
+.layout-card.selected { border-color: #7c6fff; }
+.layout-label { background: #1a1a2e; padding: 10px 14px; font-size: 13px; font-weight: 600; color: #a0a0c0; letter-spacing: 0.05em; text-transform: uppercase; }
+.mock-shell { background: #0d0d14; padding: 8px; display: flex; flex-direction: column; gap: 3px; height: 220px; font-size: 10px; }
+
+/* Layout A - VSCode style */
+.la-body { display: flex; flex: 1; gap: 3px; min-height: 0; }
+.la-activity { width: 20px; background: #1e1e2e; border-radius: 2px; display: flex; flex-direction: column; align-items: center; padding-top: 6px; gap: 4px; }
+.la-activity-dot { width: 12px; height: 12px; background: #333; border-radius: 2px; }
+.la-sidebar { width: 55px; background: #161622; border-radius: 2px; }
+.la-canvas { flex: 1; background: #0a0a12; border-radius: 2px; border: 1px solid #222; position: relative; }
+.la-canvas-inner { position: absolute; inset: 4px; display: flex; align-items: center; justify-content: center; }
+.la-right { width: 50px; background: #161622; border-radius: 2px; }
+.la-titlebar { height: 12px; background: #111120; border-radius: 2px; display: flex; align-items: center; padding: 0 6px; gap: 4px; }
+.la-dot { width: 5px; height: 5px; border-radius: 50%; }
+.la-terminal { height: 35px; background: #0b0b18; border-radius: 2px; border: 1px solid #1e1e35; }
+
+/* Layout B - Full bleed canvas, icon rails only */
+.lb-outer { display: flex; flex: 1; gap: 0; min-height: 0; position: relative; }
+.lb-icon-rail { width: 28px; background: #111120; display: flex; flex-direction: column; align-items: center; padding-top: 4px; gap: 3px; border-right: 1px solid #1e1e35; }
+.lb-icon { width: 16px; height: 16px; background: #252540; border-radius: 3px; }
+.lb-canvas { flex: 1; background: #08080f; position: relative; }
+.lb-canvas-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.lb-overlay-panel { position: absolute; left: 29px; top: 0; width: 70px; height: 100%; background: rgba(18,18,30,0.95); border-right: 1px solid #252540; backdrop-filter: blur(8px); }
+.lb-overlay-r { position: absolute; right: 0; top: 0; width: 65px; height: 100%; background: rgba(18,18,30,0.92); border-left: 1px solid #252540; }
+.lb-terminal-drawer { position: absolute; bottom: 0; left: 29px; right: 0; height: 40px; background: rgba(10,10,20,0.96); border-top: 1px solid #1e1e35; }
+
+/* Layout C - Floating panels */
+.lc-canvas { flex: 1; background: #08080f; position: relative; border-radius: 2px; }
+.lc-float-left { position: absolute; left: 4px; top: 4px; width: 65px; background: #13131f; border: 1px solid #252540; border-radius: 4px; bottom: 4px; }
+.lc-float-right { position: absolute; right: 4px; top: 4px; width: 60px; background: #13131f; border: 1px solid #252540; border-radius: 4px; bottom: 40px; }
+.lc-float-bottom { position: absolute; bottom: 4px; left: 73px; right: 68px; height: 35px; background: #13131f; border: 1px solid #252540; border-radius: 4px; }
+
+/* node dots */
+.node { width: 10px; height: 10px; background: #4a4aff; border-radius: 50%; position: absolute; }
+.node-line { position: absolute; background: #333; height: 1px; transform-origin: left center; }
+.node-label { font-size: 7px; color: #5555aa; text-align: center; margin-top: 1px; }
+
+.caption { font-size: 12px; color: #888; padding: 10px 14px 12px; line-height: 1.5; }
+.tag { display: inline-block; background: #1e1e35; color: #7c6fff; font-size: 10px; padding: 2px 7px; border-radius: 10px; margin: 2px 2px 0 0; }
+</style>
+
+<div class="layout-grid">
+
+  <!-- A: VSCode-style fixed panels -->
+  <div class="layout-card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="layout-label">A — VSCode-style fixed rails</div>
+    <div class="mock-shell">
+      <div class="la-titlebar">
+        <div class="la-dot" style="background:#ff5f57"></div>
+        <div class="la-dot" style="background:#febc2e"></div>
+        <div class="la-dot" style="background:#28c840"></div>
+        <div style="flex:1;height:4px;background:#1e1e2e;border-radius:2px;margin-left:6px"></div>
+      </div>
+      <div class="la-body">
+        <div class="la-activity">
+          <div class="la-activity-dot"></div>
+          <div class="la-activity-dot"></div>
+          <div class="la-activity-dot"></div>
+          <div class="la-activity-dot" style="background:#4a4aff;opacity:0.7"></div>
+        </div>
+        <div class="la-sidebar">
+          <div style="padding:4px 3px;display:flex;flex-direction:column;gap:2px">
+            <div style="height:5px;background:#252540;border-radius:1px;margin:2px 0"></div>
+            <div style="height:4px;background:#1e1e35;border-radius:1px"></div>
+            <div style="height:4px;background:#1e1e35;border-radius:1px"></div>
+            <div style="height:4px;background:#1e1e35;border-radius:1px"></div>
+            <div style="height:4px;background:#252540;border-radius:1px;margin-top:4px"></div>
+            <div style="height:4px;background:#1e1e35;border-radius:1px"></div>
+            <div style="height:4px;background:#1e1e35;border-radius:1px"></div>
+          </div>
+        </div>
+        <div class="la-canvas">
+          <div class="la-canvas-inner" style="color:#333;font-size:9px;display:flex;flex-direction:column;align-items:center;gap:4px">
+            <div style="position:relative;width:80px;height:60px">
+              <div class="node" style="top:10px;left:30px"></div>
+              <div class="node" style="top:30px;left:5px;background:#9b59b6"></div>
+              <div class="node" style="top:30px;left:55px;background:#27ae60"></div>
+              <div class="node" style="top:48px;left:30px;background:#e67e22"></div>
+            </div>
+          </div>
+        </div>
+        <div class="la-right">
+          <div style="padding:4px 3px;display:flex;flex-direction:column;gap:2px">
+            <div style="height:5px;background:#252540;border-radius:1px;margin:2px 0"></div>
+            <div style="height:3px;background:#1e1e35;border-radius:1px"></div>
+            <div style="height:3px;background:#1e1e35;border-radius:1px"></div>
+            <div style="height:8px;background:#1a1a2e;border-radius:1px;margin-top:3px"></div>
+            <div style="height:3px;background:#1e1e35;border-radius:1px"></div>
+          </div>
+        </div>
+      </div>
+      <div class="la-terminal">
+        <div style="padding:4px 6px;font-size:8px;color:#3d3d6e">
+          <span style="color:#4a4aff">~/project</span> <span style="color:#555">$</span> <span style="color:#666">_</span>
+        </div>
+      </div>
+    </div>
+    <div class="caption">
+      Fixed left rail (icon strip + collapsible sidebar), canvas center, right inspector, bottom terminal drawer. Familiar. Predictable. Drag handles to resize all panels.
+      <br><span class="tag">familiar</span><span class="tag">predictable</span><span class="tag">always visible structure</span>
+    </div>
+  </div>
+
+  <!-- B: Full-bleed canvas, overlay panels -->
+  <div class="layout-card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="layout-label">B — Full-bleed canvas, overlay panels</div>
+    <div class="mock-shell">
+      <div class="la-titlebar">
+        <div class="la-dot" style="background:#ff5f57"></div>
+        <div class="la-dot" style="background:#febc2e"></div>
+        <div class="la-dot" style="background:#28c840"></div>
+        <div style="flex:1;height:4px;background:#1e1e2e;border-radius:2px;margin-left:6px"></div>
+      </div>
+      <div class="lb-outer">
+        <div class="lb-icon-rail">
+          <div class="lb-icon"></div>
+          <div class="lb-icon"></div>
+          <div class="lb-icon"></div>
+          <div class="lb-icon" style="background:#3a3a6e;margin-top:auto;margin-bottom:4px"></div>
+        </div>
+        <div class="lb-canvas">
+          <!-- overlay panels shown semi-transparent -->
+          <div class="lb-overlay-panel" style="display:flex;flex-direction:column;gap:2px;padding:4px 3px">
+            <div style="height:5px;background:#252540;border-radius:1px;margin:2px 0"></div>
+            <div style="height:4px;background:#1e1e35;border-radius:1px"></div>
+            <div style="height:4px;background:#1e1e35;border-radius:1px"></div>
+            <div style="height:4px;background:#1e1e35;border-radius:1px"></div>
+          </div>
+          <div class="lb-overlay-r" style="display:flex;flex-direction:column;gap:2px;padding:4px 3px">
+            <div style="height:5px;background:#252540;border-radius:1px;margin:2px 0"></div>
+            <div style="height:3px;background:#1e1e35;border-radius:1px"></div>
+            <div style="height:3px;background:#1e1e35;border-radius:1px"></div>
+          </div>
+          <div class="lb-canvas-label" style="z-index:0;color:#333;font-size:8px;display:flex;align-items:center;justify-content:center">
+            <div style="position:relative;width:60px;height:55px">
+              <div class="node" style="top:8px;left:22px"></div>
+              <div class="node" style="top:28px;left:4px;background:#9b59b6"></div>
+              <div class="node" style="top:28px;left:42px;background:#27ae60"></div>
+              <div class="node" style="top:44px;left:22px;background:#e67e22"></div>
+            </div>
+          </div>
+          <div class="lb-terminal-drawer">
+            <div style="padding:3px 6px;font-size:7px;color:#3d3d6e">
+              <span style="color:#4a4aff">~/project</span> <span style="color:#555">$</span> <span style="color:#444">_</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="caption">
+      Canvas fills the entire window. Panels slide in as overlays when triggered (icon strip on left). Terminal drawer slides up from bottom. Canvas is never shrunk — panels float above it.
+      <br><span class="tag">maximum canvas</span><span class="tag">panels on demand</span><span class="tag">overlay approach</span>
+    </div>
+  </div>
+
+  <!-- C: Hybrid — thin fixed left, overlay right + terminal -->
+  <div class="layout-card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="layout-label">C — Thin left rail, overlay right + terminal</div>
+    <div class="mock-shell">
+      <div class="la-titlebar">
+        <div class="la-dot" style="background:#ff5f57"></div>
+        <div class="la-dot" style="background:#febc2e"></div>
+        <div class="la-dot" style="background:#28c840"></div>
+        <div style="flex:1;height:4px;background:#1e1e2e;border-radius:2px;margin-left:6px"></div>
+      </div>
+      <div class="lb-outer">
+        <!-- thin icon strip always visible -->
+        <div class="lb-icon-rail" style="width:24px">
+          <div class="lb-icon" style="width:13px;height:13px"></div>
+          <div class="lb-icon" style="width:13px;height:13px"></div>
+          <div class="lb-icon" style="width:13px;height:13px"></div>
+          <div class="lb-icon" style="width:13px;height:13px;background:#3a3a6e;margin-top:auto;margin-bottom:4px"></div>
+        </div>
+        <!-- fixed thin sidebar (file tree/project) -->
+        <div style="width:58px;background:#111120;border-right:1px solid #1e1e35;display:flex;flex-direction:column;gap:2px;padding:4px 3px">
+          <div style="height:5px;background:#252540;border-radius:1px;margin:2px 0"></div>
+          <div style="height:4px;background:#1e1e35;border-radius:1px"></div>
+          <div style="height:4px;background:#1e1e35;border-radius:1px;margin-left:5px"></div>
+          <div style="height:4px;background:#1e1e35;border-radius:1px;margin-left:5px"></div>
+          <div style="height:4px;background:#1e1e35;border-radius:1px"></div>
+          <div style="height:4px;background:#1e1e35;border-radius:1px;margin-left:5px"></div>
+        </div>
+        <!-- canvas takes rest -->
+        <div style="flex:1;background:#08080f;position:relative">
+          <!-- right panel overlay only when node selected -->
+          <div style="position:absolute;right:0;top:0;bottom:0;width:62px;background:rgba(15,15,28,0.94);border-left:1px solid #1e1e35;display:flex;flex-direction:column;gap:2px;padding:4px 3px">
+            <div style="height:5px;background:#252540;border-radius:1px;margin:2px 0"></div>
+            <div style="height:3px;background:#1e1e35;border-radius:1px"></div>
+            <div style="height:3px;background:#1e1e35;border-radius:1px"></div>
+            <div style="height:8px;background:#1a1a2e;border-radius:2px;margin-top:3px"></div>
+          </div>
+          <!-- canvas nodes -->
+          <div style="position:absolute;left:20px;top:50%;transform:translateY(-50%)">
+            <div style="position:relative;width:70px;height:55px">
+              <div class="node" style="top:8px;left:22px"></div>
+              <div class="node" style="top:28px;left:4px;background:#9b59b6"></div>
+              <div class="node" style="top:28px;left:42px;background:#27ae60"></div>
+              <div class="node" style="top:44px;left:22px;background:#e67e22"></div>
+            </div>
+          </div>
+          <!-- terminal drawer at bottom -->
+          <div style="position:absolute;bottom:0;left:0;right:62px;height:38px;background:rgba(10,10,20,0.96);border-top:1px solid #1e1e35">
+            <div style="padding:4px 6px;font-size:7px;color:#3d3d6e">
+              <span style="color:#4a4aff">~/project</span> <span style="color:#555">$</span> <span style="color:#444">_</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="caption">
+      Thin icon strip + collapsible file sidebar always on left. Canvas gets most of the screen. Right panel only appears when a node is selected (slides in). Terminal drawer pulls up from bottom, resizable.
+      <br><span class="tag">my recommendation</span><span class="tag">VSCode-familiar</span><span class="tag">context-sensitive right panel</span>
+    </div>
+  </div>
+
+  <!-- D: Minimal — canvas only, everything via keyboard/context menu -->
+  <div class="layout-card" data-choice="d" onclick="toggleSelect(this)">
+    <div class="layout-label">D — Canvas-only, keyboard-first</div>
+    <div class="mock-shell">
+      <div class="la-titlebar">
+        <div class="la-dot" style="background:#ff5f57"></div>
+        <div class="la-dot" style="background:#febc2e"></div>
+        <div class="la-dot" style="background:#28c840"></div>
+        <div style="flex:1;height:4px;background:#1e1e2e;border-radius:2px;margin-left:6px"></div>
+      </div>
+      <div style="flex:1;background:#08080f;position:relative">
+        <!-- tiny corner controls only -->
+        <div style="position:absolute;top:5px;left:5px;display:flex;gap:3px">
+          <div style="width:14px;height:14px;background:#111120;border:1px solid #1e1e35;border-radius:2px"></div>
+          <div style="width:14px;height:14px;background:#111120;border:1px solid #1e1e35;border-radius:2px"></div>
+        </div>
+        <div style="position:absolute;top:5px;right:5px;display:flex;gap:3px">
+          <div style="width:25px;height:12px;background:#111120;border:1px solid #1e1e35;border-radius:2px;font-size:7px;color:#555;display:flex;align-items:center;justify-content:center">⌘K</div>
+        </div>
+        <!-- lots of nodes -->
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+          <div style="position:relative;width:110px;height:80px">
+            <div class="node" style="top:5px;left:45px;width:12px;height:12px"></div>
+            <div class="node" style="top:25px;left:10px;background:#9b59b6;width:12px;height:12px"></div>
+            <div class="node" style="top:25px;left:70px;background:#27ae60;width:12px;height:12px"></div>
+            <div class="node" style="top:50px;left:25px;background:#e67e22;width:12px;height:12px"></div>
+            <div class="node" style="top:50px;left:65px;background:#e74c3c;width:12px;height:12px"></div>
+            <div class="node" style="top:65px;left:45px;background:#1abc9c;width:12px;height:12px"></div>
+          </div>
+        </div>
+        <!-- context menu hint -->
+        <div style="position:absolute;bottom:6px;left:50%;transform:translateX(-50%);background:#111120;border:1px solid #252540;border-radius:3px;padding:3px 8px;font-size:8px;color:#444">right-click to add · ⌘K search · ⌘T terminal</div>
+      </div>
+    </div>
+    <div class="caption">
+      Pure canvas. No persistent sidebars. Everything via right-click context menu, keyboard shortcuts (⌘K palette), or node interactions. Panels are floating overlays only. Terminal via ⌘T.
+      <br><span class="tag">max focus</span><span class="tag">high keyboard-fluency req</span><span class="tag">steeper curve</span>
+    </div>
+  </div>
+
+</div>

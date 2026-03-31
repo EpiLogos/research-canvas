@@ -1,0 +1,5 @@
+# Outline
+
+- Thesis
+- Evidence
+- Sequence

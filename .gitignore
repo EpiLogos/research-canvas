@@ -1,0 +1,13 @@
+.DS_Store
+node_modules
+dist
+coverage
+playwright-report
+test-results
+.turbo
+target
+.worktrees
+worktrees
+packages/*/dist
+**/*.tsbuildinfo
+apps/desktop/src-tauri/target

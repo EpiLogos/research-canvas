@@ -1,0 +1,109 @@
+import type { ExportBundle } from "@research-canvas/schema";
+
+import { NoteViewer } from "@research-canvas/viewers";
+
+import type { ExportManifest } from "@research-canvas/exporter";
+
+interface MapViewProps {
+  bundle: ExportBundle;
+  manifest: ExportManifest;
+}
+
+export function MapView({ bundle, manifest }: MapViewProps) {
+  const firstNote = bundle.nodes.find((node) => node.type === "note");
+
+  return (
+    <main className="viewer viewer--map">
+      <header className="viewer__hero">
+        <p className="eyebrow">Static export</p>
+        <h1>{bundle.project.displayName}</h1>
+        <p>{bundle.project.summary || "Published research canvas"}</p>
+      </header>
+
+      <section className="viewer__section">
+        <header className="viewer__section-header">
+          <p className="eyebrow">Map</p>
+          <h2>Canvas nodes</h2>
+        </header>
+        <div className="viewer__card-grid">
+          {manifest.nodePages.map((page) => {
+            const node = bundle.nodes.find((entry) => entry.id === page.nodeId);
+            if (!node) {
+              return null;
+            }
+
+            return (
+              <article className="viewer__card" key={node.id}>
+                <a className="viewer__card-link" href={page.href}>
+                  <h3>{node.title}</h3>
+                  <p>{node.summary || node.type}</p>
+                </a>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      {firstNote ? (
+        <section className="viewer__section">
+          <header className="viewer__section-header">
+            <p className="eyebrow">Featured note</p>
+            <h2>{firstNote.title}</h2>
+          </header>
+          <NoteViewer
+            content={firstNote.type === "note" ? firstNote.content : ""}
+            tags={firstNote.type === "note" ? firstNote.tags : []}
+            title={firstNote.title}
+          />
+        </section>
+      ) : null}
+
+      <section className="viewer__section">
+        <header className="viewer__section-header">
+          <p className="eyebrow">Downloads</p>
+          <h2>Published resources</h2>
+        </header>
+        <ul className="viewer__download-list">
+          {bundle.assets.map((asset) => (
+            <li key={`${asset.nodeId}-${asset.downloadName}`}>
+              <a href={`assets/${asset.downloadName}`}>Download {asset.downloadName}</a>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="viewer__section">
+        <header className="viewer__section-header">
+          <p className="eyebrow">Sequences</p>
+          <h2>Guided traversal</h2>
+        </header>
+        <div className="viewer__card-grid">
+          {bundle.sequences.map((sequence) => (
+            <article className="viewer__card" key={sequence.id}>
+              <h3>{sequence.name}</h3>
+              <p>{sequence.description || sequence.kind}</p>
+              <ol className="viewer__step-list">
+                {bundle.sequenceSteps
+                  .filter((step) => step.sequenceId === sequence.id)
+                  .map((step) => {
+                    const target =
+                      bundle.nodes.find((node) => node.id === step.targetId) ??
+                      bundle.edges.find((edge) => edge.id === step.targetId);
+                    const title =
+                      target && "title" in target ? target.title : target?.relationKind;
+
+                    return (
+                      <li key={step.id}>
+                        <strong>{step.caption || title}</strong>
+                        <span>{title}</span>
+                      </li>
+                    );
+                  })}
+              </ol>
+            </article>
+          ))}
+        </div>
+      </section>
+    </main>
+  );
+}

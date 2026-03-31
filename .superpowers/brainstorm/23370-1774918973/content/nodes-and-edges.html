@@ -1,0 +1,191 @@
+<h2>Nodes & Edge Drawing</h2>
+<p class="subtitle">What do nodes look like, and how do you draw a connection between two of them?</p>
+
+<style>
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 14px; }
+.section-title { font-size: 11px; font-weight: 700; color: #7c6fff; letter-spacing: 0.08em; text-transform: uppercase; margin: 22px 0 10px; border-bottom: 1px solid #1e1e35; padding-bottom: 6px; }
+.card { border: 2px solid #252540; border-radius: 8px; overflow: hidden; cursor: pointer; transition: border-color 0.2s; }
+.card:hover { border-color: #444; }
+.card.selected { border-color: #7c6fff; }
+.card-label { background: #111128; padding: 8px 12px; font-size: 11px; font-weight: 600; color: #9090c0; letter-spacing: 0.04em; }
+.card-preview { background: #08080f; padding: 16px; display: flex; align-items: center; justify-content: center; height: 120px; }
+.caption { font-size: 11px; color: #777; padding: 8px 12px 10px; line-height: 1.5; }
+.tag { display: inline-block; background: #1e1e35; color: #7c6fff; font-size: 10px; padding: 2px 7px; border-radius: 10px; margin: 2px 2px 0 0; }
+
+/* node styles */
+.node-pill { display: inline-flex; align-items: center; gap: 5px; background: #111128; border: 1px solid #252545; border-radius: 4px; padding: 4px 9px; font-size: 9px; color: #c0c0e0; white-space: nowrap; }
+.node-pill .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.node-chip { display: inline-flex; align-items: center; gap: 4px; background: #0d0d1f; border: 1px solid #3a3a6e; border-radius: 20px; padding: 3px 10px 3px 6px; font-size: 9px; color: #a0a0d0; }
+.node-chip .icon { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 7px; }
+.node-card { background: #0e0e22; border: 1px solid #252545; border-radius: 6px; padding: 7px 10px; width: 90px; }
+.node-card .nc-type { font-size: 7px; color: #5555a0; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px; }
+.node-card .nc-title { font-size: 9px; color: #c0c0e0; font-weight: 600; margin-bottom: 4px; }
+.node-card .nc-meta { font-size: 7px; color: #444; }
+.node-minimal { width: 12px; height: 12px; border-radius: 50%; }
+
+/* edge handle on hover */
+.node-with-handle { position: relative; display: inline-flex; }
+.edge-handle { position: absolute; width: 8px; height: 8px; background: #7c6fff; border-radius: 50%; border: 1px solid #5a4fcc; opacity: 0; transition: opacity 0.15s; cursor: crosshair; }
+.node-with-handle:hover .edge-handle { opacity: 1; }
+
+/* canvas mini-scenes */
+.mini-canvas { background: #06060e; border-radius: 4px; width: 100%; height: 100px; position: relative; overflow: hidden; }
+.edge-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+</style>
+
+<!-- SECTION 1: NODE APPEARANCE -->
+<div class="section-title">1 — Node appearance</div>
+<div class="two-col">
+
+  <div class="card" data-choice="node-pill" onclick="toggleSelect(this)">
+    <div class="card-label">A — Compact pill / label</div>
+    <div class="card-preview" style="flex-direction:column;gap:10px;">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center;">
+        <div class="node-pill"><div class="dot" style="background:#4a4aff;"></div>Chapter One</div>
+        <div class="node-pill"><div class="dot" style="background:#9b59b6;"></div>Revelation 13</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center;">
+        <div class="node-pill" style="border-color:#27ae6066;"><div class="dot" style="background:#27ae60;"></div>ref/bible.pdf</div>
+        <div class="node-pill" style="border-style:dashed;"><div class="dot" style="background:#e67e22;"></div>Group: Rome</div>
+      </div>
+    </div>
+    <div class="caption">Dense, text-first. Lots of nodes visible at once. Type indicated by colour dot. Minimal footprint.
+    <br><span class="tag">information dense</span><span class="tag">scales to many nodes</span></div>
+  </div>
+
+  <div class="card" data-choice="node-card" onclick="toggleSelect(this)">
+    <div class="card-label">B — Small card with metadata</div>
+    <div class="card-preview" style="gap:10px;flex-wrap:wrap;">
+      <div class="node-card">
+        <div class="nc-type" style="color:#4a4aff88;">resource</div>
+        <div class="nc-title">Chapter One</div>
+        <div class="nc-meta">chapter-01.md · 4kb</div>
+      </div>
+      <div class="node-card" style="border-color:#9b59b666;">
+        <div class="nc-type" style="color:#9b59b688;">note</div>
+        <div class="nc-title">Key observation</div>
+        <div class="nc-meta">created today</div>
+      </div>
+    </div>
+    <div class="caption">Shows type + filename + brief meta. More context per node, fewer nodes visible per screen. Good for media-heavy graphs.
+    <br><span class="tag">more context</span><span class="tag">larger footprint</span></div>
+  </div>
+
+  <div class="card" data-choice="node-dot" onclick="toggleSelect(this)">
+    <div class="card-label">C — Dot with hover label</div>
+    <div class="card-preview">
+      <div class="mini-canvas">
+        <svg class="edge-svg" style="opacity:0.5;">
+          <line x1="50" y1="50" x2="120" y2="30" stroke="#4a4aff" stroke-width="1.5"/>
+          <line x1="50" y1="50" x2="110" y2="75" stroke="#4a4aff" stroke-width="1.5"/>
+          <line x1="120" y1="30" x2="200" y2="50" stroke="#9b59b6" stroke-width="1"/>
+        </svg>
+        <div style="position:absolute;left:44px;top:44px;width:12px;height:12px;background:#4a4aff;border-radius:50%;box-shadow:0 0 10px #4a4aff66;"></div>
+        <div style="position:absolute;left:114px;top:24px;width:10px;height:10px;background:#9b59b6;border-radius:50%;"></div>
+        <div style="position:absolute;left:104px;top:69px;width:10px;height:10px;background:#27ae60;border-radius:50%;"></div>
+        <div style="position:absolute;left:194px;top:44px;width:10px;height:10px;background:#e67e22;border-radius:50%;"></div>
+        <!-- hover label on one -->
+        <div style="position:absolute;left:55px;top:36px;background:#111128;border:1px solid #252545;border-radius:3px;padding:2px 6px;font-size:7px;color:#c0c0e0;white-space:nowrap;">Chapter One</div>
+      </div>
+    </div>
+    <div class="caption">Pure dot. Label appears on hover. Maximum spatial clarity — the graph topology is what matters, not labels. Like a mind-map.
+    <br><span class="tag">graph-first</span><span class="tag">needs hover to read labels</span></div>
+  </div>
+
+  <div class="card" data-choice="node-adaptive" onclick="toggleSelect(this)">
+    <div class="card-label">D — Adaptive: dot → pill → card (zoom)</div>
+    <div class="card-preview" style="flex-direction:column;gap:6px;">
+      <div style="display:flex;align-items:center;gap:16px;justify-content:center;">
+        <div style="text-align:center;">
+          <div style="font-size:7px;color:#444;margin-bottom:4px;">zoomed out</div>
+          <div style="width:10px;height:10px;background:#4a4aff;border-radius:50%;margin:0 auto;"></div>
+        </div>
+        <div style="color:#333;font-size:12px;">→</div>
+        <div style="text-align:center;">
+          <div style="font-size:7px;color:#444;margin-bottom:4px;">mid</div>
+          <div class="node-pill" style="font-size:8px;padding:3px 7px;"><div class="dot" style="background:#4a4aff;"></div>Ch. One</div>
+        </div>
+        <div style="color:#333;font-size:12px;">→</div>
+        <div style="text-align:center;">
+          <div style="font-size:7px;color:#444;margin-bottom:4px;">zoomed in</div>
+          <div class="node-card" style="font-size:8px;padding:5px 7px;width:70px;">
+            <div class="nc-type" style="color:#4a4aff88;font-size:6px;">resource</div>
+            <div class="nc-title" style="font-size:8px;">Ch. One</div>
+            <div class="nc-meta" style="font-size:6px;">4kb · md</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="caption">Nodes adapt to zoom level. Zoomed out = dot (overview). Mid = pill (label visible). Zoomed in = small card (metadata). Best of all three.
+    <br><span class="tag">my recommendation</span><span class="tag">most work</span><span class="tag">feels alive</span></div>
+  </div>
+
+</div>
+
+<!-- SECTION 2: EDGE DRAWING -->
+<div class="section-title">2 — Drawing edges between nodes</div>
+<div class="two-col">
+
+  <div class="card" data-choice="edge-handle" onclick="toggleSelect(this)">
+    <div class="card-label">A — Hover handles on node edge</div>
+    <div class="card-preview" style="flex-direction:column;gap:8px;">
+      <div style="position:relative;display:inline-flex;align-items:center;justify-content:center;">
+        <div class="node-pill" style="position:relative;">
+          <div class="dot" style="background:#4a4aff;"></div>Chapter One
+          <!-- handles appear on hover -->
+          <div style="position:absolute;right:-5px;top:50%;transform:translateY(-50%);width:9px;height:9px;background:#7c6fff;border-radius:50%;border:1px solid #fff2;cursor:crosshair;box-shadow:0 0 6px #7c6fff88;"></div>
+          <div style="position:absolute;left:-5px;top:50%;transform:translateY(-50%);width:9px;height:9px;background:#7c6fff;border-radius:50%;border:1px solid #fff2;cursor:crosshair;"></div>
+        </div>
+      </div>
+      <div style="font-size:8px;color:#444;text-align:center;">hover node → drag from handle → drop on target</div>
+    </div>
+    <div class="caption">Hover a node → small connection handles appear on its edges. Drag from a handle to another node. Standard React Flow pattern, familiar, precise.
+    <br><span class="tag">familiar</span><span class="tag">react flow native</span><span class="tag">my recommendation</span></div>
+  </div>
+
+  <div class="card" data-choice="edge-option" onclick="toggleSelect(this)">
+    <div class="card-label">B — Right-click → "Draw edge" mode</div>
+    <div class="card-preview" style="flex-direction:column;gap:6px;align-items:center;">
+      <div style="background:#111128;border:1px solid #252545;border-radius:4px;overflow:hidden;font-size:8px;width:100px;">
+        <div style="padding:3px 8px;color:#555;border-bottom:1px solid #1a1a30;">Chapter One</div>
+        <div style="padding:3px 8px;color:#aaa;">Open</div>
+        <div style="padding:3px 8px;color:#7c6fff;background:#16162e;">Draw edge →</div>
+        <div style="padding:3px 8px;color:#aaa;">Edit</div>
+        <div style="padding:3px 8px;color:#e74c3c;">Delete</div>
+      </div>
+      <div style="font-size:8px;color:#444;text-align:center;">cursor changes → click target node</div>
+    </div>
+    <div class="caption">Right-click node → "Draw edge" → cursor changes to crosshair → click destination node to complete. Good for touch / no-hover contexts.
+    <br><span class="tag">explicit</span><span class="tag">works without hover</span></div>
+  </div>
+
+  <div class="card" data-choice="edge-shift" onclick="toggleSelect(this)">
+    <div class="card-label">C — Shift+drag from node</div>
+    <div class="card-preview" style="flex-direction:column;gap:8px;align-items:center;">
+      <div class="mini-canvas" style="height:80px;">
+        <svg class="edge-svg">
+          <line x1="50" y1="40" x2="130" y2="40" stroke="#7c6fff" stroke-width="1.5" stroke-dasharray="4 3"/>
+          <circle cx="130" cy="40" r="4" fill="#7c6fff" opacity="0.6"/>
+        </svg>
+        <div style="position:absolute;left:30px;top:28px;" class="node-pill" style="font-size:8px;"><div class="dot" style="background:#4a4aff;"></div>Node A</div>
+        <div style="position:absolute;bottom:8px;right:16px;font-size:7px;color:#444;">shift+drag to draw</div>
+      </div>
+    </div>
+    <div class="caption">Hold Shift and drag from any node to begin drawing an edge. Release on target to connect. Keyboard-modifier approach — fast once learned.
+    <br><span class="tag">fast</span><span class="tag">requires learning</span></div>
+  </div>
+
+  <div class="card" data-choice="edge-all" onclick="toggleSelect(this)">
+    <div class="card-label">D — Handles + right-click both</div>
+    <div class="card-preview" style="flex-direction:column;gap:4px;align-items:center;justify-content:center;">
+      <div style="font-size:8px;color:#666;display:flex;flex-direction:column;gap:5px;">
+        <div><span style="color:#7c6fff;">hover handle</span> — drag from node edge → connect</div>
+        <div><span style="color:#7c6fff;">right-click</span> → "Draw edge" → click target</div>
+        <div><span style="color:#7c6fff;">Shift+drag</span> — power user shortcut</div>
+      </div>
+    </div>
+    <div class="caption">All three. Hover handles are the primary path; right-click is the discoverable path; Shift+drag is the power-user shortcut.
+    <br><span class="tag">full coverage</span></div>
+  </div>
+
+</div>
