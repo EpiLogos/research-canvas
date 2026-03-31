@@ -15,6 +15,7 @@ function ColourRow({
   current?: string;
   onChange: (colour: string) => void;
 }) {
+  const effectiveCurrent = current ?? presets[0];
   return (
     <div className="inspector-field">
       <label className="inspector-label">{label}</label>
@@ -23,7 +24,7 @@ function ColourRow({
           <button
             key={c}
             className="colour-swatch"
-            data-active={current === c ? "true" : undefined}
+            data-active={effectiveCurrent === c ? "true" : "false"}
             style={{ background: c }}
             onClick={() => onChange(c)}
             title={c}
@@ -32,7 +33,7 @@ function ColourRow({
         <input
           type="color"
           className="colour-custom-input"
-          value={current ?? presets[0]}
+          value={effectiveCurrent}
           onChange={(e) => onChange(e.target.value)}
           title="Custom colour"
         />
@@ -87,7 +88,7 @@ export function InspectorTab() {
         <button
           className="inspector-value inspector-value--btn"
           onClick={() => {
-            // Tauri open dialog — workspace.setNodeThumbnail(node.id, path)
+            // TODO: open Tauri file picker and call workspace.setNodeThumbnail(node.id, path)
           }}
         >
           {node.thumbnail ? node.thumbnail.split("/").pop() : "Set image…"}
