@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export interface FileEntry {
-  id: string;
   name: string;
   path: string;
-  kind: string;
+  id?: string;
+  kind?: string;
 }
 
 interface FuzzyFilePickerProps {
@@ -79,7 +79,7 @@ export function FuzzyFilePicker({ anchorX, anchorY, entries, onSelect, onClose }
         ) : (
           filtered.map((entry, i) => (
             <div
-              key={entry.id}
+              key={entry.id ?? entry.path}
               className="fuzzy-picker-item"
               data-active={i === activeIdx ? "true" : undefined}
               onMouseEnter={() => setActiveIdx(i)}
