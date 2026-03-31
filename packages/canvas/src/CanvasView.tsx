@@ -13,7 +13,7 @@ import {
   type NodeTypes
 } from "@xyflow/react";
 import type { ComponentType } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { CanvasEdge, CanvasNode } from "@research-canvas/schema";
 
@@ -82,7 +82,7 @@ export function CanvasView({
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
   const closeFilePicker = useCallback(() => setShowFilePicker(null), []);
 
-  const [_pendingConnectionSource, setPendingConnectionSource] = useState<string | null>(null);
+  const [pendingConnectionSource, setPendingConnectionSource] = useState<string | null>(null);
 
   const handleConnect = useCallback(
     (connection: Connection) => {
@@ -101,8 +101,9 @@ export function CanvasView({
       if (!e.shiftKey) return;
       e.stopPropagation();
       setPendingConnectionSource(nodeId);
+      void pendingConnectionSource; // placeholder — will be wired in Task 11
     },
-    [],
+    [pendingConnectionSource],
   );
 
   useEffect(() => {
@@ -162,6 +163,26 @@ export function CanvasView({
     selectable: true
   }));
 
+  const nodeContextMenuItems = useMemo(() => {
+    if (!contextMenu?.nodeId) return [];
+    const nodeId = contextMenu.nodeId;
+    return [
+      {
+        type: "header" as const,
+        label: flowNodes.find((n) => n.id === nodeId)?.data?.title as string ?? "Node",
+      },
+      { type: "separator" as const },
+      { type: "item" as const, label: "Open content", shortcut: "↵", onClick: () => onNodeDoubleClick?.(nodeId) },
+      { type: "item" as const, label: "Draw edge →", onClick: () => {} },
+      { type: "separator" as const },
+      { type: "item" as const, label: "Duplicate", shortcut: "⌘D", onClick: () => onDuplicateNode?.(nodeId) },
+      { type: "separator" as const },
+      { type: "item" as const, label: "Customise…", onClick: () => {} },
+      { type: "separator" as const },
+      { type: "item" as const, label: "Delete", shortcut: "⌫", danger: true, onClick: () => onDeleteNode?.(nodeId) },
+    ];
+  }, [contextMenu, flowNodes, onNodeDoubleClick, onDuplicateNode, onDeleteNode]);
+
   return (
     <div
       className="canvas-flow"
@@ -200,6 +221,7 @@ export function CanvasView({
         }}
         onNodeContextMenu={(e, node) => {
           e.preventDefault();
+          e.stopPropagation();
           setContextMenu({ x: e.clientX, y: e.clientY, kind: "node", nodeId: node.id });
         }}
         panOnDrag
@@ -232,29 +254,12 @@ export function CanvasView({
         />
       )}
 
-      {contextMenu && contextMenu.kind === "node" && contextMenu.nodeId && (
+      {contextMenu?.nodeId && (
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
           onClose={closeContextMenu}
-          items={(() => {
-            const nodeId = contextMenu.nodeId!;
-            return [
-              {
-                type: "header" as const,
-                label: flowNodes.find((n) => n.id === nodeId)?.data?.title as string ?? "Node",
-              },
-              { type: "separator" as const },
-              { type: "item" as const, label: "Open content", shortcut: "↵", onClick: () => onNodeDoubleClick?.(nodeId) },
-              { type: "item" as const, label: "Draw edge →", onClick: () => {} },
-              { type: "separator" as const },
-              { type: "item" as const, label: "Duplicate", shortcut: "⌘D", onClick: () => onDuplicateNode?.(nodeId) },
-              { type: "separator" as const },
-              { type: "item" as const, label: "Customise…", onClick: () => {} },
-              { type: "separator" as const },
-              { type: "item" as const, label: "Delete", shortcut: "⌫", danger: true, onClick: () => onDeleteNode?.(nodeId) },
-            ];
-          })()}
+          items={nodeContextMenuItems}
         />
       )}
 
