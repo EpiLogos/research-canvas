@@ -1792,12 +1792,6 @@ body[data-shell-dragging="true"] {
   border-bottom: 1px solid #111128;
 }
 
-.lo-section--grow {
-  flex: 1;
-  overflow-y: auto;
-  border-bottom: none;
-}
-
 .lo-section__header {
   display: flex;
   align-items: center;
@@ -2653,6 +2647,7 @@ body[data-shell-dragging="true"] {
 }
 
 .lo-section--grow {
+  border-bottom: none;
   display: flex;
   flex-direction: column;
   flex: 1;

@@ -5,19 +5,14 @@ import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 
 interface LeftOverlayProps {
   open: boolean;
-  onClose: () => void;
+  onClose?: () => void;
   onResizeStart: (e: React.PointerEvent) => void;
-}
-
-function isTauriRuntime(): boolean {
-  return typeof window !== "undefined" && Boolean((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__);
 }
 
 export function LeftOverlay({ open, onResizeStart }: LeftOverlayProps) {
   const workspace = useCanvasWorkspace();
 
   const handleAddFolder = async () => {
-    if (!isTauriRuntime()) return;
     // plugin-dialog is not installed; use window.prompt as fallback
     const selected = window.prompt("Enter absolute path to resource folder:");
     if (selected && selected.trim().length > 0) {
