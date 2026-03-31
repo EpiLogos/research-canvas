@@ -8,6 +8,7 @@ const RIGHT_MIN = 280;
 const RIGHT_MAX = 560;
 
 export function useShellLayout() {
+  // Attached to the top-level shell <div> in Shell.tsx
   const shellRef = useRef<HTMLDivElement>(null);
 
   const [leftOpen, setLeftOpen] = useState(false);
@@ -15,6 +16,12 @@ export function useShellLayout() {
 
   const [rightOpen, setRightOpen] = useState(false);
   const [rightWidth, setRightWidth] = useState(320);
+
+  const leftWidthRef = useRef(leftWidth);
+  leftWidthRef.current = leftWidth;
+
+  const rightWidthRef = useRef(rightWidth);
+  rightWidthRef.current = rightWidth;
   const [rightTab, setRightTab] = useState<RightTab>("inspector");
 
   const openRightTab = useCallback((tab: RightTab) => {
@@ -29,7 +36,7 @@ export function useShellLayout() {
     (e: React.PointerEvent) => {
       e.preventDefault();
       const startX = e.clientX;
-      const startW = leftWidth;
+      const startW = leftWidthRef.current;
       const onMove = (ev: PointerEvent) => {
         const next = Math.min(LEFT_MAX, Math.max(LEFT_MIN, startW + ev.clientX - startX));
         setLeftWidth(next);
@@ -42,14 +49,14 @@ export function useShellLayout() {
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
     },
-    [leftWidth],
+    [], // stable — reads width via ref, not closure
   );
 
   const beginRightResize = useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault();
       const startX = e.clientX;
-      const startW = rightWidth;
+      const startW = rightWidthRef.current;
       const onMove = (ev: PointerEvent) => {
         const delta = startX - ev.clientX;
         const next = Math.min(RIGHT_MAX, Math.max(RIGHT_MIN, startW + delta));
@@ -63,7 +70,7 @@ export function useShellLayout() {
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
     },
-    [rightWidth],
+    [], // stable
   );
 
   return {
