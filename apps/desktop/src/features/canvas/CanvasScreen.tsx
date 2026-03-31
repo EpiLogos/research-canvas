@@ -127,7 +127,7 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick }: CanvasScreenPr
               workspace.addEdge(input);
             }}
             onDeleteEdge={(edgeId) => {
-              workspace.store.getState().deleteEdge(edgeId);
+              workspace.deleteEdge(edgeId);
             }}
             onCreateResourceFromFile={(entry, position) => {
               workspace.addResourceNode(entry, position);

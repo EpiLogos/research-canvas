@@ -51,6 +51,7 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   createNoteNode: (position?: { x: number; y: number }) => void;
   createGroupNode: (position?: { x: number; y: number }) => void;
   addResourceNode: (entry: { id?: string; name: string; path?: string; absolutePath?: string; relativePath?: string; kind?: string }, position: { x: number; y: number }) => void;
+  deleteEdge: (edgeId: string) => void;
   deleteNode: (nodeId: string) => void;
   detachResourceRoot: (rootPath: string) => Promise<void>;
   duplicateNode: (nodeId: string) => void;
@@ -386,6 +387,9 @@ export function CanvasWorkspaceProvider({
           resourceKind: kind === "directory" ? "binary" : kind
         });
         stores.store.getState().updateNodePosition(node.id, position);
+      },
+      deleteEdge: (edgeId) => {
+        stores.store.getState().deleteEdge(edgeId);
       },
       deleteNode: (nodeId) => {
         stores.store.getState().deleteNode(nodeId);
