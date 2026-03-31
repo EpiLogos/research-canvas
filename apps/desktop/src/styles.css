@@ -287,14 +287,17 @@ body {
 .terminal-pane {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 4px;
   background: #050508;
 }
 
 .terminal-pane__viewport {
   flex: 1;
   min-height: 0;
-  padding: 4px;
+  overflow: hidden;
 }
 
 .terminal-pane__error {
@@ -1188,11 +1191,13 @@ body[data-shell-dragging="true"] {
 }
 
 .terminal-pane {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .terminal-pane__viewport {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .command-palette {
@@ -1973,23 +1978,23 @@ body[data-shell-dragging="true"] {
 }
 
 .rps-body {
+  display: flex;
+  flex-direction: column;
   flex: 1;
-  position: relative;
+  min-height: 0;
   overflow: hidden;
 }
 
 .rps-pane {
-  position: absolute;
-  inset: 0;
-  overflow-y: auto;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease;
+  display: none;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .rps-pane[data-visible="true"] {
-  opacity: 1;
-  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Inspector tab */

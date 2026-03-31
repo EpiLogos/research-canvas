@@ -15,7 +15,8 @@ type TerminalStatus = "connecting" | "connected" | "error";
 const _sessionCache = new Map<string, { sessionId: string; transcript: string }>();
 const DEFAULT_CACHE_KEY = "default";
 
-export function useTerminal() {
+export function useTerminal(workdir?: string) {
+  const cacheKey = workdir ?? DEFAULT_CACHE_KEY;
   const terminalContainerRef = useRef<HTMLDivElement | null>(null);
   const sessionIdRef = useRef<string>("");
   const [session, setSession] = useState<TerminalSessionSnapshot | null>(null);
@@ -122,7 +123,7 @@ export function useTerminal() {
       let lastError: unknown = null;
 
       // Check cache before creating a new session
-      const cached = _sessionCache.get(DEFAULT_CACHE_KEY);
+      const cached = _sessionCache.get(cacheKey);
 
       if (cached) {
         sessionIdRef.current = cached.sessionId;
@@ -144,7 +145,7 @@ export function useTerminal() {
             }
             setTranscript((current) => {
               const newTranscript = appendTranscript(current, stripAnsi(event.data));
-              _sessionCache.set(DEFAULT_CACHE_KEY, {
+              _sessionCache.set(cacheKey, {
                 sessionId: cached.sessionId,
                 transcript: newTranscript
               });
@@ -163,7 +164,7 @@ export function useTerminal() {
 
       while (!cancelled) {
         try {
-          const created = await transport.createSession();
+          const created = await transport.createSession({ workdir: workdir ?? null });
 
           if (cancelled) {
             return;
@@ -178,7 +179,7 @@ export function useTerminal() {
           setTranscript((current) =>
             appendTranscript(current, `${connectedMessage}\n`)
           );
-          _sessionCache.set(DEFAULT_CACHE_KEY, {
+          _sessionCache.set(cacheKey, {
             sessionId: created.id,
             transcript: appendTranscript("", `${connectedMessage}\n`)
           });
@@ -197,7 +198,7 @@ export function useTerminal() {
               }
               setTranscript((current) => {
                 const newTranscript = appendTranscript(current, stripAnsi(event.data));
-                _sessionCache.set(DEFAULT_CACHE_KEY, {
+                _sessionCache.set(cacheKey, {
                   sessionId: created.id,
                   transcript: newTranscript
                 });
@@ -254,7 +255,7 @@ export function useTerminal() {
       isMounted = false;
       terminal.dispose();
     };
-  }, []);
+  }, [cacheKey, workdir]);
 
   return {
     error,

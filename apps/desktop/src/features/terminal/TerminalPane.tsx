@@ -1,7 +1,9 @@
+import { useCanvasWorkspace } from "../canvas/CanvasWorkspaceContext";
 import { useTerminal } from "./useTerminal";
 
 export function TerminalPane() {
-  const { error, terminalContainerRef } = useTerminal();
+  const workspace = useCanvasWorkspace();
+  const { error, terminalContainerRef } = useTerminal(workspace.workingRoot ?? undefined);
 
   return (
     <section className="terminal-pane">
