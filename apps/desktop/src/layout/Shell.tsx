@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { CanvasPane } from "./CanvasPane";
+import { FullScreenReader } from "./FullScreenReader";
 import { IconStrip } from "./IconStrip";
 import { LeftOverlay } from "./LeftOverlay";
 import { RightPanelSlot } from "./RightPanelSlot";
@@ -34,7 +35,7 @@ export function Shell() {
 
   const handleNodeSelect = useCallback(
     (nodeId: string) => {
-      workspace.setSelectedNode?.(nodeId);
+      workspace.selectNode(nodeId);
       layout.openRightTab("inspector");
     },
     [workspace, layout],
@@ -42,7 +43,7 @@ export function Shell() {
 
   const handleNodeDoubleClick = useCallback(
     (nodeId: string) => {
-      workspace.setSelectedNode?.(nodeId);
+      workspace.selectNode(nodeId);
       if (layout.rightOpen && layout.rightTab === "content") {
         setFullScreenOpen(true);
       } else {
@@ -91,10 +92,7 @@ export function Shell() {
         />
 
         {fullScreenOpen && (
-          <div className="fullscreen-placeholder" onClick={() => setFullScreenOpen(false)}>
-            {/* FullScreenReader will be wired in Task 12 */}
-            <span>Full screen reader — Esc to close</span>
-          </div>
+          <FullScreenReader onClose={() => setFullScreenOpen(false)} />
         )}
       </div>
 
