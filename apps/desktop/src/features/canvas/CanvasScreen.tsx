@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { AnnotationLayer, CanvasView } from "@research-canvas/canvas";
 
@@ -13,15 +13,7 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick }: CanvasScreenPr
   const workspace = useCanvasWorkspace();
   const [annotationMode, setAnnotationMode] = useState(false);
 
-  if (!workspace.isHydrated) {
-    return (
-      <div className="canvas-workspace">
-        <p>Loading canvas workspace.</p>
-      </div>
-    );
-  }
-
-  const createAnnotation = (points: Parameters<
+  const createAnnotation = useCallback((points: Parameters<
     ReturnType<typeof workspace.annotationStore.getState>["createStrokeAnnotation"]
   >[0]["points"]) => {
     workspace.annotationStore.getState().createStrokeAnnotation({
@@ -29,9 +21,9 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick }: CanvasScreenPr
       strokeKind: "stroke"
     });
     setAnnotationMode(false);
-  };
+  }, [workspace.annotationStore]);
 
-  const createSequence = () => {
+  const createSequence = useCallback(() => {
     const existing = workspace.sequences[0];
     if (existing) {
       workspace.sequenceStore.getState().setActiveSequence(existing.id);
@@ -42,9 +34,9 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick }: CanvasScreenPr
       kind: "storyboard",
       name: "Episode flow"
     });
-  };
+  }, [workspace.sequenceStore, workspace.sequences]);
 
-  const addLatestNodesToSequence = () => {
+  const addLatestNodesToSequence = useCallback(() => {
     const sequence =
       workspace.sequences[0] ??
       workspace.sequenceStore.getState().createSequence({
@@ -72,7 +64,15 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick }: CanvasScreenPr
       targetId: latestNodes[1].id,
       viewport: { x: 160, y: 40, zoom: 1.2 }
     });
-  };
+  }, [workspace.sequenceStore, workspace.sequences, workspace.nodes]);
+
+  if (!workspace.isHydrated) {
+    return (
+      <div className="canvas-workspace">
+        <p>Loading canvas workspace.</p>
+      </div>
+    );
+  }
 
   const fileEntries = (workspace.entries ?? []).map((entry) => ({
     id: entry.id,

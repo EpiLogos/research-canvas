@@ -322,13 +322,11 @@ export function CanvasWorkspaceProvider({
         }
       },
       createGroupNode: (position) => {
-        const node = stores.store.getState().createNoteNode({
+        stores.store.getState().createGroupNode({
           title: "New group",
-          content: ""
+          x: position?.x ?? 100,
+          y: position?.y ?? 100,
         });
-        if (position) {
-          stores.store.getState().updateNodePosition(node.id, position);
-        }
       },
       addResourceNode: (entry, position) => {
         const absolutePath = ("absolutePath" in entry ? entry.absolutePath : entry.path) ?? "";

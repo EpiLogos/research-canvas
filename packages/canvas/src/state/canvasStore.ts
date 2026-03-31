@@ -16,6 +16,12 @@ interface CreateNoteNodeInput {
   title: string;
 }
 
+interface CreateGroupNodeInput {
+  title: string;
+  x: number;
+  y: number;
+}
+
 interface CreateResourceNodeInput {
   absolutePath: string;
   relativePath: string;
@@ -31,6 +37,7 @@ interface ConnectNodesInput {
 
 export interface CanvasStoreState {
   connectNodes: (input: ConnectNodesInput) => CanvasEdge;
+  createGroupNode: (input: CreateGroupNodeInput) => CanvasNode;
   createNoteNode: (input: CreateNoteNodeInput) => CanvasNode;
   createResourceNode: (input: CreateResourceNodeInput) => CanvasNode;
   deleteNode: (nodeId: string) => void;
@@ -93,6 +100,24 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
         summary: content,
         content,
         tags: ["note"],
+        createdAt: now(),
+        updatedAt: now()
+      });
+
+      set((state) => ({ nodes: [...state.nodes, node] }));
+      return node;
+    },
+    createGroupNode: ({ title, x, y }) => {
+      const node = nodeSchema.parse({
+        id: crypto.randomUUID(),
+        canvasId,
+        type: "group",
+        title,
+        position: { x, y },
+        size: { width: 320, height: 240 },
+        summary: "",
+        color: "#334155",
+        childNodeIds: [],
         createdAt: now(),
         updatedAt: now()
       });
@@ -186,11 +211,18 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
       }));
     },
     updateNodeContent: (nodeId, content) => {
+      const node = get().nodes.find((n) => n.id === nodeId);
+      if (!node) {
+        console.warn(`updateNodeContent: node ${nodeId} not found`);
+        return;
+      }
+      if (node.type !== "note") {
+        console.warn(`updateNodeContent: node ${nodeId} is type "${node.type}", not "note" — content not updated`);
+        return;
+      }
       set((state) => ({
         nodes: state.nodes.map((n) =>
-          n.id === nodeId && n.type === "note"
-            ? { ...n, content, summary: content, updatedAt: now() }
-            : n,
+          n.id === nodeId ? { ...n, content, summary: content.slice(0, 80), updatedAt: now() } : n,
         ),
       }));
     },
