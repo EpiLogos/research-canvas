@@ -1,0 +1,17 @@
+{
+  "name": "research-canvas-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "MCP server for Research Canvas app",
+  "scripts": {
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
