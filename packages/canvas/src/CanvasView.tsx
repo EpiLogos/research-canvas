@@ -6,6 +6,7 @@ import {
   MarkerType,
   MiniMap,
   ReactFlow,
+  ReactFlowProvider,
   useReactFlow,
   type Connection,
   ConnectionMode,
@@ -51,7 +52,15 @@ const edgeTypes: Record<string, ComponentType<any>> = {
   annotated: AnnotatedEdge
 };
 
-export function CanvasView({
+export function CanvasView(props: CanvasViewProps) {
+  return (
+    <ReactFlowProvider>
+      <CanvasViewInner {...props} />
+    </ReactFlowProvider>
+  );
+}
+
+function CanvasViewInner({
   edges,
   nodes,
   onMoveNode,
@@ -137,6 +146,8 @@ export function CanvasView({
     id: node.id,
     type: node.type === "portal" ? "group" : node.type,
     position: node.position,
+    width: node.size?.width,
+    height: node.size?.height,
     data: {
       summary:
         node.type === "resource"
@@ -144,7 +155,14 @@ export function CanvasView({
           : node.type === "note"
             ? node.content
             : node.summary,
-      title: node.title
+      title: node.title,
+      content: node.type === "note" ? node.content : undefined,
+      style: {
+        dotColour: node.dotColour ?? undefined,
+        bgColour: node.bgColour ?? undefined,
+        textColour: node.textColour ?? undefined,
+        thumbnail: node.thumbnail ?? undefined,
+      },
     },
     draggable: true,
     selectable: true,
