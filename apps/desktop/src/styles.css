@@ -2493,3 +2493,55 @@ body[data-shell-dragging="true"] {
   color: #2e2e50;
   font-family: monospace;
 }
+
+/* ─── Colour swatches (Inspector) ─────────────────────── */
+.colour-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.colour-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: transform 100ms ease, box-shadow 100ms ease;
+}
+
+.colour-swatch:hover {
+  transform: scale(1.15);
+}
+
+.colour-swatch[data-active="true"] {
+  box-shadow: 0 0 0 2px #7c6fff;
+}
+
+.colour-custom-input {
+  width: 18px;
+  height: 18px;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 3px;
+  background: none;
+  overflow: hidden;
+}
+
+.inspector-value--btn {
+  cursor: pointer;
+  text-align: left;
+  font-size: 10px;
+  color: #5a5a90;
+  background: #0a0a18;
+  border: 1px dashed #1e1e35;
+}
+
+.inspector-value--btn:hover {
+  border-color: #3a3a6e;
+  color: #9090c0;
+}
