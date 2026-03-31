@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "research-canvas": {
+      "command": "npx",
+      "args": [
+        "--yes",
+        "tsx",
+        ".claude/mcp-servers/research-canvas/src/index.ts"
+      ],
+      "cwd": "."
+    }
+  }
+}
