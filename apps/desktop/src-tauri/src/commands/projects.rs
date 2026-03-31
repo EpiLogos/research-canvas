@@ -17,6 +17,7 @@ use crate::{
         },
     },
     fs::indexer::{index_directory, IndexedEntry, IndexedEntryKind},
+    SharedApiState,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -280,9 +281,17 @@ pub fn index_project_root(root: impl AsRef<Path>) -> std::io::Result<Vec<Indexed
 }
 
 #[tauri::command]
-pub fn bootstrap_workspace_command() -> Result<WorkspaceBootstrap, String> {
+pub fn bootstrap_workspace_command(
+    api_state: tauri::State<SharedApiState>,
+) -> Result<WorkspaceBootstrap, String> {
     let database_path = default_database_path(None);
-    bootstrap_workspace_at(&database_path)
+    let result = bootstrap_workspace_at(&database_path)?;
+    {
+        let mut api = api_state.lock().unwrap();
+        api.db_path = Some(database_path.to_string_lossy().to_string());
+        api.active_project_id = Some(result.active_project_id.clone());
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -1086,4 +1095,13 @@ fn sequence_step_payload(
 
 fn current_timestamp() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
+}
+
+#[tauri::command]
+pub fn activate_canvas_command(
+    canvas_id: String,
+    api_state: tauri::State<SharedApiState>,
+) {
+    let mut state = api_state.lock().unwrap();
+    state.active_canvas_id = Some(canvas_id);
 }
