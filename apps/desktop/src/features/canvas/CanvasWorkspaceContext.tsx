@@ -274,11 +274,21 @@ export function CanvasWorkspaceProvider({
   }, [databasePath, activeProjectId, stores.store, transport]);
 
   useEffect(() => {
+    let active = true;
     let unlisten: (() => void) | undefined;
     listen("canvas:updated", () => {
       void refreshCanvas();
-    }).then((fn) => { unlisten = fn; });
-    return () => { unlisten?.(); };
+    }).then((fn) => {
+      if (active) {
+        unlisten = fn;
+      } else {
+        fn();
+      }
+    });
+    return () => {
+      active = false;
+      unlisten?.();
+    };
   }, [refreshCanvas]);
 
   const contextValue = useMemo<CanvasWorkspaceContextValue>(
