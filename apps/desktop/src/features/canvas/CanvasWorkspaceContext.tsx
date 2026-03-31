@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -7,6 +8,9 @@ import {
   useState,
   type ReactNode
 } from "react";
+
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 import { useStore } from "zustand";
 
@@ -166,6 +170,7 @@ export function CanvasWorkspaceProvider({
         );
         setErrorMessage(null);
         setIsHydrated(true);
+        invoke("activate_canvas_command", { canvasId: document.canvasId }).catch(() => {});
       })
       .catch((error: Error) => {
         if (cancelled) {
@@ -250,6 +255,31 @@ export function CanvasWorkspaceProvider({
       unsubscribeSequences();
     };
   }, [activeProject, databasePath, isHydrated, stores, transport]);
+
+  const refreshCanvas = useCallback(async () => {
+    if (!databasePath || !activeProjectId) return;
+    try {
+      const document = await transport.loadProjectDocument({
+        databasePath,
+        projectId: activeProjectId
+      });
+      // Hydrate in-place to update nodes/edges without replacing stores
+      stores.store.getState().hydrate({
+        edges: document.edges,
+        nodes: document.nodes,
+      });
+    } catch {
+      // ignore refresh errors silently
+    }
+  }, [databasePath, activeProjectId, stores.store, transport]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen("canvas:updated", () => {
+      void refreshCanvas();
+    }).then((fn) => { unlisten = fn; });
+    return () => { unlisten?.(); };
+  }, [refreshCanvas]);
 
   const contextValue = useMemo<CanvasWorkspaceContextValue>(
     () => ({
