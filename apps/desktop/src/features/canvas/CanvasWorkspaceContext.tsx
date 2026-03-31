@@ -170,7 +170,9 @@ export function CanvasWorkspaceProvider({
         );
         setErrorMessage(null);
         setIsHydrated(true);
-        invoke("activate_canvas_command", { canvasId: document.canvasId }).catch(() => {});
+        if (isTauriRuntime()) {
+          invoke("activate_canvas_command", { canvasId: document.canvasId }).catch(() => {});
+        }
       })
       .catch((error: Error) => {
         if (cancelled) {
@@ -232,7 +234,11 @@ export function CanvasWorkspaceProvider({
           }
 
           setErrorMessage(
-            error instanceof Error ? error.message : "failed to persist workspace"
+            error instanceof Error
+              ? error.message
+              : typeof error === "string"
+                ? error
+                : "failed to persist workspace"
           );
         }
       } while (persistQueued && !cancelled);
@@ -274,6 +280,7 @@ export function CanvasWorkspaceProvider({
   }, [databasePath, activeProjectId, stores.store, transport]);
 
   useEffect(() => {
+    if (!isTauriRuntime()) return;
     let active = true;
     let unlisten: (() => void) | undefined;
     listen("canvas:updated", () => {
@@ -523,4 +530,8 @@ function hydrateWorkspaceDocument(
       ? selection.selectedNodeId
       : document.nodes[0]?.id ?? null
   );
+}
+
+function isTauriRuntime(): boolean {
+  return typeof window !== "undefined" && Boolean((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__);
 }

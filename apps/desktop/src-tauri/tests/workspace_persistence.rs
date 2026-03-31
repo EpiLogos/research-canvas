@@ -64,6 +64,10 @@ fn node_with_note_text(canvas_id: &str, id: &str, title: &str, content: &str) ->
         color: Some("#224466".to_string()),
         child_node_ids: Vec::new(),
         target_canvas_id: None,
+        dot_colour: None,
+        bg_colour: None,
+        text_colour: None,
+        thumbnail: None,
         created_at: session_timestamp(),
         updated_at: session_timestamp(),
     }
@@ -92,6 +96,10 @@ fn resource_node(canvas_id: &str, id: &str, title: &str) -> CanvasNodePayload {
         color: None,
         child_node_ids: Vec::new(),
         target_canvas_id: None,
+        dot_colour: None,
+        bg_colour: None,
+        text_colour: None,
+        thumbnail: None,
         created_at: session_timestamp(),
         updated_at: session_timestamp(),
     }

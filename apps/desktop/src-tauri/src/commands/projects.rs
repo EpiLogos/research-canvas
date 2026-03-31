@@ -124,6 +124,10 @@ pub struct CanvasNodePayload {
     pub color: Option<String>,
     pub child_node_ids: Vec<String>,
     pub target_canvas_id: Option<String>,
+    pub dot_colour: Option<String>,
+    pub bg_colour: Option<String>,
+    pub text_colour: Option<String>,
+    pub thumbnail: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -636,11 +640,15 @@ fn replace_project_document(
                     color,
                     child_node_ids,
                     target_canvas_id,
+                    dot_colour,
+                    bg_colour,
+                    text_colour,
+                    thumbnail,
                     created_at,
                     updated_at
                 ) VALUES (
                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
-                    ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22
+                    ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26
                 )",
                 params![
                     node.id,
@@ -663,6 +671,10 @@ fn replace_project_document(
                     node.color.as_deref(),
                     child_node_ids,
                     node.target_canvas_id.as_deref(),
+                    node.dot_colour.as_deref(),
+                    node.bg_colour.as_deref(),
+                    node.text_colour.as_deref(),
+                    node.thumbnail.as_deref(),
                     node.created_at,
                     node.updated_at,
                 ],
@@ -1006,6 +1018,10 @@ fn node_payload(
         color: record.color,
         child_node_ids: record.child_node_ids,
         target_canvas_id: record.target_canvas_id,
+        dot_colour: record.dot_colour,
+        bg_colour: record.bg_colour,
+        text_colour: record.text_colour,
+        thumbnail: record.thumbnail,
         created_at: record.created_at,
         updated_at: record.updated_at,
     })
