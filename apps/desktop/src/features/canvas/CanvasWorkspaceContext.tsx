@@ -42,8 +42,14 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   databasePath: string | null;
   entries: IndexedEntry[];
   errorMessage: string | null;
+  addEdge: (input: { sourceNodeId: string; targetNodeId: string; relationKind: string }) => void;
   attachResourceRoot: (rootPath: string, displayName?: string) => Promise<void>;
+  createNoteNode: (position?: { x: number; y: number }) => void;
+  createGroupNode: (position?: { x: number; y: number }) => void;
+  addResourceNode: (entry: { id?: string; name: string; path?: string; absolutePath?: string; relativePath?: string; kind?: string }, position: { x: number; y: number }) => void;
+  deleteNode: (nodeId: string) => void;
   detachResourceRoot: (rootPath: string) => Promise<void>;
+  duplicateNode: (nodeId: string) => void;
   isHydrated: boolean;
   projectId: string;
   projects: ProjectTreeNode[];
@@ -54,6 +60,7 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   selectProject: (projectId: string) => void;
   selectedEntryId: string | null;
   selectedNodeId: string | null;
+  updateNodeContent: (nodeId: string, content: string) => void;
   updateNodeStyle: (nodeId: string, style: { dotColour?: string; bgColour?: string; textColour?: string; thumbnail?: string }) => void;
   workingRoot: string | null;
 }
@@ -302,11 +309,53 @@ export function CanvasWorkspaceProvider({
           query
         });
       },
+      addEdge: (input) => {
+        stores.store.getState().connectNodes(input);
+      },
+      createNoteNode: (position) => {
+        const node = stores.store.getState().createNoteNode({
+          title: "New note",
+          content: ""
+        });
+        if (position) {
+          stores.store.getState().updateNodePosition(node.id, position);
+        }
+      },
+      createGroupNode: (position) => {
+        const node = stores.store.getState().createNoteNode({
+          title: "New group",
+          content: ""
+        });
+        if (position) {
+          stores.store.getState().updateNodePosition(node.id, position);
+        }
+      },
+      addResourceNode: (entry, position) => {
+        const absolutePath = ("absolutePath" in entry ? entry.absolutePath : entry.path) ?? "";
+        const relativePath = ("relativePath" in entry ? entry.relativePath : entry.path) ?? entry.name;
+        const kind = (entry.kind ?? "binary") as "markdown" | "image" | "pdf" | "text" | "binary" | "directory" | "url" | "audio" | "video";
+        const node = stores.store.getState().createResourceNode({
+          title: entry.name,
+          absolutePath,
+          relativePath,
+          resourceKind: kind === "directory" ? "binary" : kind
+        });
+        stores.store.getState().updateNodePosition(node.id, position);
+      },
+      deleteNode: (nodeId) => {
+        stores.store.getState().deleteNode(nodeId);
+      },
+      duplicateNode: (nodeId) => {
+        stores.store.getState().duplicateNode(nodeId);
+      },
       selectEntry: setSelectedEntryId,
       selectNode: setSelectedNodeId,
       selectProject: setActiveProjectId,
       selectedEntryId,
       selectedNodeId,
+      updateNodeContent: (nodeId, content) => {
+        stores.store.getState().updateNodeContent(nodeId, content);
+      },
       updateNodeStyle: (nodeId, style) => {
         stores.store.getState().updateNodeStyle(nodeId, style);
       }

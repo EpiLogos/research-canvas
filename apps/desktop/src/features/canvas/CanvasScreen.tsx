@@ -4,7 +4,12 @@ import { AnnotationLayer, CanvasView } from "@research-canvas/canvas";
 
 import { useCanvasWorkspace } from "./CanvasWorkspaceContext";
 
-export function CanvasScreen() {
+interface CanvasScreenProps {
+  onNodeSelect?: (nodeId: string) => void;
+  onNodeDoubleClick?: (nodeId: string) => void;
+}
+
+export function CanvasScreen({ onNodeSelect, onNodeDoubleClick }: CanvasScreenProps) {
   const workspace = useCanvasWorkspace();
   const [annotationMode, setAnnotationMode] = useState(false);
 
@@ -16,43 +21,14 @@ export function CanvasScreen() {
     );
   }
 
-  const addNoteNode = () => {
-    const node = workspace.store.getState().createNoteNode({
-      title: "Opening note",
-      content: "# Opening note\n\nThe thesis starts here.\n\n- first supporting point\n- second supporting point"
+  const createAnnotation = (points: Parameters<
+    ReturnType<typeof workspace.annotationStore.getState>["createStrokeAnnotation"]
+  >[0]["points"]) => {
+    workspace.annotationStore.getState().createStrokeAnnotation({
+      points,
+      strokeKind: "stroke"
     });
-    workspace.selectNode(node.id);
-  };
-
-  const addResourceNode = () => {
-    const entry =
-      workspace.selectedEntry ??
-      workspace.entries.find((candidate) => !candidate.isDirectory);
-    if (!entry) {
-      return;
-    }
-
-    const node = workspace.store.getState().createResourceNode({
-      title: "Source report",
-      absolutePath: entry.absolutePath,
-      relativePath: entry.relativePath,
-      resourceKind: resourceKindForEntry(entry.kind)
-    });
-    workspace.selectNode(node.id);
-  };
-
-  const linkLatestNodes = () => {
-    const latestNodes = workspace.nodes.slice(-2);
-    if (latestNodes.length < 2) {
-      return;
-    }
-
-    const edge = workspace.store.getState().connectNodes({
-      sourceNodeId: latestNodes[0].id,
-      targetNodeId: latestNodes[1].id,
-      relationKind: "supports"
-    });
-    workspace.store.getState().updateEdgeNote(edge.id, "Primary supporting source");
+    setAnnotationMode(false);
   };
 
   const createSequence = () => {
@@ -98,15 +74,12 @@ export function CanvasScreen() {
     });
   };
 
-  const createAnnotation = (points: Parameters<
-    ReturnType<typeof workspace.annotationStore.getState>["createStrokeAnnotation"]
-  >[0]["points"]) => {
-    workspace.annotationStore.getState().createStrokeAnnotation({
-      points,
-      strokeKind: "stroke"
-    });
-    setAnnotationMode(false);
-  };
+  const fileEntries = (workspace.entries ?? []).map((entry) => ({
+    id: entry.id,
+    name: entry.name,
+    path: entry.relativePath,
+    kind: entry.kind
+  }));
 
   return (
     <div className="canvas-workspace">
@@ -114,13 +87,33 @@ export function CanvasScreen() {
         <div className="canvas-chrome">
           <header className="canvas-toolbar">
             <div className="canvas-toolbar__group">
-              <button onClick={addNoteNode} type="button">
+              <button onClick={() => workspace.createNoteNode()} type="button">
                 Add note node
               </button>
-              <button onClick={addResourceNode} type="button">
+              <button
+                onClick={() => {
+                  const entry =
+                    workspace.selectedEntry ??
+                    workspace.entries.find((candidate) => !candidate.isDirectory);
+                  if (!entry) return;
+                  workspace.addResourceNode(entry, { x: 200, y: 200 });
+                }}
+                type="button"
+              >
                 Add resource node
               </button>
-              <button onClick={linkLatestNodes} type="button">
+              <button
+                onClick={() => {
+                  const latestNodes = workspace.nodes.slice(-2);
+                  if (latestNodes.length < 2) return;
+                  workspace.addEdge({
+                    sourceNodeId: latestNodes[0].id,
+                    targetNodeId: latestNodes[1].id,
+                    relationKind: "supports"
+                  });
+                }}
+                type="button"
+              >
                 Link latest nodes
               </button>
             </div>
@@ -159,7 +152,31 @@ export function CanvasScreen() {
             }}
             onSelectNode={(nodeId) => {
               workspace.selectNode(nodeId);
+              onNodeSelect?.(nodeId);
             }}
+            onNodeDoubleClick={(nodeId) => {
+              workspace.selectNode(nodeId);
+              onNodeDoubleClick?.(nodeId);
+            }}
+            onDeleteNode={(nodeId) => {
+              workspace.deleteNode(nodeId);
+            }}
+            onDuplicateNode={(nodeId) => {
+              workspace.duplicateNode(nodeId);
+            }}
+            onCreateNote={(position) => {
+              workspace.createNoteNode(position);
+            }}
+            onCreateGroup={(position) => {
+              workspace.createGroupNode(position);
+            }}
+            onConnectNodes={(input) => {
+              workspace.addEdge(input);
+            }}
+            onCreateResourceFromFile={(entry, position) => {
+              workspace.addResourceNode(entry, position);
+            }}
+            fileEntries={fileEntries}
           />
           <AnnotationLayer
             annotations={workspace.annotations}
@@ -179,18 +196,4 @@ export function CanvasScreen() {
       </div>
     </div>
   );
-}
-
-function resourceKindForEntry(kind: string) {
-  switch (kind) {
-    case "directory":
-    case "markdown":
-    case "image":
-    case "pdf":
-    case "text":
-    case "binary":
-      return kind;
-    default:
-      return "binary";
-  }
 }

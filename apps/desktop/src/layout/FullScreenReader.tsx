@@ -64,12 +64,11 @@ export function FullScreenReader({ onClose }: FullScreenReaderProps) {
             />
           </div>
         ) : node.type === "note" ? (
-          // TODO: wire updateNodeContent to workspace
           <textarea
             className="fsr-note-editor"
             defaultValue={node.content ?? ""}
             placeholder="Write a note…"
-            readOnly
+            onChange={(e) => workspace.updateNodeContent(node.id, e.target.value)}
           />
         ) : (
           <div className="fsr-placeholder">

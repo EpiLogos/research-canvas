@@ -42,6 +42,7 @@ export interface CanvasStoreState {
   serialize: () => CanvasSnapshot;
   setSelectedNodeId: (nodeId: string | null) => void;
   updateEdgeNote: (edgeId: string, note: string) => void;
+  updateNodeContent: (nodeId: string, content: string) => void;
   updateNodePosition: (
     nodeId: string,
     position: { x: number; y: number }
@@ -182,6 +183,15 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
               }
             : edge,
         )
+      }));
+    },
+    updateNodeContent: (nodeId, content) => {
+      set((state) => ({
+        nodes: state.nodes.map((n) =>
+          n.id === nodeId && n.type === "note"
+            ? { ...n, content, summary: content, updatedAt: now() }
+            : n,
+        ),
       }));
     },
     selectedNodeId: null,
