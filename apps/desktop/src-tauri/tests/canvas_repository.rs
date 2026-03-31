@@ -107,3 +107,85 @@ fn style_fields_round_trip() {
     assert_eq!(updated.text_colour, None);
     assert_eq!(updated.thumbnail, None);
 }
+
+fn make_test_canvas(dir: &tempfile::TempDir) -> (Database, String, String) {
+    let db = Database::open(dir.path().join("test.db")).unwrap();
+    let conn = db.connection();
+    let project_repo = ProjectRepository::new(conn);
+    let project = project_repo
+        .create(
+            "Test".to_string(),
+            "test".to_string(),
+            None,
+            dir.path().to_str().unwrap().to_string(),
+            None,
+            None,
+            serde_json::json!({}),
+        )
+        .unwrap();
+    let canvas_id = project.primary_canvas_id.unwrap();
+    (db, project.id, canvas_id)
+}
+
+#[test]
+fn update_node_title_and_position() {
+    let dir = tempfile::tempdir().unwrap();
+    let (db, _pid, canvas_id) = make_test_canvas(&dir);
+    let conn = db.connection();
+    let graph = CanvasGraphRepository::new(conn);
+
+    let node = graph.create_note_node(&canvas_id, "Old", "body", 0.0, 0.0).unwrap();
+    graph.update_node(&node.id, Some("New Title"), None, Some(100.0), Some(200.0)).unwrap();
+
+    let updated = graph.get_node_by_id(&node.id).unwrap().unwrap();
+    assert_eq!(updated.title, "New Title");
+    assert_eq!(updated.position_x, 100.0);
+    assert_eq!(updated.position_y, 200.0);
+}
+
+#[test]
+fn delete_node_removes_edges() {
+    let dir = tempfile::tempdir().unwrap();
+    let (db, _pid, canvas_id) = make_test_canvas(&dir);
+    let conn = db.connection();
+    let graph = CanvasGraphRepository::new(conn);
+
+    let a = graph.create_note_node(&canvas_id, "A", "", 0.0, 0.0).unwrap();
+    let b = graph.create_note_node(&canvas_id, "B", "", 100.0, 0.0).unwrap();
+    let edge = graph.connect_nodes(&canvas_id, &a.id, &b.id, "reference").unwrap();
+
+    graph.delete_node(&a.id).unwrap();
+
+    let snap = graph.load_canvas_snapshot(&canvas_id).unwrap();
+    assert!(!snap.nodes.iter().any(|n| n.id == a.id));
+    assert!(!snap.edges.iter().any(|e| e.id == edge.id));
+}
+
+#[test]
+fn delete_edge_by_id() {
+    let dir = tempfile::tempdir().unwrap();
+    let (db, _pid, canvas_id) = make_test_canvas(&dir);
+    let conn = db.connection();
+    let graph = CanvasGraphRepository::new(conn);
+
+    let a = graph.create_note_node(&canvas_id, "A", "", 0.0, 0.0).unwrap();
+    let b = graph.create_note_node(&canvas_id, "B", "", 100.0, 0.0).unwrap();
+    let edge = graph.connect_nodes(&canvas_id, &a.id, &b.id, "reference").unwrap();
+
+    graph.delete_edge(&edge.id).unwrap();
+
+    let snap = graph.load_canvas_snapshot(&canvas_id).unwrap();
+    assert!(snap.edges.is_empty());
+}
+
+#[test]
+fn create_group_node_test() {
+    let dir = tempfile::tempdir().unwrap();
+    let (db, _pid, canvas_id) = make_test_canvas(&dir);
+    let conn = db.connection();
+    let graph = CanvasGraphRepository::new(conn);
+
+    let node = graph.create_group_node(&canvas_id, "Movement 2", "#e67e22", 0.0, 0.0).unwrap();
+    assert_eq!(node.node_type, "group");
+    assert_eq!(node.color.as_deref(), Some("#e67e22"));
+}

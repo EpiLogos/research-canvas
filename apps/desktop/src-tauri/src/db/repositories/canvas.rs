@@ -435,6 +435,75 @@ impl<'conn> CanvasGraphRepository<'conn> {
         Ok(())
     }
 
+    pub fn update_node(
+        &self,
+        node_id: &str,
+        title: Option<&str>,
+        content: Option<&str>,
+        position_x: Option<f64>,
+        position_y: Option<f64>,
+    ) -> Result<()> {
+        let now = current_timestamp();
+        self.connection.execute(
+            "UPDATE canvas_nodes
+             SET title      = COALESCE(?1, title),
+                 content    = COALESCE(?2, content),
+                 position_x = COALESCE(?3, position_x),
+                 position_y = COALESCE(?4, position_y),
+                 updated_at = ?5
+             WHERE id = ?6",
+            params![title, content, position_x, position_y, now, node_id],
+        )?;
+        if self.connection.changes() == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
+        Ok(())
+    }
+
+    pub fn delete_node(&self, node_id: &str) -> Result<()> {
+        // Delete attached edges first (foreign key cascade handles it, but be explicit)
+        self.connection.execute(
+            "DELETE FROM canvas_edges WHERE source_node_id = ?1 OR target_node_id = ?1",
+            [node_id],
+        )?;
+        self.connection
+            .execute("DELETE FROM canvas_nodes WHERE id = ?1", [node_id])?;
+        Ok(())
+    }
+
+    pub fn delete_edge(&self, edge_id: &str) -> Result<()> {
+        self.connection
+            .execute("DELETE FROM canvas_edges WHERE id = ?1", [edge_id])?;
+        Ok(())
+    }
+
+    pub fn create_group_node(
+        &self,
+        canvas_id: &str,
+        title: &str,
+        color: &str,
+        position_x: f64,
+        position_y: f64,
+    ) -> Result<CanvasNodeRecord> {
+        let id = Uuid::new_v4().to_string();
+        let now = current_timestamp();
+        self.connection.execute(
+            "INSERT INTO canvas_nodes (
+                id, canvas_id, type, title, summary,
+                position_x, position_y, width, height,
+                color, child_node_ids, tags,
+                created_at, updated_at
+            ) VALUES (?1, ?2, 'group', ?3, ?4, ?5, ?6, ?7, ?8, ?9, '[]', '[]', ?10, ?10)",
+            params![
+                id, canvas_id, title, title,
+                position_x, position_y, 300.0_f64, 200.0_f64,
+                color, now
+            ],
+        )?;
+        self.get_node_by_id(&id)?
+            .ok_or(rusqlite::Error::QueryReturnedNoRows)
+    }
+
     fn get_edge_by_id(&self, edge_id: &str) -> Result<Option<CanvasEdgeRecord>> {
         self.connection
             .query_row(
