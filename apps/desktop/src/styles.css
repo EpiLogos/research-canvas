@@ -2223,7 +2223,7 @@ body[data-shell-dragging="true"] {
 }
 
 /* ─── Context menu ────────────────────────────────────── */
-.ctx-menu {
+.context-menu {
   background: #0e0e22;
   border: 1px solid #252545;
   border-radius: 6px;
@@ -2233,7 +2233,7 @@ body[data-shell-dragging="true"] {
   max-width: 220px;
 }
 
-.ctx-header {
+.context-menu-header {
   padding: 3px 10px 4px;
   font-size: 10px;
   color: #3a3a6e;
@@ -2242,13 +2242,13 @@ body[data-shell-dragging="true"] {
   text-transform: uppercase;
 }
 
-.ctx-separator {
+.context-menu-separator {
   height: 1px;
   background: #1a1a35;
   margin: 3px 4px;
 }
 
-.ctx-item {
+.context-menu-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2264,16 +2264,16 @@ body[data-shell-dragging="true"] {
   gap: 10px;
 }
 
-.ctx-item:hover {
+.context-menu-item:hover {
   background: #1a1a35;
   color: #c0c0e0;
 }
 
-.ctx-item[data-danger="true"] {
+.context-menu-item[data-danger="true"] {
   color: #7a3535;
 }
 
-.ctx-item[data-danger="true"]:hover {
+.context-menu-item[data-danger="true"]:hover {
   background: #1a0a0a;
   color: #e74c3c;
 }
@@ -2298,7 +2298,7 @@ body[data-shell-dragging="true"] {
   overflow: hidden;
 }
 
-.fuzzy-picker__input {
+.fuzzy-picker-input {
   display: block;
   width: 100%;
   background: #0a0a18;
@@ -2311,11 +2311,11 @@ body[data-shell-dragging="true"] {
   box-sizing: border-box;
 }
 
-.fuzzy-picker__input::placeholder {
+.fuzzy-picker-input::placeholder {
   color: #3a3a6e;
 }
 
-.fuzzy-picker__list {
+.fuzzy-picker-list {
   max-height: 200px;
   overflow-y: auto;
   padding: 3px;
@@ -2328,7 +2328,7 @@ body[data-shell-dragging="true"] {
   text-align: center;
 }
 
-.fuzzy-picker__item {
+.fuzzy-picker-item {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -2339,8 +2339,8 @@ body[data-shell-dragging="true"] {
   color: #7070a0;
 }
 
-.fuzzy-picker__item:hover,
-.fuzzy-picker__item[data-active="true"] {
+.fuzzy-picker-item:hover,
+.fuzzy-picker-item[data-active="true"] {
   background: #1a1a35;
   color: #c0c0e0;
 }

@@ -2,12 +2,13 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
 export interface MenuItem {
+  type: "item" | "separator" | "header";
   label?: string;
   shortcut?: string;
-  action?: () => void;
-  separator?: boolean;
-  header?: boolean;
   danger?: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
+  submenu?: MenuItem[];
 }
 
 interface ContextMenuProps {
@@ -40,22 +41,24 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
 
   return createPortal(
     <div
-      className="ctx-menu"
+      className="context-menu"
       ref={ref}
       style={{ left: adjustedX, top: adjustedY, position: "fixed", zIndex: 9999 }}
       role="menu"
     >
       {items.map((item, i) => {
-        if (item.separator) return <div key={i} className="ctx-separator" />;
-        if (item.header) return <div key={i} className="ctx-header">{item.label}</div>;
+        if (item.type === "separator") return <div key={i} className="context-menu-separator" />;
+        if (item.type === "header") return <div key={i} className="context-menu-header">{item.label}</div>;
         return (
           <button
             key={i}
-            className="ctx-item"
+            className="context-menu-item"
             data-danger={item.danger ? "true" : undefined}
             role="menuitem"
+            disabled={item.disabled}
+            style={item.disabled ? { opacity: 0.4 } : undefined}
             onClick={() => {
-              item.action?.();
+              item.onClick?.();
               onClose();
             }}
           >

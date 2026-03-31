@@ -9,11 +9,11 @@ export interface FileEntry {
 }
 
 interface FuzzyFilePickerProps {
-  x: number;
-  y: number;
   entries: FileEntry[];
   onSelect: (entry: FileEntry) => void;
   onClose: () => void;
+  anchorX: number;
+  anchorY: number;
 }
 
 function fuzzyMatch(query: string, str: string): boolean {
@@ -27,7 +27,7 @@ function fuzzyMatch(query: string, str: string): boolean {
   return qi === q.length;
 }
 
-export function FuzzyFilePicker({ x, y, entries, onSelect, onClose }: FuzzyFilePickerProps) {
+export function FuzzyFilePicker({ anchorX, anchorY, entries, onSelect, onClose }: FuzzyFilePickerProps) {
   const [query, setQuery] = useState("");
   const [activeIdx, setActiveIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -60,27 +60,27 @@ export function FuzzyFilePicker({ x, y, entries, onSelect, onClose }: FuzzyFileP
     }
   };
 
-  const adjustedX = Math.min(x, window.innerWidth - 220);
-  const adjustedY = Math.min(y, window.innerHeight - 260);
+  const adjustedX = Math.min(anchorX, window.innerWidth - 220);
+  const adjustedY = Math.min(anchorY, window.innerHeight - 260);
 
   return createPortal(
     <div className="fuzzy-picker" style={{ position: "fixed", left: adjustedX, top: adjustedY, zIndex: 10000 }}>
       <input
         ref={inputRef}
-        className="fuzzy-picker__input"
+        className="fuzzy-picker-input"
         placeholder="Search files…"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={handleKey}
       />
-      <div className="fuzzy-picker__list">
+      <div className="fuzzy-picker-list">
         {filtered.length === 0 ? (
           <div className="fuzzy-picker__empty">No matches</div>
         ) : (
           filtered.map((entry, i) => (
             <div
               key={entry.id}
-              className="fuzzy-picker__item"
+              className="fuzzy-picker-item"
               data-active={i === activeIdx ? "true" : undefined}
               onMouseEnter={() => setActiveIdx(i)}
               onClick={() => { onSelect(entry); onClose(); }}

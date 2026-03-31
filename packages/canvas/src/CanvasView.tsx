@@ -168,18 +168,19 @@ export function CanvasView({
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
           items={[
-            { label: "Add note", shortcut: "N", action: () => onCreateNote?.() },
+            { type: "item", label: "Add note", shortcut: "N", onClick: () => onCreateNote?.() },
             {
+              type: "item",
               label: "Add resource from file…",
               shortcut: "R",
-              action: () => {
+              onClick: () => {
                 setShowFilePicker({ x: contextMenu.x, y: contextMenu.y });
                 setContextMenu(null);
               },
             },
-            { label: "Add group", shortcut: "G", action: () => onCreateGroup?.() },
-            { separator: true },
-            { label: "Select all", shortcut: "⌘A", action: () => {} },
+            { type: "item", label: "Add group", shortcut: "G", onClick: () => onCreateGroup?.() },
+            { type: "item", label: "Paste", shortcut: "⌘V", onClick: () => {} },
+            { type: "item", label: "Select all", shortcut: "⌘A", onClick: () => {} },
           ]}
         />
       )}
@@ -189,37 +190,31 @@ export function CanvasView({
           x={contextMenu.x}
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
-          items={[
-            {
-              header: true,
-              label: flowNodes.find((n) => n.id === contextMenu.nodeId)?.data?.title as string ?? "Node",
-            },
-            { separator: true },
-            {
-              label: "Open content",
-              shortcut: "↵",
-              action: () => onNodeDoubleClick?.(contextMenu.nodeId!),
-            },
-            {
-              label: "Duplicate",
-              shortcut: "⌘D",
-              action: () => onDuplicateNode?.(contextMenu.nodeId!),
-            },
-            { separator: true },
-            {
-              label: "Delete",
-              danger: true,
-              shortcut: "⌫",
-              action: () => onDeleteNode?.(contextMenu.nodeId!),
-            },
-          ]}
+          items={(() => {
+            const nodeId = contextMenu.nodeId!;
+            return [
+              {
+                type: "header" as const,
+                label: flowNodes.find((n) => n.id === nodeId)?.data?.title as string ?? "Node",
+              },
+              { type: "separator" as const },
+              { type: "item" as const, label: "Open content", shortcut: "↵", onClick: () => onNodeDoubleClick?.(nodeId) },
+              { type: "item" as const, label: "Draw edge →", onClick: () => {} },
+              { type: "separator" as const },
+              { type: "item" as const, label: "Duplicate", shortcut: "⌘D", onClick: () => onDuplicateNode?.(nodeId) },
+              { type: "separator" as const },
+              { type: "item" as const, label: "Customise…", onClick: () => {} },
+              { type: "separator" as const },
+              { type: "item" as const, label: "Delete", shortcut: "⌫", danger: true, onClick: () => onDeleteNode?.(nodeId) },
+            ];
+          })()}
         />
       )}
 
       {showFilePicker && (
         <FuzzyFilePicker
-          x={showFilePicker.x}
-          y={showFilePicker.y}
+          anchorX={showFilePicker.x}
+          anchorY={showFilePicker.y}
           entries={fileEntries ?? []}
           onSelect={(entry) => {
             onCreateResourceFromFile?.(entry);
