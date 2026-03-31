@@ -24,6 +24,10 @@ const MIGRATIONS: &[Migration] = &[
         version: "0003_project_resource_roots",
         sql: include_str!("../../migrations/0003_project_resource_roots.sql"),
     },
+    Migration {
+        version: "0004_node_style_fields",
+        sql: include_str!("../../migrations/0004_node_style_fields.sql"),
+    },
 ];
 
 impl MigrationRunner {

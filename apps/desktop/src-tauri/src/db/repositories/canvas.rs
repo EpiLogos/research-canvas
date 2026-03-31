@@ -41,6 +41,10 @@ pub struct CanvasNodeRecord {
     pub color: Option<String>,
     pub child_node_ids: Vec<String>,
     pub target_canvas_id: Option<String>,
+    pub dot_colour: Option<String>,
+    pub bg_colour: Option<String>,
+    pub text_colour: Option<String>,
+    pub thumbnail: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -332,6 +336,10 @@ impl<'conn> CanvasGraphRepository<'conn> {
                 color,
                 child_node_ids,
                 target_canvas_id,
+                dot_colour,
+                bg_colour,
+                text_colour,
+                thumbnail,
                 created_at,
                 updated_at
              FROM canvas_nodes
@@ -388,6 +396,10 @@ impl<'conn> CanvasGraphRepository<'conn> {
                     color,
                     child_node_ids,
                     target_canvas_id,
+                    dot_colour,
+                    bg_colour,
+                    text_colour,
+                    thumbnail,
                     created_at,
                     updated_at
                  FROM canvas_nodes
@@ -396,6 +408,32 @@ impl<'conn> CanvasGraphRepository<'conn> {
                 canvas_node_from_row,
             )
             .optional()
+    }
+
+    pub fn get_node_by_id_public(&self, node_id: &str) -> Result<Option<CanvasNodeRecord>> {
+        self.get_node_by_id(node_id)
+    }
+
+    pub fn update_node_style(
+        &self,
+        node_id: &str,
+        dot_colour: Option<&str>,
+        bg_colour: Option<&str>,
+        text_colour: Option<&str>,
+        thumbnail: Option<&str>,
+    ) -> Result<()> {
+        let now = current_timestamp();
+        self.connection.execute(
+            "UPDATE canvas_nodes
+             SET dot_colour  = COALESCE(?1, dot_colour),
+                 bg_colour   = COALESCE(?2, bg_colour),
+                 text_colour = COALESCE(?3, text_colour),
+                 thumbnail   = COALESCE(?4, thumbnail),
+                 updated_at  = ?5
+             WHERE id = ?6",
+            params![dot_colour, bg_colour, text_colour, thumbnail, now, node_id],
+        )?;
+        Ok(())
     }
 
     fn get_edge_by_id(&self, edge_id: &str) -> Result<Option<CanvasEdgeRecord>> {
@@ -457,8 +495,12 @@ fn canvas_node_from_row(row: &rusqlite::Row<'_>) -> Result<CanvasNodeRecord> {
         color: row.get(17)?,
         child_node_ids: parse_string_array(row.get::<_, String>(18)?),
         target_canvas_id: row.get(19)?,
-        created_at: row.get(20)?,
-        updated_at: row.get(21)?,
+        dot_colour: row.get(20)?,
+        bg_colour: row.get(21)?,
+        text_colour: row.get(22)?,
+        thumbnail: row.get(23)?,
+        created_at: row.get(24)?,
+        updated_at: row.get(25)?,
     })
 }
 
