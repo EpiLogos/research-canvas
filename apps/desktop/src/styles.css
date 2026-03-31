@@ -183,15 +183,29 @@ body {
 }
 
 .flow-edge-label {
-  display: grid;
-  gap: 0.15rem;
-  min-width: 5.5rem;
-  border-radius: 0.75rem;
-  background: rgba(17, 14, 11, 0.92);
-  border: 1px solid rgba(244, 232, 208, 0.12);
-  color: #f5f1e8;
-  padding: 0.45rem 0.6rem;
-  font-size: 0.74rem;
+  background: rgba(15, 12, 10, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  color: rgba(200, 190, 175, 0.9);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 3px 7px;
+  pointer-events: all;
+  position: absolute;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+
+.flow-edge-label strong {
+  font-weight: 600;
+  color: rgba(220, 210, 190, 1);
+}
+
+.flow-edge-label span {
+  color: rgba(160, 150, 135, 0.85);
+  margin-left: 4px;
 }
 
 .canvas-summary {

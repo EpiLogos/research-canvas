@@ -40,6 +40,7 @@ interface CanvasViewProps {
   fileEntries?: FileEntry[];
   onNodeDoubleClick?: (nodeId: string) => void;
   onConnectNodes?: (input: { sourceNodeId: string; targetNodeId: string; relationKind: string }) => void;
+  onDeleteEdge?: (edgeId: string) => void;
 }
 
 const nodeTypes: NodeTypes = {
@@ -73,15 +74,17 @@ function CanvasViewInner({
   onCreateResourceFromFile,
   fileEntries,
   onNodeDoubleClick,
-  onConnectNodes
+  onConnectNodes,
+  onDeleteEdge
 }: CanvasViewProps) {
   const { screenToFlowPosition } = useReactFlow();
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
-    kind: "canvas" | "node";
+    kind: "canvas" | "node" | "edge";
     nodeId?: string;
+    edgeId?: string;
     canvasPos?: { x: number; y: number };
   } | null>(null);
 
@@ -245,6 +248,11 @@ function CanvasViewInner({
           e.stopPropagation();
           setContextMenu({ x: e.clientX, y: e.clientY, kind: "node", nodeId: node.id });
         }}
+        onEdgeContextMenu={(e, edge) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setContextMenu({ x: e.clientX, y: e.clientY, kind: "edge", edgeId: edge.id });
+        }}
         panOnDrag
       >
         <Background color="rgba(244, 232, 208, 0.08)" gap={24} />
@@ -281,6 +289,26 @@ function CanvasViewInner({
           y={contextMenu.y}
           onClose={closeContextMenu}
           items={nodeContextMenuItems}
+        />
+      )}
+
+      {contextMenu?.kind === "edge" && contextMenu.edgeId && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={closeContextMenu}
+          items={[
+            {
+              type: "item",
+              label: "Delete connection",
+              shortcut: "⌫",
+              danger: true,
+              onClick: () => {
+                onDeleteEdge?.(contextMenu.edgeId!);
+                closeContextMenu();
+              },
+            },
+          ]}
         />
       )}
 

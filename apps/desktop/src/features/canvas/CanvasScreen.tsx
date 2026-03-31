@@ -102,20 +102,6 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick }: CanvasScreenPr
               >
                 Add resource node
               </button>
-              <button
-                onClick={() => {
-                  const latestNodes = workspace.nodes.slice(-2);
-                  if (latestNodes.length < 2) return;
-                  workspace.addEdge({
-                    sourceNodeId: latestNodes[0].id,
-                    targetNodeId: latestNodes[1].id,
-                    relationKind: "supports"
-                  });
-                }}
-                type="button"
-              >
-                Link latest nodes
-              </button>
             </div>
 
             <div className="canvas-toolbar__group">
@@ -172,6 +158,9 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick }: CanvasScreenPr
             }}
             onConnectNodes={(input) => {
               workspace.addEdge(input);
+            }}
+            onDeleteEdge={(edgeId) => {
+              workspace.store.getState().deleteEdge(edgeId);
             }}
             onCreateResourceFromFile={(entry, position) => {
               workspace.addResourceNode(entry, position);

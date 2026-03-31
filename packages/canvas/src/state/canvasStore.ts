@@ -40,6 +40,7 @@ export interface CanvasStoreState {
   createGroupNode: (input: CreateGroupNodeInput) => CanvasNode;
   createNoteNode: (input: CreateNoteNodeInput) => CanvasNode;
   createResourceNode: (input: CreateResourceNodeInput) => CanvasNode;
+  deleteEdge: (edgeId: string) => void;
   deleteNode: (nodeId: string) => void;
   duplicateNode: (nodeId: string) => CanvasNode | undefined;
   edges: CanvasEdge[];
@@ -151,6 +152,10 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
       set((state) => ({ nodes: [...state.nodes, node] }));
       return node;
     },
+    deleteEdge: (edgeId) =>
+      set((state) => ({
+        edges: state.edges.filter((e) => e.id !== edgeId),
+      })),
     deleteNode: (nodeId) =>
       set((state) => ({
         nodes: state.nodes.filter((n) => n.id !== nodeId),

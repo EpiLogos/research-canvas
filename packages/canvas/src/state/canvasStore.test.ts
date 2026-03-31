@@ -53,6 +53,28 @@ describe("updateNodeTitle", () => {
   });
 });
 
+describe("deleteEdge", () => {
+  it("removes the edge from the store", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const note = store.getState().createNoteNode({ title: "n", content: "" });
+    const res = store.getState().createResourceNode({
+      title: "r",
+      absolutePath: "/tmp/r.md",
+      relativePath: "r.md",
+      resourceKind: "markdown"
+    });
+    const edge = store.getState().connectNodes({
+      sourceNodeId: note.id,
+      targetNodeId: res.id,
+      relationKind: "ref"
+    });
+    store.getState().deleteEdge(edge.id);
+    expect(store.getState().edges).toHaveLength(0);
+    // nodes are untouched
+    expect(store.getState().nodes).toHaveLength(2);
+  });
+});
+
 describe("canvasStore", () => {
   it("creates nodes, connects them, updates edge notes, and reloads the snapshot", () => {
     const store = createCanvasStore({
