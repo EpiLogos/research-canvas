@@ -1,5 +1,5 @@
 interface StatusBarWorkspace {
-  activeProject?: { name: string } | null;
+  activeProject?: { displayName: string } | null;
   nodes?: { id: string }[];
   edges?: { id: string }[];
 }
@@ -9,12 +9,12 @@ interface StatusBarProps {
 }
 
 export function StatusBar({ workspace }: StatusBarProps) {
-  const projectName = workspace.activeProject?.name ?? "No project";
+  const projectName = workspace.activeProject?.displayName ?? "No project";
   const nodeCount = workspace.nodes?.length ?? 0;
   const edgeCount = workspace.edges?.length ?? 0;
 
   return (
-    <footer className="status-bar">
+    <footer className="status-bar" data-testid="bottom-dock">
       <span className="status-bar__left">{projectName}</span>
       <span className="status-bar__centre">
         {nodeCount} nodes · {edgeCount} edges

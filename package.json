@@ -5,8 +5,10 @@
   "type": "module",
   "packageManager": "pnpm@10.25.0",
   "scripts": {
+    "launch": "pnpm --filter @research-canvas/desktop tauri:dev",
     "dev": "pnpm --filter @research-canvas/desktop dev",
     "desktop:dev": "pnpm --filter @research-canvas/desktop dev",
+    "tauri:dev": "pnpm --filter @research-canvas/desktop tauri:dev",
     "public-viewer:dev": "pnpm --filter @research-canvas/public-viewer dev",
     "typecheck": "tsc -b tsconfig.json",
     "test": "pnpm vitest run",

@@ -5,7 +5,11 @@ import react from "@vitejs/plugin-react-swc";
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    environment: "jsdom",
+  },
   resolve: {
+    dedupe: ["react", "react-dom"],
     alias: {
       "@research-canvas/canvas": fileURLToPath(
         new URL("../../packages/canvas/src/index.ts", import.meta.url),

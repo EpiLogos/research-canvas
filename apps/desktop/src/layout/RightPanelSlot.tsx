@@ -27,7 +27,7 @@ export function RightPanelSlot({
   onFullScreen,
 }: RightPanelSlotProps) {
   return (
-    <aside className="right-panel-slot" data-open={open ? "true" : "false"} aria-hidden={!open}>
+    <aside className="right-panel-slot" data-open={open ? "true" : "false"} aria-hidden={!open} data-testid="right-panel">
       {/* Resize handle on left edge */}
       <div
         className="right-panel-slot__resize-handle"

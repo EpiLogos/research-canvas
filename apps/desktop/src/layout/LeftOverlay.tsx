@@ -5,7 +5,6 @@ import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 
 interface LeftOverlayProps {
   open: boolean;
-  onClose?: () => void;
   onResizeStart: (e: React.PointerEvent) => void;
 }
 

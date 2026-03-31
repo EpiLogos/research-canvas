@@ -20,7 +20,7 @@ use serde_json::json;
 use tiny_http::{Header, Method, Response, Server, StatusCode};
 
 const HOST: &str = "127.0.0.1";
-const PORT: u16 = 4789;
+const DEFAULT_PORT: u16 = 4789;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,15 +55,28 @@ struct BrowserResourceRootDelete {
 }
 
 fn main() {
-    let server = Server::http((HOST, PORT)).expect("terminal bridge server");
+    let port = terminal_bridge_port().expect("terminal bridge port");
+    let server = Server::http((HOST, port)).expect("terminal bridge server");
     let manager = Arc::new(TerminalManager::new());
-    eprintln!("[terminal-bridge] listening on http://{HOST}:{PORT}");
+    eprintln!("[terminal-bridge] listening on http://{HOST}:{port}");
 
     for request in server.incoming_requests() {
         let manager = Arc::clone(&manager);
         if let Err(error) = handle_request(request, manager) {
             eprintln!("[terminal-bridge] request failed: {error}");
         }
+    }
+}
+
+fn terminal_bridge_port() -> Result<u16, String> {
+    match std::env::var("RESEARCH_CANVAS_TERMINAL_BRIDGE_PORT") {
+        Ok(value) => value.parse::<u16>().map_err(|error| {
+            format!("invalid RESEARCH_CANVAS_TERMINAL_BRIDGE_PORT `{value}`: {error}")
+        }),
+        Err(std::env::VarError::NotPresent) => Ok(DEFAULT_PORT),
+        Err(error) => Err(format!(
+            "invalid RESEARCH_CANVAS_TERMINAL_BRIDGE_PORT: {error}"
+        )),
     }
 }
 

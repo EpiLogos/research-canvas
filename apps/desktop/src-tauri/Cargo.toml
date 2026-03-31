@@ -5,6 +5,7 @@ description = "Local-first research canvas desktop app"
 authors = ["Codex"]
 edition = "2021"
 build = "build.rs"
+default-run = "research-canvas-desktop"
 
 [lib]
 name = "research_canvas_desktop_lib"

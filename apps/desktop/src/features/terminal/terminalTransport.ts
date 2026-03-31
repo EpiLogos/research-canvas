@@ -1,7 +1,8 @@
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { resolveBrowserBridgeBaseUrl } from "@research-canvas/desktop-api";
 
-const TERMINAL_BRIDGE_BASE_URL = "http://127.0.0.1:4789";
+const TERMINAL_BRIDGE_BASE_URL = resolveBrowserBridgeBaseUrl();
 
 export interface TerminalSessionSnapshot {
   id: string;

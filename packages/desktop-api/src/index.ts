@@ -148,8 +148,13 @@ interface WorkspaceTransport {
   searchProject(request: SearchProjectRequest): Promise<SearchHit[]>;
 }
 
-const BRIDGE_BASE_URL = "http://127.0.0.1:4789";
+const DEFAULT_BRIDGE_PORT = 4789;
+const BRIDGE_BASE_URL = resolveBrowserBridgeBaseUrl();
 const SESSION_COOKIE = "research_canvas_session_id";
+
+export function resolveBrowserBridgeBaseUrl() {
+  return `http://127.0.0.1:${resolveBrowserBridgePort()}`;
+}
 
 export function createWorkspaceTransport(): WorkspaceTransport {
   return isTauriRuntime()
@@ -296,6 +301,23 @@ function invokeTauri<T>(
 
 function isTauriRuntime() {
   return typeof window !== "undefined" && Boolean(window.__TAURI_INTERNALS__);
+}
+
+function resolveBrowserBridgePort() {
+  const env = (import.meta as ImportMeta & {
+    env?: Record<string, string | undefined>;
+  }).env;
+  const rawPort = env?.VITE_RESEARCH_CANVAS_TERMINAL_BRIDGE_PORT;
+  if (rawPort === undefined) {
+    return DEFAULT_BRIDGE_PORT;
+  }
+
+  const port = Number.parseInt(rawPort, 10);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    return DEFAULT_BRIDGE_PORT;
+  }
+
+  return port;
 }
 
 async function requestJsonWithRetry<T>(

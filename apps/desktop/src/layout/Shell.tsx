@@ -74,7 +74,6 @@ export function Shell() {
       <div className="shell-canvas-area">
         <LeftOverlay
           open={layout.leftOpen}
-          onClose={() => layout.setLeftOpen(false)}
           onResizeStart={layout.beginLeftResize}
         />
 

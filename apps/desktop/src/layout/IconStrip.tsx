@@ -3,7 +3,7 @@ import type { RightTab } from "./useShellLayout";
 interface IconStripProps {
   leftOpen: boolean;
   onToggleLeft: () => void;
-  onOpenRightTab: (tab: RightTab) => void;
+  onOpenRightTab?: (tab: RightTab) => void;
 }
 
 const NAV_ICONS: { id: string; label: string; svg: string }[] = [
@@ -29,9 +29,9 @@ const NAV_ICONS: { id: string; label: string; svg: string }[] = [
   },
 ];
 
-export function IconStrip({ leftOpen, onToggleLeft, onOpenRightTab }: IconStripProps) {
+export function IconStrip({ leftOpen, onToggleLeft }: IconStripProps) {
   return (
-    <aside className="icon-strip" aria-label="Navigation">
+    <aside className="icon-strip" aria-label="Navigation" data-testid="left-rail">
       <div className="icon-strip__nav">
         {NAV_ICONS.map((icon) => (
           <button

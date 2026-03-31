@@ -6,10 +6,8 @@ interface FullScreenReaderProps {
   onClose: () => void;
 }
 
-/** Extends CanvasNode with fields that the backend may attach at runtime (e.g. rendered markdown). */
-interface RichCanvasNode extends CanvasNode {
-  renderedHtml?: string;
-}
+/** CanvasNode with an optional renderedHtml field attached at runtime (e.g. server-rendered markdown). */
+type RichCanvasNode = CanvasNode & { renderedHtml?: string };
 
 export function FullScreenReader({ onClose }: FullScreenReaderProps) {
   const workspace = useCanvasWorkspace();
@@ -32,13 +30,11 @@ export function FullScreenReader({ onClose }: FullScreenReaderProps) {
     return null;
   }
 
-  const kind = node.type === "resource" ? node.resourceKind : node.type;
-
   return (
     <div className="fullscreen-reader">
       <header className="fullscreen-reader__header">
         <nav className="fullscreen-reader__breadcrumb">
-          <span>{workspace.activeProject?.name ?? "Project"}</span>
+          <span>{workspace.activeProject?.displayName ?? "Project"}</span>
           <span className="fsr-sep">›</span>
           <span>Canvas</span>
           <span className="fsr-sep">›</span>
@@ -50,12 +46,12 @@ export function FullScreenReader({ onClose }: FullScreenReaderProps) {
       </header>
 
       <main className="fullscreen-reader__body">
-        {kind === "markdown" && node.renderedHtml ? (
+        {node.type === "resource" && node.resourceKind === "markdown" && node.renderedHtml ? (
           <article
             className="fsr-markdown"
             dangerouslySetInnerHTML={{ __html: node.renderedHtml }}
           />
-        ) : kind === "image" && node.type === "resource" && node.absolutePath ? (
+        ) : node.type === "resource" && node.resourceKind === "image" && node.absolutePath ? (
           <div className="fsr-image-wrap">
             <img
               className="fsr-image"
@@ -70,10 +66,10 @@ export function FullScreenReader({ onClose }: FullScreenReaderProps) {
             placeholder="Write a note…"
             onChange={(e) => workspace.updateNodeContent(node.id, e.target.value)}
           />
+        ) : node.type === "resource" ? (
+          <div className="fsr-placeholder">{node.absolutePath}</div>
         ) : (
-          <div className="fsr-placeholder">
-            {node.type === "resource" ? node.absolutePath : "No content"}
-          </div>
+          <div className="fsr-placeholder">No content</div>
         )}
       </main>
     </div>

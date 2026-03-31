@@ -4,14 +4,14 @@ import { createCanvasStore } from "./canvasStore";
 
 describe("deleteNode", () => {
   it("removes the node from the store", () => {
-    const store = createCanvasStore({ canvasId: "c1" });
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
     const node = store.getState().createNoteNode({ title: "t", content: "" });
     store.getState().deleteNode(node.id);
     expect(store.getState().nodes.find((n) => n.id === node.id)).toBeUndefined();
   });
 
   it("also removes edges connected to that node", () => {
-    const store = createCanvasStore({ canvasId: "c1" });
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
     const a = store.getState().createNoteNode({ title: "a", content: "" });
     const b = store.getState().createNoteNode({ title: "b", content: "" });
     store.getState().connectNodes({ sourceNodeId: a.id, targetNodeId: b.id, relationKind: "ref" });
@@ -22,7 +22,7 @@ describe("deleteNode", () => {
 
 describe("duplicateNode", () => {
   it("creates a new node with same data but new id and offset position", () => {
-    const store = createCanvasStore({ canvasId: "c1" });
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
     const original = store.getState().createNoteNode({ title: "orig", content: "hello" });
     const copy = store.getState().duplicateNode(original.id);
     expect(copy).toBeDefined();
@@ -35,7 +35,7 @@ describe("duplicateNode", () => {
 
 describe("updateNodeStyle", () => {
   it("updates style fields on the node", () => {
-    const store = createCanvasStore({ canvasId: "c1" });
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
     const node = store.getState().createNoteNode({ title: "t", content: "" });
     store.getState().updateNodeStyle(node.id, { dotColour: "#ff0000" });
     const updated = store.getState().nodes.find((n) => n.id === node.id);
@@ -45,7 +45,7 @@ describe("updateNodeStyle", () => {
 
 describe("updateNodeTitle", () => {
   it("updates the title of a node", () => {
-    const store = createCanvasStore({ canvasId: "c1" });
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
     const node = store.getState().createNoteNode({ title: "old", content: "" });
     store.getState().updateNodeTitle(node.id, "new title");
     const updated = store.getState().nodes.find((n) => n.id === node.id);
