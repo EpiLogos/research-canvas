@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 
-export type RightTab = "inspector" | "content" | "terminal";
+export type RightTab = "inspector" | "content" | "terminal" | "sequences";
 
 const LEFT_MIN = 200;
 const LEFT_MAX = 480;

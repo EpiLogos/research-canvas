@@ -1,6 +1,7 @@
 import { TerminalPane } from "../features/terminal/TerminalPane";
 import { ContentTab } from "../features/viewer/ContentTab";
 import { InspectorTab } from "../features/inspector/InspectorTab";
+import { SequencePanel } from "../features/sequences/SequencePanel";
 import type { RightTab } from "./useShellLayout";
 
 interface RightPanelSlotProps {
@@ -16,6 +17,7 @@ const TABS: { id: RightTab; label: string }[] = [
   { id: "inspector", label: "Inspector" },
   { id: "content", label: "Content" },
   { id: "terminal", label: "Terminal" },
+  { id: "sequences", label: "Sequences" },
 ];
 
 export function RightPanelSlot({
@@ -63,6 +65,9 @@ export function RightPanelSlot({
           </div>
           <div className="rps-pane" data-visible={activeTab === "terminal" ? "true" : "false"}>
             <TerminalPane />
+          </div>
+          <div className="rps-pane" data-visible={activeTab === "sequences" ? "true" : "false"}>
+            <SequencePanel />
           </div>
         </div>
       </div>
