@@ -69,6 +69,8 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   updateNodeContent: (nodeId: string, content: string) => void;
   updateNodeStyle: (nodeId: string, style: { dotColour?: string; bgColour?: string; textColour?: string; thumbnail?: string }) => void;
   workingRoot: string | null;
+  flyToNode: (nodeId: string, viewport?: { x: number; y: number; zoom: number }) => void;
+  registerFlyToNode: (fn: (nodeId: string, viewport?: { x: number; y: number; zoom: number }) => void) => void;
 }
 
 const CanvasWorkspaceContext = createContext<CanvasWorkspaceContextValue | null>(
@@ -97,6 +99,7 @@ export function CanvasWorkspaceProvider({
   const [workingRoot, setWorkingRoot] = useState<string | null>(null);
   const selectedEntryIdRef = useRef<string | null>(null);
   const selectedNodeIdRef = useRef<string | null>(null);
+  const flyToNodeRef = useRef<(nodeId: string, viewport?: { x: number; y: number; zoom: number }) => void>(() => {});
 
   useEffect(() => {
     selectedEntryIdRef.current = selectedEntryId;
@@ -430,7 +433,9 @@ export function CanvasWorkspaceProvider({
       },
       updateNodeStyle: (nodeId, style) => {
         stores.store.getState().updateNodeStyle(nodeId, style);
-      }
+      },
+      flyToNode: (nodeId, viewport) => flyToNodeRef.current(nodeId, viewport),
+      registerFlyToNode: (fn) => { flyToNodeRef.current = fn; },
     }),
     [
       activeProject,

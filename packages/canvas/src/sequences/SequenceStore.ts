@@ -41,6 +41,8 @@ export interface SequenceStoreState {
   hydrate: (snapshot: SequenceSnapshot) => void;
   playNextStep: () => void;
   playStep: (index: number) => void;
+  removeStep: (stepId: string) => void;
+  removeSequence: (sequenceId: string) => void;
   sequences: Sequence[];
   serialize: () => SequenceSnapshot;
   setActiveSequence: (sequenceId: string | null) => void;
@@ -139,6 +141,29 @@ export function createSequenceStore({
         withActiveStep({
           ...state,
           activeStepIndex: index
+        })
+      );
+    },
+    removeStep: (stepId) => {
+      set((state) => {
+        const remaining = state.steps.filter((s) => s.id !== stepId);
+        return withActiveStep({
+          ...state,
+          steps: remaining,
+          activeStepIndex: Math.min(state.activeStepIndex, remaining.length - 1),
+        });
+      });
+    },
+    removeSequence: (sequenceId) => {
+      set((state) =>
+        withActiveStep({
+          ...state,
+          sequences: state.sequences.filter((s) => s.id !== sequenceId),
+          steps: state.steps.filter((s) => s.sequenceId !== sequenceId),
+          activeSequenceId:
+            state.activeSequenceId === sequenceId ? null : state.activeSequenceId,
+          activeStepIndex:
+            state.activeSequenceId === sequenceId ? -1 : state.activeStepIndex,
         })
       );
     },

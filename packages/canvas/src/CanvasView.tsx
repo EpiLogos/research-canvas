@@ -45,6 +45,7 @@ interface CanvasViewProps {
   onResizeNode?: (nodeId: string, width: number, height: number) => void;
   leftPanelOpen?: boolean;
   rightPanelOpen?: boolean;
+  onRegisterFlyToNode?: (flyTo: (nodeId: string, viewport?: { x: number; y: number; zoom: number }) => void) => void;
 }
 
 const nodeTypes: NodeTypes = {
@@ -82,7 +83,8 @@ function CanvasViewInner({
   onDeleteEdge,
   onResizeNode,
   leftPanelOpen,
-  rightPanelOpen
+  rightPanelOpen,
+  onRegisterFlyToNode
 }: CanvasViewProps) {
   const { screenToFlowPosition, setCenter, getZoom, fitView } = useReactFlow();
 
@@ -114,6 +116,28 @@ function CanvasViewInner({
     const timer = setTimeout(() => fitView({ padding: 0.15 }), 200);
     return () => clearTimeout(timer);
   }, [leftPanelOpen, rightPanelOpen, fitView]);
+
+  const flyToNode = useCallback(
+    (nodeId: string, viewport?: { x: number; y: number; zoom: number }) => {
+      if (viewport) {
+        setCenter(viewport.x, viewport.y, { duration: 500, zoom: viewport.zoom });
+      } else {
+        const node = nodes.find((n) => n.id === nodeId);
+        if (node) {
+          setCenter(
+            node.position.x + (node.size?.width ?? 200) / 2,
+            node.position.y + (node.size?.height ?? 140) / 2,
+            { duration: 500, zoom: Math.max(1, getZoom()) }
+          );
+        }
+      }
+    },
+    [nodes, setCenter, getZoom]
+  );
+
+  useEffect(() => {
+    onRegisterFlyToNode?.(flyToNode);
+  }, [flyToNode, onRegisterFlyToNode]);
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;

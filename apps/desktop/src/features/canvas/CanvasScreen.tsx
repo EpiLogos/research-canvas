@@ -140,6 +140,7 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, leftPanelOpen, r
             fileEntries={fileEntries}
             leftPanelOpen={leftPanelOpen}
             rightPanelOpen={rightPanelOpen}
+            onRegisterFlyToNode={workspace.registerFlyToNode}
           />
           <AnnotationLayer
             annotations={workspace.annotations}
