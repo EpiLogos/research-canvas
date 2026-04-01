@@ -2235,9 +2235,15 @@ body[data-shell-dragging="true"] {
   opacity: 1 !important;
 }
 
-/* Smooth node repositioning (not during drag — React Flow adds .dragging) */
-.react-flow__node:not(.dragging) {
-  transition: transform 0.12s ease;
+/* Minimap: hidden by default, visible on canvas hover */
+.canvas-flow .react-flow__minimap {
+  opacity: 0;
+  transition: opacity 150ms ease;
+  pointer-events: none;
+}
+.canvas-flow:hover .react-flow__minimap {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* ─── Context menu ────────────────────────────────────── */
