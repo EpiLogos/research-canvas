@@ -96,6 +96,23 @@ export function LeftOverlay({ open, onResizeStart }: LeftOverlayProps) {
                 style={{ paddingLeft: `${8 + entry.depth * 12}px` }}
                 onClick={() => workspace.selectEntry(entry.id)}
                 title={entry.relativePath}
+                draggable={!entry.isDirectory}
+                onDragStart={(e) => {
+                  if (entry.isDirectory) {
+                    e.preventDefault();
+                    return;
+                  }
+                  e.dataTransfer.setData(
+                    "application/x-canvas-entry",
+                    JSON.stringify({
+                      id: entry.id,
+                      name: entry.name,
+                      relativePath: entry.relativePath,
+                      kind: entry.kind,
+                    })
+                  );
+                  e.dataTransfer.effectAllowed = "copy";
+                }}
               >
                 <span className="lo-file-icon">
                   {entry.isDirectory ? "▸" : "·"}
