@@ -122,6 +122,7 @@ pub struct CanvasNodePayload {
     pub file_fingerprint: Option<String>,
     pub url: Option<String>,
     pub color: Option<String>,
+    #[serde(default)]
     pub child_node_ids: Vec<String>,
     pub target_canvas_id: Option<String>,
     pub dot_colour: Option<String>,
