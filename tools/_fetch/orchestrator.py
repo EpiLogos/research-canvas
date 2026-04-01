@@ -72,7 +72,8 @@ async def _process_entry(
                     "source_url": result.source_url,
                     "download_url": result.download_url,
                 })
-            except Exception:
+            except Exception as exc:
+                print(f"    [warn] failed to fetch {result.download_url}: {exc}")
                 continue
 
     return collected
