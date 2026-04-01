@@ -266,7 +266,11 @@ function CanvasViewInner({
         }}
         onNodesChange={handleNodesChange}
         onConnect={handleConnect}
-        connectOnClick={false}
+        onReconnect={(oldEdge, newConnection) => {
+          onDeleteEdge?.(oldEdge.id);
+          handleConnect(newConnection);
+        }}
+        reconnectRadius={20}
         connectionMode={ConnectionMode.Loose}
         onContextMenu={(e) => {
           e.preventDefault();
