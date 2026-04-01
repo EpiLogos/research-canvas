@@ -62,7 +62,7 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   searchProject: (query: string, limit?: number) => Promise<SearchHit[]>;
   selectEntry: (entryId: string | null) => void;
   selectNode: (nodeId: string | null) => void;
-  selectProject: (projectId: string) => void;
+  selectProject: (projectId: string) => void | Promise<void>;
   selectedEntryId: string | null;
   selectedNodeId: string | null;
   resizeNode: (nodeId: string, width: number, height: number) => void;
@@ -404,7 +404,22 @@ export function CanvasWorkspaceProvider({
       },
       selectEntry: setSelectedEntryId,
       selectNode: setSelectedNodeId,
-      selectProject: setActiveProjectId,
+      selectProject: async (projectId: string) => {
+        if (activeProject && databasePath) {
+          const currentState = {
+            annotations: stores.annotationStore.getState().serialize(),
+            canvasId: activeProject.primaryCanvasId,
+            databasePath,
+            edges: stores.store.getState().serialize().edges,
+            nodes: stores.store.getState().serialize().nodes,
+            projectId: activeProject.id,
+            sequenceSteps: stores.sequenceStore.getState().serialize().steps,
+            sequences: stores.sequenceStore.getState().serialize().sequences,
+          };
+          await transport.persistProjectDocument(currentState);
+        }
+        setActiveProjectId(projectId);
+      },
       selectedEntryId,
       selectedNodeId,
       resizeNode: (nodeId, width, height) => {

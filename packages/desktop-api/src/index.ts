@@ -141,7 +141,7 @@ interface WorkspaceTransport {
     databasePath: string;
     projectId: string;
   }): Promise<ProjectDocument>;
-  flushProjectDocument(request: PersistProjectDocumentRequest): boolean;
+  flushProjectDocument(request: PersistProjectDocumentRequest): boolean | Promise<boolean>;
   persistProjectDocument(
     request: PersistProjectDocumentRequest
   ): Promise<ProjectDocument>;
@@ -190,8 +190,15 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
         request: { databasePath, projectId }
       });
     },
-    flushProjectDocument() {
-      return false;
+    async flushProjectDocument(request) {
+      try {
+        await invokeTauri<ProjectDocument>("persist_project_document_command", {
+          request
+        });
+        return true;
+      } catch {
+        return false;
+      }
     },
     async persistProjectDocument(request) {
       return invokeTauri<ProjectDocument>("persist_project_document_command", {
