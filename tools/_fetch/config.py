@@ -33,6 +33,10 @@ def load_config(config_path: Path, output_dir_override: Optional[Path] = None) -
     entries: list[AssetEntry] = []
     for category in CATEGORIES:
         for key, val in (data.get(category) or {}).items():
+            if not val.get("queries"):
+                raise ValueError(
+                    f"Entry '{key}' in category '{category}' is missing a non-empty 'queries' list"
+                )
             entries.append(AssetEntry(
                 key=key,
                 category=category,
