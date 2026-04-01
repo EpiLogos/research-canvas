@@ -82,6 +82,16 @@ function CanvasViewInner({
 }: CanvasViewProps) {
   const { screenToFlowPosition, setCenter, getZoom } = useReactFlow();
 
+  const getViewportCenter = useCallback(() => {
+    const container = document.querySelector('.canvas-flow') as HTMLElement;
+    if (!container) return { x: 100, y: 100 };
+    const rect = container.getBoundingClientRect();
+    return screenToFlowPosition({
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
+    });
+  }, [screenToFlowPosition]);
+
   const prevNodeCountRef = useRef(nodes.length);
   useEffect(() => {
     if (nodes.length > prevNodeCountRef.current) {
@@ -166,12 +176,12 @@ function CanvasViewInner({
         if (selected) onDuplicateNode?.(selected.id);
       }
       if (e.key === "n" && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
-        onCreateNote?.();
+        onCreateNote?.(getViewportCenter());
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [nodes, selectedNodeId, onDeleteNode, onDuplicateNode, onCreateNote]);
+  }, [nodes, selectedNodeId, onDeleteNode, onDuplicateNode, onCreateNote, getViewportCenter]);
 
   const flowNodes: Node[] = nodes.map((node) => ({
     id: node.id,
@@ -299,7 +309,7 @@ function CanvasViewInner({
           y={contextMenu.y}
           onClose={closeContextMenu}
           items={[
-            { type: "item", label: "Add note", shortcut: "N", onClick: () => onCreateNote?.() },
+            { type: "item", label: "Add note", shortcut: "N", onClick: () => onCreateNote?.(getViewportCenter()) },
             {
               type: "item",
               label: "Add resource from file…",
@@ -309,7 +319,7 @@ function CanvasViewInner({
                 setContextMenu(null);
               },
             },
-            { type: "item", label: "Add group", shortcut: "G", onClick: () => onCreateGroup?.() },
+            { type: "item", label: "Add group", shortcut: "G", onClick: () => onCreateGroup?.(getViewportCenter()) },
             { type: "item", label: "Paste", shortcut: "⌘V", onClick: () => {} },
             { type: "item", label: "Select all", shortcut: "⌘A", onClick: () => {} },
           ]}
