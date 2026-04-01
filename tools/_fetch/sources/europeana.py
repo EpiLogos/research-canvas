@@ -8,14 +8,17 @@ async def fetch_europeana(
     query: str, limit: int, client: httpx.AsyncClient, api_key: str
 ) -> list[ImageResult]:
     try:
-        resp = await client.get(EUROPEANA_URL, params={
-            "query": query,
-            "qf": "TYPE:IMAGE",
-            "reusability": "open",
-            "rows": limit,
-            "profile": "rich",
-            "wskey": api_key,
-        })
+        resp = await client.get(
+            EUROPEANA_URL,
+            params={
+                "query": query,
+                "qf": "TYPE:IMAGE",
+                "reusability": "open",
+                "rows": limit,
+                "profile": "rich",
+            },
+            headers={"Authorization": f"ApiKey {api_key}"} if api_key else {},
+        )
         items = resp.json().get("items") or []
     except Exception:
         return []

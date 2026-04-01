@@ -60,3 +60,13 @@ def test_safe_filename_basic():
 def test_safe_filename_strips_query_string():
     name = safe_filename("https://cdn.example.com/img.png?w=800&h=600", "Test", 1)
     assert name.endswith(".png")
+
+
+def test_safe_filename_empty_title_uses_fallback():
+    name = safe_filename("https://example.com/img.jpg", "", 0)
+    assert name == "image-000.jpg"
+
+
+def test_safe_filename_punctuation_only_title():
+    name = safe_filename("https://example.com/img.jpg", "!!!---!!!", 0)
+    assert name == "image-000.jpg"
