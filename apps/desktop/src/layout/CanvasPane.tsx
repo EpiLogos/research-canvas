@@ -3,9 +3,11 @@ import { CanvasScreen } from "../features/canvas/CanvasScreen";
 interface CanvasPaneProps {
   onNodeSelect?: (nodeId: string) => void;
   onNodeDoubleClick?: (nodeId: string) => void;
+  leftPanelOpen?: boolean;
+  rightPanelOpen?: boolean;
 }
 
-export function CanvasPane({ onNodeSelect, onNodeDoubleClick }: CanvasPaneProps) {
+export function CanvasPane({ onNodeSelect, onNodeDoubleClick, leftPanelOpen, rightPanelOpen }: CanvasPaneProps) {
   return (
     <section
       className="canvas-pane"
@@ -15,6 +17,8 @@ export function CanvasPane({ onNodeSelect, onNodeDoubleClick }: CanvasPaneProps)
       <CanvasScreen
         onNodeSelect={onNodeSelect}
         onNodeDoubleClick={onNodeDoubleClick}
+        leftPanelOpen={leftPanelOpen}
+        rightPanelOpen={rightPanelOpen}
       />
     </section>
   );

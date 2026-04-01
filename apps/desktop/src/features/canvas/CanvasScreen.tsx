@@ -7,9 +7,11 @@ import { useCanvasWorkspace } from "./CanvasWorkspaceContext";
 interface CanvasScreenProps {
   onNodeSelect?: (nodeId: string) => void;
   onNodeDoubleClick?: (nodeId: string) => void;
+  leftPanelOpen?: boolean;
+  rightPanelOpen?: boolean;
 }
 
-export function CanvasScreen({ onNodeSelect, onNodeDoubleClick }: CanvasScreenProps) {
+export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, leftPanelOpen, rightPanelOpen }: CanvasScreenProps) {
   const workspace = useCanvasWorkspace();
   const [annotationMode, setAnnotationMode] = useState(false);
 
@@ -136,6 +138,8 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick }: CanvasScreenPr
               workspace.addResourceNode(entry, position);
             }}
             fileEntries={fileEntries}
+            leftPanelOpen={leftPanelOpen}
+            rightPanelOpen={rightPanelOpen}
           />
           <AnnotationLayer
             annotations={workspace.annotations}

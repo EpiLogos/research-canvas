@@ -43,6 +43,8 @@ interface CanvasViewProps {
   onConnectNodes?: (input: { sourceNodeId: string; targetNodeId: string; relationKind: string }) => void;
   onDeleteEdge?: (edgeId: string) => void;
   onResizeNode?: (nodeId: string, width: number, height: number) => void;
+  leftPanelOpen?: boolean;
+  rightPanelOpen?: boolean;
 }
 
 const nodeTypes: NodeTypes = {
@@ -78,9 +80,11 @@ function CanvasViewInner({
   onNodeDoubleClick,
   onConnectNodes,
   onDeleteEdge,
-  onResizeNode
+  onResizeNode,
+  leftPanelOpen,
+  rightPanelOpen
 }: CanvasViewProps) {
-  const { screenToFlowPosition, setCenter, getZoom } = useReactFlow();
+  const { screenToFlowPosition, setCenter, getZoom, fitView } = useReactFlow();
 
   const getViewportCenter = useCallback(() => {
     const container = document.querySelector('.canvas-flow') as HTMLElement;
@@ -105,6 +109,11 @@ function CanvasViewInner({
     }
     prevNodeCountRef.current = nodes.length;
   }, [nodes, setCenter, getZoom]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => fitView({ padding: 0.15 }), 200);
+    return () => clearTimeout(timer);
+  }, [leftPanelOpen, rightPanelOpen, fitView]);
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;

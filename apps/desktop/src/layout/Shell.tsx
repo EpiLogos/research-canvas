@@ -80,6 +80,8 @@ export function Shell() {
         <CanvasPane
           onNodeSelect={handleNodeSelect}
           onNodeDoubleClick={handleNodeDoubleClick}
+          leftPanelOpen={layout.leftOpen}
+          rightPanelOpen={layout.rightOpen}
         />
 
         <RightPanelSlot
