@@ -22,15 +22,17 @@ export function NoteNode({ data, selected }: NodeProps<NoteNodeType>) {
         lineStyle={{ borderColor: "rgba(74, 74, 255, 0.5)" }}
         handleStyle={{ borderColor: "rgba(74, 74, 255, 0.8)", background: "#0e0e22" }}
       />
-      <Handle type="target" position={Position.Top} className="flow-handle" />
-      <AdaptiveNode
-        nodeType="note"
-        title={data.title}
-        summary={data.summary}
-        selected={selected}
-        style={data.style}
-      />
-      <Handle type="source" position={Position.Bottom} className="flow-handle" />
+      <div style={{ width: "100%", height: "100%", position: "relative" }}>
+        <Handle type="target" position={Position.Top} className="flow-handle" />
+        <AdaptiveNode
+          nodeType="note"
+          title={data.title}
+          summary={data.summary}
+          selected={selected}
+          style={data.style}
+        />
+        <Handle type="source" position={Position.Bottom} className="flow-handle" />
+      </div>
     </>
   );
 }

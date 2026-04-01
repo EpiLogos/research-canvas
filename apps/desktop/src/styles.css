@@ -2160,7 +2160,7 @@ body[data-shell-dragging="true"] {
   border-radius: 5px;
   padding: 6px 9px;
   min-width: 120px;
-  max-width: 240px;
+  max-width: 100%;
   flex-wrap: wrap;
   gap: 3px;
 }

@@ -23,15 +23,17 @@ export function ResourceNode({ data, selected }: NodeProps<ResourceNodeType>) {
         lineStyle={{ borderColor: "rgba(39, 174, 96, 0.5)" }}
         handleStyle={{ borderColor: "rgba(39, 174, 96, 0.8)", background: "#0a140a" }}
       />
-      <Handle type="target" position={Position.Top} className="flow-handle" />
-      <AdaptiveNode
-        nodeType="resource"
-        title={data.title}
-        summary={data.summary}
-        selected={selected}
-        style={data.style}
-      />
-      <Handle type="source" position={Position.Bottom} className="flow-handle" />
+      <div style={{ width: "100%", height: "100%", position: "relative" }}>
+        <Handle type="target" position={Position.Top} className="flow-handle" />
+        <AdaptiveNode
+          nodeType="resource"
+          title={data.title}
+          summary={data.summary}
+          selected={selected}
+          style={data.style}
+        />
+        <Handle type="source" position={Position.Bottom} className="flow-handle" />
+      </div>
     </>
   );
 }

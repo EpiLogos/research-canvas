@@ -51,6 +51,9 @@ export function AdaptiveNode({ nodeType, title, summary, selected, style }: Adap
           "--dot-colour": dotColour,
           "--node-bg": bgColour,
           "--node-text": textColour,
+          width: "100%",
+          height: "100%",
+          overflow: "hidden",
         } as React.CSSProperties
       }
     >
