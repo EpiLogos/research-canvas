@@ -198,6 +198,8 @@ function CanvasViewInner({
             : node.summary,
       title: node.title,
       content: node.type === "note" ? node.content : undefined,
+      resourceKind: node.type === "resource" ? node.resourceKind : undefined,
+      absolutePath: node.type === "resource" ? node.absolutePath : undefined,
       style: {
         dotColour: node.dotColour ?? undefined,
         bgColour: node.bgColour ?? undefined,

@@ -31,6 +31,8 @@ export function ResourceNode({ data, selected }: NodeProps<ResourceNodeType>) {
           summary={data.summary}
           selected={selected}
           style={data.style}
+          resourceKind={data.resourceKind}
+          absolutePath={data.absolutePath}
         />
         <Handle type="source" position={Position.Bottom} className="flow-handle" />
       </div>

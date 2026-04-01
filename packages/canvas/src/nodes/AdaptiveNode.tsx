@@ -31,9 +31,11 @@ interface AdaptiveNodeProps {
   summary?: string;
   selected?: boolean;
   style?: AdaptiveNodeStyle;
+  resourceKind?: string;
+  absolutePath?: string;
 }
 
-export function AdaptiveNode({ nodeType, title, summary, selected, style }: AdaptiveNodeProps) {
+export function AdaptiveNode({ nodeType, title, summary, selected, style, resourceKind, absolutePath }: AdaptiveNodeProps) {
   const { zoom } = useViewport();
   const level = getZoomLevel(zoom);
 
@@ -62,10 +64,16 @@ export function AdaptiveNode({ nodeType, title, summary, selected, style }: Adap
       {level === "card" && (
         <>
           <span className="an-type">{nodeType}</span>
-          {summary && <span className="an-summary">{summary}</span>}
-          {style?.thumbnail && (
+          {resourceKind === "image" && absolutePath ? (
+            <img
+              className="an-thumbnail"
+              src={`asset://localhost/${absolutePath}`}
+              alt=""
+            />
+          ) : style?.thumbnail ? (
             <img className="an-thumbnail" src={style.thumbnail} alt="" />
-          )}
+          ) : null}
+          {summary && <span className="an-summary">{summary}</span>}
         </>
       )}
     </div>
