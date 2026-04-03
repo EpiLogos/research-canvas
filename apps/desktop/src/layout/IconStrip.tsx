@@ -1,6 +1,6 @@
 interface IconStripProps {
   leftOpen: boolean;
-  activeLeftMode: string;
+  activeLeftMode: "files" | "search" | "annotations";
   onToggleLeft: () => void;
   onSetLeftMode: (mode: "files" | "search" | "annotations") => void;
   onOpenSequences: () => void;

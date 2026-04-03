@@ -16,8 +16,8 @@ export function Shell() {
   const [leftMode, setLeftMode] = useState<"files" | "search" | "annotations">("files");
   const [sequencesOpen, setSequencesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  void sequencesOpen;
-  void settingsOpen;
+  void sequencesOpen; // TODO: wire to SequencesManager overlay in Task 8
+  void settingsOpen;  // TODO: wire to SettingsOverlay in Task 10
 
   const handleSetLeftMode = useCallback((mode: "files" | "search" | "annotations") => {
     setLeftMode(mode);
