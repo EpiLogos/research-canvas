@@ -5,7 +5,6 @@ import { canvasSchema } from "./canvas";
 import { edgeSchema } from "./edge";
 import { nodeSchema } from "./node";
 import { projectSchema } from "./project";
-import { sequenceSchema, sequenceStepSchema } from "./sequence";
 
 export const exportAssetSchema = z.object({
   nodeId: z.string().uuid(),
@@ -22,16 +21,12 @@ export const exportBundleSchema = z
     canvases: z.array(canvasSchema),
     nodes: z.array(nodeSchema),
     edges: z.array(edgeSchema),
-    sequences: z.array(sequenceSchema),
-    sequenceSteps: z.array(sequenceStepSchema),
     annotations: z.array(annotationSchema),
     assets: z.array(exportAssetSchema).default([])
   })
   .superRefine((bundle, ctx) => {
     const canvasIds = new Set(bundle.canvases.map((canvas) => canvas.id));
     const nodeIds = new Set(bundle.nodes.map((node) => node.id));
-    const edgeIds = new Set(bundle.edges.map((edge) => edge.id));
-    const sequenceIds = new Set(bundle.sequences.map((sequence) => sequence.id));
 
     if (!canvasIds.has(bundle.project.primaryCanvasId)) {
       ctx.addIssue({
@@ -83,50 +78,6 @@ export const exportBundleSchema = z
           code: z.ZodIssueCode.custom,
           message: "edge.targetNodeId must reference a bundle node",
           path: ["edges", index, "targetNodeId"]
-        });
-      }
-    });
-
-    bundle.sequences.forEach((sequence, index) => {
-      if (sequence.projectId !== bundle.project.id) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "sequence.projectId must match the bundle project",
-          path: ["sequences", index, "projectId"]
-        });
-      }
-
-      if (!canvasIds.has(sequence.canvasId)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "sequence.canvasId must reference one of the bundle canvases",
-          path: ["sequences", index, "canvasId"]
-        });
-      }
-    });
-
-    bundle.sequenceSteps.forEach((step, index) => {
-      if (!sequenceIds.has(step.sequenceId)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "sequenceStep.sequenceId must reference a bundle sequence",
-          path: ["sequenceSteps", index, "sequenceId"]
-        });
-      }
-
-      if (step.targetType === "node" && !nodeIds.has(step.targetId)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "node sequence steps must reference a bundle node",
-          path: ["sequenceSteps", index, "targetId"]
-        });
-      }
-
-      if (step.targetType === "edge" && !edgeIds.has(step.targetId)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "edge sequence steps must reference a bundle edge",
-          path: ["sequenceSteps", index, "targetId"]
         });
       }
     });

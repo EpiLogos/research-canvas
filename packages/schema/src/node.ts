@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import { viewportSchema } from "./canvas";
+
+const nullToUndefined = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((value) => (value === null ? undefined : value), schema);
+
 export const positionSchema = z.object({
   x: z.number(),
   y: z.number()
@@ -17,10 +22,12 @@ const baseNodeSchema = z.object({
   position: positionSchema,
   size: sizeSchema,
   summary: z.string().default(""),
-  dotColour: z.string().optional(),
-  bgColour: z.string().optional(),
-  textColour: z.string().optional(),
-  thumbnail: z.string().optional(),
+  dotColour: nullToUndefined(z.string().optional()),
+  bgColour: nullToUndefined(z.string().optional()),
+  textColour: nullToUndefined(z.string().optional()),
+  thumbnail: nullToUndefined(z.string().optional()),
+  sequenceCaption: nullToUndefined(z.string().nullable().default(null)),
+  sequenceViewport: nullToUndefined(viewportSchema.nullable().default(null)),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime()
 });
@@ -32,7 +39,7 @@ export const resourceNodeSchema = baseNodeSchema.extend({
   relativePath: z.string().min(1),
   mimeType: z.string().min(1),
   fileFingerprint: z.string().min(1),
-  url: z.string().url().optional()
+  url: nullToUndefined(z.string().url().optional())
 });
 
 export const noteNodeSchema = baseNodeSchema.extend({
@@ -66,4 +73,3 @@ export type NoteNode = z.infer<typeof noteNodeSchema>;
 export type GroupNode = z.infer<typeof groupNodeSchema>;
 export type PortalNode = z.infer<typeof portalNodeSchema>;
 export type CanvasNode = z.infer<typeof nodeSchema>;
-

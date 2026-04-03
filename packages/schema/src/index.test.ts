@@ -6,8 +6,7 @@ import {
   exportBundleSchema,
   noteNodeSchema,
   projectSchema,
-  sequenceSchema,
-  sequenceStepSchema
+  resourceNodeSchema,
 } from "./index";
 
 const now = "2026-03-30T20:00:00.000Z";
@@ -76,6 +75,53 @@ describe("schema package", () => {
     expect(parsed.tags).toContain("thesis");
   });
 
+  it("accepts nullable node style fields and nullable edge handles from persisted payloads", () => {
+    const node = resourceNodeSchema.parse({
+      id: "f83d047c-9fca-4dfe-b8d6-3f763e20da1b",
+      canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
+      type: "resource",
+      title: "README.md",
+      position: { x: 320, y: 180 },
+      size: { width: 320, height: 240 },
+      summary: "Working summary",
+      resourceKind: "markdown",
+      absolutePath: "/tmp/README.md",
+      relativePath: "README.md",
+      mimeType: "text/markdown",
+      fileFingerprint: "markdown:README.md",
+      dotColour: null,
+      bgColour: null,
+      textColour: null,
+      thumbnail: null,
+      url: null,
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const edge = edgeSchema.parse({
+      id: "d225ce1d-cac5-472d-9230-9a403b8b29bb",
+      canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
+      sourceNodeId: "d44a3b4a-22ad-4086-8c6b-d7d767d5fe12",
+      targetNodeId: "e2fb2674-b4a7-4261-8f17-9ff8d1e1a6fe",
+      sourceHandleId: null,
+      targetHandleId: null,
+      relationKind: "supports",
+      directionality: "forward",
+      label: "Supports thesis",
+      note: "The report establishes the premise.",
+      style: {
+        stroke: "#1f2937",
+        width: 2,
+        dashed: false
+      },
+      createdAt: now,
+      updatedAt: now
+    });
+
+    expect(node.dotColour).toBeUndefined();
+    expect(edge.sourceHandleId).toBeUndefined();
+  });
+
   it("validates annotation points with bounds", () => {
     const parsed = annotationSchema.parse({
       id: "f4d1ff01-e7da-456b-b7c7-4db776822d4f",
@@ -101,35 +147,82 @@ describe("schema package", () => {
     expect(parsed.points).toHaveLength(2);
   });
 
-  it("validates sequence and step payloads for guided traversal", () => {
-    const sequence = sequenceSchema.parse({
-      id: "23705ca7-95f7-43f6-9a89-9262d493b7ca",
-      projectId: "2a2edca9-e4af-4b2d-b1aa-7353f2bb20f4",
-      canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
-      name: "Episode flow",
-      kind: "presentation",
-      description: "Core traversal for the public companion",
-      published: true,
-      createdAt: now,
-      updatedAt: now
+  it("validates edge with sequencing fields", () => {
+    const edge = edgeSchema.parse({
+      id: crypto.randomUUID(),
+      canvasId: crypto.randomUUID(),
+      sourceNodeId: crypto.randomUUID(),
+      targetNodeId: crypto.randomUUID(),
+      relationKind: "causes",
+      directionality: "forward",
+      label: "causes",
+      note: "",
+      style: { stroke: "#f0b45a", width: 2, dashed: false },
+      sequencing: true,
+      sequencePriority: 10,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     });
 
-    const step = sequenceStepSchema.parse({
-      id: "0f0e278c-ee50-4ea0-a057-4660dd32e70a",
-      sequenceId: sequence.id,
-      position: 0,
-      targetType: "node",
-      targetId: "f83d047c-9fca-4dfe-b8d6-3f763e20da1a",
-      caption: "Open on the thesis note.",
-      viewport: {
-        x: 120,
-        y: 80,
-        zoom: 1.1
-      },
-      transitionHint: "ease"
+    expect(edge.sequencing).toBe(true);
+    expect(edge.sequencePriority).toBe(10);
+  });
+
+  it("edge sequencing defaults to false and priority to 0", () => {
+    const edge = edgeSchema.parse({
+      id: crypto.randomUUID(),
+      canvasId: crypto.randomUUID(),
+      sourceNodeId: crypto.randomUUID(),
+      targetNodeId: crypto.randomUUID(),
+      relationKind: "reference",
+      directionality: "forward",
+      label: "ref",
+      note: "",
+      style: { stroke: "#f0b45a", width: 2, dashed: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     });
 
-    expect(step.sequenceId).toBe(sequence.id);
+    expect(edge.sequencing).toBe(false);
+    expect(edge.sequencePriority).toBe(0);
+  });
+
+  it("validates node with optional sequence caption and viewport", () => {
+    const node = noteNodeSchema.parse({
+      id: crypto.randomUUID(),
+      canvasId: crypto.randomUUID(),
+      type: "note",
+      title: "Test",
+      position: { x: 0, y: 0 },
+      size: { width: 200, height: 150 },
+      content: "hello",
+      tags: [],
+      sequenceCaption: "This is the opening shot",
+      sequenceViewport: { x: 100, y: 200, zoom: 1.5 },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    expect(node.sequenceCaption).toBe("This is the opening shot");
+    expect(node.sequenceViewport).toEqual({ x: 100, y: 200, zoom: 1.5 });
+  });
+
+  it("node sequence fields default to null when omitted", () => {
+    const node = noteNodeSchema.parse({
+      id: crypto.randomUUID(),
+      canvasId: crypto.randomUUID(),
+      type: "note",
+      title: "Test",
+      position: { x: 0, y: 0 },
+      size: { width: 200, height: 150 },
+      content: "hello",
+      tags: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    expect(node.sequenceCaption).toBeNull();
+    expect(node.sequenceViewport).toBeNull();
   });
 
   it("validates export bundle payloads with nested graph data", () => {
@@ -183,35 +276,6 @@ describe("schema package", () => {
         }
       ],
       edges: [],
-      sequences: [
-        {
-          id: "23705ca7-95f7-43f6-9a89-9262d493b7ca",
-          projectId: "2a2edca9-e4af-4b2d-b1aa-7353f2bb20f4",
-          canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
-          name: "Episode flow",
-          kind: "presentation",
-          description: "Core traversal for the public companion",
-          published: true,
-          createdAt: now,
-          updatedAt: now
-        }
-      ],
-      sequenceSteps: [
-        {
-          id: "0f0e278c-ee50-4ea0-a057-4660dd32e70a",
-          sequenceId: "23705ca7-95f7-43f6-9a89-9262d493b7ca",
-          position: 0,
-          targetType: "node",
-          targetId: "f83d047c-9fca-4dfe-b8d6-3f763e20da1a",
-          caption: "Open on the thesis note.",
-          viewport: {
-            x: 120,
-            y: 80,
-            zoom: 1.1
-          },
-          transitionHint: "ease"
-        }
-      ],
       annotations: [
         {
           id: "f4d1ff01-e7da-456b-b7c7-4db776822d4f",
@@ -237,6 +301,5 @@ describe("schema package", () => {
     });
 
     expect(bundle.nodes).toHaveLength(1);
-    expect(bundle.sequenceSteps[0].transitionHint).toBe("ease");
   });
 });
