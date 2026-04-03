@@ -45,6 +45,8 @@ pub struct CanvasNodeRecord {
     pub bg_colour: Option<String>,
     pub text_colour: Option<String>,
     pub thumbnail: Option<String>,
+    pub sequence_caption: Option<String>,
+    pub sequence_viewport_json: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -55,11 +57,15 @@ pub struct CanvasEdgeRecord {
     pub canvas_id: String,
     pub source_node_id: String,
     pub target_node_id: String,
+    pub source_handle_id: Option<String>,
+    pub target_handle_id: Option<String>,
     pub relation_kind: String,
     pub directionality: String,
     pub label: String,
     pub note: String,
     pub style_json: String,
+    pub sequencing: bool,
+    pub sequence_priority: i64,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -270,6 +276,28 @@ impl<'conn> CanvasGraphRepository<'conn> {
         target_node_id: &str,
         relation_kind: &str,
     ) -> Result<CanvasEdgeRecord> {
+        self.connect_nodes_with_handles(
+            canvas_id,
+            source_node_id,
+            target_node_id,
+            relation_kind,
+            None,
+            None,
+            "forward",
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn connect_nodes_with_handles(
+        &self,
+        canvas_id: &str,
+        source_node_id: &str,
+        target_node_id: &str,
+        relation_kind: &str,
+        source_handle_id: Option<&str>,
+        target_handle_id: Option<&str>,
+        directionality: &str,
+    ) -> Result<CanvasEdgeRecord> {
         let id = Uuid::new_v4().to_string();
         let now = current_timestamp();
         self.connection.execute(
@@ -278,6 +306,8 @@ impl<'conn> CanvasGraphRepository<'conn> {
                 canvas_id,
                 source_node_id,
                 target_node_id,
+                source_handle_id,
+                target_handle_id,
                 relation_kind,
                 directionality,
                 label,
@@ -285,13 +315,16 @@ impl<'conn> CanvasGraphRepository<'conn> {
                 style_json,
                 created_at,
                 updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, 'forward', ?6, '', ?7, ?8, ?8)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, '', ?10, ?11, ?11)",
             params![
                 id,
                 canvas_id,
                 source_node_id,
                 target_node_id,
+                source_handle_id,
+                target_handle_id,
                 relation_kind,
+                directionality,
                 relation_kind,
                 default_edge_style_json(),
                 now,
@@ -340,6 +373,8 @@ impl<'conn> CanvasGraphRepository<'conn> {
                 bg_colour,
                 text_colour,
                 thumbnail,
+                sequence_caption,
+                sequence_viewport_json,
                 created_at,
                 updated_at
              FROM canvas_nodes
@@ -355,11 +390,15 @@ impl<'conn> CanvasGraphRepository<'conn> {
                 canvas_id,
                 source_node_id,
                 target_node_id,
+                source_handle_id,
+                target_handle_id,
                 relation_kind,
                 directionality,
                 label,
                 note,
                 style_json,
+                sequencing,
+                sequence_priority,
                 created_at,
                 updated_at
              FROM canvas_edges
@@ -400,6 +439,8 @@ impl<'conn> CanvasGraphRepository<'conn> {
                     bg_colour,
                     text_colour,
                     thumbnail,
+                    sequence_caption,
+                    sequence_viewport_json,
                     created_at,
                     updated_at
                  FROM canvas_nodes
@@ -504,19 +545,65 @@ impl<'conn> CanvasGraphRepository<'conn> {
             .ok_or(rusqlite::Error::QueryReturnedNoRows)
     }
 
+    pub fn update_edge_sequencing(
+        &self,
+        edge_id: &str,
+        sequencing: bool,
+        sequence_priority: i64,
+    ) -> Result<()> {
+        let now = current_timestamp();
+        self.connection.execute(
+            "UPDATE canvas_edges
+             SET sequencing = ?1,
+                 sequence_priority = ?2,
+                 updated_at = ?3
+             WHERE id = ?4",
+            params![sequencing as i64, sequence_priority, now, edge_id],
+        )?;
+        if self.connection.changes() == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
+        Ok(())
+    }
+
+    pub fn update_node_sequence_fields(
+        &self,
+        node_id: &str,
+        sequence_caption: Option<&str>,
+        sequence_viewport_json: Option<&str>,
+    ) -> Result<()> {
+        let now = current_timestamp();
+        self.connection.execute(
+            "UPDATE canvas_nodes
+             SET sequence_caption = ?1,
+                 sequence_viewport_json = ?2,
+                 updated_at = ?3
+             WHERE id = ?4",
+            params![sequence_caption, sequence_viewport_json, now, node_id],
+        )?;
+        if self.connection.changes() == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
+        Ok(())
+    }
+
     fn get_edge_by_id(&self, edge_id: &str) -> Result<Option<CanvasEdgeRecord>> {
         self.connection
             .query_row(
-                "SELECT
+            "SELECT
                     id,
                     canvas_id,
                     source_node_id,
                     target_node_id,
+                    source_handle_id,
+                    target_handle_id,
                     relation_kind,
                     directionality,
                     label,
                     note,
                     style_json,
+                    sequencing,
+                    sequence_priority,
                     created_at,
                     updated_at
                  FROM canvas_edges
@@ -567,8 +654,10 @@ fn canvas_node_from_row(row: &rusqlite::Row<'_>) -> Result<CanvasNodeRecord> {
         bg_colour: row.get(21)?,
         text_colour: row.get(22)?,
         thumbnail: row.get(23)?,
-        created_at: row.get(24)?,
-        updated_at: row.get(25)?,
+        sequence_caption: row.get(24)?,
+        sequence_viewport_json: row.get(25)?,
+        created_at: row.get(26)?,
+        updated_at: row.get(27)?,
     })
 }
 
@@ -578,13 +667,17 @@ fn canvas_edge_from_row(row: &rusqlite::Row<'_>) -> Result<CanvasEdgeRecord> {
         canvas_id: row.get(1)?,
         source_node_id: row.get(2)?,
         target_node_id: row.get(3)?,
-        relation_kind: row.get(4)?,
-        directionality: row.get(5)?,
-        label: row.get(6)?,
-        note: row.get(7)?,
-        style_json: row.get(8)?,
-        created_at: row.get(9)?,
-        updated_at: row.get(10)?,
+        source_handle_id: row.get(4)?,
+        target_handle_id: row.get(5)?,
+        relation_kind: row.get(6)?,
+        directionality: row.get(7)?,
+        label: row.get(8)?,
+        note: row.get(9)?,
+        style_json: row.get(10)?,
+        sequencing: row.get::<_, i64>(11)? != 0,
+        sequence_priority: row.get(12)?,
+        created_at: row.get(13)?,
+        updated_at: row.get(14)?,
     })
 }
 

@@ -68,6 +68,43 @@ fn persists_nodes_edges_and_edge_notes_for_a_canvas_snapshot() {
 }
 
 #[test]
+fn edge_anchor_metadata_round_trips_through_the_repository() {
+    let dir = tempfile::tempdir().unwrap();
+    let (db, _pid, canvas_id) = make_test_canvas(&dir);
+    let conn = db.connection();
+    let graph = CanvasGraphRepository::new(conn);
+
+    let source = graph
+        .create_note_node(&canvas_id, "Source", "", 0.0, 0.0)
+        .unwrap();
+    let target = graph
+        .create_note_node(&canvas_id, "Target", "", 200.0, 0.0)
+        .unwrap();
+
+    let edge = graph
+        .connect_nodes_with_handles(
+            &canvas_id,
+            &source.id,
+            &target.id,
+            "supports",
+            Some("source-right"),
+            Some("target-left"),
+            "bidirectional",
+        )
+        .unwrap();
+
+    let snapshot = graph.load_canvas_snapshot(&canvas_id).unwrap();
+    let persisted = snapshot
+        .edges
+        .iter()
+        .find(|candidate| candidate.id == edge.id)
+        .unwrap();
+    assert_eq!(persisted.source_handle_id.as_deref(), Some("source-right"));
+    assert_eq!(persisted.target_handle_id.as_deref(), Some("target-left"));
+    assert_eq!(persisted.directionality, "bidirectional");
+}
+
+#[test]
 fn style_fields_round_trip() {
     let dir = tempfile::tempdir().unwrap();
     let db = Database::open(dir.path().join("test.db")).unwrap();
@@ -188,4 +225,46 @@ fn create_group_node_test() {
     let node = graph.create_group_node(&canvas_id, "Movement 2", "#e67e22", 0.0, 0.0).unwrap();
     assert_eq!(node.node_type, "group");
     assert_eq!(node.color.as_deref(), Some("#e67e22"));
+}
+
+#[test]
+fn sequencing_fields_round_trip_through_the_repository() {
+    let dir = tempfile::tempdir().unwrap();
+    let (db, _pid, canvas_id) = make_test_canvas(&dir);
+    let conn = db.connection();
+    let graph = CanvasGraphRepository::new(conn);
+
+    let node_a = graph
+        .create_note_node(&canvas_id, "A", "content a", 0.0, 0.0)
+        .unwrap();
+    let node_b = graph
+        .create_note_node(&canvas_id, "B", "content b", 100.0, 0.0)
+        .unwrap();
+    let edge = graph
+        .connect_nodes(&canvas_id, &node_a.id, &node_b.id, "causes")
+        .unwrap();
+
+    // Verify defaults
+    assert!(!edge.sequencing);
+    assert_eq!(edge.sequence_priority, 0);
+
+    // Update sequencing
+    graph.update_edge_sequencing(&edge.id, true, 10).unwrap();
+
+    let snapshot = graph.load_canvas_snapshot(&canvas_id).unwrap();
+    let loaded_edge = snapshot.edges.iter().find(|e| e.id == edge.id).unwrap();
+    assert!(loaded_edge.sequencing);
+    assert_eq!(loaded_edge.sequence_priority, 10);
+
+    // Verify node sequence fields default to None
+    let loaded_node = snapshot.nodes.iter().find(|n| n.id == node_a.id).unwrap();
+    assert!(loaded_node.sequence_caption.is_none());
+    assert!(loaded_node.sequence_viewport_json.is_none());
+
+    // Update node sequence fields
+    graph.update_node_sequence_fields(&node_a.id, Some("Opening"), Some(r#"{"x":1,"y":2,"zoom":1.5}"#)).unwrap();
+    let snapshot2 = graph.load_canvas_snapshot(&canvas_id).unwrap();
+    let loaded_node2 = snapshot2.nodes.iter().find(|n| n.id == node_a.id).unwrap();
+    assert_eq!(loaded_node2.sequence_caption.as_deref(), Some("Opening"));
+    assert_eq!(loaded_node2.sequence_viewport_json.as_deref(), Some(r#"{"x":1,"y":2,"zoom":1.5}"#));
 }

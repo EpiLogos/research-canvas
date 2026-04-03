@@ -28,6 +28,14 @@ const MIGRATIONS: &[Migration] = &[
         version: "0004_node_style_fields",
         sql: include_str!("../../migrations/0004_node_style_fields.sql"),
     },
+    Migration {
+        version: "0005_edge_anchor_fields",
+        sql: include_str!("../../migrations/0005_edge_anchor_fields.sql"),
+    },
+    Migration {
+        version: "0006_sequence_redesign",
+        sql: include_str!("../../migrations/0006_sequence_redesign.sql"),
+    },
 ];
 
 impl MigrationRunner {

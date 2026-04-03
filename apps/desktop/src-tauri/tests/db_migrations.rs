@@ -35,8 +35,8 @@ fn db_migrations_applies_initial_migration_to_a_real_temp_database() {
     assert!(table_exists(connection, "canvas_nodes"));
     assert!(table_exists(connection, "canvas_edges"));
     assert!(table_exists(connection, "canvas_annotations"));
-    assert!(table_exists(connection, "sequences"));
-    assert!(table_exists(connection, "sequence_steps"));
+    assert!(!table_exists(connection, "sequences"));
+    assert!(!table_exists(connection, "sequence_steps"));
     assert!(table_exists(connection, "search_documents"));
     assert!(table_exists(connection, "project_resource_roots"));
 
@@ -45,7 +45,7 @@ fn db_migrations_applies_initial_migration_to_a_real_temp_database() {
             row.get(0)
         })
         .expect("migration count");
-    assert_eq!(applied_migrations, 4);
+    assert_eq!(applied_migrations, 6);
 }
 
 #[test]
@@ -60,5 +60,5 @@ fn db_migrations_migration_runner_is_idempotent_and_deterministic() {
             row.get(0)
         })
         .expect("migration count");
-    assert_eq!(applied_migrations, 4);
+    assert_eq!(applied_migrations, 6);
 }
