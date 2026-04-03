@@ -13,13 +13,24 @@ export function Shell() {
   const workspace = useCanvasWorkspace();
   const [fullScreenMode, setFullScreenMode] = useState<"closed" | "node" | "sequence">("closed");
   const closeFullScreen = useCallback(() => setFullScreenMode("closed"), []);
+  const [leftMode, setLeftMode] = useState<"files" | "search" | "annotations">("files");
+  const [sequencesOpen, setSequencesOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  void sequencesOpen;
+  void settingsOpen;
+
+  const handleSetLeftMode = useCallback((mode: "files" | "search" | "annotations") => {
+    setLeftMode(mode);
+    layout.setLeftOpen(true);
+  }, [layout]);
 
   // Global keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
-        // TODO: wire to CommandPalette in Task 10
+        setLeftMode("search");
+        layout.setLeftOpen(true);
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "t") {
         e.preventDefault();
@@ -69,13 +80,17 @@ export function Shell() {
     >
       <IconStrip
         leftOpen={layout.leftOpen}
+        activeLeftMode={leftMode}
         onToggleLeft={layout.toggleLeft}
-        onOpenRightTab={layout.openRightTab}
+        onSetLeftMode={handleSetLeftMode}
+        onOpenSequences={() => setSequencesOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
 
       <div className="shell-canvas-area">
         <LeftOverlay
           open={layout.leftOpen}
+          mode={leftMode}
           onResizeStart={layout.beginLeftResize}
         />
 

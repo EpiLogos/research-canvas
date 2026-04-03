@@ -1,9 +1,10 @@
-import type { RightTab } from "./useShellLayout";
-
 interface IconStripProps {
   leftOpen: boolean;
+  activeLeftMode: string;
   onToggleLeft: () => void;
-  onOpenRightTab?: (tab: RightTab) => void;
+  onSetLeftMode: (mode: "files" | "search" | "annotations") => void;
+  onOpenSequences: () => void;
+  onOpenSettings: () => void;
 }
 
 const NAV_ICONS: { id: string; label: string; svg: string }[] = [
@@ -29,7 +30,20 @@ const NAV_ICONS: { id: string; label: string; svg: string }[] = [
   },
 ];
 
-export function IconStrip({ leftOpen, onToggleLeft }: IconStripProps) {
+export function IconStrip({ leftOpen, activeLeftMode, onToggleLeft, onSetLeftMode, onOpenSequences, onOpenSettings }: IconStripProps) {
+  const handleNavClick = (id: string) => {
+    if (id === "files" || id === "search" || id === "annotate") {
+      const mode = id === "annotate" ? "annotations" : id as "files" | "search";
+      if (leftOpen && activeLeftMode === mode) {
+        onToggleLeft();
+      } else {
+        onSetLeftMode(mode);
+      }
+    } else if (id === "sequences") {
+      onOpenSequences();
+    }
+  };
+
   return (
     <aside className="icon-strip" aria-label="Navigation" data-testid="left-rail">
       <div className="icon-strip__nav">
@@ -37,10 +51,16 @@ export function IconStrip({ leftOpen, onToggleLeft }: IconStripProps) {
           <button
             key={icon.id}
             className="icon-strip__btn"
-            data-active={icon.id === "files" && leftOpen ? "true" : undefined}
+            data-active={
+              (icon.id === "files" && leftOpen && activeLeftMode === "files") ||
+              (icon.id === "search" && leftOpen && activeLeftMode === "search") ||
+              (icon.id === "annotate" && leftOpen && activeLeftMode === "annotations")
+                ? "true"
+                : undefined
+            }
             title={icon.label}
             aria-label={icon.label}
-            onClick={icon.id === "files" ? onToggleLeft : undefined}
+            onClick={() => handleNavClick(icon.id)}
             dangerouslySetInnerHTML={{ __html: icon.svg }}
           />
         ))}
@@ -50,6 +70,7 @@ export function IconStrip({ leftOpen, onToggleLeft }: IconStripProps) {
           className="icon-strip__btn"
           title="Settings"
           aria-label="Settings"
+          onClick={onOpenSettings}
           dangerouslySetInnerHTML={{
             __html: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.2 3.2l1.4 1.4M11.4 11.4l1.4 1.4M3.2 12.8l1.4-1.4M11.4 4.6l1.4-1.4"/></svg>`,
           }}
