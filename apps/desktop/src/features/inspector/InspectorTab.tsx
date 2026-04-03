@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+import { walkSequenceGraph } from "@research-canvas/canvas";
 import { useCanvasWorkspace } from "../canvas/CanvasWorkspaceContext";
 import { WorkspaceFilePickerButton } from "../canvas/WorkspaceFilePickerButton";
 
@@ -46,6 +48,13 @@ function ColourRow({
 export function InspectorTab() {
   const workspace = useCanvasWorkspace();
   const node = workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
+
+  const sequenceGraph = useMemo(
+    () => walkSequenceGraph(workspace.nodes, workspace.edges),
+    [workspace.nodes, workspace.edges]
+  );
+
+  const nodeInSequence = node ? sequenceGraph.nodeSet.has(node.id) : false;
 
   if (!node) {
     return (
@@ -96,6 +105,42 @@ export function InspectorTab() {
           }}
         />
       </div>
+      {nodeInSequence && (
+        <>
+          <div className="inspector-section-title">Sequence</div>
+          <div className="inspector-field">
+            <label className="inspector-label">Caption</label>
+            <input
+              className="inspector-value inspector-value--input"
+              type="text"
+              value={node.sequenceCaption ?? ""}
+              placeholder={node.summary || "No caption"}
+              onChange={(e) =>
+                workspace.store.getState().updateNodeSequenceCaption(node.id, e.target.value || null)
+              }
+            />
+          </div>
+          <div className="inspector-field">
+            <label className="inspector-label">Viewport</label>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button
+                className="inspector-value inspector-value--btn"
+                onClick={() => workspace.store.getState().setNodeSequenceViewport(node.id, workspace.captureViewport())}
+              >
+                Capture current
+              </button>
+              {node.sequenceViewport && (
+                <button
+                  className="inspector-value inspector-value--btn"
+                  onClick={() => workspace.store.getState().setNodeSequenceViewport(node.id, null)}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

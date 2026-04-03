@@ -7,6 +7,7 @@ export * from "./nodes/GroupNode";
 export * from "./nodes/NoteNode";
 export * from "./nodes/ResourceNode";
 export * from "./sequences/playbackReducer";
+export * from "./sequences/SequenceMap";
 export * from "./sequences/SequencePresenter";
 export * from "./sequences/walkSequenceGraph";
 export * from "./state/canvasStore";

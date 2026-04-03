@@ -4,7 +4,6 @@ import {
   Background,
   Controls,
   MarkerType,
-  MiniMap,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
@@ -28,6 +27,8 @@ import type {
 
 import { AnnotationLayer } from "./annotations/AnnotationLayer";
 import { AnnotatedEdge } from "./edges/AnnotatedEdge";
+import { SequenceMap } from "./sequences/SequenceMap";
+import { walkSequenceGraph } from "./sequences/walkSequenceGraph";
 import { ContextMenu } from "./components/ContextMenu";
 import { FuzzyFilePicker, type FileEntry } from "./components/FuzzyFilePicker";
 import { GroupNode } from "./nodes/GroupNode";
@@ -233,6 +234,11 @@ function CanvasViewInner({
   useEffect(() => {
     onRegisterCaptureViewport?.(() => getViewport());
   }, [getViewport, onRegisterCaptureViewport]);
+
+  const sequenceGraph = useMemo(
+    () => walkSequenceGraph(nodes, edges),
+    [nodes, edges]
+  );
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -519,7 +525,13 @@ function CanvasViewInner({
       >
         <Background color="rgba(244, 232, 208, 0.08)" gap={24} />
         <Controls showInteractive={false} />
-        <MiniMap pannable zoomable />
+        {sequenceGraph.nodeSet.size > 0 && (
+          <SequenceMap
+            graph={sequenceGraph}
+            nodes={nodes}
+            onClickNode={(nodeId) => flyToNode(nodeId)}
+          />
+        )}
       </ReactFlow>
       <AnnotationLayer
         annotations={annotations}
