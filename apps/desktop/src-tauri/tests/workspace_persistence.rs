@@ -69,6 +69,8 @@ fn node_with_note_text(canvas_id: &str, id: &str, title: &str, content: &str) ->
         bg_colour: None,
         text_colour: None,
         thumbnail: None,
+        sequence_caption: None,
+        sequence_viewport: None,
         created_at: session_timestamp(),
         updated_at: session_timestamp(),
     }
@@ -101,6 +103,8 @@ fn resource_node(canvas_id: &str, id: &str, title: &str) -> CanvasNodePayload {
         bg_colour: None,
         text_colour: None,
         thumbnail: None,
+        sequence_caption: None,
+        sequence_viewport: None,
         created_at: session_timestamp(),
         updated_at: session_timestamp(),
     }
@@ -128,6 +132,8 @@ fn connecting_edge(
             width: 2.0,
             dashed: false,
         },
+        sequencing: false,
+        sequence_priority: 0,
         created_at: session_timestamp(),
         updated_at: session_timestamp(),
     }

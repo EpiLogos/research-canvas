@@ -130,6 +130,8 @@ pub struct CanvasNodePayload {
     pub bg_colour: Option<String>,
     pub text_colour: Option<String>,
     pub thumbnail: Option<String>,
+    pub sequence_caption: Option<String>,
+    pub sequence_viewport: Option<serde_json::Value>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -156,6 +158,10 @@ pub struct CanvasEdgePayload {
     pub label: String,
     pub note: String,
     pub style: EdgeStylePayload,
+    #[serde(default)]
+    pub sequencing: bool,
+    #[serde(default)]
+    pub sequence_priority: i64,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -577,11 +583,13 @@ fn replace_project_document(
                     bg_colour,
                     text_colour,
                     thumbnail,
+                    sequence_caption,
+                    sequence_viewport_json,
                     created_at,
                     updated_at
                 ) VALUES (
                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
-                    ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26
+                    ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28
                 )",
                 params![
                     node.id,
@@ -608,6 +616,8 @@ fn replace_project_document(
                     node.bg_colour.as_deref(),
                     node.text_colour.as_deref(),
                     node.thumbnail.as_deref(),
+                    node.sequence_caption.as_deref(),
+                    node.sequence_viewport.as_ref().map(|v| v.to_string()),
                     node.created_at,
                     node.updated_at,
                 ],
@@ -631,9 +641,11 @@ fn replace_project_document(
                     label,
                     note,
                     style_json,
+                    sequencing,
+                    sequence_priority,
                     created_at,
                     updated_at
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                 params![
                     edge.id,
                     edge.canvas_id,
@@ -646,6 +658,8 @@ fn replace_project_document(
                     edge.label,
                     edge.note,
                     style,
+                    edge.sequencing as i64,
+                    edge.sequence_priority,
                     edge.created_at,
                     edge.updated_at,
                 ],
@@ -900,6 +914,11 @@ fn node_payload(
         bg_colour: record.bg_colour,
         text_colour: record.text_colour,
         thumbnail: record.thumbnail,
+        sequence_caption: record.sequence_caption,
+        sequence_viewport: record
+            .sequence_viewport_json
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok()),
         created_at: record.created_at,
         updated_at: record.updated_at,
     })
@@ -922,6 +941,8 @@ fn edge_payload(
         label: record.label,
         note: record.note,
         style,
+        sequencing: record.sequencing,
+        sequence_priority: record.sequence_priority,
         created_at: record.created_at,
         updated_at: record.updated_at,
     })
