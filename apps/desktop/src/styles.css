@@ -281,6 +281,159 @@ g[data-sequencing="true"] .react-flow__edge-path {
   border-color: rgba(240, 180, 90, 0.5);
 }
 
+/* ---- Sequence Presenter ---- */
+.sequence-presenter {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: #0a0908;
+  display: flex;
+  flex-direction: column;
+  color: #c0c0e0;
+  font-family: inherit;
+}
+
+.sp-empty,
+.sp-root-picker {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+}
+
+.sp-root-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 280px;
+}
+
+.sp-root-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgba(240, 180, 90, 0.08);
+  border: 1px solid rgba(240, 180, 90, 0.2);
+  border-radius: 0.5rem;
+  color: #c0c0e0;
+  cursor: pointer;
+  font-size: 0.95rem;
+  text-align: left;
+}
+.sp-root-option:hover { background: rgba(240, 180, 90, 0.15); }
+.sp-root-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.25rem;
+  background: rgba(240, 180, 90, 0.2);
+  color: #f0b45a;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.sp-breadcrumb {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1.25rem;
+  background: rgba(0, 0, 0, 0.4);
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+.sp-breadcrumb:hover { opacity: 1; }
+.sp-sep { margin: 0 0.35rem; opacity: 0.4; }
+.sp-crumb {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: inherit;
+  padding: 0;
+}
+.sp-crumb[data-current="true"] { color: #f0b45a; cursor: default; }
+
+.sp-main { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+.sp-main--split { flex-direction: row; }
+.sp-main--centered { flex-direction: column; align-items: center; justify-content: center; padding: 2rem; }
+
+.sp-content { flex: 1; min-width: 0; overflow: auto; display: flex; align-items: center; justify-content: center; }
+.sp-content--centered { max-width: 680px; width: 100%; }
+
+.sp-sidebar {
+  width: 30%;
+  max-width: 360px;
+  min-width: 240px;
+  padding: 2rem 1.5rem;
+  overflow-y: auto;
+  border-left: 1px solid rgba(240, 180, 90, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.sp-title { font-size: 1.25rem; font-weight: 600; color: #f0b45a; margin: 0; }
+.sp-arrival { font-size: 0.8rem; color: rgba(240, 180, 90, 0.6); font-style: italic; }
+.sp-caption { font-size: 0.9rem; line-height: 1.5; color: #a0a0c0; margin: 0; }
+
+.sp-exits {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: rgba(0, 0, 0, 0.5);
+  border-top: 1px solid rgba(240, 180, 90, 0.1);
+  flex-wrap: wrap;
+}
+
+.sp-exit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(240, 180, 90, 0.1);
+  border: 1px solid rgba(240, 180, 90, 0.25);
+  border-radius: 0.4rem;
+  color: #c0c0e0;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.sp-exit-btn:hover { background: rgba(240, 180, 90, 0.2); border-color: rgba(240, 180, 90, 0.4); }
+.sp-exit-btn kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 0.2rem;
+  background: rgba(240, 180, 90, 0.2);
+  color: #f0b45a;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+.sp-exit-btn[data-revisit="true"] { opacity: 0.6; }
+.sp-revisit-badge { font-size: 0.7rem; color: rgba(240, 180, 90, 0.5); font-style: italic; }
+
+.sp-terminal { font-size: 0.85rem; color: #888; }
+.sp-terminal kbd { padding: 0.1rem 0.3rem; border-radius: 0.15rem; background: rgba(255, 255, 255, 0.08); font-size: 0.75rem; }
+
+.sp-close-btn {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 0.35rem;
+  color: #888;
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.sp-close-btn:hover { color: #c0c0e0; border-color: rgba(255, 255, 255, 0.3); }
+
 .canvas-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -11,8 +11,8 @@ import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 export function Shell() {
   const layout = useShellLayout();
   const workspace = useCanvasWorkspace();
-  const [fullScreenOpen, setFullScreenOpen] = useState(false);
-  const closeFullScreen = useCallback(() => setFullScreenOpen(false), []);
+  const [fullScreenMode, setFullScreenMode] = useState<"closed" | "node" | "sequence">("closed");
+  const closeFullScreen = useCallback(() => setFullScreenMode("closed"), []);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -48,7 +48,7 @@ export function Shell() {
     (nodeId: string) => {
       workspace.selectNode(nodeId);
       if (layout.rightOpen && layout.rightTab === "content") {
-        setFullScreenOpen(true);
+        setFullScreenMode("node");
       } else {
         layout.openRightTab("content");
       }
@@ -82,6 +82,7 @@ export function Shell() {
         <CanvasPane
           onNodeSelect={handleNodeSelect}
           onNodeDoubleClick={handleNodeDoubleClick}
+          onPlaySequence={useCallback(() => setFullScreenMode("sequence"), [])}
           leftPanelOpen={layout.leftOpen}
           rightPanelOpen={layout.rightOpen}
         />
@@ -92,11 +93,11 @@ export function Shell() {
           onTabChange={layout.openRightTab}
           onClose={() => layout.setRightOpen(false)}
           onResizeStart={layout.beginRightResize}
-          onFullScreen={() => setFullScreenOpen(true)}
+          onFullScreen={() => setFullScreenMode("node")}
         />
 
-        {fullScreenOpen && (
-          <FullScreenReader onClose={closeFullScreen} />
+        {fullScreenMode !== "closed" && (
+          <FullScreenReader mode={fullScreenMode} onClose={closeFullScreen} />
         )}
       </div>
 

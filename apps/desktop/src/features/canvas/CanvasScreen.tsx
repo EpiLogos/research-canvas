@@ -8,11 +8,12 @@ import { WorkspaceFilePickerButton } from "./WorkspaceFilePickerButton";
 interface CanvasScreenProps {
   onNodeSelect?: (nodeId: string) => void;
   onNodeDoubleClick?: (nodeId: string) => void;
+  onPlaySequence?: () => void;
   leftPanelOpen?: boolean;
   rightPanelOpen?: boolean;
 }
 
-export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, leftPanelOpen, rightPanelOpen }: CanvasScreenProps) {
+export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, onPlaySequence, leftPanelOpen, rightPanelOpen }: CanvasScreenProps) {
   const workspace = useCanvasWorkspace();
   const [annotationMode, setAnnotationMode] = useState(false);
 
@@ -142,6 +143,10 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, leftPanelOpen, r
             drawingEnabled={annotationMode}
             onCreateStroke={createAnnotation}
             onUpdateNoteContent={workspace.updateNodeContent}
+            onToggleEdgeSequencing={(edgeId) => {
+              workspace.store.getState().toggleEdgeSequencing(edgeId);
+            }}
+            onPlaySequence={onPlaySequence}
           />
         </div>
 
