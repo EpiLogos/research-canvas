@@ -8,6 +8,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  type EdgeMarker,
   type Connection,
   ConnectionMode,
   type Edge,
@@ -18,21 +19,30 @@ import {
 import type { ComponentType } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { CanvasEdge, CanvasNode } from "@research-canvas/schema";
+import type {
+  Annotation,
+  AnnotationPoint,
+  CanvasEdge,
+  CanvasNode,
+} from "@research-canvas/schema";
 
+import { AnnotationLayer } from "./annotations/AnnotationLayer";
 import { AnnotatedEdge } from "./edges/AnnotatedEdge";
 import { ContextMenu } from "./components/ContextMenu";
 import { FuzzyFilePicker, type FileEntry } from "./components/FuzzyFilePicker";
 import { GroupNode } from "./nodes/GroupNode";
 import { NoteNode } from "./nodes/NoteNode";
 import { ResourceNode } from "./nodes/ResourceNode";
+import { defaultSourceHandleId, defaultTargetHandleId } from "./nodes/nodeHandles";
 
 interface CanvasViewProps {
   edges: CanvasEdge[];
   nodes: CanvasNode[];
   onMoveNode?: (nodeId: string, position: { x: number; y: number }) => void;
-  onSelectNode?: (nodeId: string) => void;
+  onSelectEdge?: (edgeId: string | null) => void;
+  onSelectNode?: (nodeId: string | null) => void;
   selectedNodeId?: string | null;
+  selectedEdgeId?: string | null;
   onDeleteNode?: (nodeId: string) => void;
   onDuplicateNode?: (nodeId: string) => void;
   onCreateNote?: (position?: { x: number; y: number }) => void;
@@ -40,12 +50,38 @@ interface CanvasViewProps {
   onCreateResourceFromFile?: (entry: FileEntry, position: { x: number; y: number }) => void;
   fileEntries?: FileEntry[];
   onNodeDoubleClick?: (nodeId: string) => void;
-  onConnectNodes?: (input: { sourceNodeId: string; targetNodeId: string; relationKind: string }) => void;
+  onConnectNodes?: (input: {
+    sourceNodeId: string;
+    targetNodeId: string;
+    relationKind: string;
+    sourceHandleId?: string;
+    targetHandleId?: string;
+    directionality?: CanvasEdge["directionality"];
+  }) => void;
+  onReconnectEdge?: (
+    edgeId: string,
+    input: {
+      sourceNodeId: string;
+      targetNodeId: string;
+      sourceHandleId?: string;
+      targetHandleId?: string;
+    }
+  ) => void;
+  onCycleEdgeDirectionality?: (edgeId: string) => void;
   onDeleteEdge?: (edgeId: string) => void;
+  onUpdateEdgeRelationKind?: (edgeId: string, relationKind: string) => void;
   onResizeNode?: (nodeId: string, width: number, height: number) => void;
+  onUpdateNoteContent?: (nodeId: string, content: string) => void;
   leftPanelOpen?: boolean;
   rightPanelOpen?: boolean;
+  annotations?: Annotation[];
+  drawingEnabled?: boolean;
+  onCreateStroke?: (points: AnnotationPoint[]) => void;
   onRegisterFlyToNode?: (flyTo: (nodeId: string, viewport?: { x: number; y: number; zoom: number }) => void) => void;
+  onRegisterFlyToEdge?: (flyTo: (edgeId: string, viewport?: { x: number; y: number; zoom: number }) => void) => void;
+  onRegisterCaptureViewport?: (
+    capture: () => { x: number; y: number; zoom: number }
+  ) => void;
 }
 
 const nodeTypes: NodeTypes = {
@@ -70,8 +106,10 @@ function CanvasViewInner({
   edges,
   nodes,
   onMoveNode,
+  onSelectEdge,
   onSelectNode,
   selectedNodeId,
+  selectedEdgeId,
   onDeleteNode,
   onDuplicateNode,
   onCreateNote,
@@ -80,13 +118,23 @@ function CanvasViewInner({
   fileEntries,
   onNodeDoubleClick,
   onConnectNodes,
+  onReconnectEdge,
+  onCycleEdgeDirectionality,
   onDeleteEdge,
+  onUpdateEdgeRelationKind,
   onResizeNode,
+  onUpdateNoteContent,
   leftPanelOpen,
   rightPanelOpen,
-  onRegisterFlyToNode
+  annotations = [],
+  drawingEnabled = false,
+  onCreateStroke,
+  onRegisterFlyToNode,
+  onRegisterFlyToEdge,
+  onRegisterCaptureViewport
 }: CanvasViewProps) {
-  const { screenToFlowPosition, setCenter, getZoom, fitView } = useReactFlow();
+  const { fitView, getViewport, getZoom, screenToFlowPosition, setCenter, setViewport } =
+    useReactFlow();
 
   const getViewportCenter = useCallback(() => {
     const container = document.querySelector('.canvas-flow') as HTMLElement;
@@ -120,7 +168,7 @@ function CanvasViewInner({
   const flyToNode = useCallback(
     (nodeId: string, viewport?: { x: number; y: number; zoom: number }) => {
       if (viewport) {
-        setCenter(viewport.x, viewport.y, { duration: 500, zoom: viewport.zoom });
+        void setViewport(viewport, { duration: 500 });
       } else {
         const node = nodes.find((n) => n.id === nodeId);
         if (node) {
@@ -135,9 +183,52 @@ function CanvasViewInner({
     [nodes, setCenter, getZoom]
   );
 
+  const flyToEdge = useCallback(
+    (edgeId: string, viewport?: { x: number; y: number; zoom: number }) => {
+      if (viewport) {
+        void setViewport(viewport, { duration: 500 });
+        return;
+      }
+
+      const edge = edges.find((candidate) => candidate.id === edgeId);
+      if (!edge) {
+        return;
+      }
+
+      const source = nodes.find((candidate) => candidate.id === edge.sourceNodeId);
+      const target = nodes.find((candidate) => candidate.id === edge.targetNodeId);
+      if (!source || !target) {
+        return;
+      }
+
+      const sourceCenter = {
+        x: source.position.x + (source.size?.width ?? 200) / 2,
+        y: source.position.y + (source.size?.height ?? 140) / 2,
+      };
+      const targetCenter = {
+        x: target.position.x + (target.size?.width ?? 200) / 2,
+        y: target.position.y + (target.size?.height ?? 140) / 2,
+      };
+
+      setCenter((sourceCenter.x + targetCenter.x) / 2, (sourceCenter.y + targetCenter.y) / 2, {
+        duration: 500,
+        zoom: Math.max(1, getZoom()),
+      });
+    },
+    [edges, nodes, setCenter, setViewport, getZoom]
+  );
+
   useEffect(() => {
     onRegisterFlyToNode?.(flyToNode);
   }, [flyToNode, onRegisterFlyToNode]);
+
+  useEffect(() => {
+    onRegisterFlyToEdge?.(flyToEdge);
+  }, [flyToEdge, onRegisterFlyToEdge]);
+
+  useEffect(() => {
+    onRegisterCaptureViewport?.(() => getViewport());
+  }, [getViewport, onRegisterCaptureViewport]);
 
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -153,11 +244,21 @@ function CanvasViewInner({
     y: number;
     canvasPos?: { x: number; y: number };
   } | null>(null);
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
   const closeFilePicker = useCallback(() => setShowFilePicker(null), []);
 
-  const [pendingConnectionSource, setPendingConnectionSource] = useState<string | null>(null);
+  useEffect(() => {
+    if (!editingNodeId) {
+      return;
+    }
+
+    const editingNode = nodes.find((node) => node.id === editingNodeId);
+    if (!editingNode || editingNode.type !== "note") {
+      setEditingNodeId(null);
+    }
+  }, [editingNodeId, nodes]);
 
   const handleConnect = useCallback(
     (connection: Connection) => {
@@ -166,6 +267,9 @@ function CanvasViewInner({
         sourceNodeId: connection.source,
         targetNodeId: connection.target,
         relationKind: "reference",
+        sourceHandleId: connection.sourceHandle ?? undefined,
+        targetHandleId: connection.targetHandle ?? undefined,
+        directionality: "forward",
       });
     },
     [onConnectNodes],
@@ -182,16 +286,6 @@ function CanvasViewInner({
     [onResizeNode],
   );
 
-  const handleNodeMouseDown = useCallback(
-    (e: React.MouseEvent, nodeId: string) => {
-      if (!e.shiftKey) return;
-      e.stopPropagation();
-      setPendingConnectionSource(nodeId);
-      void pendingConnectionSource; // placeholder — will be wired in Task 11
-    },
-    [pendingConnectionSource],
-  );
-
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -201,7 +295,11 @@ function CanvasViewInner({
       if (!(e.target as HTMLElement)?.closest?.(".react-flow")) return;
       if (e.key === "Delete" || e.key === "Backspace") {
         const selected = nodes.find((n) => n.id === selectedNodeId);
-        if (selected) onDeleteNode?.(selected.id);
+        if (selected) {
+          onDeleteNode?.(selected.id);
+        } else if (selectedEdgeId) {
+          onDeleteEdge?.(selectedEdgeId);
+        }
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "d") {
         e.preventDefault();
@@ -214,7 +312,16 @@ function CanvasViewInner({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [nodes, selectedNodeId, onDeleteNode, onDuplicateNode, onCreateNote, getViewportCenter]);
+  }, [
+    nodes,
+    selectedNodeId,
+    selectedEdgeId,
+    onDeleteEdge,
+    onDeleteNode,
+    onDuplicateNode,
+    onCreateNote,
+    getViewportCenter,
+  ]);
 
   const flowNodes: Node[] = nodes.map((node) => ({
     id: node.id,
@@ -233,6 +340,23 @@ function CanvasViewInner({
       content: node.type === "note" ? node.content : undefined,
       resourceKind: node.type === "resource" ? node.resourceKind : undefined,
       absolutePath: node.type === "resource" ? node.absolutePath : undefined,
+      isEditing: node.type === "note" ? node.id === editingNodeId : false,
+      onContentChange:
+        node.type === "note"
+          ? (content: string) => onUpdateNoteContent?.(node.id, content)
+          : undefined,
+      onStartEditing:
+        node.type === "note"
+          ? () => {
+              onSelectNode?.(node.id);
+              onSelectEdge?.(null);
+              setEditingNodeId(node.id);
+            }
+          : undefined,
+      onStopEditing:
+        node.type === "note"
+          ? () => setEditingNodeId((current) => (current === node.id ? null : current))
+          : undefined,
       style: {
         dotColour: node.dotColour ?? undefined,
         bgColour: node.bgColour ?? undefined,
@@ -248,15 +372,26 @@ function CanvasViewInner({
   const flowEdges: Edge[] = edges.map((edge) => ({
     id: edge.id,
     source: edge.sourceNodeId,
+    sourceHandle: edge.sourceHandleId ?? defaultSourceHandleId(),
     target: edge.targetNodeId,
+    targetHandle: edge.targetHandleId ?? defaultTargetHandleId(),
     type: "annotated",
     data: {
+      directionality: edge.directionality,
       relationKind: edge.relationKind,
-      note: edge.note
+      note: edge.note,
+      onSelect: () => {
+        onSelectNode?.(null);
+        onSelectEdge?.(edge.id);
+      },
+      onCycleDirectionality: () => onCycleEdgeDirectionality?.(edge.id),
+      onDelete: () => onDeleteEdge?.(edge.id),
+      onUpdateRelationKind: (relationKind: string) =>
+        onUpdateEdgeRelationKind?.(edge.id, relationKind),
+      selected: edge.id === selectedEdgeId
     },
-    markerEnd: {
-      type: MarkerType.ArrowClosed
-    },
+    ...edgeMarkers(edge.directionality),
+    selected: edge.id === selectedEdgeId,
     selectable: true
   }));
 
@@ -283,13 +418,6 @@ function CanvasViewInner({
   return (
     <div
       className="canvas-flow"
-      onMouseDown={(e: React.MouseEvent) => {
-        const nodeEl = (e.target as HTMLElement).closest?.(".react-flow__node") as HTMLElement | null;
-        if (nodeEl && e.shiftKey) {
-          const nodeId = nodeEl.dataset["id"];
-          if (nodeId) handleNodeMouseDown(e, nodeId);
-        }
-      }}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes("application/x-canvas-entry")) {
           e.preventDefault();
@@ -318,20 +446,44 @@ function CanvasViewInner({
         nodeTypes={nodeTypes}
         nodesDraggable
         nodesFocusable
+        onPaneClick={() => {
+          setEditingNodeId(null);
+          onSelectNode?.(null);
+          onSelectEdge?.(null);
+        }}
         onNodeClick={(_event, node) => {
+          setEditingNodeId((current) => (current === node.id ? current : null));
           onSelectNode?.(node.id);
+          onSelectEdge?.(null);
+        }}
+        onNodeDrag={(_event, node) => {
+          onMoveNode?.(node.id, node.position);
         }}
         onNodeDragStop={(_event, node) => {
           onMoveNode?.(node.id, node.position);
         }}
         onNodeDoubleClick={(_e, node) => {
-          onNodeDoubleClick?.(node.id);
+          if (nodes.find((candidate) => candidate.id === node.id)?.type !== "note") {
+            onNodeDoubleClick?.(node.id);
+          }
+        }}
+        onEdgeClick={(_event, edge) => {
+          setEditingNodeId(null);
+          onSelectNode?.(null);
+          onSelectEdge?.(edge.id);
         }}
         onNodesChange={handleNodesChange}
         onConnect={handleConnect}
         onReconnect={(oldEdge, newConnection) => {
-          onDeleteEdge?.(oldEdge.id);
-          handleConnect(newConnection);
+          if (!newConnection.source || !newConnection.target) {
+            return;
+          }
+          onReconnectEdge?.(oldEdge.id, {
+            sourceNodeId: newConnection.source,
+            targetNodeId: newConnection.target,
+            sourceHandleId: newConnection.sourceHandle ?? undefined,
+            targetHandleId: newConnection.targetHandle ?? undefined,
+          });
         }}
         reconnectRadius={20}
         connectionMode={ConnectionMode.Loose}
@@ -355,6 +507,11 @@ function CanvasViewInner({
         <Controls showInteractive={false} />
         <MiniMap pannable zoomable />
       </ReactFlow>
+      <AnnotationLayer
+        annotations={annotations}
+        drawingEnabled={drawingEnabled}
+        onCreateStroke={(points) => onCreateStroke?.(points)}
+      />
 
       {contextMenu && contextMenu.kind === "canvas" && (
         <ContextMenu
@@ -396,11 +553,20 @@ function CanvasViewInner({
           items={[
             {
               type: "item",
+              label: "Cycle arrow direction",
+              onClick: () => {
+                onCycleEdgeDirectionality?.(contextMenu.edgeId!);
+                closeContextMenu();
+              },
+            },
+            {
+              type: "item",
               label: "Delete connection",
               shortcut: "⌫",
               danger: true,
               onClick: () => {
                 onDeleteEdge?.(contextMenu.edgeId!);
+                onSelectEdge?.(null);
                 closeContextMenu();
               },
             },
@@ -423,4 +589,23 @@ function CanvasViewInner({
       )}
     </div>
   );
+}
+
+function edgeMarkers(directionality: CanvasEdge["directionality"]): {
+  markerStart?: EdgeMarker;
+  markerEnd?: EdgeMarker;
+} {
+  const marker = { type: MarkerType.ArrowClosed };
+
+  switch (directionality) {
+    case "backward":
+      return { markerStart: marker };
+    case "bidirectional":
+      return { markerStart: marker, markerEnd: marker };
+    case "forward":
+      return { markerEnd: marker };
+    case "none":
+    default:
+      return {};
+  }
 }

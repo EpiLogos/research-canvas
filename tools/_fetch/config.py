@@ -8,6 +8,9 @@ import yaml
 CATEGORIES = ["symbols", "figures", "books", "artworks", "photos"]
 
 
+ALL_SOURCES = ["wikimedia", "met"]
+
+
 @dataclass
 class AssetEntry:
     key: str
@@ -15,6 +18,7 @@ class AssetEntry:
     label: str
     queries: list[str]
     limit: int
+    sources: list[str] = field(default_factory=lambda: list(ALL_SOURCES))
 
 
 @dataclass
@@ -43,6 +47,7 @@ def load_config(config_path: Path, output_dir_override: Optional[Path] = None) -
                 label=val.get("label", key),
                 queries=list(val["queries"]),
                 limit=int(val.get("limit", target)),
+                sources=list(val.get("sources", ALL_SOURCES)),
             ))
 
     return Config(output_dir=out, target_per_category=target, entries=entries)

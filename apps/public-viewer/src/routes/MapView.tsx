@@ -72,38 +72,6 @@ export function MapView({ bundle, manifest }: MapViewProps) {
         </ul>
       </section>
 
-      <section className="viewer__section">
-        <header className="viewer__section-header">
-          <p className="eyebrow">Sequences</p>
-          <h2>Guided traversal</h2>
-        </header>
-        <div className="viewer__card-grid">
-          {bundle.sequences.map((sequence) => (
-            <article className="viewer__card" key={sequence.id}>
-              <h3>{sequence.name}</h3>
-              <p>{sequence.description || sequence.kind}</p>
-              <ol className="viewer__step-list">
-                {bundle.sequenceSteps
-                  .filter((step) => step.sequenceId === sequence.id)
-                  .map((step) => {
-                    const target =
-                      bundle.nodes.find((node) => node.id === step.targetId) ??
-                      bundle.edges.find((edge) => edge.id === step.targetId);
-                    const title =
-                      target && "title" in target ? target.title : target?.relationKind;
-
-                    return (
-                      <li key={step.id}>
-                        <strong>{step.caption || title}</strong>
-                        <span>{title}</span>
-                      </li>
-                    );
-                  })}
-              </ol>
-            </article>
-          ))}
-        </div>
-      </section>
     </main>
   );
 }

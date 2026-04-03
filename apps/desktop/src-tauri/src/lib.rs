@@ -59,6 +59,7 @@ pub fn run() {
             commands::terminal::resize_terminal_session,
             commands::terminal::send_terminal_input,
             commands::projects::activate_canvas_command,
+            commands::projects::read_workspace_text_file_command,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Research Canvas");

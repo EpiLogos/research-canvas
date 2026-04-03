@@ -33,9 +33,21 @@ interface ConnectNodesInput {
   relationKind: string;
   sourceNodeId: string;
   targetNodeId: string;
+  sourceHandleId?: string;
+  targetHandleId?: string;
+  directionality?: CanvasEdge["directionality"];
+}
+
+interface UpdateEdgeConnectionInput {
+  directionality?: CanvasEdge["directionality"];
+  sourceHandleId?: string;
+  sourceNodeId?: string;
+  targetHandleId?: string;
+  targetNodeId?: string;
 }
 
 export interface CanvasStoreState {
+  cycleEdgeDirectionality: (edgeId: string) => void;
   connectNodes: (input: ConnectNodesInput) => CanvasEdge;
   createGroupNode: (input: CreateGroupNodeInput) => CanvasNode;
   createNoteNode: (input: CreateNoteNodeInput) => CanvasNode;
@@ -49,6 +61,8 @@ export interface CanvasStoreState {
   selectedNodeId: string | null;
   serialize: () => CanvasSnapshot;
   setSelectedNodeId: (nodeId: string | null) => void;
+  updateEdgeConnection: (edgeId: string, input: UpdateEdgeConnectionInput) => void;
+  updateEdgeRelationKind: (edgeId: string, relationKind: string) => void;
   updateEdgeNote: (edgeId: string, note: string) => void;
   updateNodeContent: (nodeId: string, content: string) => void;
   updateNodePosition: (
@@ -73,14 +87,36 @@ const defaultEdgeStyle = {
 
 export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
   return createStore<CanvasStoreState>((set, get) => ({
-    connectNodes: ({ relationKind, sourceNodeId, targetNodeId }) => {
+    cycleEdgeDirectionality: (edgeId) => {
+      set((state) => ({
+        edges: state.edges.map((edge) =>
+          edge.id === edgeId
+            ? {
+                ...edge,
+                directionality: nextDirectionality(edge.directionality),
+                updatedAt: now()
+              }
+            : edge
+        )
+      }));
+    },
+    connectNodes: ({
+      relationKind,
+      sourceNodeId,
+      targetNodeId,
+      sourceHandleId,
+      targetHandleId,
+      directionality = "forward"
+    }) => {
       const edge = edgeSchema.parse({
         id: crypto.randomUUID(),
         canvasId,
         sourceNodeId,
         targetNodeId,
+        sourceHandleId,
+        targetHandleId,
         relationKind,
-        directionality: "forward",
+        directionality,
         label: relationKind,
         note: "",
         style: defaultEdgeStyle,
@@ -190,6 +226,42 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
       nodes: get().nodes,
       edges: get().edges
     }),
+    updateEdgeConnection: (edgeId, input) => {
+      set((state) => ({
+        edges: state.edges.map((edge) =>
+          edge.id === edgeId
+            ? {
+                ...edge,
+                directionality: input.directionality ?? edge.directionality,
+                sourceHandleId: input.sourceHandleId ?? edge.sourceHandleId,
+                sourceNodeId: input.sourceNodeId ?? edge.sourceNodeId,
+                targetHandleId: input.targetHandleId ?? edge.targetHandleId,
+                targetNodeId: input.targetNodeId ?? edge.targetNodeId,
+                updatedAt: now()
+              }
+            : edge
+        )
+      }));
+    },
+    updateEdgeRelationKind: (edgeId, relationKind) => {
+      const nextRelationKind = relationKind.trim();
+      if (!nextRelationKind) {
+        return;
+      }
+
+      set((state) => ({
+        edges: state.edges.map((edge) =>
+          edge.id === edgeId
+            ? {
+                ...edge,
+                label: nextRelationKind,
+                relationKind: nextRelationKind,
+                updatedAt: now(),
+              }
+            : edge,
+        )
+      }));
+    },
     updateNodePosition: (nodeId, position) => {
       set((state) => ({
         nodes: state.nodes.map((node) =>
@@ -226,9 +298,19 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
         console.warn(`updateNodeContent: node ${nodeId} is type "${node.type}", not "note" — content not updated`);
         return;
       }
+      const nextTitle = deriveNoteTitle(content);
+      const nextSummary = deriveNoteSummary(content);
       set((state) => ({
         nodes: state.nodes.map((n) =>
-          n.id === nodeId ? { ...n, content, summary: content.slice(0, 80), updatedAt: now() } : n,
+          n.id === nodeId
+            ? {
+                ...n,
+                content,
+                summary: nextSummary,
+                title: nextTitle,
+                updatedAt: now(),
+              }
+            : n,
         ),
       }));
     },
@@ -274,6 +356,44 @@ function mimeTypeFor(resourceKind: CreateResourceNodeInput["resourceKind"]) {
       return "text/plain";
     default:
       return "application/octet-stream";
+  }
+}
+
+function deriveNoteTitle(content: string) {
+  const firstMeaningfulLine = content
+    .split(/\r?\n/u)
+    .map((line) => line.replace(/^#{1,6}\s+/u, "").trim())
+    .find((line) => line.length > 0);
+
+  if (!firstMeaningfulLine) {
+    return "Untitled note";
+  }
+
+  return firstMeaningfulLine.length > 64
+    ? `${firstMeaningfulLine.slice(0, 61).trimEnd()}...`
+    : firstMeaningfulLine;
+}
+
+function deriveNoteSummary(content: string) {
+  const summary = content
+    .replace(/^#{1,6}\s+/gmu, "")
+    .replace(/\s+/gu, " ")
+    .trim();
+
+  return summary.length > 140 ? `${summary.slice(0, 137).trimEnd()}...` : summary;
+}
+
+function nextDirectionality(directionality: CanvasEdge["directionality"]) {
+  switch (directionality) {
+    case "forward":
+      return "backward";
+    case "backward":
+      return "bidirectional";
+    case "bidirectional":
+      return "none";
+    case "none":
+    default:
+      return "forward";
   }
 }
 

@@ -17,7 +17,6 @@ use super::{
     canvas::{Canvas, CanvasGraphRepository, CanvasNodeRecord, CanvasRepository},
     projects::{Project, ProjectRepository},
     resource_roots::ResourceRootRepository,
-    sequences::{SequenceRecord, SequenceRepository, SequenceStepRecord},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,8 +27,6 @@ pub struct SearchIndexSummary {
     pub projects_indexed: u64,
     pub canvases_indexed: u64,
     pub nodes_indexed: u64,
-    pub sequences_indexed: u64,
-    pub sequence_steps_indexed: u64,
     pub file_entries_indexed: u64,
     pub documents_indexed: u64,
 }
@@ -97,15 +94,12 @@ impl<'conn> SearchRepository<'conn> {
             projects_indexed: 0,
             canvases_indexed: 0,
             nodes_indexed: 0,
-            sequences_indexed: 0,
-            sequence_steps_indexed: 0,
             file_entries_indexed: 0,
             documents_indexed: 0,
         };
 
         let canvases = CanvasRepository::new(self.connection);
         let graph = CanvasGraphRepository::new(self.connection);
-        let sequences = SequenceRepository::new(self.connection);
         let resource_roots = ResourceRootRepository::new(self.connection);
 
         for project in projects {
@@ -148,33 +142,6 @@ impl<'conn> SearchRepository<'conn> {
                         &indexed_at,
                     ))?;
                     summary.documents_indexed += 1;
-                }
-
-                let project_sequences = sequences.list_for_canvas(&canvas.id)?;
-                summary.sequences_indexed += project_sequences.len() as u64;
-                for sequence in project_sequences {
-                    self.insert_document(sequence_document(
-                        scope_project_id,
-                        &project,
-                        &canvas.id,
-                        &sequence,
-                        &indexed_at,
-                    ))?;
-                    summary.documents_indexed += 1;
-
-                    let steps = sequences.list_steps(&sequence.id)?;
-                    summary.sequence_steps_indexed += steps.len() as u64;
-                    for step in steps {
-                        self.insert_document(sequence_step_document(
-                            scope_project_id,
-                            &project,
-                            &canvas.id,
-                            &sequence,
-                            &step,
-                            &indexed_at,
-                        ))?;
-                        summary.documents_indexed += 1;
-                    }
                 }
             }
         }
@@ -452,71 +419,6 @@ fn node_document(
         source_path,
         relative_path,
         content_kind,
-        indexed_at: indexed_at.to_string(),
-    }
-}
-
-fn sequence_document(
-    scope_project_id: &str,
-    project: &Project,
-    canvas_id: &str,
-    sequence: &SequenceRecord,
-    indexed_at: &str,
-) -> SearchDocument {
-    SearchDocument {
-        document_key: format!("sequence:{}", sequence.id),
-        scope_project_id: scope_project_id.to_string(),
-        project_id: project.id.clone(),
-        project_display_name: project.display_name.clone(),
-        project_slug: project.slug.clone(),
-        canvas_id: canvas_id.to_string(),
-        entity_type: "sequence".to_string(),
-        entity_id: sequence.id.clone(),
-        title: sequence.name.clone(),
-        summary: sequence.description.clone(),
-        body: format!(
-            "{}\n{}\n{}",
-            sequence.name, sequence.kind, sequence.description
-        ),
-        source_path: String::new(),
-        relative_path: String::new(),
-        content_kind: "sequence".to_string(),
-        indexed_at: indexed_at.to_string(),
-    }
-}
-
-fn sequence_step_document(
-    scope_project_id: &str,
-    project: &Project,
-    canvas_id: &str,
-    sequence: &SequenceRecord,
-    step: &SequenceStepRecord,
-    indexed_at: &str,
-) -> SearchDocument {
-    let title = if step.caption.trim().is_empty() {
-        format!("Sequence step {}", step.position + 1)
-    } else {
-        step.caption.clone()
-    };
-
-    SearchDocument {
-        document_key: format!("sequence-step:{}", step.id),
-        scope_project_id: scope_project_id.to_string(),
-        project_id: project.id.clone(),
-        project_display_name: project.display_name.clone(),
-        project_slug: project.slug.clone(),
-        canvas_id: canvas_id.to_string(),
-        entity_type: "sequence_step".to_string(),
-        entity_id: step.id.clone(),
-        title,
-        summary: step.caption.clone(),
-        body: format!(
-            "{}\n{}\n{}\n{}",
-            sequence.name, step.caption, step.target_type, step.viewport_json
-        ),
-        source_path: String::new(),
-        relative_path: String::new(),
-        content_kind: format!("sequence-step:{}", sequence.id),
         indexed_at: indexed_at.to_string(),
     }
 }

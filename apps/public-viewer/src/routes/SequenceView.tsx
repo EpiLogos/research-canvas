@@ -5,14 +5,14 @@ interface SequenceViewProps {
 }
 
 export function SequenceView({ bundle }: SequenceViewProps) {
-  const sequence = bundle.sequences[0];
+  const sequencingEdges = bundle.edges.filter((edge) => edge.sequencing);
 
   return (
     <main className="viewer viewer--sequence">
       <header className="viewer__hero">
         <p className="eyebrow">Sequence view</p>
-        <h1>{sequence?.name ?? bundle.project.displayName}</h1>
-        <p>{sequence?.description || "Guided traversal of the export"}</p>
+        <h1>{bundle.project.displayName}</h1>
+        <p>Guided traversal of the export</p>
       </header>
       <section className="viewer__section">
         <header className="viewer__section-header">
@@ -20,22 +20,20 @@ export function SequenceView({ bundle }: SequenceViewProps) {
           <h2>Published tour</h2>
         </header>
         <ol className="viewer__step-list">
-          {(sequence
-            ? bundle.sequenceSteps.filter((step) => step.sequenceId === sequence.id)
-            : []
-          ).map((step) => {
-            const target =
-              bundle.nodes.find((node) => node.id === step.targetId) ??
-              bundle.edges.find((edge) => edge.id === step.targetId);
-            const label = target && "title" in target ? target.title : target?.relationKind;
+          {sequencingEdges
+            .sort((a, b) => a.sequencePriority - b.sequencePriority)
+            .map((edge) => {
+              const sourceNode = bundle.nodes.find((node) => node.id === edge.sourceNodeId);
+              const targetNode = bundle.nodes.find((node) => node.id === edge.targetNodeId);
 
-            return (
-              <li key={step.id}>
-                <strong>{step.caption || label}</strong>
-                <span>{label}</span>
-              </li>
-            );
-          })}
+              return (
+                <li key={edge.id}>
+                  <strong>{sourceNode?.title ?? "Unknown"}</strong>
+                  <span>{edge.relationKind}</span>
+                  <strong>{targetNode?.title ?? "Unknown"}</strong>
+                </li>
+              );
+            })}
         </ol>
       </section>
     </main>

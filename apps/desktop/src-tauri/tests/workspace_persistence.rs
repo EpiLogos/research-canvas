@@ -8,12 +8,13 @@ use research_canvas_desktop_lib::commands::projects::{
     persist_project_document_at, AnnotationBoundsPayload, AnnotationPayload,
     AnnotationPointPayload, AnnotationStylePayload, CanvasEdgePayload, CanvasNodePayload,
     EdgeStylePayload, PersistProjectDocumentRequest, PositionPayload, ProjectDocumentPayload,
-    SequencePayload, SequenceStepPayload, SizePayload, ViewportPayload,
+    SizePayload,
 };
 use research_canvas_desktop_lib::commands::search::{
     rebuild_project_search_index_command, search_project_command, RebuildProjectSearchIndexRequest,
     SearchProjectRequest,
 };
+use serde_json::json;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -118,6 +119,8 @@ fn connecting_edge(
         target_node_id: target_node_id.to_string(),
         relation_kind: "supports".to_string(),
         directionality: "forward".to_string(),
+        source_handle_id: Some("source-bottom".to_string()),
+        target_handle_id: Some("target-top".to_string()),
         label: "Supports".to_string(),
         note: "Primary evidence".to_string(),
         style: EdgeStylePayload {
@@ -165,45 +168,12 @@ fn ink_annotation(canvas_id: &str, id: &str) -> AnnotationPayload {
     }
 }
 
-fn sequence(canvas_id: &str, project_id: &str, id: &str) -> SequencePayload {
-    SequencePayload {
-        id: id.to_string(),
-        project_id: project_id.to_string(),
-        canvas_id: canvas_id.to_string(),
-        name: "Episode flow".to_string(),
-        kind: "storyboard".to_string(),
-        description: "Primary narrative arc".to_string(),
-        published: false,
-        created_at: session_timestamp(),
-        updated_at: session_timestamp(),
-    }
-}
-
-fn sequence_step(sequence_id: &str, target_id: &str) -> SequenceStepPayload {
-    SequenceStepPayload {
-        id: format!("{sequence_id}-step-1"),
-        sequence_id: sequence_id.to_string(),
-        position: 0,
-        target_type: "node".to_string(),
-        target_id: target_id.to_string(),
-        caption: "Start with the thesis".to_string(),
-        viewport: ViewportPayload {
-            x: 0.0,
-            y: 0.0,
-            zoom: 1.0,
-        },
-        transition_hint: "ease".to_string(),
-    }
-}
-
 fn persist_document(
     database_path: &Path,
     document: &ProjectDocumentPayload,
     nodes: Vec<CanvasNodePayload>,
     edges: Vec<CanvasEdgePayload>,
     annotations: Vec<AnnotationPayload>,
-    sequences: Vec<SequencePayload>,
-    sequence_steps: Vec<SequenceStepPayload>,
 ) -> ProjectDocumentPayload {
     persist_project_document_at(PersistProjectDocumentRequest {
         annotations,
@@ -212,8 +182,6 @@ fn persist_document(
         edges,
         nodes,
         project_id: document.project.id.clone(),
-        sequence_steps,
-        sequences,
     })
     .expect("persist project document")
 }
@@ -242,12 +210,6 @@ fn project_document_persistence_survives_reload_and_replaces_previous_canvas_sta
         &resource.id,
     );
     let annotation = ink_annotation(&document.canvas_id, "session-annotation-1");
-    let sequence = sequence(
-        &document.canvas_id,
-        &document.project.id,
-        "session-sequence-1",
-    );
-    let step = sequence_step(&sequence.id, &note.id);
 
     let persisted = persist_document(
         &database_path,
@@ -255,8 +217,6 @@ fn project_document_persistence_survives_reload_and_replaces_previous_canvas_sta
         vec![note.clone(), resource.clone()],
         vec![edge.clone()],
         vec![annotation.clone()],
-        vec![sequence.clone()],
-        vec![step.clone()],
     );
 
     assert_eq!(persisted.project.id, document.project.id);
@@ -264,8 +224,8 @@ fn project_document_persistence_survives_reload_and_replaces_previous_canvas_sta
     assert_eq!(persisted.nodes.len(), 2);
     assert_eq!(persisted.edges.len(), 1);
     assert_eq!(persisted.annotations.len(), 1);
-    assert_eq!(persisted.sequences.len(), 1);
-    assert_eq!(persisted.sequence_steps.len(), 1);
+    assert_eq!(persisted.edges[0].source_handle_id.as_deref(), Some("source-bottom"));
+    assert_eq!(persisted.edges[0].target_handle_id.as_deref(), Some("target-top"));
     assert!(persisted
         .nodes
         .iter()
@@ -277,8 +237,8 @@ fn project_document_persistence_survives_reload_and_replaces_previous_canvas_sta
     assert_eq!(reopened.nodes.len(), 2);
     assert_eq!(reopened.edges.len(), 1);
     assert_eq!(reopened.annotations.len(), 1);
-    assert_eq!(reopened.sequences.len(), 1);
-    assert_eq!(reopened.sequence_steps.len(), 1);
+    assert_eq!(reopened.edges[0].source_handle_id.as_deref(), Some("source-bottom"));
+    assert_eq!(reopened.edges[0].target_handle_id.as_deref(), Some("target-top"));
     assert!(reopened
         .nodes
         .iter()
@@ -296,15 +256,11 @@ fn project_document_persistence_survives_reload_and_replaces_previous_canvas_sta
         vec![replacement_note.clone()],
         Vec::new(),
         Vec::new(),
-        Vec::new(),
-        Vec::new(),
     );
 
     assert_eq!(replaced.nodes.len(), 1);
     assert!(replaced.edges.is_empty());
     assert!(replaced.annotations.is_empty());
-    assert!(replaced.sequences.is_empty());
-    assert!(replaced.sequence_steps.is_empty());
 
     let reopened_after_replace =
         load_project_document_at(&database_path, &bootstrap.active_project_id)
@@ -313,10 +269,71 @@ fn project_document_persistence_survives_reload_and_replaces_previous_canvas_sta
     assert_eq!(reopened_after_replace.nodes[0].title, "Replacement note");
     assert!(reopened_after_replace.edges.is_empty());
     assert!(reopened_after_replace.annotations.is_empty());
-    assert!(reopened_after_replace.sequences.is_empty());
-    assert!(reopened_after_replace.sequence_steps.is_empty());
 
     cleanup_database(&database_path);
+}
+
+#[test]
+fn browser_persist_payload_allows_resource_nodes_without_tags() {
+    let database_path =
+        session_database_path(&format!("workspace-browser-persist-{}", std::process::id()));
+    cleanup_database(&database_path);
+
+    let bootstrap = bootstrap_workspace_at(&database_path).expect("bootstrap workspace");
+    let document = load_project_document_at(&database_path, &bootstrap.active_project_id)
+        .expect("load project document");
+
+    let payload = json!({
+        "annotations": [],
+        "canvasId": document.canvas_id,
+        "databasePath": database_path.to_string_lossy().to_string(),
+        "edges": [],
+        "nodes": [
+            {
+                "id": "browser-note-1",
+                "canvasId": document.canvas_id,
+                "type": "note",
+                "title": "Browser note",
+                "position": { "x": 80.0, "y": 80.0 },
+                "size": { "width": 240.0, "height": 160.0 },
+                "summary": "",
+                "content": "",
+                "tags": ["note"],
+                "createdAt": session_timestamp(),
+                "updatedAt": session_timestamp(),
+            },
+            {
+                "id": "browser-resource-1",
+                "canvasId": document.canvas_id,
+                "type": "resource",
+                "title": "README.md",
+                "position": { "x": 200.0, "y": 200.0 },
+                "size": { "width": 260.0, "height": 180.0 },
+                "summary": "README.md",
+                "resourceKind": "markdown",
+                "absolutePath": fixture_path("tests/fixtures/sample-project/README.md"),
+                "relativePath": "README.md",
+                "mimeType": "text/markdown",
+                "fileFingerprint": "markdown:README.md",
+                "createdAt": session_timestamp(),
+                "updatedAt": session_timestamp(),
+            }
+        ],
+        "projectId": document.project.id,
+    });
+
+    let request: PersistProjectDocumentRequest =
+        serde_json::from_value(payload).expect("deserialize browser persist payload");
+
+    let persisted = persist_project_document_at(request).expect("persist browser payload");
+
+    assert_eq!(persisted.nodes.len(), 2);
+    assert!(
+        persisted
+            .nodes
+            .iter()
+            .any(|node| node.node_type == "resource" && node.title == "README.md")
+    );
 }
 
 #[test]
@@ -348,8 +365,6 @@ fn search_index_stays_isolated_between_session_database_paths() {
         edges: document_a.edges.clone(),
         nodes: document_a.nodes.clone(),
         project_id: document_a.project.id.clone(),
-        sequence_steps: document_a.sequence_steps.clone(),
-        sequences: document_a.sequences.clone(),
     })
     .expect("persist session a document");
 

@@ -3,7 +3,6 @@ pub mod canvas;
 pub mod projects;
 pub mod resource_roots;
 pub mod search;
-pub mod sequences;
 
 pub use annotations::{AnnotationRecord, AnnotationRepository};
 pub use canvas::{
@@ -13,4 +12,3 @@ pub use canvas::{
 pub use projects::{Project, ProjectRepository};
 pub use resource_roots::{ResourceRootRecord, ResourceRootRepository};
 pub use search::{SearchHit, SearchIndexSummary, SearchRepository};
-pub use sequences::{SequenceRecord, SequenceRepository, SequenceStepRecord};

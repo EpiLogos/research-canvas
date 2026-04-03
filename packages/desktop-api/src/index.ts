@@ -3,8 +3,6 @@ import type {
   CanvasEdge,
   CanvasNode,
   PublishSettings,
-  Sequence,
-  SequenceStep
 } from "@research-canvas/schema";
 
 export type IndexedEntryKind =
@@ -75,8 +73,6 @@ export interface ProjectDocument {
   annotations: Annotation[];
   edges: CanvasEdge[];
   nodes: CanvasNode[];
-  sequenceSteps: SequenceStep[];
-  sequences: Sequence[];
 }
 
 export interface PersistProjectDocumentRequest {
@@ -86,8 +82,6 @@ export interface PersistProjectDocumentRequest {
   edges: CanvasEdge[];
   nodes: CanvasNode[];
   projectId: string;
-  sequenceSteps: SequenceStep[];
-  sequences: Sequence[];
 }
 
 export interface SearchHit {
@@ -160,6 +154,20 @@ export function createWorkspaceTransport(): WorkspaceTransport {
   return isTauriRuntime()
     ? createTauriWorkspaceTransport()
     : createBrowserBridgeTransport();
+}
+
+export async function readWorkspaceTextFile(absolutePath: string) {
+  if (isTauriRuntime()) {
+    return invokeTauri<string>("read_workspace_text_file_command", {
+      path: absolutePath
+    });
+  }
+
+  const params = new URLSearchParams({ path: absolutePath });
+  const response = await requestJsonWithRetry<{ content: string }>(
+    `/workspace/file-content?${params.toString()}`
+  );
+  return response.content;
 }
 
 function createTauriWorkspaceTransport(): WorkspaceTransport {

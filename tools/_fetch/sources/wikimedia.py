@@ -1,3 +1,4 @@
+import re
 import httpx
 from .base import ImageResult
 
@@ -44,4 +45,5 @@ async def fetch_wikimedia(query: str, limit: int, client: httpx.AsyncClient) -> 
 
 
 def _val(meta: dict, key: str) -> str:
-    return (meta.get(key) or {}).get("value", "")
+    raw = (meta.get(key) or {}).get("value", "")
+    return re.sub(r"<[^>]+>", "", raw).strip()  # strip HTML tags

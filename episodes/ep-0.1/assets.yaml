@@ -1,0 +1,256 @@
+target_per_category: 8
+output_dir: episodes/ep-0.1/assets
+
+# sources field controls which APIs to query per entry:
+#   wikimedia — Wikimedia Commons (art, photos, diagrams, manuscripts)
+#   met       — Met Open Access (fine art, sculpture, coins, manuscripts)
+# figures and photos = wikimedia only (Met has no photography archive)
+# artworks and symbols = both (Met excels at physical art objects)
+
+symbols:
+  sun_solar:
+    label: "Sun — cosmic ontological image"
+    sources: [wikimedia, met]
+    queries:
+      - "sol invictus solar deity Roman coin ancient"
+      - "sun god Ra Egyptian hieroglyph scarab"
+      - "sun mandala medieval illuminated manuscript gold"
+      - "solar disk celestial alchemical engraving woodcut"
+    limit: 10
+
+  black_sun:
+    label: "Black Sun — inverted solar principle"
+    sources: [wikimedia, met]
+    queries:
+      - "eclipse solar darkness painting dramatic"
+      - "Blind Orion Poussin night darkness mythology painting"
+      - "dark night soul painting alchemical blackness"
+      - "eclipse sun corona darkness ancient engraving"
+    limit: 8
+
+  prism_rainbow:
+    label: "Prism — white light into spectrum"
+    sources: [wikimedia, met]
+    queries:
+      - "Isaac Newton prism experiment illustration engraving"
+      - "rainbow landscape painting Turner Joseph"
+      - "spectrum light optics color illustration book"
+    limit: 6
+
+  lamb_agnus_dei:
+    label: "Lamb — Agnus Dei, sacrifice"
+    sources: [wikimedia, met]
+    queries:
+      - "Agnus Dei lamb of God ivory plaque medieval"
+      - "sacrificial lamb mosaic Byzantine altar"
+      - "lamb Christ symbol illuminated manuscript"
+    limit: 10
+
+  bull_mithraic:
+    label: "Bull — Mithraic tauroctony"
+    sources: [wikimedia, met]
+    queries:
+      - "Mithras tauroctony bull sacrifice Roman marble relief"
+      - "Mithraic mystery bull slaying relief sculpture museum"
+      - "bull sacrifice ancient Roman altar votive relief"
+    limit: 10
+
+  prometheus_fire:
+    label: "Prometheus — stolen fire"
+    sources: [wikimedia, met]
+    queries:
+      - "Prometheus painting mythology"
+      - "Prometheus fire Titan painting"
+      - "Prometheus chained eagle ancient vase"
+      - "Prometheus bound neoclassical painting"
+    limit: 10
+
+  pan_goat:
+    label: "Pan — the All, goat-god"
+    sources: [wikimedia, met]
+    queries:
+      - "Pan Greek god goat pipes marble sculpture ancient"
+      - "Pan satyr pastoral ancient Greek vase krater"
+      - "Faunus Pan Roman bronze sculpture deity"
+    limit: 10
+
+  indras_net:
+    label: "Indra's Net — cosmic jewel web"
+    sources: [wikimedia, met]
+    queries:
+      - "Buddhist mandala jewel cosmos thangka painting"
+      - "Islamic geometric tile pattern interlocking star"
+      - "celestial sphere armillary brass gilt medieval"
+      - "Orrery mechanical solar system model brass"
+    limit: 6
+
+  strange_attractor:
+    label: "Strange Attractor — orbital pattern chaos"
+    sources: [wikimedia, met]
+    queries:
+      - "Kepler orbit diagram"
+      - "astronomical engraving celestial sphere"
+      - "vortex spiral engraving scientific"
+      - "Copernicus solar system diagram engraving"
+    limit: 6
+
+  chronos_devouring:
+    label: "Chronos — devouring father"
+    sources: [wikimedia, met]
+    queries:
+      - "Saturn Kronos devouring children painting mythology"
+      - "Goya Saturn Black Paintings devouring son"
+      - "Cronos time devouring child ancient myth painting"
+    limit: 10
+
+figures:
+  carl_jung:
+    label: "Carl Jung"
+    sources: [wikimedia]
+    queries:
+      - "Carl Jung portrait"
+      - "Jung psychologist photograph"
+      - "Carl Gustav Jung photograph"
+    limit: 6
+
+  jung_red_book:
+    label: "Jung — Red Book illustrations"
+    sources: [wikimedia, met]
+    queries:
+      - "illuminated manuscript folio medieval painting dragon"
+      - "alchemical manuscript illustration rebis hermaphrodite"
+      - "Rosarium Philosophorum woodcut alchemical manuscript"
+      - "mandala circular painting medieval illuminated gold"
+    limit: 8
+
+  swedenborg:
+    label: "Emanuel Swedenborg"
+    sources: [wikimedia, met]
+    queries:
+      - "Swedenborg portrait engraving 18th century"
+      - "Swedish mystic philosopher portrait 1700s painting"
+      - "Martin van Meytens Swedish portrait 18th century"
+    limit: 5
+
+  john_milton:
+    label: "John Milton"
+    sources: [wikimedia]
+    queries:
+      - "John Milton portrait engraving"
+      - "Milton poet portrait painting"
+      - "John Milton Paradise Lost portrait"
+    limit: 5
+
+  lucifer_fallen:
+    label: "Lucifer / Mephistopheles — fallen spirit"
+    sources: [wikimedia, met]
+    queries:
+      - "Mephistopheles painting Delacroix lithograph"
+      - "devil temptation painting Baroque mythological"
+      - "Beelzebub demon painting illustration"
+      - "Satan temptation Christ wilderness painting"
+    limit: 10
+
+  pan_classical:
+    label: "Pan — classical sculpture and art"
+    sources: [wikimedia, met]
+    queries:
+      - "Pan Greek god marble sculpture classical museum"
+      - "Pan deity terracotta ancient Greek Roman sculpture"
+      - "satyr Pan pipes classical bronze Hellenistic"
+    limit: 10
+
+  prometheus_classical:
+    label: "Prometheus — classical and Renaissance art"
+    sources: [wikimedia, met]
+    queries:
+      - "Prometheus fire Rubens painting chained eagle"
+      - "Prometheus Louvre classical sculpture ancient Greek"
+      - "Prometheus bound painting neoclassical canvas"
+    limit: 10
+
+books:
+  hermetic_alchemical:
+    label: "Hermetic and alchemical manuscripts"
+    sources: [wikimedia, met]
+    queries:
+      - "Splendor Solis alchemical"
+      - "Rosarium Philosophorum woodcut"
+      - "Aurora Consurgens alchemical"
+      - "alchemy manuscript illuminated medieval folio"
+    limit: 8
+
+  paradise_lost_illustrated:
+    label: "Paradise Lost — Doré and early editions"
+    sources: [wikimedia, met]
+    queries:
+      - "Paradise Lost Milton Gustave Dore engraving 1866"
+      - "Paradise Lost frontispiece 17th century edition woodcut"
+      - "Milton Paradise Lost William Blake illustration engraving"
+    limit: 8
+
+artworks:
+  goya_saturn:
+    label: "Saturn Devouring His Son — Goya"
+    sources: [wikimedia, met]
+    queries:
+      - "Goya Saturn devouring son Prado Black Paintings"
+      - "Francisco Goya pinturas negras Saturn detail"
+      - "Rubens Saturn devouring son Prado Baroque painting"
+    limit: 10
+
+  rubens_prometheus:
+    label: "Prometheus Bound — Rubens"
+    sources: [wikimedia, met]
+    queries:
+      - "Rubens Prometheus painting"
+      - "Prometheus bound Baroque painting eagle"
+      - "Peter Paul Rubens Prometheus chained"
+      - "Prometheus eagle liver Baroque canvas"
+    limit: 8
+
+  dore_paradise_lost:
+    label: "Gustave Doré — Paradise Lost engravings"
+    sources: [wikimedia, met]
+    queries:
+      - "Gustave Dore engraving Satan"
+      - "Dore Paradise Lost engraving"
+      - "Dore fallen angels engraving"
+      - "Dore Milton Satan engraving 1866"
+    limit: 10
+
+  blake_satan:
+    label: "William Blake — Satan and fallen angels"
+    sources: [wikimedia, met]
+    queries:
+      - "William Blake Satan watercolour painting Tate"
+      - "Blake Great Red Dragon painting National Gallery"
+      - "William Blake fallen angel Lucifer illustration"
+    limit: 10
+
+  mithras_tauroctony:
+    label: "Mithras — bull sacrifice relief"
+    sources: [wikimedia, met]
+    queries:
+      - "Mithras tauroctony marble relief Roman museum"
+      - "Mithraic bull sacrifice cult relief sculpture"
+      - "Mithras bull Roman mystery religion stone carving"
+    limit: 10
+
+photos:
+  jung_early:
+    label: "Jung — portraits and photographs"
+    sources: [wikimedia]
+    queries:
+      - "Carl Jung photograph portrait"
+      - "Jung psychologist photograph black white"
+      - "Sigmund Freud Carl Jung photograph together"
+    limit: 6
+
+  epstein_documents:
+    label: "Jeffrey Epstein — documentary record"
+    sources: [wikimedia]
+    queries:
+      - "Jeffrey Epstein photograph"
+      - "Epstein Maxwell photograph documentary"
+    limit: 4

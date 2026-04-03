@@ -17,6 +17,8 @@ describe("DetailsPanel", () => {
       summary: "The thesis starts here.",
       content: "# Opening note\n\nThe thesis starts here.",
       tags: ["note"],
+      sequenceCaption: null,
+      sequenceViewport: null,
       createdAt: "2026-03-30T00:00:00Z",
       updatedAt: "2026-03-30T00:00:00Z"
     };
@@ -33,6 +35,8 @@ describe("DetailsPanel", () => {
       relativePath: "report.md",
       mimeType: "text/markdown",
       fileFingerprint: "markdown:report.md",
+      sequenceCaption: null,
+      sequenceViewport: null,
       createdAt: "2026-03-30T00:00:00Z",
       updatedAt: "2026-03-30T00:00:00Z"
     };
@@ -50,6 +54,8 @@ describe("DetailsPanel", () => {
         stroke: "#f0b45a",
         width: 2
       },
+      sequencing: false,
+      sequencePriority: 0,
       createdAt: "2026-03-30T00:00:00Z",
       updatedAt: "2026-03-30T00:00:00Z"
     };
@@ -88,6 +94,8 @@ describe("DetailsPanel", () => {
       relativePath: "report.md",
       mimeType: "text/markdown",
       fileFingerprint: "markdown:report.md",
+      sequenceCaption: null,
+      sequenceViewport: null,
       createdAt: "2026-03-30T00:00:00Z",
       updatedAt: "2026-03-30T00:00:00Z"
     };

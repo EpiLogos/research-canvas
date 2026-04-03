@@ -11,7 +11,6 @@ export function createSampleExportBundle(): ExportBundle {
   const canvasId = "22222222-2222-4222-8222-222222222222";
   const noteNodeId = "33333333-3333-4333-8333-333333333333";
   const resourceNodeId = "44444444-4444-4444-8444-444444444444";
-  const sequenceId = "55555555-5555-4555-8555-555555555555";
   const annotationId = "66666666-6666-4666-8666-666666666666";
 
   return {
@@ -79,6 +78,8 @@ export function createSampleExportBundle(): ExportBundle {
         note: "Supporting source",
         relationKind: "supports",
         sourceNodeId: noteNodeId,
+        sequencePriority: 0,
+        sequencing: false,
         style: {
           dashed: false,
           stroke: "#f0b45a",
@@ -97,6 +98,8 @@ export function createSampleExportBundle(): ExportBundle {
         createdAt: "2026-03-30T22:00:00Z",
         id: noteNodeId,
         position: { x: 80, y: 80 },
+        sequenceCaption: null,
+        sequenceViewport: null,
         size: { height: 160, width: 240 },
         summary: "The thesis starts here.",
         tags: ["note"],
@@ -112,6 +115,8 @@ export function createSampleExportBundle(): ExportBundle {
         id: resourceNodeId,
         mimeType: "text/markdown",
         position: { x: 360, y: 80 },
+        sequenceCaption: null,
+        sequenceViewport: null,
         relativePath: "README.md",
         resourceKind: "markdown",
         size: { height: 180, width: 260 },
@@ -138,34 +143,5 @@ export function createSampleExportBundle(): ExportBundle {
       summary: "Seed workspace for exporter and viewer flows",
       updatedAt: "2026-03-30T22:00:00Z"
     },
-    sequenceSteps: [
-      {
-        caption: "Opening note",
-        id: "88888888-8888-4888-8888-888888888888",
-        position: 0,
-        sequenceId,
-        targetId: noteNodeId,
-        targetType: "node",
-        transitionHint: "ease",
-        viewport: {
-          x: 0,
-          y: 0,
-          zoom: 1
-        }
-      }
-    ],
-    sequences: [
-      {
-        canvasId,
-        createdAt: "2026-03-30T22:00:00Z",
-        description: "Sequence-first tour of the sample project",
-        id: sequenceId,
-        kind: "presentation",
-        name: "Episode flow",
-        projectId,
-        published: true,
-        updatedAt: "2026-03-30T22:00:00Z"
-      }
-    ]
   };
 }

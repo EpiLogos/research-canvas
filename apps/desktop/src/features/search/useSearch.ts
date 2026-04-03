@@ -45,16 +45,6 @@ export function useSearch(query: string, options: UseSearchOptions = {}) {
       }
     }));
 
-    const sequenceItems = workspace.sequences.map((sequence) => ({
-      id: `sequence:${sequence.id}`,
-      kind: "sequence" as const,
-      summary: sequence.description,
-      title: sequence.name,
-      onSelect: () => {
-        workspace.sequenceStore.getState().setActiveSequence(sequence.id);
-      }
-    }));
-
     const commandItems: SearchPaletteItem[] = [
       {
         id: "command:create-note",
@@ -88,13 +78,11 @@ export function useSearch(query: string, options: UseSearchOptions = {}) {
       }
     ];
 
-    return [...fileItems, ...nodeItems, ...sequenceItems, ...commandItems];
+    return [...fileItems, ...nodeItems, ...commandItems];
   }, [
     onOpenExport,
     workspace.entries,
     workspace.nodes,
-    workspace.sequences,
-    workspace.sequenceStore,
     workspace.selectEntry,
     workspace.selectNode,
     workspace.store

@@ -7,7 +7,7 @@ use research_canvas_desktop_lib::{
     },
     db::{
         connection::Database,
-        repositories::{CanvasGraphRepository, ProjectRepository, SequenceRepository},
+        repositories::{CanvasGraphRepository, ProjectRepository},
     },
 };
 use tempfile::{tempdir, TempDir};
@@ -82,28 +82,6 @@ fn rebuilds_and_queries_a_real_search_index_from_files_notes_sequences_and_neste
             )
             .expect("create resource node");
 
-        let sequences = SequenceRepository::new(database.connection());
-        let sequence = sequences
-            .create_sequence(
-                &root_project.id,
-                &root_canvas_id,
-                "Episode flow",
-                "storyboard",
-                Some("Primary narrative arc".to_string()),
-                false,
-            )
-            .expect("create sequence");
-        sequences
-            .add_step(
-                &sequence.id,
-                "node",
-                &report_node.id,
-                "Support it with the report",
-                serde_json::json!({ "x": 0.0, "y": 0.0, "zoom": 1.0 }),
-                Some("ease".to_string()),
-            )
-            .expect("add sequence step");
-
         let child_project = projects
             .create(
                 "Nested Project".to_string(),
@@ -128,8 +106,6 @@ fn rebuilds_and_queries_a_real_search_index_from_files_notes_sequences_and_neste
 
     assert_eq!(summary.scope_project_id, root_project_id);
     assert_eq!(summary.projects_indexed, 2);
-    assert_eq!(summary.sequences_indexed, 1);
-    assert_eq!(summary.sequence_steps_indexed, 1);
     assert!(summary.file_entries_indexed >= 6);
     assert!(summary.documents_indexed > 0);
 
@@ -157,17 +133,6 @@ fn rebuilds_and_queries_a_real_search_index_from_files_notes_sequences_and_neste
     assert!(node_hits
         .iter()
         .any(|hit| hit.entity_type == "node" && hit.title == "Opening note"));
-
-    let sequence_hits = search_project_command(SearchProjectRequest {
-        database_path: database_path.clone(),
-        project_id: root_project_id.clone(),
-        query: "support report".to_string(),
-        limit: Some(10),
-    })
-    .expect("search sequence step");
-    assert!(sequence_hits.iter().any(|hit| {
-        hit.entity_type == "sequence_step" && hit.title == "Support it with the report"
-    }));
 
     let child_hits = search_project_command(SearchProjectRequest {
         database_path: database_path.clone(),

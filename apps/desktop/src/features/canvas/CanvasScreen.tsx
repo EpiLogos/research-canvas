@@ -1,8 +1,9 @@
 import { useCallback, useState } from "react";
 
-import { AnnotationLayer, CanvasView } from "@research-canvas/canvas";
+import { CanvasView } from "@research-canvas/canvas";
 
 import { useCanvasWorkspace } from "./CanvasWorkspaceContext";
+import { WorkspaceFilePickerButton } from "./WorkspaceFilePickerButton";
 
 interface CanvasScreenProps {
   onNodeSelect?: (nodeId: string) => void;
@@ -25,23 +26,10 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, leftPanelOpen, r
     setAnnotationMode(false);
   }, [workspace.annotationStore]);
 
-  const createSequence = useCallback(() => {
-    const existing = workspace.sequences[0];
-    if (existing) {
-      workspace.sequenceStore.getState().setActiveSequence(existing.id);
-      return;
-    }
-
-    workspace.sequenceStore.getState().createSequence({
-      kind: "storyboard",
-      name: "Episode flow"
-    });
-  }, [workspace.sequenceStore, workspace.sequences]);
-
   if (!workspace.isHydrated) {
     return (
       <div className="canvas-workspace">
-        <p>Loading canvas workspace.</p>
+        <p>{workspace.errorMessage ?? "Loading canvas workspace."}</p>
       </div>
     );
   }
@@ -62,18 +50,13 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, leftPanelOpen, r
               <button onClick={() => workspace.createNoteNode()} type="button">
                 Add note node
               </button>
-              <button
-                onClick={() => {
-                  const entry =
-                    workspace.selectedEntry ??
-                    workspace.entries.find((candidate) => !candidate.isDirectory);
-                  if (!entry) return;
+              <WorkspaceFilePickerButton
+                buttonLabel="Add resource node"
+                entries={workspace.entries}
+                onSelect={(entry) => {
                   workspace.addResourceNode(entry, { x: 200, y: 200 });
                 }}
-                type="button"
-              >
-                Add resource node
-              </button>
+              />
             </div>
 
             <div className="canvas-toolbar__group">
@@ -83,9 +66,6 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, leftPanelOpen, r
                 type="button"
               >
                 Draw annotation
-              </button>
-              <button onClick={createSequence} type="button">
-                Create sequence
               </button>
             </div>
           </header>
@@ -101,13 +81,19 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, leftPanelOpen, r
           <CanvasView
             edges={workspace.edges}
             nodes={workspace.nodes}
+            selectedEdgeId={workspace.selectedEdgeId}
             selectedNodeId={workspace.selectedNodeId}
             onMoveNode={(nodeId, position) => {
               workspace.store.getState().updateNodePosition(nodeId, position);
             }}
             onSelectNode={(nodeId) => {
               workspace.selectNode(nodeId);
-              onNodeSelect?.(nodeId);
+              if (nodeId) {
+                onNodeSelect?.(nodeId);
+              }
+            }}
+            onSelectEdge={(edgeId) => {
+              workspace.selectEdge(edgeId);
             }}
             onNodeDoubleClick={(nodeId) => {
               workspace.selectNode(nodeId);
@@ -128,8 +114,17 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, leftPanelOpen, r
             onConnectNodes={(input) => {
               workspace.addEdge(input);
             }}
+            onReconnectEdge={(edgeId, input) => {
+              workspace.store.getState().updateEdgeConnection(edgeId, input);
+            }}
+            onCycleEdgeDirectionality={(edgeId) => {
+              workspace.store.getState().cycleEdgeDirectionality(edgeId);
+            }}
             onDeleteEdge={(edgeId) => {
               workspace.deleteEdge(edgeId);
+            }}
+            onUpdateEdgeRelationKind={(edgeId, relationKind) => {
+              workspace.store.getState().updateEdgeRelationKind(edgeId, relationKind);
             }}
             onResizeNode={(nodeId, width, height) => {
               workspace.resizeNode(nodeId, width, height);
@@ -140,12 +135,13 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, leftPanelOpen, r
             fileEntries={fileEntries}
             leftPanelOpen={leftPanelOpen}
             rightPanelOpen={rightPanelOpen}
+            onRegisterCaptureViewport={workspace.registerCaptureViewport}
+            onRegisterFlyToEdge={workspace.registerFlyToEdge}
             onRegisterFlyToNode={workspace.registerFlyToNode}
-          />
-          <AnnotationLayer
             annotations={workspace.annotations}
             drawingEnabled={annotationMode}
             onCreateStroke={createAnnotation}
+            onUpdateNoteContent={workspace.updateNodeContent}
           />
         </div>
 
@@ -155,7 +151,6 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, leftPanelOpen, r
           <span data-testid="annotation-count">
             {workspace.annotations.length} annotations
           </span>
-          <span>{workspace.sequences.length} sequences</span>
         </footer>
       </div>
     </div>

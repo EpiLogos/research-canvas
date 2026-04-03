@@ -12,7 +12,7 @@ use thiserror::Error;
 use crate::{
     db::repositories::{
         AnnotationRecord, AnnotationRepository, CanvasGraphRepository, CanvasRepository,
-        ProjectRepository, SequenceRecord, SequenceRepository, SequenceStepRecord,
+        ProjectRepository,
     },
     fs::indexer::{index_directory, IndexedEntryKind},
 };
@@ -48,7 +48,6 @@ pub struct ExportResult {
     pub project_id: String,
     pub output_dir: String,
     pub node_page_count: usize,
-    pub sequence_page_count: usize,
     pub asset_count: usize,
 }
 
@@ -60,8 +59,6 @@ struct ExportBundle {
     canvases: Vec<CanvasExport>,
     nodes: Vec<NodeExport>,
     edges: Vec<EdgeExport>,
-    sequences: Vec<SequenceExport>,
-    sequence_steps: Vec<SequenceStepExport>,
     annotations: Vec<AnnotationExport>,
     assets: Vec<ExportAsset>,
 }
@@ -190,33 +187,6 @@ struct EdgeExport {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct SequenceExport {
-    id: String,
-    project_id: String,
-    canvas_id: String,
-    name: String,
-    kind: String,
-    description: String,
-    published: bool,
-    created_at: String,
-    updated_at: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SequenceStepExport {
-    id: String,
-    sequence_id: String,
-    position: i64,
-    target_type: String,
-    target_id: String,
-    caption: String,
-    viewport: Viewport,
-    transition_hint: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct AnnotationExport {
     id: String,
     canvas_id: String,
@@ -267,7 +237,6 @@ pub fn export_project_bundle(
     let project_repository = ProjectRepository::new(connection);
     let canvas_repository = CanvasRepository::new(connection);
     let graph_repository = CanvasGraphRepository::new(connection);
-    let sequence_repository = SequenceRepository::new(connection);
     let annotation_repository = AnnotationRepository::new(connection);
 
     let project = project_repository
@@ -281,8 +250,6 @@ pub fn export_project_bundle(
         .get_by_id(&primary_canvas_id)?
         .ok_or_else(|| ExportError::ProjectNotFound(primary_canvas_id.clone()))?;
     let snapshot = graph_repository.load_canvas_snapshot(&primary_canvas_id)?;
-    let sequences = sequence_repository.list_for_canvas(&primary_canvas_id)?;
-    let sequence_steps = collect_sequence_steps(&sequence_repository, &sequences)?;
     let annotations = annotation_repository.list_for_canvas(&primary_canvas_id)?;
     let profile = resolve_publish_profile(parse_json_value(&project.publish_settings)?)?;
 
@@ -301,17 +268,11 @@ pub fn export_project_bundle(
         generated_at: current_timestamp(),
         nodes: snapshot.nodes.iter().map(node_to_export).collect(),
         project: project_to_export(project, primary_canvas_id.clone(), profile.clone()),
-        sequence_steps: sequence_steps
-            .into_iter()
-            .map(sequence_step_to_export)
-            .collect(),
-        sequences: sequences.iter().cloned().map(sequence_to_export).collect(),
     };
 
     let output_dir = output_dir.as_ref();
     fs::create_dir_all(output_dir)?;
     fs::create_dir_all(output_dir.join("nodes"))?;
-    fs::create_dir_all(output_dir.join("sequences"))?;
 
     let bundle_json = serde_json::to_string_pretty(&bundle)?;
     fs::write(output_dir.join("bundle.json"), bundle_json)?;
@@ -337,19 +298,6 @@ pub fn export_project_bundle(
         }
     }
 
-    for page in build_sequence_pages(&bundle.sequences) {
-        if let Some(sequence) = bundle
-            .sequences
-            .iter()
-            .find(|entry| entry.id == page.sequence_id)
-        {
-            fs::write(
-                output_dir.join("sequences").join(&page.file_name),
-                render_sequence_page(&bundle, sequence, &page),
-            )?;
-        }
-    }
-
     copy_assets(&bundle.assets, output_dir)?;
     fs::write(
         output_dir.join("index.html"),
@@ -361,19 +309,7 @@ pub fn export_project_bundle(
         node_page_count: build_node_pages(&bundle.nodes).len(),
         output_dir: output_dir.display().to_string(),
         project_id: bundle.project.id,
-        sequence_page_count: build_sequence_pages(&bundle.sequences).len(),
     })
-}
-
-fn collect_sequence_steps(
-    repository: &SequenceRepository<'_>,
-    sequences: &[SequenceRecord],
-) -> Result<Vec<SequenceStepRecord>, ExportError> {
-    let mut steps = Vec::new();
-    for sequence in sequences {
-        steps.extend(repository.list_steps(&sequence.id)?);
-    }
-    Ok(steps)
 }
 
 fn parse_json_value(value: &str) -> Result<Value, ExportError> {
@@ -490,37 +426,6 @@ fn edge_to_export(edge: &crate::db::repositories::CanvasEdgeRecord) -> EdgeExpor
         style: serde_json::from_str(&edge.style_json).unwrap_or(Value::Null),
         target_node_id: edge.target_node_id.clone(),
         updated_at: edge.updated_at.clone(),
-    }
-}
-
-fn sequence_to_export(sequence: SequenceRecord) -> SequenceExport {
-    SequenceExport {
-        canvas_id: sequence.canvas_id,
-        created_at: sequence.created_at,
-        description: sequence.description,
-        id: sequence.id,
-        kind: sequence.kind,
-        name: sequence.name,
-        project_id: sequence.project_id,
-        published: sequence.published,
-        updated_at: sequence.updated_at,
-    }
-}
-
-fn sequence_step_to_export(step: SequenceStepRecord) -> SequenceStepExport {
-    SequenceStepExport {
-        caption: step.caption,
-        id: step.id,
-        position: step.position,
-        sequence_id: step.sequence_id,
-        target_id: step.target_id,
-        target_type: step.target_type,
-        transition_hint: step.transition_hint,
-        viewport: serde_json::from_str::<Viewport>(&step.viewport_json).unwrap_or(Viewport {
-            x: 0.0,
-            y: 0.0,
-            zoom: 1.0,
-        }),
     }
 }
 
@@ -674,51 +579,15 @@ fn render_index_page(bundle: &ExportBundle, profile: &PublishProfile) -> String 
         })
         .unwrap_or_default();
 
-    let sequence_cards = bundle
-        .sequences
-        .iter()
-        .map(|sequence| {
-            let page_href = build_sequence_pages(&bundle.sequences)
-                .into_iter()
-                .find(|page| page.sequence_id == sequence.id)
-                .map(|page| page.href)
-                .unwrap_or_else(|| "sequences/index.html".to_string());
-            let steps = bundle
-                .sequence_steps
-                .iter()
-                .filter(|step| step.sequence_id == sequence.id)
-                .map(|step| format!("<li>{}</li>", escape_html(&step.caption)))
-                .collect::<Vec<_>>()
-                .join("");
-            format!(
-                "<article class=\"card\"><h3>{}</h3><p>{}</p><ol>{}</ol><a href=\"{}\">Open sequence page</a></article>",
-                escape_html(&sequence.name),
-                escape_html(&sequence.description),
-                steps,
-                page_href
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("");
-
-    let mobile_label = if profile.mobile_sequence_first {
-        "Sequence-first exploration"
-    } else {
-        "Map-first exploration"
-    };
-
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /><title>{}</title><style>{}</style></head><body><main class=\"viewer\"><section class=\"viewer__hero\"><p class=\"eyebrow\">Static export</p><h1>{}</h1><p>{}</p></section><section class=\"viewer__desktop\"><section class=\"viewer-section\"><header><p class=\"eyebrow\">Map</p><h2>Canvas nodes</h2></header><div class=\"card-grid\">{}</div></section>{}<section class=\"viewer-section\"><header><p class=\"eyebrow\">Sequences</p><h2>Guided traversal</h2></header><div class=\"card-grid\">{}</div></section><section class=\"viewer-section\"><header><p class=\"eyebrow\">Downloads</p><h2>Published resources</h2></header><ul class=\"download-list\">{}</ul></section></section><section class=\"viewer__mobile\"><header class=\"mobile-hero\"><p class=\"eyebrow\">Mobile mode</p><h2>{}</h2><p>Follow the published path, then open resources when you need the source material.</p></header><section class=\"viewer-section\"><header><p class=\"eyebrow\">Sequences</p><h3>Published tour</h3></header><div class=\"mobile-stack\">{}</div></section></section></main></body></html>",
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /><title>{}</title><style>{}</style></head><body><main class=\"viewer\"><section class=\"viewer__hero\"><p class=\"eyebrow\">Static export</p><h1>{}</h1><p>{}</p></section><section class=\"viewer__desktop\"><section class=\"viewer-section\"><header><p class=\"eyebrow\">Map</p><h2>Canvas nodes</h2></header><div class=\"card-grid\">{}</div></section>{}<section class=\"viewer-section\"><header><p class=\"eyebrow\">Downloads</p><h2>Published resources</h2></header><ul class=\"download-list\">{}</ul></section></section></main></body></html>",
         escape_html(&bundle.project.display_name),
         viewer_styles(&profile.theme),
         escape_html(&bundle.project.display_name),
         escape_html(&bundle.project.summary),
         node_cards,
         featured_note,
-        sequence_cards,
         downloads,
-        escape_html(mobile_label),
-        sequence_cards
     )
 }
 
@@ -808,42 +677,6 @@ fn render_node_page(bundle: &ExportBundle, node: &NodeExport, page: &NodePage) -
     )
 }
 
-fn render_sequence_page(
-    bundle: &ExportBundle,
-    sequence: &SequenceExport,
-    _page: &SequencePage,
-) -> String {
-    let steps = bundle
-        .sequence_steps
-        .iter()
-        .filter(|step| step.sequence_id == sequence.id)
-        .map(|step| {
-            let label = bundle
-                .nodes
-                .iter()
-                .find(|node| node_id(node) == step.target_id)
-                .map(node_title)
-                .unwrap_or_else(|| step.target_id.clone());
-            format!(
-                "<li><strong>{}</strong><span>{}</span></li>",
-                escape_html(&step.caption),
-                escape_html(&label)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("");
-
-    format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /><title>{} - {}</title><style>{}</style></head><body><main class=\"viewer viewer--sequence\"><a class=\"back-link\" href=\"../index.html\">Back to project</a><section class=\"viewer__hero\"><p class=\"eyebrow\">Sequence page</p><h1>{}</h1><p>{}</p></section><section class=\"viewer-section\"><header><p class=\"eyebrow\">Steps</p><h2>Guided traversal</h2></header><ol class=\"step-list\">{}</ol></section></main></body></html>",
-        escape_html(&sequence.name),
-        escape_html(&bundle.project.display_name),
-        viewer_styles("paper"),
-        escape_html(&sequence.name),
-        escape_html(&sequence.description),
-        steps
-    )
-}
-
 fn build_node_pages(nodes: &[NodeExport]) -> Vec<NodePage> {
     let mut counts = std::collections::BTreeMap::new();
     nodes
@@ -867,44 +700,11 @@ fn build_node_pages(nodes: &[NodeExport]) -> Vec<NodePage> {
         .collect()
 }
 
-fn build_sequence_pages(sequences: &[SequenceExport]) -> Vec<SequencePage> {
-    let mut counts = std::collections::BTreeMap::new();
-    sequences
-        .iter()
-        .map(|sequence| {
-            let base = slugify(&sequence.name);
-            let count = counts.entry(base.clone()).or_insert(0);
-            let slug = if *count == 0 {
-                base.clone()
-            } else {
-                format!("{}-{}", base, *count + 1)
-            };
-            *count += 1;
-            SequencePage {
-                file_name: format!("{}.html", slug),
-                href: format!("sequences/{}.html", slug),
-                name: sequence.name.clone(),
-                sequence_id: sequence.id.clone(),
-                slug,
-            }
-        })
-        .collect()
-}
-
 #[derive(Debug, Clone)]
 struct NodePage {
     file_name: String,
     href: String,
     node_id: String,
-    slug: String,
-}
-
-#[derive(Debug, Clone)]
-struct SequencePage {
-    file_name: String,
-    href: String,
-    name: String,
-    sequence_id: String,
     slug: String,
 }
 
@@ -1083,7 +883,6 @@ struct SearchIndexEntry {
 
 fn build_search_index(bundle: &ExportBundle) -> Vec<SearchIndexEntry> {
     let node_pages = build_node_pages(&bundle.nodes);
-    let sequence_pages = build_sequence_pages(&bundle.sequences);
 
     let mut entries = Vec::new();
     entries.push(SearchIndexEntry {
@@ -1114,21 +913,6 @@ fn build_search_index(bundle: &ExportBundle) -> Vec<SearchIndexEntry> {
             },
             href,
             content: format!("{}\n{}", node_title(node), node_summary(node)),
-        });
-    }
-
-    for sequence in &bundle.sequences {
-        let href = sequence_pages
-            .iter()
-            .find(|page| page.sequence_id == sequence.id)
-            .map(|page| page.href.clone())
-            .unwrap_or_else(|| "index.html".to_string());
-        entries.push(SearchIndexEntry {
-            id: sequence.id.clone(),
-            title: sequence.name.clone(),
-            kind: "sequence".to_string(),
-            href,
-            content: format!("{}\n{}", sequence.name, sequence.description),
         });
     }
 

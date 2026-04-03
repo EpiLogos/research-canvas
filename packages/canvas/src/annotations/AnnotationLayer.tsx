@@ -1,3 +1,4 @@
+import { useReactFlow, useViewport } from "@xyflow/react";
 import { useRef, useState, type PointerEvent } from "react";
 
 import type { Annotation, AnnotationPoint } from "@research-canvas/schema";
@@ -15,6 +16,8 @@ export function AnnotationLayer({
   drawingEnabled,
   onCreateStroke
 }: AnnotationLayerProps) {
+  const { screenToFlowPosition } = useReactFlow();
+  const viewport = useViewport();
   const [draftPoints, setDraftPoints] = useState<AnnotationPoint[]>([]);
   const draftPointsRef = useRef<AnnotationPoint[]>([]);
   const drawingRef = useRef(false);
@@ -24,7 +27,7 @@ export function AnnotationLayer({
       return;
     }
 
-    const point = pointFromEvent(event);
+    const point = pointFromEvent(event, screenToFlowPosition);
     drawingRef.current = true;
     draftPointsRef.current = [point];
     setDraftPoints([point]);
@@ -36,7 +39,10 @@ export function AnnotationLayer({
       return;
     }
 
-    const nextPoints = [...draftPointsRef.current, pointFromEvent(event)];
+    const nextPoints = [
+      ...draftPointsRef.current,
+      pointFromEvent(event, screenToFlowPosition),
+    ];
     draftPointsRef.current = nextPoints;
     setDraftPoints(nextPoints);
   };
@@ -65,35 +71,42 @@ export function AnnotationLayer({
       onPointerLeave={endStroke}
       onPointerMove={extendStroke}
       onPointerUp={endStroke}
-      preserveAspectRatio="none"
-      viewBox="0 0 960 640"
     >
-      {annotations.map((annotation) => (
-        <path
-          d={strokePathFromPoints(annotation.points, annotation.style.width)}
-          fill={annotation.style.color}
-          fillOpacity={annotation.style.opacity}
-          key={annotation.id}
-        />
-      ))}
+      <g
+        transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.zoom})`}
+      >
+        {annotations.map((annotation) => (
+          <path
+            d={strokePathFromPoints(annotation.points, annotation.style.width)}
+            fill={annotation.style.color}
+            fillOpacity={annotation.style.opacity}
+            key={annotation.id}
+          />
+        ))}
 
-      {draftPoints.length > 1 ? (
-        <path
-          d={strokePathFromPoints(draftPoints, 4)}
-          fill="#f0b45a"
-          fillOpacity={0.9}
-        />
-      ) : null}
+        {draftPoints.length > 1 ? (
+          <path
+            d={strokePathFromPoints(draftPoints, 4)}
+            fill="#f0b45a"
+            fillOpacity={0.9}
+          />
+        ) : null}
+      </g>
     </svg>
   );
 }
 
-function pointFromEvent(event: PointerEvent<SVGSVGElement>): AnnotationPoint {
-  const bounds = event.currentTarget.getBoundingClientRect();
-
+function pointFromEvent(
+  event: PointerEvent<SVGSVGElement>,
+  screenToFlowPosition: (position: { x: number; y: number }) => { x: number; y: number },
+): AnnotationPoint {
+  const position = screenToFlowPosition({
+    x: event.clientX,
+    y: event.clientY,
+  });
   return {
-    x: event.clientX - bounds.left,
-    y: event.clientY - bounds.top,
+    x: position.x,
+    y: position.y,
     pressure: event.pressure > 0 ? event.pressure : 0.5
   };
 }

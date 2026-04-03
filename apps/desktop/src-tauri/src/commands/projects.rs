@@ -13,7 +13,7 @@ use crate::{
         connection::Database,
         repositories::{
             AnnotationRepository, CanvasGraphRepository, Project, ProjectRepository,
-            ResourceRootRecord, ResourceRootRepository, SequenceRepository,
+            ResourceRootRecord, ResourceRootRepository,
         },
     },
     fs::indexer::{index_directory, IndexedEntry, IndexedEntryKind},
@@ -114,6 +114,7 @@ pub struct CanvasNodePayload {
     pub size: SizePayload,
     pub summary: String,
     pub content: Option<String>,
+    #[serde(default)]
     pub tags: Vec<String>,
     pub resource_kind: Option<String>,
     pub absolute_path: Option<String>,
@@ -148,6 +149,8 @@ pub struct CanvasEdgePayload {
     pub canvas_id: String,
     pub source_node_id: String,
     pub target_node_id: String,
+    pub source_handle_id: Option<String>,
+    pub target_handle_id: Option<String>,
     pub relation_kind: String,
     pub directionality: String,
     pub label: String,
@@ -196,41 +199,6 @@ pub struct AnnotationPayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ViewportPayload {
-    pub x: f64,
-    pub y: f64,
-    pub zoom: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SequencePayload {
-    pub id: String,
-    pub project_id: String,
-    pub canvas_id: String,
-    pub name: String,
-    pub kind: String,
-    pub description: String,
-    pub published: bool,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SequenceStepPayload {
-    pub id: String,
-    pub sequence_id: String,
-    pub position: i64,
-    pub target_type: String,
-    pub target_id: String,
-    pub caption: String,
-    pub viewport: ViewportPayload,
-    pub transition_hint: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ProjectDocumentPayload {
     pub working_root: String,
     pub canvas_id: String,
@@ -241,8 +209,6 @@ pub struct ProjectDocumentPayload {
     pub annotations: Vec<AnnotationPayload>,
     pub edges: Vec<CanvasEdgePayload>,
     pub nodes: Vec<CanvasNodePayload>,
-    pub sequence_steps: Vec<SequenceStepPayload>,
-    pub sequences: Vec<SequencePayload>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -261,8 +227,6 @@ pub struct PersistProjectDocumentRequest {
     pub edges: Vec<CanvasEdgePayload>,
     pub nodes: Vec<CanvasNodePayload>,
     pub project_id: String,
-    pub sequence_steps: Vec<SequenceStepPayload>,
-    pub sequences: Vec<SequencePayload>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -380,18 +344,6 @@ pub fn load_project_document_at(
     let annotations = AnnotationRepository::new(database.connection())
         .list_for_canvas(&canvas_id)
         .map_err(|error| error.to_string())?;
-    let sequences = SequenceRepository::new(database.connection())
-        .list_for_canvas(&canvas_id)
-        .map_err(|error| error.to_string())?;
-
-    let mut sequence_steps = Vec::new();
-    let repository = SequenceRepository::new(database.connection());
-    for sequence in &sequences {
-        let mut steps = repository
-            .list_steps(&sequence.id)
-            .map_err(|error| error.to_string())?;
-        sequence_steps.append(&mut steps);
-    }
 
     Ok(ProjectDocumentPayload {
         working_root: project.root_path.clone(),
@@ -417,11 +369,6 @@ pub fn load_project_document_at(
             .into_iter()
             .map(node_payload)
             .collect::<Result<Vec<_>, _>>()?,
-        sequence_steps: sequence_steps
-            .into_iter()
-            .map(sequence_step_payload)
-            .collect::<Result<Vec<_>, _>>()?,
-        sequences: sequences.into_iter().map(sequence_payload).collect(),
     })
 }
 
@@ -582,21 +529,6 @@ fn replace_project_document(
 ) -> Result<(), String> {
     connection
         .execute(
-            "DELETE FROM sequence_steps
-             WHERE sequence_id IN (
-                 SELECT id FROM sequences WHERE canvas_id = ?1
-             )",
-            [&request.canvas_id],
-        )
-        .map_err(|error| error.to_string())?;
-    connection
-        .execute(
-            "DELETE FROM sequences WHERE canvas_id = ?1",
-            [&request.canvas_id],
-        )
-        .map_err(|error| error.to_string())?;
-    connection
-        .execute(
             "DELETE FROM canvas_annotations WHERE canvas_id = ?1",
             [&request.canvas_id],
         )
@@ -692,6 +624,8 @@ fn replace_project_document(
                     canvas_id,
                     source_node_id,
                     target_node_id,
+                    source_handle_id,
+                    target_handle_id,
                     relation_kind,
                     directionality,
                     label,
@@ -699,12 +633,14 @@ fn replace_project_document(
                     style_json,
                     created_at,
                     updated_at
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                 params![
                     edge.id,
                     edge.canvas_id,
                     edge.source_node_id,
                     edge.target_node_id,
+                    edge.source_handle_id.as_deref(),
+                    edge.target_handle_id.as_deref(),
                     edge.relation_kind,
                     edge.directionality,
                     edge.label,
@@ -753,65 +689,6 @@ fn replace_project_document(
                     annotation.bounds.size.height,
                     annotation.created_at,
                     annotation.updated_at,
-                ],
-            )
-            .map_err(|error| error.to_string())?;
-    }
-
-    for sequence in &request.sequences {
-        connection
-            .execute(
-                "INSERT INTO sequences (
-                    id,
-                    project_id,
-                    canvas_id,
-                    name,
-                    kind,
-                    description,
-                    published,
-                    created_at,
-                    updated_at
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![
-                    sequence.id,
-                    sequence.project_id,
-                    sequence.canvas_id,
-                    sequence.name,
-                    sequence.kind,
-                    sequence.description,
-                    sequence.published as i64,
-                    sequence.created_at,
-                    sequence.updated_at,
-                ],
-            )
-            .map_err(|error| error.to_string())?;
-    }
-
-    for step in &request.sequence_steps {
-        let viewport = serde_json::to_string(&step.viewport).map_err(|error| error.to_string())?;
-        connection
-            .execute(
-                "INSERT INTO sequence_steps (
-                    id,
-                    sequence_id,
-                    position,
-                    target_type,
-                    target_id,
-                    caption,
-                    viewport_json,
-                    transition_hint,
-                    created_at
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![
-                    step.id,
-                    step.sequence_id,
-                    step.position,
-                    step.target_type,
-                    step.target_id,
-                    step.caption,
-                    viewport,
-                    step.transition_hint,
-                    current_timestamp(),
                 ],
             )
             .map_err(|error| error.to_string())?;
@@ -1038,6 +915,8 @@ fn edge_payload(
         canvas_id: record.canvas_id,
         source_node_id: record.source_node_id,
         target_node_id: record.target_node_id,
+        source_handle_id: record.source_handle_id,
+        target_handle_id: record.target_handle_id,
         relation_kind: record.relation_kind,
         directionality: record.directionality,
         label: record.label,
@@ -1079,37 +958,6 @@ fn annotation_payload(
     })
 }
 
-fn sequence_payload(record: crate::db::repositories::SequenceRecord) -> SequencePayload {
-    SequencePayload {
-        id: record.id,
-        project_id: record.project_id,
-        canvas_id: record.canvas_id,
-        name: record.name,
-        kind: record.kind,
-        description: record.description,
-        published: record.published,
-        created_at: record.created_at,
-        updated_at: record.updated_at,
-    }
-}
-
-fn sequence_step_payload(
-    record: crate::db::repositories::SequenceStepRecord,
-) -> Result<SequenceStepPayload, String> {
-    let viewport: ViewportPayload =
-        serde_json::from_str(&record.viewport_json).map_err(|error| error.to_string())?;
-    Ok(SequenceStepPayload {
-        id: record.id,
-        sequence_id: record.sequence_id,
-        position: record.position,
-        target_type: record.target_type,
-        target_id: record.target_id,
-        caption: record.caption,
-        viewport,
-        transition_hint: record.transition_hint,
-    })
-}
-
 fn current_timestamp() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
 }
@@ -1121,4 +969,9 @@ pub fn activate_canvas_command(
 ) {
     let mut state = api_state.lock().unwrap();
     state.active_canvas_id = Some(canvas_id);
+}
+
+#[tauri::command]
+pub fn read_workspace_text_file_command(path: String) -> Result<String, String> {
+    fs::read_to_string(path).map_err(|error| error.to_string())
 }

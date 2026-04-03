@@ -98,6 +98,13 @@ fn handle_request(
         return respond_json(request, StatusCode(200), payload);
     }
 
+    if method == Method::Get && path == "/workspace/file-content" {
+        let requested_path = query_param(&url, "path")
+            .ok_or_else(|| "missing path query parameter".to_string())?;
+        let content = std::fs::read_to_string(&requested_path).map_err(|error| error.to_string())?;
+        return respond_json(request, StatusCode(200), json!({ "content": content }));
+    }
+
     if method == Method::Get && path == "/workspace/search" {
         let database_path = session_database_path(&request);
         let database_path = database_path.to_string_lossy().to_string();
@@ -147,14 +154,23 @@ fn handle_request(
             let database_path = session_database_path(&request)
                 .to_string_lossy()
                 .to_string();
-            let body = read_body(&mut request)?;
-            let mut payload: PersistProjectDocumentRequest =
-                serde_json::from_str(&body).map_err(|error| error.to_string())?;
+            let body = match read_body(&mut request) {
+                Ok(body) => body,
+                Err(error) => return respond_error(request, StatusCode(400), &error),
+            };
+            let mut payload: PersistProjectDocumentRequest = match serde_json::from_str(&body) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return respond_error(request, StatusCode(400), &error.to_string())
+                }
+            };
             payload.database_path = database_path;
             payload.project_id = project_id;
 
-            let persisted = persist_project_document_at(payload)?;
-            return respond_json(request, StatusCode(200), persisted);
+            return match persist_project_document_at(payload) {
+                Ok(persisted) => respond_json(request, StatusCode(200), persisted),
+                Err(error) => respond_error(request, StatusCode(500), &error),
+            };
         }
 
         if method == Method::Post && action == "resource-roots" {
@@ -311,6 +327,14 @@ fn respond_json<T: serde::Serialize>(
     request.respond(response).map_err(|error| error.to_string())
 }
 
+fn respond_error(
+    request: tiny_http::Request,
+    status: StatusCode,
+    error: &str,
+) -> Result<(), String> {
+    respond_json(request, status, json!({ "error": error }))
+}
+
 fn header(name: &str, value: &str) -> Header {
     Header::from_bytes(name.as_bytes(), value.as_bytes()).expect("valid header")
 }
@@ -336,10 +360,52 @@ fn query_param(url: &str, key: &str) -> Option<String> {
         query.split('&').find_map(|pair| {
             let (candidate, value) = pair.split_once('=')?;
             if candidate == key {
-                Some(value.replace("%20", " "))
+                decode_query_component(value)
             } else {
                 None
             }
         })
     })
+}
+
+fn decode_query_component(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+
+    while index < bytes.len() {
+        match bytes[index] {
+            b'%' if index + 2 < bytes.len() => {
+                let hex = std::str::from_utf8(&bytes[index + 1..index + 3]).ok()?;
+                let byte = u8::from_str_radix(hex, 16).ok()?;
+                decoded.push(byte);
+                index += 3;
+            }
+            b'+' => {
+                decoded.push(b' ');
+                index += 1;
+            }
+            byte => {
+                decoded.push(byte);
+                index += 1;
+            }
+        }
+    }
+
+    String::from_utf8(decoded).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::query_param;
+
+    #[test]
+    fn query_param_decodes_percent_encoded_paths() {
+        let value = query_param(
+            "/workspace/file-content?path=%2Ftmp%2FMy%20Project%2FREADME.md",
+            "path",
+        );
+
+        assert_eq!(value.as_deref(), Some("/tmp/My Project/README.md"));
+    }
 }

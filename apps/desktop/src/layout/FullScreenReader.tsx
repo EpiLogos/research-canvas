@@ -1,13 +1,8 @@
 import { useEffect, useState } from "react";
 import type { CanvasNode } from "@research-canvas/schema";
-import {
-  ImageViewer,
-  MarkdownViewer,
-  NoteViewer,
-  PdfViewer,
-  FileMetaViewer,
-} from "@research-canvas/viewers";
+import { readWorkspaceTextFile } from "@research-canvas/desktop-api";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
+import { NodeContentPane } from "../features/viewer/NodeContentPane";
 
 interface FullScreenReaderProps {
   onClose: () => void;
@@ -17,18 +12,21 @@ export function FullScreenReader({ onClose }: FullScreenReaderProps) {
   const workspace = useCanvasWorkspace();
   const node: CanvasNode | null =
     workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
+  const textResourceNode =
+    node?.type === "resource" &&
+    node.absolutePath &&
+    (node.resourceKind === "markdown" || node.resourceKind === "text")
+      ? node
+      : null;
   const [textContent, setTextContent] = useState<string | null>(null);
 
   useEffect(() => {
     setTextContent(null);
-    if (!node) return;
-    if (node.type === "resource" && node.absolutePath && (node.resourceKind === "markdown" || node.resourceKind === "text")) {
-      fetch(`asset://localhost/${node.absolutePath}`)
-        .then((r) => r.text())
-        .then(setTextContent)
-        .catch(() => setTextContent(null));
-    }
-  }, [node?.id, node?.type, node?.absolutePath, node?.resourceKind]);
+    if (!textResourceNode) return;
+    readWorkspaceTextFile(textResourceNode.absolutePath)
+      .then(setTextContent)
+      .catch(() => setTextContent(null));
+  }, [textResourceNode]);
 
   useEffect(() => {
     if (!node) onClose();
@@ -62,36 +60,13 @@ export function FullScreenReader({ onClose }: FullScreenReaderProps) {
       </header>
 
       <main className="fullscreen-reader__body">
-        {node.type === "note" ? (
-          <NoteViewer
-            title={node.title}
-            content={node.content ?? ""}
-            tags={node.tags}
-          />
-        ) : node.type === "resource" && node.resourceKind === "image" && node.absolutePath ? (
-          <ImageViewer
-            source={`asset://localhost/${node.absolutePath}`}
-            title={node.title}
-          />
-        ) : node.type === "resource" && node.resourceKind === "pdf" && node.absolutePath ? (
-          <PdfViewer
-            source={`asset://localhost/${node.absolutePath}`}
-            title={node.title}
-          />
-        ) : node.type === "resource" && (node.resourceKind === "markdown" || node.resourceKind === "text") && textContent !== null ? (
-          <MarkdownViewer content={textContent} />
-        ) : node.type === "resource" ? (
-          <FileMetaViewer
-            title={node.title}
-            absolutePath={node.absolutePath ?? ""}
-            relativePath={node.relativePath ?? ""}
-            mimeType={node.mimeType ?? ""}
-            resourceKind={node.resourceKind ?? "binary"}
-            fileFingerprint={node.fileFingerprint ?? ""}
-          />
-        ) : (
-          <div className="fsr-placeholder">No content</div>
-        )}
+        <NodeContentPane
+          node={node}
+          textContent={textContent}
+          onFullScreen={onClose}
+          onNoteContentChange={(content) => workspace.updateNodeContent(node.id, content)}
+          showToolbar={false}
+        />
       </main>
     </div>
   );

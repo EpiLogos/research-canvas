@@ -11,7 +11,7 @@ import { renderMarkdownToHtml } from "./renderMarkdown";
 export { buildSearchIndex } from "./buildSearchIndex";
 export { copyAssets } from "./copyAssets";
 export { buildExportManifest, slugify } from "./manifest";
-export type { ExportManifest, ExportNodePage, ExportSequencePage } from "./manifest";
+export type { ExportManifest, ExportNodePage } from "./manifest";
 export { renderMarkdownToHtml } from "./renderMarkdown";
 
 export interface StaticExportResult {
@@ -28,7 +28,6 @@ export async function writeStaticExport(
   const manifest = buildExportManifest(bundle);
   await fs.mkdir(outputDir, { recursive: true });
   await fs.mkdir(path.join(outputDir, "nodes"), { recursive: true });
-  await fs.mkdir(path.join(outputDir, "sequences"), { recursive: true });
 
   const bundleJson = JSON.stringify(bundle, null, 2);
   const manifestJson = JSON.stringify(manifest, null, 2);
@@ -48,15 +47,6 @@ export async function writeStaticExport(
       continue;
     }
     const html = renderNodePage(manifest.project, node, manifest, page.slug);
-    await fs.writeFile(path.join(outputDir, page.href), html, "utf8");
-  }
-
-  for (const page of manifest.sequencePages) {
-    const sequence = manifest.sequences.find((entry) => entry.id === page.sequenceId);
-    if (!sequence) {
-      continue;
-    }
-    const html = renderSequencePage(manifest.project, sequence, manifest, page.slug);
     await fs.writeFile(path.join(outputDir, page.href), html, "utf8");
   }
 
@@ -99,27 +89,6 @@ function renderIndexPage(manifest: ReturnType<typeof buildExportManifest>) {
         </section>`
       : "";
 
-  const sequenceList = manifest.sequences
-    .map((sequence) => {
-      const steps = manifest.sequenceSteps.filter((step) => step.sequenceId === sequence.id);
-      return `
-        <article class="card card--sequence">
-          <h3>${escapeHtml(sequence.name)}</h3>
-          <p>${escapeHtml(sequence.description || sequence.kind)}</p>
-          <ol>${steps
-            .map((step) => {
-              const target =
-                manifest.nodes.find((node) => node.id === step.targetId) ??
-                manifest.edges.find((edge) => edge.id === step.targetId);
-              const label = target ? ("title" in target ? target.title : target.relationKind) : step.targetId;
-              return `<li>${escapeHtml(step.caption || label)}</li>`;
-            })
-            .join("")}</ol>
-          <a href="${manifest.sequencePages.find((page) => page.sequenceId === sequence.id)?.href ?? "#"}">Open sequence page</a>
-        </article>`;
-    })
-    .join("");
-
   const downloads = manifest.assets
     .map(
       (asset) =>
@@ -148,10 +117,6 @@ function renderIndexPage(manifest: ReturnType<typeof buildExportManifest>) {
           <div class="card-grid">${nodeCards}</div>
         </section>
         ${noteHtml}
-        <section class="viewer-section viewer-section--sequences">
-          <header><p class="eyebrow">Sequences</p><h2>Guided traversal</h2></header>
-          <div class="card-grid">${sequenceList}</div>
-        </section>
         <section class="viewer-section viewer-section--downloads">
           <header><p class="eyebrow">Downloads</p><h2>Published resources</h2></header>
           <ul class="download-list">${downloads}</ul>
@@ -160,13 +125,9 @@ function renderIndexPage(manifest: ReturnType<typeof buildExportManifest>) {
       <section class="viewer__mobile">
         <header class="mobile-hero">
           <p class="eyebrow">Mobile mode</p>
-          <h2>Sequence-first exploration</h2>
-          <p>Follow the published path, then open resources when you need the source material.</p>
+          <h2>Resource exploration</h2>
+          <p>Browse published resources and notes.</p>
         </header>
-        <section class="viewer-section">
-          <header><p class="eyebrow">Sequences</p><h3>Published tour</h3></header>
-          <div class="mobile-stack">${sequenceList}</div>
-        </section>
       </section>
     </main>
   </body>
@@ -247,48 +208,6 @@ function renderNodePage(
             )
             .join("")}
         </ul>
-      </section>
-    </main>
-  </body>
-</html>`;
-}
-
-function renderSequencePage(
-  project: ReturnType<typeof buildExportManifest>["project"],
-  sequence: ReturnType<typeof buildExportManifest>["sequences"][number],
-  manifest: ReturnType<typeof buildExportManifest>,
-  _slug: string
-) {
-  const steps = manifest.sequenceSteps.filter((step) => step.sequenceId === sequence.id);
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${escapeHtml(sequence.name)} - ${escapeHtml(project.displayName)}</title>
-    <style>${viewerStyles()}</style>
-  </head>
-  <body>
-    <main class="viewer viewer--sequence">
-      <a class="back-link" href="../index.html">Back to project</a>
-      <section class="viewer__hero">
-        <p class="eyebrow">Sequence page</p>
-        <h1>${escapeHtml(sequence.name)}</h1>
-        <p>${escapeHtml(sequence.description || sequence.kind)}</p>
-      </section>
-      <section class="viewer-section">
-        <header><p class="eyebrow">Steps</p><h2>Guided traversal</h2></header>
-        <ol class="step-list">
-          ${steps
-            .map((step) => {
-              const target =
-                manifest.nodes.find((entry) => entry.id === step.targetId) ??
-                manifest.edges.find((entry) => entry.id === step.targetId);
-              const title = target ? ("title" in target ? target.title : target.relationKind) : step.targetId;
-              return `<li><strong>${escapeHtml(step.caption || title)}</strong><span>${escapeHtml(title)}</span></li>`;
-            })
-            .join("")}
-        </ol>
       </section>
     </main>
   </body>

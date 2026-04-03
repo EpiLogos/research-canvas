@@ -34,7 +34,10 @@ export function FuzzyFilePicker({ anchorX, anchorY, entries, onSelect, onClose }
   const containerRef = useRef<HTMLDivElement>(null);
 
   const filtered = useMemo(
-    () => entries.filter((e) => fuzzyMatch(query, e.name)).slice(0, 8),
+    () =>
+      entries
+        .filter((entry) => fuzzyMatch(query, `${entry.name} ${entry.path}`))
+        .slice(0, 8),
     [entries, query]
   );
 

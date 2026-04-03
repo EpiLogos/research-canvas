@@ -37,7 +37,9 @@ export function Shell() {
   const handleNodeSelect = useCallback(
     (nodeId: string) => {
       workspace.selectNode(nodeId);
-      layout.openRightTab("inspector");
+      if (!layout.rightOpen) {
+        layout.openRightTab("inspector");
+      }
     },
     [workspace, layout],
   );

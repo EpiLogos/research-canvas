@@ -1,20 +1,45 @@
 import { expect, test } from "@playwright/test";
+import {
+  expectNoCanvasError,
+  openRightTab,
+  selectFirstNoteNode,
+  selectCanvasNode,
+  waitForWorkspace,
+} from "./support/canvas";
 
-test("opens a selected node into the focused viewer with rendered markdown", async ({
+test("edits note content and restores it after reload", async ({
   page
 }) => {
   await page.goto("/");
+  await waitForWorkspace(page);
 
   await page.getByRole("button", { name: "Add note node" }).click();
+  await page.locator(".canvas-flow .note-node__preview").first().dblclick();
+  await page.getByLabel("Edit note").fill("The live thesis now persists.");
+  await page.locator(".canvas-footer").click();
+
+  await page.reload();
+  await waitForWorkspace(page);
+  await selectFirstNoteNode(page);
+  await openRightTab(page, "Content");
+
+  await expect(page.getByLabel("Note content")).toHaveValue("The live thesis now persists.");
+  await expect(page.locator(".canvas-flow")).toContainText("The live thesis now persists.");
+  await expectNoCanvasError(page);
+});
+
+test("renders markdown resources in the content panel", async ({
+  page
+}) => {
+  await page.goto("/");
+  await waitForWorkspace(page);
+
   await page.getByRole("button", { name: "Add resource node" }).click();
-  await page.getByRole("button", { name: "Opening note" }).click();
+  await page.locator(".fuzzy-picker-item", { hasText: "README.md" }).click();
+  await selectCanvasNode(page, "README.md");
+  await openRightTab(page, "Content");
 
-  await expect(page.getByRole("button", { name: "Open focused view" })).toBeVisible();
-  await page.getByRole("button", { name: "Open focused view" }).click();
-
-  await expect(page).toHaveURL(/\/node\//);
-  await expect(
-    page.getByTestId("node-viewer").locator(".markdown-viewer__heading"),
-  ).toHaveText("Opening note");
-  await expect(page.getByText("The thesis starts here.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sample Project" })).toBeVisible();
+  await expect(page.getByText("This fixture mirrors a small research workspace")).toBeVisible();
+  await expectNoCanvasError(page);
 });

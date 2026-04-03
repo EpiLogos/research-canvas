@@ -29,11 +29,12 @@ async def _process_entry(
         if len(collected) >= entry.limit:
             break
 
-        fetch_tasks = [
-            fetch_wikimedia(query, per_source, client),
-            fetch_met(query, per_source, client),
-        ]
-        if europeana_key:
+        fetch_tasks = []
+        if "wikimedia" in entry.sources:
+            fetch_tasks.append(fetch_wikimedia(query, per_source, client))
+        if "met" in entry.sources:
+            fetch_tasks.append(fetch_met(query, per_source, client))
+        if europeana_key and "europeana" in entry.sources:
             fetch_tasks.append(fetch_europeana(query, per_source, client, europeana_key))
 
         gathered = await asyncio.gather(*fetch_tasks, return_exceptions=True)
@@ -91,7 +92,8 @@ async def orchestrate(
     manifest = load_manifest(manifest_path)
 
     limits = httpx.Limits(max_connections=10, max_keepalive_connections=5)
-    async with httpx.AsyncClient(limits=limits, timeout=60) as client:
+    headers = {"User-Agent": "fetch-image-assets/1.0 (research image tool; https://github.com/local)"}
+    async with httpx.AsyncClient(limits=limits, timeout=60, headers=headers) as client:
         for entry in config.entries:
             print(f"  [{entry.category}/{entry.key}] fetching up to {entry.limit} images...")
             new_entries = await _process_entry(entry, config, client, europeana_key)

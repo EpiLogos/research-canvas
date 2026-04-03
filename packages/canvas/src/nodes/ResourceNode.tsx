@@ -1,6 +1,17 @@
-import { Handle, NodeResizer, Position, type Node, type NodeProps } from "@xyflow/react";
+import {
+  Handle,
+  NodeResizeControl,
+  type Node,
+  type NodeProps,
+} from "@xyflow/react";
 import { AdaptiveNode } from "./AdaptiveNode";
 import type { AdaptiveNodeStyle } from "./AdaptiveNode";
+import {
+  HANDLE_POSITIONS,
+  HANDLE_SIDES,
+  sourceHandleId,
+  targetHandleId,
+} from "./nodeHandles";
 
 interface ResourceNodeData {
   title: string;
@@ -16,15 +27,25 @@ export type ResourceNodeType = Node<ResourceNodeData, "resource">;
 export function ResourceNode({ data, selected }: NodeProps<ResourceNodeType>) {
   return (
     <>
-      <NodeResizer
+      <NodeResizeControl
         minWidth={120}
         minHeight={60}
-        isVisible={selected}
-        lineStyle={{ borderColor: "rgba(39, 174, 96, 0.5)" }}
-        handleStyle={{ borderColor: "rgba(39, 174, 96, 0.8)", background: "#0a140a" }}
-      />
+        position="bottom-right"
+        className="node-resize-control"
+        style={{ display: selected ? "flex" : "none" }}
+      >
+        <div className="node-resize-grip" />
+      </NodeResizeControl>
       <div style={{ width: "100%", height: "100%", position: "relative" }}>
-        <Handle type="target" position={Position.Top} className="flow-handle" />
+        {HANDLE_SIDES.map((side) => (
+          <Handle
+            id={targetHandleId(side)}
+            key={`target-${side}`}
+            type="target"
+            position={HANDLE_POSITIONS[side]}
+            className="flow-handle"
+          />
+        ))}
         <AdaptiveNode
           nodeType="resource"
           title={data.title}
@@ -34,7 +55,15 @@ export function ResourceNode({ data, selected }: NodeProps<ResourceNodeType>) {
           resourceKind={data.resourceKind}
           absolutePath={data.absolutePath}
         />
-        <Handle type="source" position={Position.Bottom} className="flow-handle" />
+        {HANDLE_SIDES.map((side) => (
+          <Handle
+            id={sourceHandleId(side)}
+            key={`source-${side}`}
+            type="source"
+            position={HANDLE_POSITIONS[side]}
+            className="flow-handle"
+          />
+        ))}
       </div>
     </>
   );

@@ -33,7 +33,7 @@ describe("public viewer app", () => {
     render(<App bundle={createSampleExportBundle()} />);
 
     expect(
-      screen.getByRole("heading", { name: /sequence-first exploration/i })
+      screen.getByRole("heading", { name: /resource exploration/i })
     ).toBeVisible();
   });
 });

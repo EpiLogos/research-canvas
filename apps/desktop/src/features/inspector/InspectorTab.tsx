@@ -1,4 +1,5 @@
 import { useCanvasWorkspace } from "../canvas/CanvasWorkspaceContext";
+import { WorkspaceFilePickerButton } from "../canvas/WorkspaceFilePickerButton";
 
 const DOT_PRESETS = ["#4a4aff","#9b59b6","#27ae60","#e67e22","#e74c3c","#1abc9c","#f39c12","#888888"];
 const BG_PRESETS  = ["#0e0e22","#140a0a","#0a140a","#14100a","#0a0a14","#111111"];
@@ -85,14 +86,15 @@ export function InspectorTab() {
       />
       <div className="inspector-field">
         <label className="inspector-label">Thumbnail</label>
-        <button
-          className="inspector-value inspector-value--btn"
-          onClick={() => {
-            // TODO: open Tauri file picker and call workspace.setNodeThumbnail(node.id, path)
+        <WorkspaceFilePickerButton
+          buttonClassName="inspector-value inspector-value--btn"
+          buttonLabel={node.thumbnail ? node.thumbnail.split("/").pop() ?? "Set image…" : "Set image…"}
+          entries={workspace.entries}
+          filter={(entry) => entry.kind === "image"}
+          onSelect={(entry) => {
+            void workspace.setNodeThumbnailFromAbsolutePath(node.id, entry.absolutePath);
           }}
-        >
-          {node.thumbnail ? node.thumbnail.split("/").pop() : "Set image…"}
-        </button>
+        />
       </div>
     </div>
   );

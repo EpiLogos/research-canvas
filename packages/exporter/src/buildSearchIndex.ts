@@ -36,19 +36,6 @@ export function buildSearchIndex(bundle: ExportBundle): SearchIndexEntry[] {
     });
   }
 
-  for (const sequence of manifest.sequences) {
-    const href = sequencePageHref(manifest, sequence.id);
-    entries.push({
-      content: [sequence.name, sequence.description]
-        .filter(Boolean)
-        .join("\n"),
-      href,
-      id: sequence.id,
-      kind: "sequence",
-      title: sequence.name
-    });
-  }
-
   for (const asset of manifest.assets) {
     entries.push({
       content: [asset.downloadName, asset.relativePath, asset.mimeType]
@@ -90,14 +77,3 @@ function nodePageSlug(manifest: ReturnType<typeof buildExportManifest>, nodeId: 
   return page.slug;
 }
 
-function sequencePageHref(
-  manifest: ReturnType<typeof buildExportManifest>,
-  sequenceId: string
-) {
-  const page = manifest.sequencePages.find((entry) => entry.sequenceId === sequenceId);
-  if (!page) {
-    return `sequences/${sequenceId}.html`;
-  }
-
-  return page.href;
-}

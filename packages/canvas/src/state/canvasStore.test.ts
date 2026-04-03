@@ -53,6 +53,21 @@ describe("updateNodeTitle", () => {
   });
 });
 
+describe("updateNodeContent", () => {
+  it("derives a note title and summary from the edited content", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const node = store.getState().createNoteNode({ title: "old", content: "" });
+
+    store
+      .getState()
+      .updateNodeContent(node.id, "# Working thesis\n\nSupport the claim with concrete evidence.");
+
+    const updated = store.getState().nodes.find((candidate) => candidate.id === node.id);
+    expect(updated?.title).toBe("Working thesis");
+    expect(updated?.summary).toBe("Working thesis Support the claim with concrete evidence.");
+  });
+});
+
 describe("deleteEdge", () => {
   it("removes the edge from the store", () => {
     const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
@@ -72,6 +87,72 @@ describe("deleteEdge", () => {
     expect(store.getState().edges).toHaveLength(0);
     // nodes are untouched
     expect(store.getState().nodes).toHaveLength(2);
+  });
+});
+
+describe("updateEdgeRelationKind", () => {
+  it("updates the persisted edge wording everywhere that reads relationKind", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const source = store.getState().createNoteNode({ title: "Source", content: "" });
+    const target = store.getState().createNoteNode({ title: "Target", content: "" });
+    const edge = store.getState().connectNodes({
+      sourceNodeId: source.id,
+      targetNodeId: target.id,
+      relationKind: "reference",
+    });
+
+    store.getState().updateEdgeRelationKind(edge.id, "supports");
+
+    const updated = store.getState().edges.find((candidate) => candidate.id === edge.id);
+    expect(updated?.relationKind).toBe("supports");
+    expect(updated?.label).toBe("supports");
+  });
+});
+
+describe("edge authoring metadata", () => {
+  it("stores the chosen handle anchors for new connections", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const source = store.getState().createNoteNode({ title: "source", content: "" });
+    const target = store.getState().createNoteNode({ title: "target", content: "" });
+
+    const edge = store.getState().connectNodes({
+      sourceNodeId: source.id,
+      targetNodeId: target.id,
+      relationKind: "supports",
+      sourceHandleId: "source-right",
+      targetHandleId: "target-left",
+    });
+
+    expect(edge.sourceHandleId).toBe("source-right");
+    expect(edge.targetHandleId).toBe("target-left");
+    expect(edge.directionality).toBe("forward");
+  });
+
+  it("can reconnect an edge and cycle its directionality", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const a = store.getState().createNoteNode({ title: "A", content: "" });
+    const b = store.getState().createNoteNode({ title: "B", content: "" });
+
+    const edge = store.getState().connectNodes({
+      sourceNodeId: a.id,
+      targetNodeId: b.id,
+      relationKind: "reference",
+      sourceHandleId: "source-bottom",
+      targetHandleId: "target-top",
+    });
+
+    store.getState().updateEdgeConnection(edge.id, {
+      sourceHandleId: "source-left",
+      targetHandleId: "target-right",
+    });
+
+    store.getState().cycleEdgeDirectionality(edge.id);
+    store.getState().cycleEdgeDirectionality(edge.id);
+
+    const updated = store.getState().edges.find((candidate) => candidate.id === edge.id);
+    expect(updated?.sourceHandleId).toBe("source-left");
+    expect(updated?.targetHandleId).toBe("target-right");
+    expect(updated?.directionality).toBe("bidirectional");
   });
 });
 
