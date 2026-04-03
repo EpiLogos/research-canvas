@@ -438,24 +438,6 @@ function CanvasViewInner({
   return (
     <div
       className="canvas-flow"
-      onDragOver={(e) => {
-        if (e.dataTransfer.types.includes("application/x-canvas-entry")) {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = "copy";
-        }
-      }}
-      onDrop={(e) => {
-        const raw = e.dataTransfer.getData("application/x-canvas-entry");
-        if (!raw) return;
-        e.preventDefault();
-        try {
-          const entry = JSON.parse(raw) as { id: string; name: string; relativePath: string; kind: string };
-          const canvasPos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-          onCreateResourceFromFile?.({ id: entry.id, name: entry.name, path: entry.relativePath, kind: entry.kind }, canvasPos);
-        } catch {
-          // malformed drag data — ignore
-        }
-      }}
     >
       <ReactFlow
         defaultViewport={{ x: 0, y: 0, zoom: 1 }}
@@ -466,6 +448,24 @@ function CanvasViewInner({
         nodeTypes={nodeTypes}
         nodesDraggable
         nodesFocusable
+        onDragOver={(e: React.DragEvent) => {
+          if (e.dataTransfer.types.includes("application/x-canvas-entry")) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+          }
+        }}
+        onDrop={(e: React.DragEvent) => {
+          const raw = e.dataTransfer.getData("application/x-canvas-entry");
+          if (!raw) return;
+          e.preventDefault();
+          try {
+            const entry = JSON.parse(raw) as { id: string; name: string; relativePath: string; kind: string };
+            const canvasPos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+            onCreateResourceFromFile?.({ id: entry.id, name: entry.name, path: entry.relativePath, kind: entry.kind }, canvasPos);
+          } catch {
+            // malformed drag data
+          }
+        }}
         onPaneClick={() => {
           setEditingNodeId(null);
           onSelectNode?.(null);
