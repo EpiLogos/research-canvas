@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 
 import { createCanvasStore } from "./canvasStore";
 
@@ -196,4 +196,64 @@ describe("canvasStore", () => {
       "Primary supporting source",
     );
   });
+});
+
+test("toggleEdgeSequencing sets sequencing flag and priority", () => {
+  const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+  const { connectNodes, createNoteNode } = store.getState();
+
+  const nodeA = createNoteNode({ title: "A", content: "" });
+  const nodeB = createNoteNode({ title: "B", content: "" });
+  const edge = connectNodes({
+    sourceNodeId: nodeA.id,
+    targetNodeId: nodeB.id,
+    relationKind: "causes",
+  });
+
+  expect(edge.sequencing).toBe(false);
+  expect(edge.sequencePriority).toBe(0);
+
+  store.getState().toggleEdgeSequencing(edge.id);
+  const toggled = store.getState().edges.find((e) => e.id === edge.id)!;
+  expect(toggled.sequencing).toBe(true);
+
+  store.getState().toggleEdgeSequencing(edge.id);
+  const toggledOff = store.getState().edges.find((e) => e.id === edge.id)!;
+  expect(toggledOff.sequencing).toBe(false);
+});
+
+test("updateEdgeSequencePriority updates priority", () => {
+  const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+  const { connectNodes, createNoteNode } = store.getState();
+
+  const nodeA = createNoteNode({ title: "A", content: "" });
+  const nodeB = createNoteNode({ title: "B", content: "" });
+  const edge = connectNodes({
+    sourceNodeId: nodeA.id,
+    targetNodeId: nodeB.id,
+    relationKind: "causes",
+  });
+
+  store.getState().updateEdgeSequencePriority(edge.id, 50);
+  const updated = store.getState().edges.find((e) => e.id === edge.id)!;
+  expect(updated.sequencePriority).toBe(50);
+});
+
+test("updateNodeSequenceCaption sets caption", () => {
+  const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+  const node = store.getState().createNoteNode({ title: "Test", content: "" });
+
+  store.getState().updateNodeSequenceCaption(node.id, "Opening shot");
+  const updated = store.getState().nodes.find((n) => n.id === node.id)!;
+  expect(updated.sequenceCaption).toBe("Opening shot");
+});
+
+test("captureNodeSequenceViewport sets viewport on node", () => {
+  const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+  const node = store.getState().createNoteNode({ title: "Test", content: "" });
+  const viewport = { x: 100, y: 200, zoom: 1.5 };
+
+  store.getState().setNodeSequenceViewport(node.id, viewport);
+  const updated = store.getState().nodes.find((n) => n.id === node.id)!;
+  expect(updated.sequenceViewport).toEqual(viewport);
 });

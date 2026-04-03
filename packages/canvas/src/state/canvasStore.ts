@@ -77,6 +77,10 @@ export interface CanvasStoreState {
   }) => void;
   updateNodeSize: (nodeId: string, size: { width: number; height: number }) => void;
   updateNodeTitle: (nodeId: string, title: string) => void;
+  toggleEdgeSequencing: (edgeId: string) => void;
+  updateEdgeSequencePriority: (edgeId: string, priority: number) => void;
+  updateNodeSequenceCaption: (nodeId: string, caption: string | null) => void;
+  setNodeSequenceViewport: (nodeId: string, viewport: { x: number; y: number; zoom: number } | null) => void;
 }
 
 const defaultEdgeStyle = {
@@ -334,6 +338,38 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
           n.id === nodeId ? { ...n, title, updatedAt: now() } : n,
         ),
       })),
+    toggleEdgeSequencing: (edgeId) => {
+      set((state) => ({
+        edges: state.edges.map((edge) =>
+          edge.id === edgeId
+            ? { ...edge, sequencing: !edge.sequencing, updatedAt: now() }
+            : edge
+        ),
+      }));
+    },
+    updateEdgeSequencePriority: (edgeId, priority) => {
+      set((state) => ({
+        edges: state.edges.map((edge) =>
+          edge.id === edgeId
+            ? { ...edge, sequencePriority: priority, updatedAt: now() }
+            : edge
+        ),
+      }));
+    },
+    updateNodeSequenceCaption: (nodeId, caption) => {
+      set((state) => ({
+        nodes: state.nodes.map((n) =>
+          n.id === nodeId ? { ...n, sequenceCaption: caption, updatedAt: now() } : n
+        ),
+      }));
+    },
+    setNodeSequenceViewport: (nodeId, viewport) => {
+      set((state) => ({
+        nodes: state.nodes.map((n) =>
+          n.id === nodeId ? { ...n, sequenceViewport: viewport, updatedAt: now() } : n
+        ),
+      }));
+    },
   }));
 }
 
