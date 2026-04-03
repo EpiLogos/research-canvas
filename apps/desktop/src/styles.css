@@ -263,6 +263,24 @@ body {
   color: #ffffff;
 }
 
+/* Sequencing edge visual treatment */
+g[data-sequencing="true"] .react-flow__edge-path {
+  stroke: #f0b45a;
+  stroke-width: 3;
+  stroke-dasharray: 8 4;
+  animation: sequencing-dash 0.8s linear infinite;
+}
+
+@keyframes sequencing-dash {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+
+.flow-edge-label[data-sequencing="true"] {
+  border-color: rgba(240, 180, 90, 0.5);
+}
+
 .canvas-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

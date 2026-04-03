@@ -82,6 +82,8 @@ interface CanvasViewProps {
   onRegisterCaptureViewport?: (
     capture: () => { x: number; y: number; zoom: number }
   ) => void;
+  onToggleEdgeSequencing?: (edgeId: string) => void;
+  onPlaySequence?: () => void;
 }
 
 const nodeTypes: NodeTypes = {
@@ -131,7 +133,9 @@ function CanvasViewInner({
   onCreateStroke,
   onRegisterFlyToNode,
   onRegisterFlyToEdge,
-  onRegisterCaptureViewport
+  onRegisterCaptureViewport,
+  onToggleEdgeSequencing,
+  onPlaySequence
 }: CanvasViewProps) {
   const { fitView, getViewport, getZoom, screenToFlowPosition, setCenter, setViewport } =
     useReactFlow();
@@ -309,17 +313,24 @@ function CanvasViewInner({
       if (e.key === "n" && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
         onCreateNote?.(getViewportCenter());
       }
+      if (e.key === "p" && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+        if (edges.some((edge) => edge.sequencing)) {
+          onPlaySequence?.();
+        }
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [
     nodes,
+    edges,
     selectedNodeId,
     selectedEdgeId,
     onDeleteEdge,
     onDeleteNode,
     onDuplicateNode,
     onCreateNote,
+    onPlaySequence,
     getViewportCenter,
   ]);
 
@@ -380,6 +391,7 @@ function CanvasViewInner({
       directionality: edge.directionality,
       relationKind: edge.relationKind,
       note: edge.note,
+      sequencing: edge.sequencing,
       onSelect: () => {
         onSelectNode?.(null);
         onSelectEdge?.(edge.id);
@@ -390,7 +402,9 @@ function CanvasViewInner({
         onUpdateEdgeRelationKind?.(edge.id, relationKind),
       selected: edge.id === selectedEdgeId
     },
-    ...edgeMarkers(edge.directionality),
+    ...(edge.sequencing
+      ? { markerEnd: { type: MarkerType.ArrowClosed } }
+      : edgeMarkers(edge.directionality)),
     selected: edge.id === selectedEdgeId,
     selectable: true
   }));
@@ -532,6 +546,20 @@ function CanvasViewInner({
             { type: "item", label: "Add group", shortcut: "G", onClick: () => onCreateGroup?.(getViewportCenter()) },
             { type: "item", label: "Paste", shortcut: "⌘V", onClick: () => {} },
             { type: "item", label: "Select all", shortcut: "⌘A", onClick: () => {} },
+            ...(edges.some((e) => e.sequencing)
+              ? [
+                  { type: "separator" as const },
+                  {
+                    type: "item" as const,
+                    label: "Play sequence",
+                    shortcut: "P",
+                    onClick: () => {
+                      onPlaySequence?.();
+                      closeContextMenu();
+                    },
+                  },
+                ]
+              : []),
           ]}
         />
       )}
@@ -551,6 +579,17 @@ function CanvasViewInner({
           y={contextMenu.y}
           onClose={closeContextMenu}
           items={[
+            {
+              type: "item",
+              label: edges.find((e) => e.id === contextMenu.edgeId)?.sequencing
+                ? "Remove from sequence"
+                : "Mark as sequence arrow",
+              onClick: () => {
+                onToggleEdgeSequencing?.(contextMenu.edgeId!);
+                closeContextMenu();
+              },
+            },
+            { type: "separator" },
             {
               type: "item",
               label: "Cycle arrow direction",

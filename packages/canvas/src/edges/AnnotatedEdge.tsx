@@ -17,6 +17,7 @@ type AnnotatedEdgeData = Record<string, unknown> & {
   onUpdateRelationKind?: (relationKind: string) => void;
   relationKind: string;
   selected?: boolean;
+  sequencing?: boolean;
 };
 
 export function AnnotatedEdge({
@@ -55,11 +56,14 @@ export function AnnotatedEdge({
 
   return (
     <>
-      <BaseEdge markerEnd={markerEnd} path={edgePath} />
+      <g data-sequencing={data?.sequencing ? "true" : "false"}>
+        <BaseEdge markerEnd={markerEnd} path={edgePath} />
+      </g>
       <EdgeLabelRenderer>
         <div
           className="flow-edge-label"
           data-selected={data?.selected ? "true" : "false"}
+          data-sequencing={data?.sequencing ? "true" : "false"}
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
