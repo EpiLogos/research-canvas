@@ -1,7 +1,5 @@
+import { useCallback, useRef, useState } from "react";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
-
-// @tauri-apps/plugin-dialog is not installed in this project.
-// The Add Folder button falls back to window.prompt() for path input.
 
 interface LeftOverlayProps {
   open: boolean;
@@ -10,18 +8,23 @@ interface LeftOverlayProps {
 
 export function LeftOverlay({ open, onResizeStart }: LeftOverlayProps) {
   const workspace = useCanvasWorkspace();
+  const [showFolderInput, setShowFolderInput] = useState(false);
+  const [folderPath, setFolderPath] = useState("");
+  const [folderError, setFolderError] = useState<string | null>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
-  const handleAddFolder = async () => {
-    // plugin-dialog is not installed; use window.prompt as fallback
-    const selected = window.prompt("Enter absolute path to resource folder:");
-    if (selected && selected.trim().length > 0) {
-      try {
-        await workspace.attachResourceRoot(selected.trim());
-      } catch {
-        // user cancelled or attach failed
-      }
+  const handleAddFolder = useCallback(async () => {
+    const trimmed = folderPath.trim();
+    if (!trimmed) return;
+    setFolderError(null);
+    try {
+      await workspace.attachResourceRoot(trimmed);
+      setFolderPath("");
+      setShowFolderInput(false);
+    } catch (err) {
+      setFolderError(err instanceof Error ? err.message : String(err));
     }
-  };
+  }, [folderPath, workspace]);
 
   return (
     <aside className="left-overlay" data-open={open ? "true" : "false"} aria-hidden={!open}>
@@ -57,11 +60,39 @@ export function LeftOverlay({ open, onResizeStart }: LeftOverlayProps) {
             <button
               className="lo-icon-btn"
               title="Add folder from machine"
-              onClick={() => { void handleAddFolder(); }}
+              onClick={() => {
+                setShowFolderInput((v) => !v);
+                setFolderError(null);
+                setTimeout(() => folderInputRef.current?.focus(), 50);
+              }}
             >
               +
             </button>
           </div>
+          {showFolderInput && (
+            <div className="lo-folder-input">
+              <input
+                ref={folderInputRef}
+                className="lo-folder-input__field"
+                type="text"
+                placeholder="/path/to/folder"
+                value={folderPath}
+                onChange={(e) => setFolderPath(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { void handleAddFolder(); }
+                  if (e.key === "Escape") { setShowFolderInput(false); setFolderPath(""); }
+                }}
+              />
+              <button
+                className="lo-folder-input__btn"
+                onClick={() => { void handleAddFolder(); }}
+                disabled={!folderPath.trim()}
+              >
+                Add
+              </button>
+              {folderError && <div className="lo-folder-input__error">{folderError}</div>}
+            </div>
+          )}
           {workspace.resourceRoots.length > 0 ? (
             workspace.resourceRoots.map((root) => (
               <div key={root.id} className="lo-root-row" title={root.rootPath}>

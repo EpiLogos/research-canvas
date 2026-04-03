@@ -354,7 +354,7 @@ function CanvasViewInner({
             ? node.content
             : node.summary,
       title: node.title,
-      content: node.type === "note" ? node.content : undefined,
+      content: node.type === "note" ? node.content : node.type === "resource" ? node.relativePath : undefined,
       resourceKind: node.type === "resource" ? node.resourceKind : undefined,
       absolutePath: node.type === "resource" ? node.absolutePath : undefined,
       isEditing: node.type === "note" ? node.id === editingNodeId : false,

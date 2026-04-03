@@ -69,6 +69,9 @@ export function AnnotatedEdge({
             event.stopPropagation();
             data?.onSelect?.();
           }}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+          }}
           style={{
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`
           }}
@@ -125,6 +128,9 @@ export function AnnotatedEdge({
                   event.stopPropagation();
                   data.onCycleDirectionality?.();
                 }}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                }}
                 title={`Cycle arrow direction (${data.directionality ?? "forward"})`}
                 type="button"
               >
@@ -136,6 +142,9 @@ export function AnnotatedEdge({
                   event.preventDefault();
                   event.stopPropagation();
                   data.onDelete?.();
+                }}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
                 }}
                 title="Delete edge"
                 type="button"

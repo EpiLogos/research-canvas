@@ -111,11 +111,10 @@ export function SequencePresenter({
 
   if (!currentNode) return null;
 
-  const layoutMode = getLayoutMode(currentNode);
   const caption = currentNode.sequenceCaption ?? currentNode.summary ?? "";
 
   return (
-    <div className="sequence-presenter" data-layout={layoutMode}>
+    <div className="sequence-presenter">
       <header className="sp-breadcrumb">
         <nav>
           {playback.path.map((nodeId, i) => {
@@ -134,24 +133,15 @@ export function SequencePresenter({
         <button className="sp-close-btn" onClick={onClose} title="Back to canvas (Esc)">&larr; Back</button>
       </header>
 
-      <main className={`sp-main sp-main--${layoutMode}`}>
-        {layoutMode === "split" ? (
-          <>
-            <div className="sp-content">{renderNodeContent(currentNode)}</div>
-            <aside className="sp-sidebar">
-              <h1 className="sp-title">{currentNode.title}</h1>
-              {arrivalEdge && <div className="sp-arrival">via: {arrivalEdge.label}</div>}
-              {caption && <p className="sp-caption">{caption}</p>}
-            </aside>
-          </>
-        ) : (
-          <div className="sp-content sp-content--centered">
-            <h1 className="sp-title">{currentNode.title}</h1>
-            {arrivalEdge && <div className="sp-arrival">via: {arrivalEdge.label}</div>}
-            {renderNodeContent(currentNode)}
-            {caption && <p className="sp-caption">{caption}</p>}
-          </div>
-        )}
+      <main className="sp-main">
+        <div className="sp-content">
+          {renderNodeContent(currentNode)}
+        </div>
+        <div className="sp-overlay">
+          <h1 className="sp-title">{currentNode.title}</h1>
+          {arrivalEdge && <div className="sp-arrival">via: {arrivalEdge.label}</div>}
+          {caption && <p className="sp-caption">{caption}</p>}
+        </div>
       </main>
 
       <footer className="sp-exits">
@@ -177,10 +167,3 @@ export function SequencePresenter({
   );
 }
 
-function getLayoutMode(node: CanvasNode): "split" | "centered" {
-  if (node.type === "resource") {
-    const kind = node.resourceKind;
-    if (kind === "image" || kind === "pdf") return "split";
-  }
-  return "centered";
-}
