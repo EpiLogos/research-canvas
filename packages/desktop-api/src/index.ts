@@ -158,7 +158,7 @@ interface WorkspaceTransport {
   ): Promise<ProjectDocument>;
   searchProject(request: SearchProjectRequest): Promise<SearchHit[]>;
   listDirectories(): Promise<DirectoryEntry[]>;
-  listSavedSequences(input: { databasePath: string; canvasId: string }): Promise<SavedSequence[]>;
+  listSavedSequences(input: { databasePath: string; projectId: string; canvasId: string }): Promise<SavedSequence[]>;
   createSavedSequence(input: { databasePath: string; projectId: string; canvasId: string; name: string }): Promise<SavedSequence>;
   updateSavedSequence(input: { databasePath: string; id: string; name: string; rootNodeId: string | null; edgeIds: string[] }): Promise<SavedSequence>;
   deleteSavedSequence(input: { databasePath: string; id: string }): Promise<void>;
@@ -326,9 +326,9 @@ function createBrowserBridgeTransport(): WorkspaceTransport {
     async listDirectories() {
       return requestJsonWithRetry<DirectoryEntry[]>("/workspace/directories");
     },
-    async listSavedSequences({ databasePath: _, canvasId }) {
+    async listSavedSequences({ databasePath: _, projectId, canvasId }) {
       return requestJsonWithRetry<SavedSequence[]>(
-        `/workspace/project/${canvasId}/sequences?canvasId=${encodeURIComponent(canvasId)}`
+        `/workspace/project/${projectId}/sequences?canvasId=${encodeURIComponent(canvasId)}`
       );
     },
     async createSavedSequence({ databasePath: _, projectId, canvasId, name }) {
