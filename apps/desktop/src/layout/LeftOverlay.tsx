@@ -2,14 +2,19 @@ import { useCallback, useState } from "react";
 import { FuzzyFilePicker } from "@research-canvas/canvas";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { SearchPanel } from "../features/search/SearchPanel";
+import { AnnotationsPanel } from "../features/annotations/AnnotationsPanel";
 
 interface LeftOverlayProps {
   open: boolean;
   mode: "files" | "search" | "annotations";
   onResizeStart: (e: React.PointerEvent) => void;
+  drawingMode?: boolean;
+  onToggleDrawing?: () => void;
+  strokeColour?: string;
+  onSetStrokeColour?: (colour: string) => void;
 }
 
-export function LeftOverlay({ open, mode, onResizeStart }: LeftOverlayProps) {
+export function LeftOverlay({ open, mode, onResizeStart, drawingMode, onToggleDrawing, strokeColour, onSetStrokeColour }: LeftOverlayProps) {
   const workspace = useCanvasWorkspace();
   const [folderError, setFolderError] = useState<string | null>(null);
   const [showFolderPicker, setShowFolderPicker] = useState(false);
@@ -154,12 +159,12 @@ export function LeftOverlay({ open, mode, onResizeStart }: LeftOverlayProps) {
         )}
         {mode === "search" && <SearchPanel />}
         {mode === "annotations" && (
-          <div className="lo-section lo-section--grow">
-            <div className="lo-section__header">
-              <span className="lo-label">Annotations</span>
-            </div>
-            <div className="lo-empty">Annotations panel — coming in Task 8</div>
-          </div>
+          <AnnotationsPanel
+            drawingMode={drawingMode ?? false}
+            onToggleDrawing={onToggleDrawing ?? (() => {})}
+            strokeColour={strokeColour ?? "#f97316"}
+            onSetStrokeColour={onSetStrokeColour ?? (() => {})}
+          />
         )}
 
       </div>

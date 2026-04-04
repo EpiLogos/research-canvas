@@ -6,9 +6,11 @@ interface CanvasPaneProps {
   onPlaySequence?: () => void;
   leftPanelOpen?: boolean;
   rightPanelOpen?: boolean;
+  drawingMode?: boolean;
+  strokeColour?: string;
 }
 
-export function CanvasPane({ onNodeSelect, onNodeDoubleClick, onPlaySequence, leftPanelOpen, rightPanelOpen }: CanvasPaneProps) {
+export function CanvasPane({ onNodeSelect, onNodeDoubleClick, onPlaySequence, leftPanelOpen, rightPanelOpen, drawingMode, strokeColour }: CanvasPaneProps) {
   return (
     <section
       className="canvas-pane"
@@ -21,6 +23,8 @@ export function CanvasPane({ onNodeSelect, onNodeDoubleClick, onPlaySequence, le
         onPlaySequence={onPlaySequence}
         leftPanelOpen={leftPanelOpen}
         rightPanelOpen={rightPanelOpen}
+        drawingMode={drawingMode}
+        strokeColour={strokeColour}
       />
     </section>
   );

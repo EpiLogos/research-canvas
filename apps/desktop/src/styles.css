@@ -3296,3 +3296,70 @@ body[data-shell-dragging="true"] {
   min-height: 0;
   overflow: hidden;
 }
+
+/* ─── Annotations panel ──────────────────────────────── */
+.annotations-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.annotations-panel__tools {
+  padding: 8px 10px;
+  border-bottom: 1px solid #151530;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.annotations-panel__section-title {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #4a4a80;
+  padding: 4px 10px 0;
+}
+.annotations-panel__draw-btn {
+  padding: 5px 10px;
+  font-size: 11px;
+  background: #151530;
+  border: 1px solid #252545;
+  border-radius: 4px;
+  color: #c0c0e0;
+  cursor: pointer;
+}
+.annotations-panel__draw-btn[data-active="true"] {
+  background: #f9731622;
+  border-color: #f9731644;
+  color: #f97316;
+}
+.annotations-panel__colours {
+  display: flex;
+  gap: 4px;
+}
+.annotations-panel__list {
+  flex: 1;
+  overflow-y: auto;
+}
+.annotations-panel__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 11px;
+  border-bottom: 1px solid #151530;
+}
+.annotations-panel__item-type {
+  font-size: 9px;
+  text-transform: uppercase;
+  color: #f97316;
+}
+.annotations-panel__item-points { color: #4a4a80; font-size: 10px; }
+.annotations-panel__item-delete {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #e74c3c;
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0.5;
+}
+.annotations-panel__item-delete:hover { opacity: 1; }

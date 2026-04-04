@@ -11,11 +11,17 @@ interface CanvasScreenProps {
   onPlaySequence?: () => void;
   leftPanelOpen?: boolean;
   rightPanelOpen?: boolean;
+  drawingMode?: boolean;
+  strokeColour?: string;
 }
 
-export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, onPlaySequence, leftPanelOpen, rightPanelOpen }: CanvasScreenProps) {
+export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, onPlaySequence, leftPanelOpen, rightPanelOpen, drawingMode = false, strokeColour = "#f97316" }: CanvasScreenProps) {
   const workspace = useCanvasWorkspace();
-  const [annotationMode, setAnnotationMode] = useState(false);
+  const [localAnnotationMode, setLocalAnnotationMode] = useState(false);
+
+  // Use external drawingMode if provided (controlled from Shell), otherwise fall back to local state
+  const annotationMode = drawingMode || localAnnotationMode;
+  void strokeColour; // threaded from Shell for future per-stroke colour support
 
   const createAnnotation = useCallback((points: Parameters<
     ReturnType<typeof workspace.annotationStore.getState>["createStrokeAnnotation"]
@@ -24,7 +30,7 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, onPlaySequence, 
       points,
       strokeKind: "stroke"
     });
-    setAnnotationMode(false);
+    setLocalAnnotationMode(false);
   }, [workspace.annotationStore]);
 
   if (!workspace.isHydrated) {
@@ -62,8 +68,8 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, onPlaySequence, 
 
             <div className="canvas-toolbar__group">
               <button
-                aria-pressed={annotationMode}
-                onClick={() => setAnnotationMode((value) => !value)}
+                aria-pressed={localAnnotationMode}
+                onClick={() => setLocalAnnotationMode((value) => !value)}
                 type="button"
               >
                 Draw annotation

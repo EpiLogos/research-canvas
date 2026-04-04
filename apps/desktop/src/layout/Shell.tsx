@@ -17,6 +17,8 @@ export function Shell() {
   const [leftMode, setLeftMode] = useState<"files" | "search" | "annotations">("files");
   const [sequencesOpen, setSequencesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [drawingMode, setDrawingMode] = useState(false);
+  const [strokeColour, setStrokeColour] = useState("#f97316");
   void settingsOpen;  // TODO: wire to SettingsOverlay in Task 10
 
   const handleSetLeftMode = useCallback((mode: "files" | "search" | "annotations") => {
@@ -92,6 +94,10 @@ export function Shell() {
           open={layout.leftOpen}
           mode={leftMode}
           onResizeStart={layout.beginLeftResize}
+          drawingMode={drawingMode}
+          onToggleDrawing={() => setDrawingMode((v) => !v)}
+          strokeColour={strokeColour}
+          onSetStrokeColour={setStrokeColour}
         />
 
         <CanvasPane
@@ -100,6 +106,8 @@ export function Shell() {
           onPlaySequence={useCallback(() => setFullScreenMode("sequence"), [])}
           leftPanelOpen={layout.leftOpen}
           rightPanelOpen={layout.rightOpen}
+          drawingMode={drawingMode}
+          strokeColour={strokeColour}
         />
 
         <RightPanelSlot
