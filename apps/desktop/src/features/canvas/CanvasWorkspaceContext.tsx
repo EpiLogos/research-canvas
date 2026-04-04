@@ -21,6 +21,7 @@ import {
 import type { Viewport } from "@research-canvas/schema";
 import {
   createWorkspaceTransport,
+  type DirectoryEntry,
   type IndexedEntry,
   type ProjectDocument,
   type ProjectTreeNode,
@@ -69,6 +70,7 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   projectId: string;
   projects: ProjectTreeNode[];
   resourceRoots: ResourceRoot[];
+  listDirectories: () => Promise<DirectoryEntry[]>;
   searchProject: (query: string, limit?: number) => Promise<SearchHit[]>;
   selectEntry: (entryId: string | null) => void;
   selectEdge: (edgeId: string | null) => void;
@@ -411,6 +413,9 @@ export function CanvasWorkspaceProvider({
           projectId: activeProject.id
         });
         setResourceRoots(nextRoots);
+      },
+      async listDirectories() {
+        return transport.listDirectories();
       },
       async searchProject(query, limit = 20) {
         if (!databasePath || !activeProject) {

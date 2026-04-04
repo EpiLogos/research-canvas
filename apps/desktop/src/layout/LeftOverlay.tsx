@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
+import { FuzzyFilePicker } from "@research-canvas/canvas";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 
 interface LeftOverlayProps {
@@ -9,23 +10,22 @@ interface LeftOverlayProps {
 
 export function LeftOverlay({ open, mode, onResizeStart }: LeftOverlayProps) {
   const workspace = useCanvasWorkspace();
-  const [showFolderInput, setShowFolderInput] = useState(false);
-  const [folderPath, setFolderPath] = useState("");
   const [folderError, setFolderError] = useState<string | null>(null);
-  const folderInputRef = useRef<HTMLInputElement>(null);
+  const [showFolderPicker, setShowFolderPicker] = useState(false);
+  const [folderEntries, setFolderEntries] = useState<{ name: string; path: string; kind: string }[]>([]);
+  const [folderPickerAnchor, setFolderPickerAnchor] = useState<{ x: number; y: number } | null>(null);
 
-  const handleAddFolder = useCallback(async () => {
-    const trimmed = folderPath.trim();
-    if (!trimmed) return;
-    setFolderError(null);
+  const handleAddFolder = useCallback(async (e: React.MouseEvent) => {
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    setFolderPickerAnchor({ x: rect.right + 4, y: rect.top });
     try {
-      await workspace.attachResourceRoot(trimmed);
-      setFolderPath("");
-      setShowFolderInput(false);
-    } catch (err) {
-      setFolderError(err instanceof Error ? err.message : String(err));
+      const dirs = await workspace.listDirectories();
+      setFolderEntries(dirs.map((d) => ({ name: d.name, path: d.path, kind: "directory" })));
+      setShowFolderPicker(true);
+    } catch {
+      setFolderError("Failed to scan directories");
     }
-  }, [folderPath, workspace]);
+  }, [workspace]);
 
   return (
     <aside className="left-overlay" data-open={open ? "true" : "false"} aria-hidden={!open}>
@@ -63,38 +63,27 @@ export function LeftOverlay({ open, mode, onResizeStart }: LeftOverlayProps) {
                 <button
                   className="lo-icon-btn"
                   title="Add folder from machine"
-                  onClick={() => {
-                    setShowFolderInput((v) => !v);
-                    setFolderError(null);
-                    setTimeout(() => folderInputRef.current?.focus(), 50);
-                  }}
+                  onClick={(e) => { void handleAddFolder(e); }}
                 >
                   +
                 </button>
               </div>
-              {showFolderInput && (
-                <div className="lo-folder-input">
-                  <input
-                    ref={folderInputRef}
-                    className="lo-folder-input__field"
-                    type="text"
-                    placeholder="/path/to/folder"
-                    value={folderPath}
-                    onChange={(e) => setFolderPath(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") { void handleAddFolder(); }
-                      if (e.key === "Escape") { setShowFolderInput(false); setFolderPath(""); }
-                    }}
-                  />
-                  <button
-                    className="lo-folder-input__btn"
-                    onClick={() => { void handleAddFolder(); }}
-                    disabled={!folderPath.trim()}
-                  >
-                    Add
-                  </button>
-                  {folderError && <div className="lo-folder-input__error">{folderError}</div>}
-                </div>
+              {folderError && <div className="lo-folder-input__error">{folderError}</div>}
+              {showFolderPicker && folderPickerAnchor && (
+                <FuzzyFilePicker
+                  anchorX={folderPickerAnchor.x}
+                  anchorY={folderPickerAnchor.y}
+                  entries={folderEntries}
+                  onClose={() => setShowFolderPicker(false)}
+                  onSelect={async (entry) => {
+                    setShowFolderPicker(false);
+                    try {
+                      await workspace.attachResourceRoot(entry.path);
+                    } catch (err) {
+                      setFolderError(err instanceof Error ? err.message : String(err));
+                    }
+                  }}
+                />
               )}
               {workspace.resourceRoots.length > 0 ? (
                 workspace.resourceRoots.map((root) => (
