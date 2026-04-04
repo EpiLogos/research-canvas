@@ -4,7 +4,7 @@ use research_canvas_desktop_lib::{
     commands::{
         projects::{
             attach_project_resource_root_at, bootstrap_workspace_at, default_database_path,
-            detach_project_resource_root_at, list_project_resource_roots_at,
+            detach_project_resource_root_at, list_directories_at, list_project_resource_roots_at,
             load_project_document_at, persist_project_document_at, PersistProjectDocumentRequest,
             ResourceRootLookupRequest, ResourceRootMutationRequest,
         },
@@ -103,6 +103,12 @@ fn handle_request(
             .ok_or_else(|| "missing path query parameter".to_string())?;
         let content = std::fs::read_to_string(&requested_path).map_err(|error| error.to_string())?;
         return respond_json(request, StatusCode(200), json!({ "content": content }));
+    }
+
+    // Non-project-scoped routes
+    if method == Method::Get && path == "/workspace/directories" {
+        let dirs = list_directories_at()?;
+        return respond_json(request, StatusCode(200), dirs);
     }
 
     if method == Method::Get && path == "/workspace/search" {

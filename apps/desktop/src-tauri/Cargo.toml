@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+dirs = "5"
 portable-pty = "0.8"
 rusqlite = { version = "0.32", features = ["bundled"] }
 tiny_http = "0.12"

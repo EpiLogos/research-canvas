@@ -983,6 +983,68 @@ fn current_timestamp() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectoryEntry {
+    pub path: String,
+    pub name: String,
+    pub depth: u32,
+}
+
+#[tauri::command]
+pub fn list_directories_command() -> Result<Vec<DirectoryEntry>, String> {
+    list_directories_at()
+}
+
+pub fn list_directories_at() -> Result<Vec<DirectoryEntry>, String> {
+    let home = dirs::home_dir().ok_or_else(|| "cannot resolve home directory".to_string())?;
+    let mut entries = Vec::new();
+    let skip_names: std::collections::HashSet<&str> = [
+        "node_modules", ".git", "__pycache__", "target", ".Trash",
+        ".cache", ".npm", ".cargo", "Library", ".local",
+    ].into_iter().collect();
+
+    walk_directories(&home, 0, 4, &skip_names, &mut entries);
+    entries.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(entries)
+}
+
+fn walk_directories(
+    dir: &std::path::Path,
+    depth: u32,
+    max_depth: u32,
+    skip: &std::collections::HashSet<&str>,
+    out: &mut Vec<DirectoryEntry>,
+) {
+    if depth > max_depth {
+        return;
+    }
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let file_type = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+        if !file_type.is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') || skip.contains(name.as_str()) {
+            continue;
+        }
+        let path = entry.path();
+        out.push(DirectoryEntry {
+            path: path.to_string_lossy().to_string(),
+            name,
+            depth,
+        });
+        walk_directories(&path, depth + 1, max_depth, skip, out);
+    }
+}
+
 #[tauri::command]
 pub fn activate_canvas_command(
     canvas_id: String,

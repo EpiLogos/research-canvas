@@ -117,6 +117,12 @@ export interface ResourceRootMutationRequest {
   rootPath: string;
 }
 
+export interface DirectoryEntry {
+  path: string;
+  name: string;
+  depth: number;
+}
+
 interface WorkspaceTransport {
   attachProjectResourceRoot(
     request: ResourceRootMutationRequest
@@ -140,6 +146,7 @@ interface WorkspaceTransport {
     request: PersistProjectDocumentRequest
   ): Promise<ProjectDocument>;
   searchProject(request: SearchProjectRequest): Promise<SearchHit[]>;
+  listDirectories(): Promise<DirectoryEntry[]>;
 }
 
 const DEFAULT_BRIDGE_PORT = 4789;
@@ -217,7 +224,10 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
       return invokeTauri<SearchHit[]>("search_project_command", {
         request
       });
-    }
+    },
+    async listDirectories() {
+      return invokeTauri<DirectoryEntry[]>("list_directories_command");
+    },
   };
 }
 
@@ -285,7 +295,10 @@ function createBrowserBridgeTransport(): WorkspaceTransport {
       return requestJsonWithRetry<SearchHit[]>(
         `/workspace/search?${params.toString()}`
       );
-    }
+    },
+    async listDirectories() {
+      return requestJsonWithRetry<DirectoryEntry[]>("/workspace/directories");
+    },
   };
 }
 
