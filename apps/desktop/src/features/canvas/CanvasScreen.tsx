@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { CanvasView } from "@research-canvas/canvas";
 
@@ -18,6 +18,13 @@ interface CanvasScreenProps {
 export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, onPlaySequence, leftPanelOpen, rightPanelOpen, drawingMode = false, strokeColour = "#f97316" }: CanvasScreenProps) {
   const workspace = useCanvasWorkspace();
   const [localAnnotationMode, setLocalAnnotationMode] = useState(false);
+
+  // When Shell turns off drawingMode, also reset local annotation mode so panel always wins
+  useEffect(() => {
+    if (!drawingMode) {
+      setLocalAnnotationMode(false);
+    }
+  }, [drawingMode]);
 
   // Use external drawingMode if provided (controlled from Shell), otherwise fall back to local state
   const annotationMode = drawingMode || localAnnotationMode;

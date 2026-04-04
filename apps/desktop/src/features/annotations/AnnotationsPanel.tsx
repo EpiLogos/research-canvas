@@ -35,15 +35,15 @@ export function AnnotationsPanel({
         >
           {drawingMode ? "Stop drawing" : "Start drawing"}
         </button>
-        <div className="annotations-panel__colours">
+        <div className="annotations-panel__colours" title="Per-stroke colours coming soon">
           {STROKE_COLOURS.map((c) => (
             <button
               key={c}
               className="colour-swatch"
               data-active={strokeColour === c ? "true" : "false"}
-              style={{ background: c }}
+              style={{ background: c, opacity: 0.45 }}
               onClick={() => onSetStrokeColour(c)}
-              title={c}
+              title={`${c} (colour selection coming soon)`}
             />
           ))}
         </div>
