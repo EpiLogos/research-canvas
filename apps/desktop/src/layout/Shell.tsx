@@ -7,6 +7,7 @@ import { RightPanelSlot } from "./RightPanelSlot";
 import { StatusBar } from "./StatusBar";
 import { useShellLayout } from "./useShellLayout";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
+import { SequencesManager } from "../features/sequences/SequencesManager";
 
 export function Shell() {
   const layout = useShellLayout();
@@ -16,7 +17,6 @@ export function Shell() {
   const [leftMode, setLeftMode] = useState<"files" | "search" | "annotations">("files");
   const [sequencesOpen, setSequencesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  void sequencesOpen; // TODO: wire to SequencesManager overlay in Task 8
   void settingsOpen;  // TODO: wire to SettingsOverlay in Task 10
 
   const handleSetLeftMode = useCallback((mode: "files" | "search" | "annotations") => {
@@ -115,6 +115,16 @@ export function Shell() {
           <FullScreenReader mode={fullScreenMode} onClose={closeFullScreen} />
         )}
       </div>
+
+      {sequencesOpen && (
+        <SequencesManager
+          onClose={() => setSequencesOpen(false)}
+          onPlaySequence={() => {
+            setSequencesOpen(false);
+            setFullScreenMode("sequence");
+          }}
+        />
+      )}
 
       <StatusBar workspace={workspace} />
     </div>

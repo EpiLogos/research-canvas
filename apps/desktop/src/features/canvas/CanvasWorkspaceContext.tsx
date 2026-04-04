@@ -26,6 +26,7 @@ import {
   type ProjectDocument,
   type ProjectTreeNode,
   type ResourceRoot,
+  type SavedSequence,
   type SearchHit,
   type WorkspaceProject
 } from "@research-canvas/desktop-api";
@@ -72,6 +73,10 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   resourceRoots: ResourceRoot[];
   listDirectories: () => Promise<DirectoryEntry[]>;
   searchProject: (query: string, limit?: number) => Promise<SearchHit[]>;
+  listSavedSequences: (input: { databasePath: string; projectId: string; canvasId: string }) => Promise<SavedSequence[]>;
+  createSavedSequence: (input: { databasePath: string; projectId: string; canvasId: string; name: string }) => Promise<SavedSequence>;
+  updateSavedSequence: (input: { databasePath: string; id: string; name: string; rootNodeId: string | null; edgeIds: string[] }) => Promise<SavedSequence>;
+  deleteSavedSequence: (input: { databasePath: string; id: string }) => Promise<void>;
   selectEntry: (entryId: string | null) => void;
   selectEdge: (edgeId: string | null) => void;
   selectNode: (nodeId: string | null) => void;
@@ -428,6 +433,18 @@ export function CanvasWorkspaceProvider({
           projectId: activeProject.id,
           query
         });
+      },
+      async listSavedSequences(input) {
+        return transport.listSavedSequences(input);
+      },
+      async createSavedSequence(input) {
+        return transport.createSavedSequence(input);
+      },
+      async updateSavedSequence(input) {
+        return transport.updateSavedSequence(input);
+      },
+      async deleteSavedSequence(input) {
+        return transport.deleteSavedSequence(input);
       },
       addEdge: (input) => {
         stores.store.getState().connectNodes(input);
