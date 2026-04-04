@@ -39,7 +39,8 @@ export function SearchPanel() {
   }, [runSearch]);
 
   const handleClickResult = useCallback((hit: SearchHit) => {
-    if (hit.entityType === "node" || hit.entityType === "note" || hit.entityType === "resource") {
+    // Rust search layer emits "node" for all canvas node types (resource, note, group, etc.)
+    if (hit.entityType === "node") {
       workspace.selectNode(hit.entityId);
       workspace.flyToNode(hit.entityId);
     } else if (hit.entityType === "file") {
