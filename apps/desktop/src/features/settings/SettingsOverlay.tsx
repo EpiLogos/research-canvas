@@ -19,7 +19,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps) {
 
   if (!project) {
     return (
-      <div className="settings-overlay">
+      <div className="settings-overlay" onClick={onClose}>
         <div className="settings-overlay__inner">
           <p>No project selected</p>
           <button onClick={onClose}>Close</button>
@@ -40,19 +40,19 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps) {
           <h3>Project</h3>
           <div className="settings-overlay__field">
             <label>Display name</label>
-            <input type="text" value={project.displayName} readOnly />
+            <span>{project.displayName}</span>
           </div>
           <div className="settings-overlay__field">
             <label>Slug</label>
-            <input type="text" value={project.slug} readOnly />
+            <span>{project.slug}</span>
           </div>
           <div className="settings-overlay__field">
             <label>Summary</label>
-            <textarea value={project.summary} readOnly rows={3} />
+            <span>{project.summary}</span>
           </div>
           <div className="settings-overlay__field">
             <label>Root path</label>
-            <input type="text" value={project.rootPath} readOnly />
+            <span style={{ wordBreak: "break-all" }}>{project.rootPath}</span>
           </div>
         </section>
 

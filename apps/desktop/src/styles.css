@@ -3368,7 +3368,7 @@ body[data-shell-dragging="true"] {
 .settings-overlay {
   position: fixed;
   inset: 0;
-  z-index: 7000;
+  z-index: 8000;
   background: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
@@ -3420,16 +3420,5 @@ body[data-shell-dragging="true"] {
   min-width: 100px;
   color: #4a4a80;
   font-size: 11px;
-}
-.settings-overlay__field input,
-.settings-overlay__field textarea {
-  flex: 1;
-  padding: 4px 8px;
-  background: #0a0a1a;
-  border: 1px solid #252545;
-  border-radius: 3px;
-  color: #c0c0e0;
-  font-size: 12px;
-  font-family: inherit;
 }
 .settings-overlay__field span { color: #c0c0e0; }
