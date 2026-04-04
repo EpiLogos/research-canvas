@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { FuzzyFilePicker } from "@research-canvas/canvas";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
+import { SearchPanel } from "../features/search/SearchPanel";
 
 interface LeftOverlayProps {
   open: boolean;
@@ -151,14 +152,7 @@ export function LeftOverlay({ open, mode, onResizeStart }: LeftOverlayProps) {
             </div>
           </>
         )}
-        {mode === "search" && (
-          <div className="lo-section lo-section--grow">
-            <div className="lo-section__header">
-              <span className="lo-label">Search</span>
-            </div>
-            <div className="lo-empty">Search panel — coming in Task 4</div>
-          </div>
-        )}
+        {mode === "search" && <SearchPanel />}
         {mode === "annotations" && (
           <div className="lo-section lo-section--grow">
             <div className="lo-section__header">
