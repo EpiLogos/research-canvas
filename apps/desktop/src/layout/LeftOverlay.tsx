@@ -18,6 +18,7 @@ export function LeftOverlay({ open, mode, onResizeStart }: LeftOverlayProps) {
   const handleAddFolder = useCallback(async (e: React.MouseEvent) => {
     const rect = (e.target as HTMLElement).getBoundingClientRect();
     setFolderPickerAnchor({ x: rect.right + 4, y: rect.top });
+    setFolderError(null);
     try {
       const dirs = await workspace.listDirectories();
       setFolderEntries(dirs.map((d) => ({ name: d.name, path: d.path, kind: "directory" })));
