@@ -3363,3 +3363,73 @@ body[data-shell-dragging="true"] {
   opacity: 0.5;
 }
 .annotations-panel__item-delete:hover { opacity: 1; }
+
+/* ─── Settings overlay ──────────────────────────────── */
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 7000;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.settings-overlay__inner {
+  width: 480px;
+  max-height: 80vh;
+  overflow-y: auto;
+  background: #0e0e22;
+  border: 1px solid #252545;
+  border-radius: 8px;
+  padding: 20px 24px;
+}
+.settings-overlay__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.settings-overlay__header h2 { font-size: 16px; margin: 0; color: #c0c0e0; }
+.settings-overlay__close {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 20px;
+  cursor: pointer;
+}
+.settings-overlay__section {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #151530;
+}
+.settings-overlay__section h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #7c6fff;
+  margin: 0 0 8px;
+}
+.settings-overlay__field {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.settings-overlay__field label {
+  min-width: 100px;
+  color: #4a4a80;
+  font-size: 11px;
+}
+.settings-overlay__field input,
+.settings-overlay__field textarea {
+  flex: 1;
+  padding: 4px 8px;
+  background: #0a0a1a;
+  border: 1px solid #252545;
+  border-radius: 3px;
+  color: #c0c0e0;
+  font-size: 12px;
+  font-family: inherit;
+}
+.settings-overlay__field span { color: #c0c0e0; }

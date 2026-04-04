@@ -8,6 +8,7 @@ import { StatusBar } from "./StatusBar";
 import { useShellLayout } from "./useShellLayout";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { SequencesManager } from "../features/sequences/SequencesManager";
+import { SettingsOverlay } from "../features/settings/SettingsOverlay";
 
 export function Shell() {
   const layout = useShellLayout();
@@ -19,7 +20,6 @@ export function Shell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [drawingMode, setDrawingMode] = useState(false);
   const [strokeColour, setStrokeColour] = useState("#f97316");
-  void settingsOpen;  // TODO: wire to SettingsOverlay in Task 10
 
   const handleSetLeftMode = useCallback((mode: "files" | "search" | "annotations") => {
     setLeftMode(mode);
@@ -132,6 +132,10 @@ export function Shell() {
             setFullScreenMode("sequence");
           }}
         />
+      )}
+
+      {settingsOpen && (
+        <SettingsOverlay onClose={() => setSettingsOpen(false)} />
       )}
 
       <StatusBar workspace={workspace} />
