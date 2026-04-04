@@ -61,6 +61,10 @@ pub fn run() {
             commands::projects::activate_canvas_command,
             commands::projects::read_workspace_text_file_command,
             commands::projects::list_directories_command,
+            commands::projects::list_saved_sequences_command,
+            commands::projects::create_saved_sequence_command,
+            commands::projects::update_saved_sequence_command,
+            commands::projects::delete_saved_sequence_command,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Research Canvas");

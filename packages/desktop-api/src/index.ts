@@ -123,6 +123,17 @@ export interface DirectoryEntry {
   depth: number;
 }
 
+export interface SavedSequence {
+  id: string;
+  projectId: string;
+  canvasId: string;
+  name: string;
+  rootNodeId: string | null;
+  edgeIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface WorkspaceTransport {
   attachProjectResourceRoot(
     request: ResourceRootMutationRequest
@@ -147,6 +158,10 @@ interface WorkspaceTransport {
   ): Promise<ProjectDocument>;
   searchProject(request: SearchProjectRequest): Promise<SearchHit[]>;
   listDirectories(): Promise<DirectoryEntry[]>;
+  listSavedSequences(input: { databasePath: string; canvasId: string }): Promise<SavedSequence[]>;
+  createSavedSequence(input: { databasePath: string; projectId: string; canvasId: string; name: string }): Promise<SavedSequence>;
+  updateSavedSequence(input: { databasePath: string; id: string; name: string; rootNodeId: string | null; edgeIds: string[] }): Promise<SavedSequence>;
+  deleteSavedSequence(input: { databasePath: string; id: string }): Promise<void>;
 }
 
 const DEFAULT_BRIDGE_PORT = 4789;
@@ -228,6 +243,18 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async listDirectories() {
       return invokeTauri<DirectoryEntry[]>("list_directories_command");
     },
+    async listSavedSequences(request) {
+      return invokeTauri<SavedSequence[]>("list_saved_sequences_command", { request });
+    },
+    async createSavedSequence(request) {
+      return invokeTauri<SavedSequence>("create_saved_sequence_command", { request });
+    },
+    async updateSavedSequence(request) {
+      return invokeTauri<SavedSequence>("update_saved_sequence_command", { request });
+    },
+    async deleteSavedSequence(request) {
+      await invokeTauri<void>("delete_saved_sequence_command", { request });
+    },
   };
 }
 
@@ -299,6 +326,35 @@ function createBrowserBridgeTransport(): WorkspaceTransport {
     async listDirectories() {
       return requestJsonWithRetry<DirectoryEntry[]>("/workspace/directories");
     },
+    async listSavedSequences({ databasePath: _, canvasId }) {
+      return requestJsonWithRetry<SavedSequence[]>(
+        `/workspace/project/${canvasId}/sequences?canvasId=${encodeURIComponent(canvasId)}`
+      );
+    },
+    async createSavedSequence({ databasePath: _, projectId, canvasId, name }) {
+      return requestJsonWithRetry<SavedSequence>(
+        `/workspace/project/${projectId}/sequences`,
+        {
+          method: "POST",
+          body: { canvasId, name }
+        }
+      );
+    },
+    async updateSavedSequence({ databasePath: _, id, name, rootNodeId, edgeIds }) {
+      return requestJsonWithRetry<SavedSequence>(
+        `/workspace/project/sequences/${id}`,
+        {
+          method: "PUT",
+          body: { id, name, rootNodeId, edgeIds }
+        }
+      );
+    },
+    async deleteSavedSequence({ databasePath: _, id }) {
+      await requestJsonWithRetry<void>(
+        `/workspace/project/sequences/${id}`,
+        { method: "DELETE" }
+      );
+    },
   };
 }
 
@@ -352,7 +408,7 @@ async function requestJsonWithRetry<T>(
   path: string,
   options: {
     body?: unknown;
-    method?: "DELETE" | "GET" | "POST";
+    method?: "DELETE" | "GET" | "POST" | "PUT";
   } = {}
 ): Promise<T> {
   const attempts = 120;
@@ -375,7 +431,7 @@ async function requestJson<T>(
   path: string,
   options: {
     body?: unknown;
-    method?: "DELETE" | "GET" | "POST";
+    method?: "DELETE" | "GET" | "POST" | "PUT";
   }
 ): Promise<T> {
   const method = options.method ?? "GET";

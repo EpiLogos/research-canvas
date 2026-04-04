@@ -13,7 +13,8 @@ use crate::{
         connection::Database,
         repositories::{
             AnnotationRepository, CanvasGraphRepository, Project, ProjectRepository,
-            ResourceRootRecord, ResourceRootRepository,
+            ResourceRootRecord, ResourceRootRepository, SavedSequenceRecord,
+            SavedSequenceRepository,
         },
     },
     fs::indexer::{index_directory, IndexedEntry, IndexedEntryKind},
@@ -1057,4 +1058,97 @@ pub fn activate_canvas_command(
 #[tauri::command]
 pub fn read_workspace_text_file_command(path: String) -> Result<String, String> {
     fs::read_to_string(path).map_err(|error| error.to_string())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSequencePayload {
+    pub id: String,
+    pub project_id: String,
+    pub canvas_id: String,
+    pub name: String,
+    pub root_node_id: Option<String>,
+    pub edge_ids: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateSavedSequenceRequest {
+    pub database_path: String,
+    pub project_id: String,
+    pub canvas_id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSavedSequenceRequest {
+    pub database_path: String,
+    pub id: String,
+    pub name: String,
+    pub root_node_id: Option<String>,
+    pub edge_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteSavedSequenceRequest {
+    pub database_path: String,
+    pub id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListSavedSequencesRequest {
+    pub database_path: String,
+    pub canvas_id: String,
+}
+
+#[tauri::command]
+pub fn list_saved_sequences_command(request: ListSavedSequencesRequest) -> Result<Vec<SavedSequencePayload>, String> {
+    let db = Database::open(PathBuf::from(&request.database_path)).map_err(|e| e.to_string())?;
+    let repo = SavedSequenceRepository::new(db.connection());
+    repo.list_for_canvas(&request.canvas_id)
+        .map(|recs| recs.into_iter().map(saved_sequence_payload).collect())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn create_saved_sequence_command(request: CreateSavedSequenceRequest) -> Result<SavedSequencePayload, String> {
+    let db = Database::open(PathBuf::from(&request.database_path)).map_err(|e| e.to_string())?;
+    let repo = SavedSequenceRepository::new(db.connection());
+    repo.create(&request.project_id, &request.canvas_id, &request.name)
+        .map(saved_sequence_payload)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_saved_sequence_command(request: UpdateSavedSequenceRequest) -> Result<SavedSequencePayload, String> {
+    let db = Database::open(PathBuf::from(&request.database_path)).map_err(|e| e.to_string())?;
+    let repo = SavedSequenceRepository::new(db.connection());
+    repo.update(&request.id, &request.name, request.root_node_id.as_deref(), &request.edge_ids)
+        .map(saved_sequence_payload)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_saved_sequence_command(request: DeleteSavedSequenceRequest) -> Result<(), String> {
+    let db = Database::open(PathBuf::from(&request.database_path)).map_err(|e| e.to_string())?;
+    let repo = SavedSequenceRepository::new(db.connection());
+    repo.delete(&request.id).map_err(|e| e.to_string())
+}
+
+fn saved_sequence_payload(record: SavedSequenceRecord) -> SavedSequencePayload {
+    SavedSequencePayload {
+        id: record.id,
+        project_id: record.project_id,
+        canvas_id: record.canvas_id,
+        name: record.name,
+        root_node_id: record.root_node_id,
+        edge_ids: record.edge_ids,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
+    }
 }

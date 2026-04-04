@@ -5,8 +5,12 @@ use research_canvas_desktop_lib::{
         projects::{
             attach_project_resource_root_at, bootstrap_workspace_at, default_database_path,
             detach_project_resource_root_at, list_directories_at, list_project_resource_roots_at,
-            load_project_document_at, persist_project_document_at, PersistProjectDocumentRequest,
-            ResourceRootLookupRequest, ResourceRootMutationRequest,
+            load_project_document_at, persist_project_document_at,
+            create_saved_sequence_command, delete_saved_sequence_command,
+            list_saved_sequences_command, update_saved_sequence_command,
+            CreateSavedSequenceRequest, DeleteSavedSequenceRequest, ListSavedSequencesRequest,
+            PersistProjectDocumentRequest, ResourceRootLookupRequest, ResourceRootMutationRequest,
+            UpdateSavedSequenceRequest,
         },
         search::{
             rebuild_project_search_index_command, search_project_command,
@@ -210,6 +214,61 @@ fn handle_request(
             })?;
             return respond_json(request, StatusCode(200), json!({ "ok": true }));
         }
+
+        if method == Method::Get && action == "sequences" {
+            let database_path = session_database_path(&request).to_string_lossy().to_string();
+            let payload = list_saved_sequences_command(ListSavedSequencesRequest {
+                database_path,
+                canvas_id: query_param(&url, "canvasId").unwrap_or_default(),
+            }).map_err(|e| e.to_string())?;
+            return respond_json(request, StatusCode(200), payload);
+        }
+
+        if method == Method::Post && action == "sequences" {
+            let database_path = session_database_path(&request).to_string_lossy().to_string();
+            let body = read_body(&mut request)?;
+            let input: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
+            let payload = create_saved_sequence_command(CreateSavedSequenceRequest {
+                database_path,
+                project_id: project_id.clone(),
+                canvas_id: input["canvasId"].as_str().unwrap_or_default().to_string(),
+                name: input["name"].as_str().unwrap_or("Untitled").to_string(),
+            }).map_err(|e| e.to_string())?;
+            return respond_json(request, StatusCode(201), payload);
+        }
+    }
+
+    if let Some(sequence_id) = path.strip_prefix("/workspace/project/sequences/") {
+        let sequence_id = sequence_id.to_string();
+
+        if method == Method::Put {
+            let database_path = session_database_path(&request).to_string_lossy().to_string();
+            let body = read_body(&mut request)?;
+            let input: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
+            let edge_ids: Vec<String> = input["edgeIds"]
+                .as_array()
+                .unwrap_or(&vec![])
+                .iter()
+                .filter_map(|v| v.as_str().map(ToOwned::to_owned))
+                .collect();
+            let payload = update_saved_sequence_command(UpdateSavedSequenceRequest {
+                database_path,
+                id: sequence_id,
+                name: input["name"].as_str().unwrap_or("Untitled").to_string(),
+                root_node_id: input["rootNodeId"].as_str().map(ToOwned::to_owned),
+                edge_ids,
+            }).map_err(|e| e.to_string())?;
+            return respond_json(request, StatusCode(200), payload);
+        }
+
+        if method == Method::Delete {
+            let database_path = session_database_path(&request).to_string_lossy().to_string();
+            delete_saved_sequence_command(DeleteSavedSequenceRequest {
+                database_path,
+                id: sequence_id,
+            }).map_err(|e| e.to_string())?;
+            return respond_json(request, StatusCode(200), json!({ "ok": true }));
+        }
     }
 
     if method == Method::Post && path == "/terminal/session" {
@@ -324,7 +383,7 @@ fn respond_json<T: serde::Serialize>(
         .with_header(header("Access-Control-Allow-Origin", "*"))
         .with_header(header(
             "Access-Control-Allow-Methods",
-            "GET,POST,DELETE,OPTIONS",
+            "GET,POST,PUT,DELETE,OPTIONS",
         ))
         .with_header(header(
             "Access-Control-Allow-Headers",
