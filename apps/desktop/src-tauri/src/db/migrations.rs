@@ -40,6 +40,10 @@ const MIGRATIONS: &[Migration] = &[
         version: "0007_saved_sequences",
         sql: include_str!("../../migrations/0007_saved_sequences.sql"),
     },
+    Migration {
+        version: "0008_layout_store",
+        sql: include_str!("../../migrations/0008_layout_store.sql"),
+    },
 ];
 
 impl MigrationRunner {
