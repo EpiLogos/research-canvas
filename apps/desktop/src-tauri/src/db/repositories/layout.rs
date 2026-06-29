@@ -15,6 +15,21 @@ pub struct NodeLayoutRecord {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EdgeLayoutRecord {
+    pub id: String,
+    pub canvas_id: String,
+    pub source_graph_node_id: String,
+    pub target_graph_node_id: String,
+    pub relation_kind: String,
+    pub source_handle_id: Option<String>,
+    pub target_handle_id: Option<String>,
+    pub style_json: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 pub struct LayoutRepository<'conn> {
     connection: &'conn Connection,
 }
@@ -71,6 +86,55 @@ impl<'conn> LayoutRepository<'conn> {
         )?;
         Ok(())
     }
+
+    pub fn list_edge_layout(&self, canvas_id: &str) -> Result<Vec<EdgeLayoutRecord>> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, canvas_id, source_graph_node_id, target_graph_node_id, relation_kind,
+                    source_handle_id, target_handle_id, style_json, created_at, updated_at
+             FROM edge_layout
+             WHERE canvas_id = ?1
+             ORDER BY created_at ASC, id ASC",
+        )?;
+        let rows = statement.query_map([canvas_id], edge_layout_from_row)?;
+        rows.collect()
+    }
+
+    pub fn upsert_edge_layout(&self, record: &EdgeLayoutRecord) -> Result<()> {
+        self.connection.execute(
+            "INSERT INTO edge_layout (
+                id, canvas_id, source_graph_node_id, target_graph_node_id, relation_kind,
+                source_handle_id, target_handle_id, style_json, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(id) DO UPDATE SET
+                canvas_id            = excluded.canvas_id,
+                source_graph_node_id = excluded.source_graph_node_id,
+                target_graph_node_id = excluded.target_graph_node_id,
+                relation_kind        = excluded.relation_kind,
+                source_handle_id     = excluded.source_handle_id,
+                target_handle_id     = excluded.target_handle_id,
+                style_json           = excluded.style_json,
+                updated_at           = excluded.updated_at",
+            params![
+                record.id,
+                record.canvas_id,
+                record.source_graph_node_id,
+                record.target_graph_node_id,
+                record.relation_kind,
+                record.source_handle_id,
+                record.target_handle_id,
+                record.style_json,
+                record.created_at,
+                record.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_edge_layout(&self, id: &str) -> Result<()> {
+        self.connection
+            .execute("DELETE FROM edge_layout WHERE id = ?1", params![id])?;
+        Ok(())
+    }
 }
 
 fn node_layout_from_row(row: &rusqlite::Row<'_>) -> Result<NodeLayoutRecord> {
@@ -84,5 +148,20 @@ fn node_layout_from_row(row: &rusqlite::Row<'_>) -> Result<NodeLayoutRecord> {
         style_json: row.get(6)?,
         created_at: row.get(7)?,
         updated_at: row.get(8)?,
+    })
+}
+
+fn edge_layout_from_row(row: &rusqlite::Row<'_>) -> Result<EdgeLayoutRecord> {
+    Ok(EdgeLayoutRecord {
+        id: row.get(0)?,
+        canvas_id: row.get(1)?,
+        source_graph_node_id: row.get(2)?,
+        target_graph_node_id: row.get(3)?,
+        relation_kind: row.get(4)?,
+        source_handle_id: row.get(5)?,
+        target_handle_id: row.get(6)?,
+        style_json: row.get(7)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
     })
 }

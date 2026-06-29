@@ -1,6 +1,6 @@
 use research_canvas_desktop_lib::db::{
     connection::Database,
-    repositories::{LayoutRepository, NodeLayoutRecord, ProjectRepository},
+    repositories::{EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord, ProjectRepository},
 };
 use tempfile::{tempdir, TempDir};
 
@@ -64,6 +64,45 @@ fn upsert_node_layout_inserts_then_updates_in_place() {
     assert_eq!(after_update.len(), 1);
     assert_eq!(after_update[0].position_x, 99.0);
     assert_eq!(after_update[0].position_y, 88.0);
+}
+
+fn edge(id: &str, canvas_id: &str, relation: &str) -> EdgeLayoutRecord {
+    EdgeLayoutRecord {
+        id: id.to_string(),
+        canvas_id: canvas_id.to_string(),
+        source_graph_node_id: "a".to_string(),
+        target_graph_node_id: "b".to_string(),
+        relation_kind: relation.to_string(),
+        source_handle_id: Some("a-right".to_string()),
+        target_handle_id: Some("b-left".to_string()),
+        style_json: "{}".to_string(),
+        created_at: "2026-06-28T00:00:00Z".to_string(),
+        updated_at: "2026-06-28T00:00:00Z".to_string(),
+    }
+}
+
+#[test]
+fn edge_layout_upserts_updates_in_place_and_deletes() {
+    let (_dir, database) = open_temp_database();
+    let canvas_id = make_canvas(&database);
+    let repo = LayoutRepository::new(database.connection());
+
+    repo.upsert_edge_layout(&edge("e1", &canvas_id, "supports"))
+        .expect("insert edge");
+
+    let after_insert = repo.list_edge_layout(&canvas_id).expect("list edges");
+    assert_eq!(after_insert.len(), 1);
+    assert_eq!(after_insert[0].relation_kind, "supports");
+    assert_eq!(after_insert[0].source_handle_id.as_deref(), Some("a-right"));
+
+    repo.upsert_edge_layout(&edge("e1", &canvas_id, "opposes"))
+        .expect("update edge");
+    let after_update = repo.list_edge_layout(&canvas_id).expect("list edges again");
+    assert_eq!(after_update.len(), 1);
+    assert_eq!(after_update[0].relation_kind, "opposes");
+
+    repo.delete_edge_layout("e1").expect("delete edge");
+    assert!(repo.list_edge_layout(&canvas_id).expect("list empty").is_empty());
 }
 
 #[test]
