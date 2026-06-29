@@ -63,6 +63,14 @@ impl<'conn> LayoutRepository<'conn> {
         )?;
         Ok(())
     }
+
+    pub fn delete_node_layout(&self, canvas_id: &str, graph_node_id: &str) -> Result<()> {
+        self.connection.execute(
+            "DELETE FROM node_layout WHERE canvas_id = ?1 AND graph_node_id = ?2",
+            params![canvas_id, graph_node_id],
+        )?;
+        Ok(())
+    }
 }
 
 fn node_layout_from_row(row: &rusqlite::Row<'_>) -> Result<NodeLayoutRecord> {

@@ -65,3 +65,22 @@ fn upsert_node_layout_inserts_then_updates_in_place() {
     assert_eq!(after_update[0].position_x, 99.0);
     assert_eq!(after_update[0].position_y, 88.0);
 }
+
+#[test]
+fn delete_node_layout_removes_only_the_targeted_row() {
+    let (_dir, database) = open_temp_database();
+    let canvas_id = make_canvas(&database);
+    let repo = LayoutRepository::new(database.connection());
+
+    repo.upsert_node_layout(&record("keep", &canvas_id, 1.0, 1.0))
+        .expect("upsert keep");
+    repo.upsert_node_layout(&record("drop", &canvas_id, 2.0, 2.0))
+        .expect("upsert drop");
+
+    repo.delete_node_layout(&canvas_id, "drop")
+        .expect("delete drop");
+
+    let remaining = repo.list_node_layout(&canvas_id).expect("list");
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].graph_node_id, "keep");
+}
