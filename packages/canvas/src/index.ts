@@ -11,3 +11,4 @@ export * from "./sequences/SequenceMap";
 export * from "./sequences/SequencePresenter";
 export * from "./sequences/walkSequenceGraph";
 export * from "./state/canvasStore";
+export { serializeLayoutSnapshot, type LayoutSnapshot } from "./state/layoutSnapshot";

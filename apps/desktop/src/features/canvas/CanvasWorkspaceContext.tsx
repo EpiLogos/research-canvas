@@ -17,6 +17,7 @@ import { useStore } from "zustand";
 import {
   createAnnotationStore,
   createCanvasStore,
+  serializeLayoutSnapshot,
 } from "@research-canvas/canvas";
 import type { Viewport } from "@research-canvas/schema";
 import {
@@ -248,24 +249,34 @@ export function CanvasWorkspaceProvider({
         persistQueued = false;
 
         try {
-          const persisted = await transport.persistProjectDocument({
-            annotations: stores.annotationStore.getState().serialize(),
-            canvasId: activeProject.primaryCanvasId,
+          const snapshot = serializeLayoutSnapshot(stores.store.getState().serialize());
+          const viewport = captureViewportRef.current();
+          const result = await transport.flushCanvasLayout({
             databasePath,
-            edges: stores.store.getState().serialize().edges,
-            nodes: stores.store.getState().serialize().nodes,
-            projectId: activeProject.id,
+            canvasId: activeProject.primaryCanvasId,
+            layouts: snapshot.layouts,
+            edges: snapshot.edges,
+            viewport,
+            appState: {},
           });
 
           if (cancelled) {
             return;
           }
 
-          setActiveProject(persisted.project);
-          setEntries(persisted.entries);
-          setResourceRoots(persisted.resourceRoots ?? []);
-          setWorkingRoot(persisted.workingRoot ?? persisted.project.rootPath);
-          setErrorMessage(null);
+          if (result === false) {
+            setErrorMessage("failed to persist canvas layout");
+          } else {
+            setErrorMessage(null);
+            await transport.persistProjectDocument({
+              annotations: stores.annotationStore.getState().serialize(),
+              canvasId: activeProject.primaryCanvasId,
+              databasePath,
+              edges: stores.store.getState().serialize().edges,
+              nodes: stores.store.getState().serialize().nodes,
+              projectId: activeProject.id,
+            });
+          }
         } catch (error) {
           if (cancelled) {
             return;
@@ -276,7 +287,7 @@ export function CanvasWorkspaceProvider({
               ? error.message
               : typeof error === "string"
                 ? error
-                : "failed to persist workspace"
+                : "failed to persist canvas layout"
           );
         }
       } while (persistQueued && !cancelled);
@@ -314,17 +325,22 @@ export function CanvasWorkspaceProvider({
     }
 
     const flushLatest = () => {
-      const request = {
-        annotations: stores.annotationStore.getState().serialize(),
-        canvasId: activeProject.primaryCanvasId,
+      const snapshot = serializeLayoutSnapshot(stores.store.getState().serialize());
+      const viewport = captureViewportRef.current();
+      const result = transport.flushCanvasLayout({
         databasePath,
-        edges: stores.store.getState().serialize().edges,
-        nodes: stores.store.getState().serialize().nodes,
-        projectId: activeProject.id,
-      };
-      const result = transport.flushProjectDocument(request);
+        canvasId: activeProject.primaryCanvasId,
+        layouts: snapshot.layouts,
+        edges: snapshot.edges,
+        viewport,
+        appState: {},
+      });
       if (result instanceof Promise) {
-        void result.catch(() => {});
+        result.catch((error: unknown) => {
+          console.error("canvas layout flush failed on unload", error);
+        });
+      } else if (result === false) {
+        console.error("canvas layout flush returned false on unload");
       }
     };
 
