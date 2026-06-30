@@ -9,6 +9,9 @@
   },
   "references": [
     {
+      "path": "../desktop-api"
+    },
+    {
       "path": "../schema"
     }
   ],
