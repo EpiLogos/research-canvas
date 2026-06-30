@@ -1,6 +1,7 @@
 pub mod api;
 pub mod commands {
     pub mod export;
+    pub mod layout;
     pub mod projects;
     pub mod search;
     pub mod terminal;
@@ -65,6 +66,7 @@ pub fn run() {
             commands::projects::create_saved_sequence_command,
             commands::projects::update_saved_sequence_command,
             commands::projects::delete_saved_sequence_command,
+            commands::layout::flush_canvas_layout_command,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Research Canvas");
