@@ -134,6 +134,66 @@ export interface SavedSequence {
   updatedAt: string;
 }
 
+export interface NodeLayout {
+  graphNodeId: string;
+  canvasId: string;
+  positionX: number;
+  positionY: number;
+  width: number;
+  height: number;
+  style: {
+    dotColour?: string;
+    bgColour?: string;
+    textColour?: string;
+    thumbnail?: string;
+  };
+}
+
+export interface EdgeLayout {
+  id: string;
+  canvasId: string;
+  sourceGraphNodeId: string;
+  targetGraphNodeId: string;
+  relationKind: string;
+  sourceHandleId?: string;
+  targetHandleId?: string;
+  style: { stroke?: string; width?: number; dashed?: boolean };
+}
+
+export function nodeLayoutFromCanvasNode(node: CanvasNode): NodeLayout {
+  return {
+    graphNodeId: node.id,
+    canvasId: node.canvasId,
+    positionX: node.position.x,
+    positionY: node.position.y,
+    width: node.size.width,
+    height: node.size.height,
+    style: {
+      dotColour: node.dotColour ?? undefined,
+      bgColour: node.bgColour ?? undefined,
+      textColour: node.textColour ?? undefined,
+      thumbnail: node.thumbnail ?? undefined,
+    },
+  };
+}
+
+export function edgeLayoutFromCanvasEdge(edge: CanvasEdge): EdgeLayout {
+  return {
+    id: edge.id,
+    canvasId: edge.canvasId,
+    sourceGraphNodeId: edge.sourceNodeId,
+    targetGraphNodeId: edge.targetNodeId,
+    relationKind: edge.relationKind,
+    sourceHandleId: edge.sourceHandleId ?? undefined,
+    targetHandleId: edge.targetHandleId ?? undefined,
+    style: {
+      stroke: edge.style.stroke,
+      width: edge.style.width,
+      dashed: edge.style.dashed,
+    },
+  };
+}
+
 interface WorkspaceTransport {
   attachProjectResourceRoot(
     request: ResourceRootMutationRequest
