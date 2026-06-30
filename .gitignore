@@ -11,3 +11,5 @@ worktrees
 packages/*/dist
 **/*.tsbuildinfo
 apps/desktop/src-tauri/target
+
+.env
