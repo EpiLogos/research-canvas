@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { nodeLayoutFromCanvasNode, edgeLayoutFromCanvasEdge } from "./index";
+import { nodeLayoutFromCanvasNode, edgeLayoutFromCanvasEdge, buildFlushRequest } from "./index";
 import type { CanvasEdge, CanvasNode } from "@research-canvas/schema";
 
 const baseNode: CanvasNode = {
@@ -33,6 +33,33 @@ const baseEdge: CanvasEdge = {
   createdAt: "2026-06-28T00:00:00Z",
   updatedAt: "2026-06-28T00:00:00Z",
 } as unknown as CanvasEdge;
+
+describe("buildFlushRequest", () => {
+  it("serializes layouts, edges, viewport, and app-state into the Rust command shape", () => {
+    const request = buildFlushRequest({
+      databasePath: "/tmp/db.sqlite",
+      canvasId: "canvas-1",
+      layouts: [nodeLayoutFromCanvasNode(baseNode)],
+      edges: [edgeLayoutFromCanvasEdge(baseEdge)],
+      viewport: { x: 5, y: 6, zoom: 1.25 },
+      appState: { panel: "open" },
+    });
+
+    expect(request.databasePath).toBe("/tmp/db.sqlite");
+    expect(request.canvasId).toBe("canvas-1");
+    expect(request.layouts).toHaveLength(1);
+    expect(request.layouts[0].graphNodeId).toBe("node-1");
+    expect(request.layouts[0].positionX).toBe(12);
+    expect(request.layouts[0].styleJson).toBe(JSON.stringify({ dotColour: "#abc" }));
+    expect(request.edges[0].id).toBe("edge-1");
+    expect(request.edges[0].sourceGraphNodeId).toBe("node-1");
+    expect(request.edges[0].styleJson).toBe(
+      JSON.stringify({ stroke: "#f0b45a", width: 2, dashed: false }),
+    );
+    expect(request.viewportJson).toBe(JSON.stringify({ x: 5, y: 6, zoom: 1.25 }));
+    expect(request.appStateJson).toBe(JSON.stringify({ panel: "open" }));
+  });
+});
 
 describe("layout mappers", () => {
   it("maps a canvas node to a NodeLayout using node.id as graphNodeId", () => {

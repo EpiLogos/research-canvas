@@ -194,6 +194,75 @@ export function edgeLayoutFromCanvasEdge(edge: CanvasEdge): EdgeLayout {
   };
 }
 
+export interface NodeLayoutPayloadWire {
+  graphNodeId: string;
+  canvasId: string;
+  positionX: number;
+  positionY: number;
+  width: number;
+  height: number;
+  styleJson: string;
+}
+
+export interface EdgeLayoutPayloadWire {
+  id: string;
+  canvasId: string;
+  sourceGraphNodeId: string;
+  targetGraphNodeId: string;
+  relationKind: string;
+  sourceHandleId: string | null;
+  targetHandleId: string | null;
+  styleJson: string;
+}
+
+export interface FlushCanvasLayoutRequestPayload {
+  databasePath: string;
+  canvasId: string;
+  layouts: NodeLayoutPayloadWire[];
+  edges: EdgeLayoutPayloadWire[];
+  viewportJson: string;
+  appStateJson: string;
+}
+
+export interface FlushCanvasLayoutInput {
+  databasePath: string;
+  canvasId: string;
+  layouts: NodeLayout[];
+  edges: EdgeLayout[];
+  viewport: { x: number; y: number; zoom: number };
+  appState: Record<string, unknown>;
+}
+
+export function buildFlushRequest(
+  input: FlushCanvasLayoutInput
+): FlushCanvasLayoutRequestPayload {
+  return {
+    databasePath: input.databasePath,
+    canvasId: input.canvasId,
+    layouts: input.layouts.map((layout) => ({
+      graphNodeId: layout.graphNodeId,
+      canvasId: layout.canvasId,
+      positionX: layout.positionX,
+      positionY: layout.positionY,
+      width: layout.width,
+      height: layout.height,
+      styleJson: JSON.stringify(layout.style),
+    })),
+    edges: input.edges.map((edge) => ({
+      id: edge.id,
+      canvasId: edge.canvasId,
+      sourceGraphNodeId: edge.sourceGraphNodeId,
+      targetGraphNodeId: edge.targetGraphNodeId,
+      relationKind: edge.relationKind,
+      sourceHandleId: edge.sourceHandleId ?? null,
+      targetHandleId: edge.targetHandleId ?? null,
+      styleJson: JSON.stringify(edge.style),
+    })),
+    viewportJson: JSON.stringify(input.viewport),
+    appStateJson: JSON.stringify(input.appState),
+  };
+}
+
 interface WorkspaceTransport {
   attachProjectResourceRoot(
     request: ResourceRootMutationRequest
@@ -213,6 +282,14 @@ interface WorkspaceTransport {
     projectId: string;
   }): Promise<ProjectDocument>;
   flushProjectDocument(request: PersistProjectDocumentRequest): boolean | Promise<boolean>;
+  flushCanvasLayout(input: {
+    databasePath?: string;
+    canvasId: string;
+    layouts: NodeLayout[];
+    edges: EdgeLayout[];
+    viewport: { x: number; y: number; zoom: number };
+    appState: Record<string, unknown>;
+  }): boolean | Promise<boolean>;
   persistProjectDocument(
     request: PersistProjectDocumentRequest
   ): Promise<ProjectDocument>;
@@ -253,6 +330,8 @@ export async function readWorkspaceTextFile(absolutePath: string) {
 }
 
 function createTauriWorkspaceTransport(): WorkspaceTransport {
+  let activeDatabasePath: string | undefined;
+
   return {
     async attachProjectResourceRoot(request) {
       return invokeTauri<ResourceRoot>("attach_project_resource_root_command", {
@@ -260,7 +339,9 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
       });
     },
     async bootstrapWorkspace() {
-      return invokeTauri<WorkspaceBootstrap>("bootstrap_workspace_command");
+      const result = await invokeTauri<WorkspaceBootstrap>("bootstrap_workspace_command");
+      activeDatabasePath = result.databasePath;
+      return result;
     },
     async detachProjectResourceRoot(request) {
       await invokeTauri<void>("detach_project_resource_root_command", {
@@ -289,6 +370,26 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
       } catch {
         return false;
       }
+    },
+    async flushCanvasLayout(input) {
+      const databasePath = input.databasePath ?? activeDatabasePath;
+      if (!databasePath) {
+        throw new Error("flushCanvasLayout: no database path in input or context");
+      }
+      await invokeTauri<{ writtenNodes: number; writtenEdges: number }>(
+        "flush_canvas_layout_command",
+        {
+          request: buildFlushRequest({
+            databasePath,
+            canvasId: input.canvasId,
+            layouts: input.layouts,
+            edges: input.edges,
+            viewport: input.viewport,
+            appState: input.appState,
+          }),
+        }
+      );
+      return true;
     },
     async persistProjectDocument(request) {
       return invokeTauri<ProjectDocument>("persist_project_document_command", {
@@ -359,6 +460,9 @@ function createBrowserBridgeTransport(): WorkspaceTransport {
 
       const beaconPath = `${BRIDGE_BASE_URL}/workspace/project/${request.projectId}/persist?sessionId=${encodeURIComponent(browserSessionId())}`;
       return navigator.sendBeacon(beaconPath, JSON.stringify(request));
+    },
+    flushCanvasLayout() {
+      throw new Error("read-only web build");
     },
     async persistProjectDocument(request) {
       return requestJsonWithRetry<ProjectDocument>(
