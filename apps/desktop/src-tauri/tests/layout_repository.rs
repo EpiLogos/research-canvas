@@ -123,3 +123,46 @@ fn delete_node_layout_removes_only_the_targeted_row() {
     assert_eq!(remaining.len(), 1);
     assert_eq!(remaining[0].graph_node_id, "keep");
 }
+
+#[test]
+fn app_state_upsert_persists_viewport_and_is_readable() {
+    let (_dir, database) = open_temp_database();
+    let canvas_id = make_canvas(&database);
+    let repo = LayoutRepository::new(database.connection());
+
+    assert!(repo.get_app_state(&canvas_id).expect("get none").is_none());
+
+    repo.upsert_app_state(&research_canvas_desktop_lib::db::repositories::CanvasAppStateRecord {
+        canvas_id: canvas_id.clone(),
+        viewport_json: r#"{"x":12,"y":34,"zoom":1.5}"#.to_string(),
+        app_state_json: r#"{"panel":"open"}"#.to_string(),
+        updated_at: "2026-06-28T00:00:00Z".to_string(),
+    })
+    .expect("first upsert");
+
+    let loaded = repo.get_app_state(&canvas_id).expect("get some").expect("row");
+    assert_eq!(loaded.viewport_json, r#"{"x":12,"y":34,"zoom":1.5}"#);
+    assert_eq!(loaded.app_state_json, r#"{"panel":"open"}"#);
+
+    repo.upsert_app_state(&research_canvas_desktop_lib::db::repositories::CanvasAppStateRecord {
+        canvas_id: canvas_id.clone(),
+        viewport_json: r#"{"x":0,"y":0,"zoom":2}"#.to_string(),
+        app_state_json: "{}".to_string(),
+        updated_at: "2026-06-28T01:00:00Z".to_string(),
+    })
+    .expect("second upsert");
+
+    let updated = repo.get_app_state(&canvas_id).expect("get some 2").expect("row 2");
+    assert_eq!(updated.viewport_json, r#"{"x":0,"y":0,"zoom":2}"#);
+
+    // Still exactly one row per canvas.
+    let count: i64 = database
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM canvas_app_state WHERE canvas_id = ?1",
+            [&canvas_id],
+            |row| row.get(0),
+        )
+        .expect("count");
+    assert_eq!(count, 1);
+}

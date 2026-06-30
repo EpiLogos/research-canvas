@@ -11,7 +11,7 @@ pub use canvas::{
     Canvas, CanvasEdgeRecord, CanvasGraphRepository, CanvasNodeRecord, CanvasRepository,
     CanvasSnapshotRecord,
 };
-pub use layout::{EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord};
+pub use layout::{CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord};
 pub use projects::{Project, ProjectRepository};
 pub use resource_roots::{ResourceRootRecord, ResourceRootRepository};
 pub use saved_sequences::{SavedSequenceRecord, SavedSequenceRepository};

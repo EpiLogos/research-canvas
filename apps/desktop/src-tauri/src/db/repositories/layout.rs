@@ -30,6 +30,15 @@ pub struct EdgeLayoutRecord {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanvasAppStateRecord {
+    pub canvas_id: String,
+    pub viewport_json: String,
+    pub app_state_json: String,
+    pub updated_at: String,
+}
+
 pub struct LayoutRepository<'conn> {
     connection: &'conn Connection,
 }
@@ -135,6 +144,37 @@ impl<'conn> LayoutRepository<'conn> {
             .execute("DELETE FROM edge_layout WHERE id = ?1", params![id])?;
         Ok(())
     }
+
+    pub fn get_app_state(&self, canvas_id: &str) -> Result<Option<CanvasAppStateRecord>> {
+        use rusqlite::OptionalExtension;
+        self.connection
+            .query_row(
+                "SELECT canvas_id, viewport_json, app_state_json, updated_at
+                 FROM canvas_app_state
+                 WHERE canvas_id = ?1",
+                [canvas_id],
+                app_state_from_row,
+            )
+            .optional()
+    }
+
+    pub fn upsert_app_state(&self, record: &CanvasAppStateRecord) -> Result<()> {
+        self.connection.execute(
+            "INSERT INTO canvas_app_state (canvas_id, viewport_json, app_state_json, updated_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(canvas_id) DO UPDATE SET
+                viewport_json  = excluded.viewport_json,
+                app_state_json = excluded.app_state_json,
+                updated_at     = excluded.updated_at",
+            params![
+                record.canvas_id,
+                record.viewport_json,
+                record.app_state_json,
+                record.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
 }
 
 fn node_layout_from_row(row: &rusqlite::Row<'_>) -> Result<NodeLayoutRecord> {
@@ -163,5 +203,14 @@ fn edge_layout_from_row(row: &rusqlite::Row<'_>) -> Result<EdgeLayoutRecord> {
         style_json: row.get(7)?,
         created_at: row.get(8)?,
         updated_at: row.get(9)?,
+    })
+}
+
+fn app_state_from_row(row: &rusqlite::Row<'_>) -> Result<CanvasAppStateRecord> {
+    Ok(CanvasAppStateRecord {
+        canvas_id: row.get(0)?,
+        viewport_json: row.get(1)?,
+        app_state_json: row.get(2)?,
+        updated_at: row.get(3)?,
     })
 }
