@@ -88,6 +88,13 @@ impl<'conn> LayoutRepository<'conn> {
         Ok(())
     }
 
+    pub fn upsert_node_layouts(&self, records: &[NodeLayoutRecord]) -> Result<usize> {
+        for record in records {
+            self.upsert_node_layout(record)?;
+        }
+        Ok(records.len())
+    }
+
     pub fn delete_node_layout(&self, canvas_id: &str, graph_node_id: &str) -> Result<()> {
         self.connection.execute(
             "DELETE FROM node_layout WHERE canvas_id = ?1 AND graph_node_id = ?2",

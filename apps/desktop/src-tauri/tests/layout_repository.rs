@@ -166,3 +166,31 @@ fn app_state_upsert_persists_viewport_and_is_readable() {
         .expect("count");
     assert_eq!(count, 1);
 }
+
+#[test]
+fn upsert_node_layouts_writes_all_records_and_returns_count() {
+    let (_dir, database) = open_temp_database();
+    let canvas_id = make_canvas(&database);
+    let repo = LayoutRepository::new(database.connection());
+
+    let batch = vec![
+        record("n1", &canvas_id, 1.0, 1.0),
+        record("n2", &canvas_id, 2.0, 2.0),
+        record("n3", &canvas_id, 3.0, 3.0),
+    ];
+
+    let written = repo.upsert_node_layouts(&batch).expect("batch upsert");
+    assert_eq!(written, 3);
+
+    let listed = repo.list_node_layout(&canvas_id).expect("list");
+    assert_eq!(listed.len(), 3);
+
+    // Re-running with updated positions overwrites, count unchanged.
+    let batch2 = vec![record("n1", &canvas_id, 50.0, 60.0)];
+    let written2 = repo.upsert_node_layouts(&batch2).expect("batch upsert 2");
+    assert_eq!(written2, 1);
+    let listed2 = repo.list_node_layout(&canvas_id).expect("list 2");
+    assert_eq!(listed2.len(), 3);
+    let n1 = listed2.iter().find(|r| r.graph_node_id == "n1").expect("n1");
+    assert_eq!(n1.position_x, 50.0);
+}
