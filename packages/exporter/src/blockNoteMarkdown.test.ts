@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { blockNoteJsonToMarkdown } from "./renderMarkdown";
+import { blockNoteJsonToMarkdown, markdownToBlockNoteJson } from "./renderMarkdown";
 
 describe("blockNoteJsonToMarkdown", () => {
   it("returns empty string for an empty body", () => {
@@ -54,5 +54,36 @@ describe("blockNoteJsonToMarkdown", () => {
       { type: "codeBlock", content: [{ type: "text", text: "const x = 1;" }] },
     ]);
     expect(blockNoteJsonToMarkdown(body)).toBe("> as above\n\n```\nconst x = 1;\n```");
+  });
+});
+
+describe("markdownToBlockNoteJson", () => {
+  it("returns the empty block array for empty input", () => {
+    expect(markdownToBlockNoteJson("")).toBe("[]");
+  });
+
+  it("round-trips a heading", () => {
+    const json = markdownToBlockNoteJson("## Origins");
+    expect(JSON.parse(json)).toEqual([
+      {
+        type: "heading",
+        props: { level: 2 },
+        content: [{ type: "text", text: "Origins", styles: {} }],
+      },
+    ]);
+  });
+
+  it("parses a paragraph and a bullet item", () => {
+    const json = markdownToBlockNoteJson("Hello world\n\n- a point");
+    expect(JSON.parse(json)).toEqual([
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: "Hello world", styles: {} }],
+      },
+      {
+        type: "bulletListItem",
+        content: [{ type: "text", text: "a point", styles: {} }],
+      },
+    ]);
   });
 });

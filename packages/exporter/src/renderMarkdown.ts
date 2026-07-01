@@ -246,6 +246,14 @@ function renderBnBlock(block: BnBlock): string {
   }
 }
 
+function textBlock(type: string, text: string, props?: Record<string, unknown>): BnBlock {
+  return {
+    type,
+    props: props as BnBlock["props"],
+    content: [{ type: "text", text, styles: {} }],
+  };
+}
+
 /**
  * Convert a stored BlockNote/ProseMirror body JSON string to Markdown.
  * Used by the static web layer and "export node to .md" linking. (WS0 §7)
@@ -262,4 +270,40 @@ export function blockNoteJsonToMarkdown(bodyJson: string): string {
     return "";
   }
   return blocks.map((block) => renderBnBlock(block)).join("\n\n");
+}
+
+/**
+ * Inverse of blockNoteJsonToMarkdown, for importing a linked .md file into a
+ * node body (WS4). Parses a Markdown subset; returns "[]" for empty input. (WS0 §7)
+ */
+export function markdownToBlockNoteJson(markdown: string): string {
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const blocks: BnBlock[] = [];
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line === "") {
+      continue;
+    }
+    const heading = line.match(/^(#{1,3})\s+(.*)$/);
+    if (heading) {
+      blocks.push(textBlock("heading", heading[2], { level: heading[1].length }));
+      continue;
+    }
+    if (/^[-*+]\s+/.test(line)) {
+      blocks.push(textBlock("bulletListItem", line.replace(/^[-*+]\s+/, "")));
+      continue;
+    }
+    if (/^\d+\.\s+/.test(line)) {
+      blocks.push(textBlock("numberedListItem", line.replace(/^\d+\.\s+/, "")));
+      continue;
+    }
+    if (/^>\s?/.test(line)) {
+      blocks.push(textBlock("quote", line.replace(/^>\s?/, "")));
+      continue;
+    }
+    blocks.push(textBlock("paragraph", line));
+  }
+
+  return JSON.stringify(blocks);
 }
