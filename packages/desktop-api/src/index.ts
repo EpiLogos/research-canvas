@@ -5,6 +5,31 @@ import type {
   PublishSettings,
 } from "@research-canvas/schema";
 
+export type {
+  ArchetypalLighting,
+  CanvasView,
+  EdgeLayout,
+  EntityType,
+  GraphNode,
+  GraphNodePatch,
+  GraphRelationship,
+  JoinedCanvasNode,
+  LitInstance,
+  NewGraphNodeInput,
+  NodeLayout,
+} from "./graph";
+import type {
+  ArchetypalLighting,
+  CanvasView,
+  GraphNode,
+  GraphNodePatch,
+  GraphRelationship,
+  LitInstance,
+  NewGraphNodeInput,
+  NodeLayout,
+  EdgeLayout,
+} from "./graph";
+
 export type IndexedEntryKind =
   | "directory"
   | "markdown"
@@ -132,32 +157,6 @@ export interface SavedSequence {
   edgeIds: string[];
   createdAt: string;
   updatedAt: string;
-}
-
-export interface NodeLayout {
-  graphNodeId: string;
-  canvasId: string;
-  positionX: number;
-  positionY: number;
-  width: number;
-  height: number;
-  style: {
-    dotColour?: string;
-    bgColour?: string;
-    textColour?: string;
-    thumbnail?: string;
-  };
-}
-
-export interface EdgeLayout {
-  id: string;
-  canvasId: string;
-  sourceGraphNodeId: string;
-  targetGraphNodeId: string;
-  relationKind: string;
-  sourceHandleId?: string;
-  targetHandleId?: string;
-  style: { stroke?: string; width?: number; dashed?: boolean };
 }
 
 export function nodeLayoutFromCanvasNode(node: CanvasNode): NodeLayout {
@@ -299,6 +298,38 @@ interface WorkspaceTransport {
   createSavedSequence(input: { databasePath: string; projectId: string; canvasId: string; name: string }): Promise<SavedSequence>;
   updateSavedSequence(input: { databasePath: string; id: string; name: string; rootNodeId: string | null; edgeIds: string[] }): Promise<SavedSequence>;
   deleteSavedSequence(input: { databasePath: string; id: string }): Promise<void>;
+
+  // ---- Substance (Neo4j) ----
+  readGraphNode(input: { graphNodeId: string }): Promise<GraphNode>;
+  createGraphNode(input: NewGraphNodeInput): Promise<GraphNode>;
+  updateGraphNode(input: { graphNodeId: string; patch: GraphNodePatch }): Promise<GraphNode>;
+  deleteGraphNode(input: { graphNodeId: string }): Promise<void>;
+  connectGraphNodes(input: {
+    sourceGraphNodeId: string; targetGraphNodeId: string;
+    relType: string; properties?: Record<string, unknown>;
+  }): Promise<GraphRelationship>;
+  disconnectGraphNodes(input: { relationshipId: string }): Promise<void>;
+  searchGraph(input: { query: string; limit?: number }): Promise<GraphNode[]>;
+
+  // ---- Layout (SQLite) ----
+  // `databasePath?` is OPTIONAL on every layout/joined method: omit it and the
+  // Tauri command falls back to SharedApiState.db_path (Task 14). WS7 Task 3/4
+  // reuse these exact signatures — keep `databasePath?:` optional, do not rename.
+  upsertNodeLayout(input: { databasePath?: string; layout: NodeLayout }): Promise<void>;
+  upsertNodeLayouts(input: { databasePath?: string; canvasId: string; layouts: NodeLayout[] }): Promise<number>;
+  upsertEdgeLayout(input: { databasePath?: string; layout: EdgeLayout }): Promise<void>;
+  upsertCanvasAppState(input: {
+    databasePath?: string; canvasId: string;
+    viewport: { x: number; y: number; zoom: number };
+    appState: Record<string, unknown>;
+  }): Promise<void>;
+
+  // ---- Joined reads (both targets) ----
+  loadCanvasView(input: { databasePath?: string; canvasId: string; lens: "canvas" | "timeline" }): Promise<CanvasView>;
+
+  // ---- Two-lens / archetypal lighting ----
+  archetypalLighting(input: { operatorGraphNodeId: string }): Promise<ArchetypalLighting>;
+  resonancesForInstance(input: { graphNodeId: string }): Promise<LitInstance[]>;
 }
 
 const DEFAULT_BRIDGE_PORT = 4789;
@@ -416,10 +447,52 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async deleteSavedSequence(request) {
       await invokeTauri<void>("delete_saved_sequence_command", { request });
     },
+    async readGraphNode(input) {
+      return invokeTauri<GraphNode>("read_graph_node_command", { request: input });
+    },
+    async createGraphNode(input) {
+      return invokeTauri<GraphNode>("create_graph_node_command", { request: input });
+    },
+    async updateGraphNode(input) {
+      return invokeTauri<GraphNode>("update_graph_node_command", { request: input });
+    },
+    async deleteGraphNode(input) {
+      await invokeTauri<void>("delete_graph_node_command", { request: input });
+    },
+    async connectGraphNodes(input) {
+      return invokeTauri<GraphRelationship>("connect_graph_nodes_command", { request: input });
+    },
+    async disconnectGraphNodes(input) {
+      await invokeTauri<void>("disconnect_graph_nodes_command", { request: input });
+    },
+    async searchGraph(input) {
+      return invokeTauri<GraphNode[]>("search_graph_command", { request: input });
+    },
+    async upsertNodeLayout(input) {
+      await invokeTauri<void>("upsert_node_layout_command", { request: input });
+    },
+    async upsertNodeLayouts(input) {
+      return invokeTauri<number>("upsert_node_layouts_command", { request: input });
+    },
+    async upsertEdgeLayout(input) {
+      await invokeTauri<void>("upsert_edge_layout_command", { request: input });
+    },
+    async upsertCanvasAppState(input) {
+      await invokeTauri<void>("upsert_canvas_app_state_command", { request: input });
+    },
+    async loadCanvasView(input) {
+      return invokeTauri<CanvasView>("load_canvas_view_command", { request: input });
+    },
+    async archetypalLighting(input) {
+      return invokeTauri<ArchetypalLighting>("archetypal_lighting_command", { request: input });
+    },
+    async resonancesForInstance(input) {
+      return invokeTauri<LitInstance[]>("resonances_for_instance_command", { request: input });
+    },
   };
 }
 
-function createBrowserBridgeTransport(): WorkspaceTransport {
+export function createBrowserBridgeTransport(): WorkspaceTransport {
   return {
     async attachProjectResourceRoot(request) {
       return requestJsonWithRetry<ResourceRoot>(
@@ -519,6 +592,39 @@ function createBrowserBridgeTransport(): WorkspaceTransport {
         { method: "DELETE" }
       );
     },
+    async readGraphNode(input) {
+      return requestJsonWithRetry<GraphNode>(
+        `/graph/node/${encodeURIComponent(input.graphNodeId)}`,
+      );
+    },
+    async searchGraph(input) {
+      const params = new URLSearchParams({ query: input.query });
+      if (input.limit != null) params.set("limit", String(input.limit));
+      return requestJsonWithRetry<GraphNode[]>(`/graph/search?${params.toString()}`);
+    },
+    async loadCanvasView(input) {
+      const params = new URLSearchParams({ canvasId: input.canvasId, lens: input.lens });
+      return requestJsonWithRetry<CanvasView>(`/graph/canvas-view?${params.toString()}`);
+    },
+    async archetypalLighting(input) {
+      return requestJsonWithRetry<ArchetypalLighting>(
+        `/graph/lighting/${encodeURIComponent(input.operatorGraphNodeId)}`,
+      );
+    },
+    async resonancesForInstance(input) {
+      return requestJsonWithRetry<LitInstance[]>(
+        `/graph/resonances/${encodeURIComponent(input.graphNodeId)}`,
+      );
+    },
+    async createGraphNode() { throw new Error("read-only web build"); },
+    async updateGraphNode() { throw new Error("read-only web build"); },
+    async deleteGraphNode() { throw new Error("read-only web build"); },
+    async connectGraphNodes() { throw new Error("read-only web build"); },
+    async disconnectGraphNodes() { throw new Error("read-only web build"); },
+    async upsertNodeLayout() { throw new Error("read-only web build"); },
+    async upsertNodeLayouts() { throw new Error("read-only web build"); },
+    async upsertEdgeLayout() { throw new Error("read-only web build"); },
+    async upsertCanvasAppState() { throw new Error("read-only web build"); },
   };
 }
 
