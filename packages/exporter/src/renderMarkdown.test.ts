@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { blockNoteJsonToMarkdown } from "./renderMarkdown";
+import { blockNoteJsonToMarkdown, markdownToBlockNoteJson } from "./renderMarkdown";
 
 describe("blockNoteJsonToMarkdown", () => {
   it("returns empty string for the empty-body sentinels", () => {
@@ -48,5 +48,44 @@ describe("blockNoteJsonToMarkdown", () => {
       { type: "image", props: { url: "assets/n1/cat.png", caption: "A cat" } },
     ]);
     expect(blockNoteJsonToMarkdown(json)).toBe("![A cat](assets/n1/cat.png)");
+  });
+});
+
+describe("markdownToBlockNoteJson", () => {
+  it("returns the empty-body sentinel for blank input", () => {
+    expect(markdownToBlockNoteJson("")).toBe("[]");
+    expect(markdownToBlockNoteJson("   \n  ")).toBe("[]");
+  });
+
+  it("parses a heading into a heading block with level", () => {
+    const blocks = JSON.parse(markdownToBlockNoteJson("## Title"));
+    expect(blocks).toEqual([
+      { type: "heading", props: { level: 2 }, content: [{ type: "text", text: "Title" }] },
+    ]);
+  });
+
+  it("parses inline bold, italic, and code", () => {
+    const blocks = JSON.parse(markdownToBlockNoteJson("a **b** *c* `d`"));
+    expect(blocks[0].content).toEqual([
+      { type: "text", text: "a " },
+      { type: "text", text: "b", styles: { bold: true } },
+      { type: "text", text: " " },
+      { type: "text", text: "c", styles: { italic: true } },
+      { type: "text", text: " " },
+      { type: "text", text: "d", styles: { code: true } },
+    ]);
+  });
+
+  it("parses bullets, numbers, quote, fenced code, and a standalone image", () => {
+    const md = "- one\n- two\n1. first\n> said\n```\nx = 1\n```\n![A cat](assets/n1/cat.png)";
+    const blocks = JSON.parse(markdownToBlockNoteJson(md));
+    expect(blocks).toEqual([
+      { type: "bulletListItem", content: [{ type: "text", text: "one" }] },
+      { type: "bulletListItem", content: [{ type: "text", text: "two" }] },
+      { type: "numberedListItem", content: [{ type: "text", text: "first" }] },
+      { type: "quote", content: [{ type: "text", text: "said" }] },
+      { type: "codeBlock", content: [{ type: "text", text: "x = 1" }] },
+      { type: "image", props: { url: "assets/n1/cat.png", caption: "A cat" } },
+    ]);
   });
 });

@@ -68,7 +68,7 @@ describe("markdownToBlockNoteJson", () => {
       {
         type: "heading",
         props: { level: 2 },
-        content: [{ type: "text", text: "Origins", styles: {} }],
+        content: [{ type: "text", text: "Origins" }],
       },
     ]);
   });
@@ -78,11 +78,11 @@ describe("markdownToBlockNoteJson", () => {
     expect(JSON.parse(json)).toEqual([
       {
         type: "paragraph",
-        content: [{ type: "text", text: "Hello world", styles: {} }],
+        content: [{ type: "text", text: "Hello world" }],
       },
       {
         type: "bulletListItem",
-        content: [{ type: "text", text: "a point", styles: {} }],
+        content: [{ type: "text", text: "a point" }],
       },
     ]);
   });

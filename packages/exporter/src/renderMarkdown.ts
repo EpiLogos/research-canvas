@@ -253,14 +253,6 @@ function renderBnBlock(block: BnBlock): string {
   }
 }
 
-function textBlock(type: string, text: string, props?: Record<string, unknown>): BnBlock {
-  return {
-    type,
-    props: props as BnBlock["props"],
-    content: [{ type: "text", text, styles: {} }],
-  };
-}
-
 /**
  * Convert a stored BlockNote/ProseMirror body JSON string to Markdown.
  * Used by the static web layer and "export node to .md" linking. (WS0 §7)
@@ -280,36 +272,133 @@ export function blockNoteJsonToMarkdown(bodyJson: string): string {
 }
 
 /**
+ * Parse an inline markdown text run into BlockNoteInline nodes.
+ * Handles **bold**, *italic*, and `code` spans.
+ */
+function parseInline(text: string): BlockNoteInline[] {
+  const out: BlockNoteInline[] = [];
+  let index = 0;
+  let plain = "";
+
+  const flushPlain = () => {
+    if (plain.length > 0) {
+      out.push({ type: "text", text: plain });
+      plain = "";
+    }
+  };
+
+  while (index < text.length) {
+    if (text.startsWith("**", index)) {
+      const end = text.indexOf("**", index + 2);
+      if (end !== -1) {
+        flushPlain();
+        out.push({ type: "text", text: text.slice(index + 2, end), styles: { bold: true } });
+        index = end + 2;
+        continue;
+      }
+    }
+    if (text[index] === "`") {
+      const end = text.indexOf("`", index + 1);
+      if (end !== -1) {
+        flushPlain();
+        out.push({ type: "text", text: text.slice(index + 1, end), styles: { code: true } });
+        index = end + 1;
+        continue;
+      }
+    }
+    if (text[index] === "*" && !text.startsWith("**", index)) {
+      const end = text.indexOf("*", index + 1);
+      if (end !== -1) {
+        flushPlain();
+        out.push({ type: "text", text: text.slice(index + 1, end), styles: { italic: true } });
+        index = end + 1;
+        continue;
+      }
+    }
+    plain += text[index];
+    index += 1;
+  }
+
+  flushPlain();
+  return out;
+}
+
+/**
  * Inverse of blockNoteJsonToMarkdown, for importing a linked .md file into a
  * node body (WS4). Parses a Markdown subset; returns "[]" for empty input. (WS0 §7)
  */
 export function markdownToBlockNoteJson(markdown: string): string {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
-  const blocks: BnBlock[] = [];
+  const blocks: BlockNoteBlock[] = [];
+  let index = 0;
 
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (line === "") {
+  while (index < lines.length) {
+    const line = lines[index];
+
+    if (!line.trim()) {
+      index += 1;
       continue;
     }
-    const heading = line.match(/^(#{1,3})\s+(.*)$/);
+
+    const heading = line.match(/^(#{1,6})\s+(.*)$/);
     if (heading) {
-      blocks.push(textBlock("heading", heading[2], { level: heading[1].length }));
+      blocks.push({
+        type: "heading",
+        props: { level: heading[1].length },
+        content: parseInline(heading[2].trim()),
+      });
+      index += 1;
       continue;
     }
-    if (/^[-*+]\s+/.test(line)) {
-      blocks.push(textBlock("bulletListItem", line.replace(/^[-*+]\s+/, "")));
+
+    const image = line.match(/^!\[([^\]]*)\]\(([^)]+)\)\s*$/);
+    if (image) {
+      blocks.push({ type: "image", props: { url: image[2], caption: image[1] } });
+      index += 1;
       continue;
     }
-    if (/^\d+\.\s+/.test(line)) {
-      blocks.push(textBlock("numberedListItem", line.replace(/^\d+\.\s+/, "")));
+
+    if (line.startsWith("```")) {
+      const codeLines: string[] = [];
+      index += 1;
+      while (index < lines.length && !lines[index].startsWith("```")) {
+        codeLines.push(lines[index]);
+        index += 1;
+      }
+      if (index < lines.length) {
+        index += 1;
+      }
+      blocks.push({ type: "codeBlock", content: [{ type: "text", text: codeLines.join("\n") }] });
       continue;
     }
-    if (/^>\s?/.test(line)) {
-      blocks.push(textBlock("quote", line.replace(/^>\s?/, "")));
+
+    const quote = line.match(/^>\s?(.*)$/);
+    if (quote) {
+      blocks.push({ type: "quote", content: parseInline(quote[1].trim()) });
+      index += 1;
       continue;
     }
-    blocks.push(textBlock("paragraph", line));
+
+    const bullet = line.match(/^[-*+]\s+(.*)$/);
+    if (bullet) {
+      blocks.push({ type: "bulletListItem", content: parseInline(bullet[1].trim()) });
+      index += 1;
+      continue;
+    }
+
+    const numbered = line.match(/^\d+\.\s+(.*)$/);
+    if (numbered) {
+      blocks.push({ type: "numberedListItem", content: parseInline(numbered[1].trim()) });
+      index += 1;
+      continue;
+    }
+
+    blocks.push({ type: "paragraph", content: parseInline(line.trim()) });
+    index += 1;
+  }
+
+  if (blocks.length === 0) {
+    return "[]";
   }
 
   return JSON.stringify(blocks);
