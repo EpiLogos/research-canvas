@@ -387,6 +387,84 @@ impl GraphRepository {
         Ok(())
     }
 
+    pub async fn archetypal_lighting(
+        &self,
+        operator_graph_node_id: &str,
+    ) -> Result<ArchetypalLightingResult, String> {
+        let operator = self
+            .get_node(operator_graph_node_id)
+            .await?
+            .ok_or_else(|| format!("operator not found: {operator_graph_node_id}"))?;
+        let q = query(
+            "MATCH (op {graph_node_id: $id}) \
+             WHERE op:Archetype OR op:Dynamic OR op:PsychoidOperator \
+             MATCH (inst:TheoryNode)-[r:INSTANTIATES|ECHOES]->(op) \
+             WHERE inst.is_temporal = true \
+             RETURN inst, type(r) AS relType, r.dominance AS dominance \
+             ORDER BY inst.valid_from",
+        )
+        .param("id", operator_graph_node_id.to_string());
+        let instances = self.collect_lit_instances(q, "inst").await?;
+        Ok(ArchetypalLightingResult { operator, instances })
+    }
+
+    pub async fn resonances_for_instance(
+        &self,
+        graph_node_id: &str,
+    ) -> Result<Vec<LitInstance>, String> {
+        let q = query(
+            "MATCH (inst {graph_node_id: $id})-[r:INSTANTIATES|ECHOES|RESONATES_WITH]->(op) \
+             WHERE op:Archetype OR op:Dynamic OR op:PsychoidOperator \
+             RETURN op AS node, type(r) AS relType, r.dominance AS dominance",
+        )
+        .param("id", graph_node_id.to_string());
+        self.collect_lit_instances(q, "node").await
+    }
+
+    pub async fn search(&self, query_text: &str, limit: i64) -> Result<Vec<GraphNode>, String> {
+        let q = query(
+            "CALL db.index.fulltext.queryNodes('theory_node_fulltext', $q) \
+             YIELD node, score RETURN node ORDER BY score DESC LIMIT $limit",
+        )
+        .param("q", query_text.to_string())
+        .param("limit", limit);
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("search failed: {e}"))?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            let node: neo4rs::Node = row.get("node").map_err(|e| e.to_string())?;
+            out.push(node_from_neo(node)?);
+        }
+        Ok(out)
+    }
+
+    async fn collect_lit_instances(
+        &self,
+        q: neo4rs::Query,
+        node_key: &str,
+    ) -> Result<Vec<LitInstance>, String> {
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("lighting query failed: {e}"))?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            let node: neo4rs::Node = row.get(node_key).map_err(|e| e.to_string())?;
+            let rel_type: String = row.get("relType").map_err(|e| e.to_string())?;
+            let dominance: Option<String> = row.get("dominance").ok();
+            out.push(LitInstance {
+                node: node_from_neo(node)?,
+                rel_type,
+                dominance,
+            });
+        }
+        Ok(out)
+    }
+
     pub async fn list_relationships(&self) -> Result<Vec<GraphRelationship>, String> {
         let q = query(
             "MATCH (s:TheoryNode)-[r]->(t) \
