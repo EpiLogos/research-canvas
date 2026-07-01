@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CanvasNode } from "@research-canvas/schema";
-import { readWorkspaceTextFile } from "@research-canvas/desktop-api";
+import { createWorkspaceTransport, readWorkspaceTextFile } from "@research-canvas/desktop-api";
+import type { GraphNode, GraphNodePatch } from "@research-canvas/desktop-api";
 import { SequencePresenter } from "@research-canvas/canvas";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { NodeContentPane } from "../features/viewer/NodeContentPane";
+import { NodeDocumentPane } from "../features/viewer/NodeDocumentPane";
 
 interface FullScreenReaderProps {
   mode: "node" | "sequence";
@@ -50,6 +52,33 @@ function NodeMode({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   if (!node) return null;
+
+  const graphNodeId = (node as unknown as { graphNodeId?: string }).graphNodeId ?? null;
+  if (graphNodeId) {
+    return (
+      <div className="fullscreen-reader">
+        <header className="fullscreen-reader__header">
+          <nav className="fullscreen-reader__breadcrumb">
+            <span>{workspace.activeProject?.displayName ?? "Project"}</span>
+            <span className="fsr-sep">&rsaquo;</span>
+            <span>Canvas</span>
+            <span className="fsr-sep">&rsaquo;</span>
+            <span className="fsr-current">{node.title}</span>
+          </nav>
+          <button className="fullscreen-reader__close" onClick={onClose} title="Back to canvas (Esc)">&larr; Back</button>
+        </header>
+        <main className="fullscreen-reader__body">
+          <NodeDocumentPane
+            graphNodeId={graphNodeId}
+            transport={createWorkspaceTransport() as unknown as {
+              readGraphNode: (input: { graphNodeId: string }) => Promise<GraphNode>;
+              updateGraphNode: (input: { graphNodeId: string; patch: GraphNodePatch }) => Promise<GraphNode>;
+            }}
+          />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="fullscreen-reader">
