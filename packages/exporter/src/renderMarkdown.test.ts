@@ -89,3 +89,22 @@ describe("markdownToBlockNoteJson", () => {
     ]);
   });
 });
+
+describe("body ↔ markdown round-trip", () => {
+  const markdown =
+    "# Heading\nA paragraph with **bold** and `code`.\n- one\n- two\n> a quote\n```\ncode block\n```\n![cap](assets/n/i.png)";
+
+  it("markdown → json → markdown is stable", () => {
+    const json = markdownToBlockNoteJson(markdown);
+    expect(blockNoteJsonToMarkdown(json)).toBe(markdown);
+  });
+
+  it("json → markdown → json is stable for a known body", () => {
+    const json = JSON.stringify([
+      { type: "heading", props: { level: 1 }, content: [{ type: "text", text: "H" }] },
+      { type: "paragraph", content: [{ type: "text", text: "p" }] },
+    ]);
+    const roundTripped = markdownToBlockNoteJson(blockNoteJsonToMarkdown(json));
+    expect(JSON.parse(roundTripped)).toEqual(JSON.parse(json));
+  });
+});
