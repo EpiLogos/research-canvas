@@ -60,7 +60,7 @@ export interface CanvasStoreState {
   createResourceNode: (input: CreateResourceNodeInput) => CanvasNode;
   deleteEdge: (edgeId: string) => void;
   deleteNode: (nodeId: string) => void;
-  duplicateNode: (nodeId: string) => CanvasNode | undefined;
+  duplicateNode: (nodeId: string, overrides?: { id?: string; graphNodeId?: string }) => CanvasNode | undefined;
   edges: CanvasEdge[];
   hydrate: (snapshot: CanvasSnapshot) => void;
   nodes: CanvasNode[];
@@ -215,13 +215,20 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
           (e) => e.sourceNodeId !== nodeId && e.targetNodeId !== nodeId,
         ),
       })),
-    duplicateNode: (nodeId) => {
+    duplicateNode: (nodeId, overrides) => {
       const state = get();
       const original = state.nodes.find((n) => n.id === nodeId);
       if (!original) return undefined;
       const copy = {
         ...original,
-        id: crypto.randomUUID(),
+        id: overrides?.id ?? crypto.randomUUID(),
+        // Never inherit the original's graphNodeId: each canvas node must map
+        // 1:1 to its OWN Neo4j GraphNode (WS4a invariant). The context layer
+        // mints a real graphNodeId via transport.createGraphNode and passes it
+        // back as overrides.graphNodeId; if no override is supplied the copy
+        // starts with null (identical to how createNoteNode behaves when no
+        // graphNodeId is provided).
+        graphNodeId: overrides?.graphNodeId ?? null,
         position: { x: original.position.x + 24, y: original.position.y + 24 },
         createdAt: now(),
         updatedAt: now(),

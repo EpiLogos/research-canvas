@@ -31,6 +31,43 @@ describe("duplicateNode", () => {
     expect(copy!.position.x).toBe(original.position.x + 24);
     expect(copy!.position.y).toBe(original.position.y + 24);
   });
+
+  it("does NOT inherit the original's graphNodeId — copy gets null graphNodeId when no override is supplied", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const PRE_MINTED = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const original = store.getState().createNoteNode({
+      title: "orig",
+      content: "hello",
+      id: PRE_MINTED,
+      graphNodeId: PRE_MINTED,
+    });
+    expect(original.graphNodeId).toBe(PRE_MINTED);
+
+    const copy = store.getState().duplicateNode(original.id);
+    expect(copy).toBeDefined();
+    // The duplicate must NOT share the original's graphNodeId
+    expect(copy!.graphNodeId).not.toBe(PRE_MINTED);
+    // Without a caller-supplied graphNodeId the copy should be null (pending Neo4j creation)
+    expect(copy!.graphNodeId).toBeNull();
+  });
+
+  it("accepts a pre-minted graphNodeId override so the context layer can stamp its own Neo4j id", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const ORIG_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const NEW_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const original = store.getState().createNoteNode({
+      title: "orig",
+      content: "hello",
+      id: ORIG_ID,
+      graphNodeId: ORIG_ID,
+    });
+
+    const copy = store.getState().duplicateNode(original.id, { id: NEW_ID, graphNodeId: NEW_ID });
+    expect(copy).toBeDefined();
+    expect(copy!.id).toBe(NEW_ID);
+    expect(copy!.graphNodeId).toBe(NEW_ID);
+    expect(copy!.graphNodeId).not.toBe(ORIG_ID);
+  });
 });
 
 describe("updateNodeStyle", () => {

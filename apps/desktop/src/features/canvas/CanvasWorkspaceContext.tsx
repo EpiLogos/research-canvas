@@ -17,6 +17,7 @@ import { useStore } from "zustand";
 import {
   createAnnotationStore,
   createCanvasStore,
+  entityTypeForNodeType,
   serializeLayoutSnapshot,
 } from "@research-canvas/canvas";
 import { buildNewGraphNodeInput } from "./nodeCreation";
@@ -70,7 +71,7 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   deleteEdge: (edgeId: string) => void;
   deleteNode: (nodeId: string) => void;
   detachResourceRoot: (rootPath: string) => Promise<void>;
-  duplicateNode: (nodeId: string) => void;
+  duplicateNode: (nodeId: string) => Promise<void>;
   isHydrated: boolean;
   projectId: string;
   projects: ProjectTreeNode[];
@@ -607,8 +608,38 @@ export function CanvasWorkspaceProvider({
           setSelectedEdgeId(null);
         }
       },
-      duplicateNode: (nodeId) => {
-        stores.store.getState().duplicateNode(nodeId);
+      duplicateNode: async (nodeId) => {
+        const original = stores.store.getState().nodes.find((n) => n.id === nodeId);
+        if (!original) return;
+
+        const newId = crypto.randomUUID();
+
+        // Read the original's graph substance if it has a real Neo4j node, then
+        // create a fully independent Neo4j node for the duplicate (WS4a invariant:
+        // every canvas node maps 1:1 to its OWN GraphNode).
+        try {
+          let body = "[]";
+          let entityType = entityTypeForNodeType(original.type as "note" | "group" | "resource" | "portal");
+          if (original.graphNodeId) {
+            const sourceNode = await transport.readGraphNode({ graphNodeId: original.graphNodeId });
+            body = sourceNode.body;
+            entityType = entityTypeForNodeType(original.type as "note" | "group" | "resource" | "portal");
+          }
+
+          await transport.createGraphNode({
+            entityType,
+            title: original.title,
+            body,
+            isTemporal: false,
+            sourceCoordinates: [],
+            graphNodeId: newId,
+          } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string });
+        } catch (error) {
+          setErrorMessage(error instanceof Error ? error.message : "failed to duplicate node");
+          return;
+        }
+
+        stores.store.getState().duplicateNode(nodeId, { id: newId, graphNodeId: newId });
       },
       selectEntry: setSelectedEntryId,
       selectEdge: setSelectedEdgeId,
