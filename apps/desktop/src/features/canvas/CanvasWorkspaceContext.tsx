@@ -37,6 +37,7 @@ import {
   deriveResourceImportPlan,
   toAssetUrl,
 } from "./resourceFileHelpers";
+import { shouldWriteSubstanceOnLayoutFlush } from "./persistPolicy";
 
 const EMPTY_CANVAS_ID = "00000000-0000-4000-8000-000000000001";
 const EMPTY_PROJECT_ID = "00000000-0000-4000-8000-000000000002";
@@ -280,17 +281,19 @@ export function CanvasWorkspaceProvider({
           } else {
             setErrorMessage(null);
             // Annotations-only write: nodes/edges substance is owned by Neo4j
-            // (WS4a Task 6 cutover). Passing nodes:[] + edges:[] clears the
-            // legacy canvas_nodes/canvas_edges rows (harmless — that abandoned
-            // substance is exactly what the cutover drops). canvas_annotations
-            // has no FK dependency on canvas_nodes (confirmed in migration
-            // 0001_initial.sql), so the annotation write is safe independently.
+            // (WS4a Task 6 cutover). shouldWriteSubstanceOnLayoutFlush() returns
+            // false (permanently), so nodes/edges are always empty here.
+            // canvas_annotations has no FK dependency on canvas_nodes (confirmed
+            // in migrations/0001_initial.sql), so the annotation write is safe
+            // independently of whether any node rows exist.
+            const writeSubstance = shouldWriteSubstanceOnLayoutFlush();
+            const serialized = stores.store.getState().serialize();
             await transport.persistProjectDocument({
               annotations: stores.annotationStore.getState().serialize(),
               canvasId: activeProject.primaryCanvasId,
               databasePath,
-              edges: [],
-              nodes: [],
+              edges: writeSubstance ? serialized.edges : [],
+              nodes: writeSubstance ? serialized.nodes : [],
               projectId: activeProject.id,
             });
           }
@@ -612,9 +615,11 @@ export function CanvasWorkspaceProvider({
       selectProject: async (projectId: string) => {
         if (activeProject && databasePath) {
           // Flush layout of the outgoing canvas so positions are saved.
+          // Mirror the unload handler pattern: capture the result and attach
+          // .catch() so a rejection does not become an unhandled promise rejection.
           const snapshot = serializeLayoutSnapshot(stores.store.getState().serialize());
           const viewport = captureViewportRef.current();
-          transport.flushCanvasLayout({
+          const flushResult = transport.flushCanvasLayout({
             databasePath,
             canvasId: activeProject.primaryCanvasId,
             layouts: snapshot.layouts,
@@ -622,15 +627,24 @@ export function CanvasWorkspaceProvider({
             viewport,
             appState: {},
           });
+          if (flushResult instanceof Promise) {
+            flushResult.catch((error: unknown) => {
+              console.error("canvas layout flush failed on project switch", error);
+            });
+          } else if (flushResult === false) {
+            console.error("canvas layout flush returned false on project switch");
+          }
           // Annotations-only write: node/edge substance lives in Neo4j
-          // (WS4a Task 6 cutover). canvas_annotations has no FK dependency
-          // on canvas_nodes, so passing nodes:[] + edges:[] is safe.
+          // (WS4a Task 6 cutover). shouldWriteSubstanceOnLayoutFlush() returns
+          // false (permanently), so nodes/edges are always empty here.
+          const writeSubstance = shouldWriteSubstanceOnLayoutFlush();
+          const serialized = stores.store.getState().serialize();
           await transport.persistProjectDocument({
             annotations: stores.annotationStore.getState().serialize(),
             canvasId: activeProject.primaryCanvasId,
             databasePath,
-            edges: [],
-            nodes: [],
+            edges: writeSubstance ? serialized.edges : [],
+            nodes: writeSubstance ? serialized.nodes : [],
             projectId: activeProject.id,
           });
         }
