@@ -229,6 +229,14 @@ impl GraphRepository {
         if patch.valid_to.is_some() { sets.push("n.valid_to = $valid_to".into()); }
         if patch.temporal_precision.is_some() { sets.push("n.temporal_precision = $temporal_precision".into()); }
 
+        // No meaningful fields — return the current node without touching the DB.
+        if sets.len() == 1 {
+            return self
+                .get_node(graph_node_id)
+                .await?
+                .ok_or_else(|| format!("update_node: no node with id {graph_node_id}"));
+        }
+
         let cypher = format!(
             "MATCH (n:TheoryNode {{graph_node_id: $id}}) SET {} RETURN n",
             sets.join(", ")
