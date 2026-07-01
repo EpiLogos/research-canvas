@@ -211,4 +211,63 @@ impl GraphRepository {
             None => Ok(None),
         }
     }
+
+    pub async fn update_node(
+        &self,
+        graph_node_id: &str,
+        patch: GraphNodePatch,
+    ) -> Result<GraphNode, String> {
+        let mut sets: Vec<String> = vec!["n.updated_at = $now".to_string()];
+        if patch.title.is_some() { sets.push("n.title = $title".into()); }
+        if patch.body.is_some() { sets.push("n.body = $body".into()); }
+        if patch.summary.is_some() { sets.push("n.summary = $summary".into()); }
+        if patch.archetypal_resonance.is_some() { sets.push("n.archetypal_resonance = $archetypal_resonance".into()); }
+        if patch.coordinate.is_some() { sets.push("n.coordinate = $coordinate".into()); }
+        if patch.source_coordinates.is_some() { sets.push("n.source_coordinates = $source_coordinates".into()); }
+        if patch.is_temporal.is_some() { sets.push("n.is_temporal = $is_temporal".into()); }
+        if patch.valid_from.is_some() { sets.push("n.valid_from = $valid_from".into()); }
+        if patch.valid_to.is_some() { sets.push("n.valid_to = $valid_to".into()); }
+        if patch.temporal_precision.is_some() { sets.push("n.temporal_precision = $temporal_precision".into()); }
+
+        let cypher = format!(
+            "MATCH (n:TheoryNode {{graph_node_id: $id}}) SET {} RETURN n",
+            sets.join(", ")
+        );
+        let mut q = query(&cypher)
+            .param("id", graph_node_id.to_string())
+            .param("now", now_rfc3339());
+        if let Some(v) = patch.title { q = q.param("title", v); }
+        if let Some(v) = patch.body { q = q.param("body", v); }
+        if let Some(v) = patch.summary { q = q.param("summary", v); }
+        if let Some(v) = patch.archetypal_resonance { q = q.param("archetypal_resonance", v); }
+        if let Some(v) = patch.coordinate { q = q.param("coordinate", v); }
+        if let Some(v) = patch.source_coordinates { q = q.param("source_coordinates", v); }
+        if let Some(v) = patch.is_temporal { q = q.param("is_temporal", v); }
+        if let Some(v) = patch.valid_from { q = q.param("valid_from", v); }
+        if let Some(v) = patch.valid_to { q = q.param("valid_to", v); }
+        if let Some(v) = patch.temporal_precision { q = q.param("temporal_precision", v); }
+
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("update_node failed: {e}"))?;
+        let row = rows
+            .next()
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("update_node: no node with id {graph_node_id}"))?;
+        let node: neo4rs::Node = row.get("n").map_err(|e| e.to_string())?;
+        node_from_neo(node)
+    }
+
+    pub async fn delete_node(&self, graph_node_id: &str) -> Result<(), String> {
+        let q = query("MATCH (n:TheoryNode {graph_node_id: $id}) DETACH DELETE n")
+            .param("id", graph_node_id.to_string());
+        self.graph
+            .run_on(&self.database, q)
+            .await
+            .map_err(|e| format!("delete_node failed: {e}"))?;
+        Ok(())
+    }
 }
