@@ -14,7 +14,7 @@ pub use canvas::{
 };
 pub use graph::{
     ArchetypalLightingResult, GraphNode, GraphNodePatch, GraphRelationship, GraphRepository,
-    LitInstance, NewGraphNode,
+    LitInstance, NewGraphNode, OperatorSeed,
 };
 pub use layout::{CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord};
 pub use projects::{Project, ProjectRepository};

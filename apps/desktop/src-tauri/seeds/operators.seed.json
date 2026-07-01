@@ -1,0 +1,9 @@
+[
+  { "coordinate": "#0", "title": "Psychoid #0 — Anuttara (void ground)", "operatorKind": "psychoid", "position": "#0", "sourceCoordinates": ["#0"] },
+  { "coordinate": "#1", "title": "Psychoid #1 — Paramasiva (one)", "operatorKind": "psychoid", "position": "#1", "sourceCoordinates": ["#1"] },
+  { "coordinate": "#2", "title": "Psychoid #2 — Parashakti (two/polarity)", "operatorKind": "psychoid", "position": "#2", "sourceCoordinates": ["#2"] },
+  { "coordinate": "#3", "title": "Psychoid #3 — Mahamaya (three/mediation)", "operatorKind": "psychoid", "position": "#3", "sourceCoordinates": ["#3"] },
+  { "coordinate": "#4", "title": "Psychoid #4 — Nara (context/four)", "operatorKind": "psychoid", "position": "#4", "sourceCoordinates": ["#4"] },
+  { "coordinate": "#5", "title": "Psychoid #5 — Epii (synthesis/quintessence)", "operatorKind": "psychoid", "position": "#5", "sourceCoordinates": ["#5"] },
+  { "coordinate": "L2", "title": "MEF Lens L2 — logical lens", "operatorKind": "mef_lens", "position": null, "sourceCoordinates": ["L2", "#2"] }
+]

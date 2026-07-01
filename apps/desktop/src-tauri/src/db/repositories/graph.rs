@@ -74,6 +74,16 @@ pub struct LitInstance {
     pub dominance: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperatorSeed {
+    pub coordinate: String,
+    pub title: String,
+    pub operator_kind: String,
+    pub position: Option<String>,
+    pub source_coordinates: Vec<String>,
+}
+
 use neo4rs::query;
 
 pub struct GraphRepository {
@@ -487,6 +497,36 @@ impl GraphRepository {
         )
         .param("id", graph_node_id.to_string());
         self.collect_relationships(q).await
+    }
+
+    pub async fn seed_operators(&self, operators: &[OperatorSeed]) -> Result<usize, String> {
+        for op in operators {
+            let now = now_rfc3339();
+            let q = query(
+                "MERGE (n:Operator {coordinate: $coordinate}) \
+                 SET n:PsychoidOperator, \
+                     n.graph_node_id = coalesce(n.graph_node_id, $id), \
+                     n.title = $title, \
+                     n.operator_kind = $operator_kind, \
+                     n.position = $position, \
+                     n.source_coordinates = $source_coordinates, \
+                     n.is_temporal = false, \
+                     n.created_at = coalesce(n.created_at, $now), \
+                     n.updated_at = $now",
+            )
+            .param("coordinate", op.coordinate.clone())
+            .param("id", uuid::Uuid::new_v4().to_string())
+            .param("title", op.title.clone())
+            .param("operator_kind", op.operator_kind.clone())
+            .param("position", op.position.clone())
+            .param("source_coordinates", op.source_coordinates.clone())
+            .param("now", now);
+            self.graph
+                .run_on(&self.database, q)
+                .await
+                .map_err(|e| format!("seed_operators failed for {}: {e}", op.coordinate))?;
+        }
+        Ok(operators.len())
     }
 
     async fn collect_relationships(
