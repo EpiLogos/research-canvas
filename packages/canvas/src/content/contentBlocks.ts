@@ -18,3 +18,24 @@ export function imageBlock(url: string, caption = ""): BlockNoteBlock {
     props: { url, caption },
   };
 }
+
+function parseBody(bodyJson: string): BlockNoteBlock[] {
+  const trimmed = bodyJson.trim();
+  if (trimmed === "" || trimmed === "[]") {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return Array.isArray(parsed) ? (parsed as BlockNoteBlock[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function appendBlocksToBody(bodyJson: string, blocks: BlockNoteBlock[]): string {
+  if (blocks.length === 0) {
+    return bodyJson;
+  }
+  const existing = parseBody(bodyJson);
+  return JSON.stringify([...existing, ...blocks]);
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { imageBlock, paragraphsToBlocks } from "./contentBlocks";
+import { appendBlocksToBody, imageBlock, paragraphsToBlocks } from "./contentBlocks";
 
 describe("paragraphsToBlocks", () => {
   it("returns no blocks for empty text", () => {
@@ -36,5 +36,41 @@ describe("imageBlock", () => {
       type: "image",
       props: { url: "assets/n1/cat.png", caption: "A cat" },
     });
+  });
+});
+
+describe("appendBlocksToBody", () => {
+  it("appends to an empty body sentinel", () => {
+    const result = appendBlocksToBody("[]", [
+      { type: "paragraph", content: [{ type: "text", text: "hi" }] },
+    ]);
+    expect(JSON.parse(result)).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "hi" }] },
+    ]);
+  });
+
+  it("treats an empty string the same as the sentinel", () => {
+    const result = appendBlocksToBody("", [imageBlock("assets/n/i.png")]);
+    expect(JSON.parse(result)).toEqual([
+      { type: "image", props: { url: "assets/n/i.png", caption: "" } },
+    ]);
+  });
+
+  it("appends after existing blocks preserving order", () => {
+    const existing = JSON.stringify([
+      { type: "paragraph", content: [{ type: "text", text: "old" }] },
+    ]);
+    const result = appendBlocksToBody(existing, paragraphsToBlocks("new"));
+    expect(JSON.parse(result)).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "old" }] },
+      { type: "paragraph", content: [{ type: "text", text: "new" }] },
+    ]);
+  });
+
+  it("returns the original body when there are no new blocks", () => {
+    const existing = JSON.stringify([
+      { type: "paragraph", content: [{ type: "text", text: "old" }] },
+    ]);
+    expect(appendBlocksToBody(existing, [])).toBe(existing);
   });
 });
