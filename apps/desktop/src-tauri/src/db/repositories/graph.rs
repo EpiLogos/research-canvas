@@ -129,7 +129,7 @@ fn node_from_neo(node: neo4rs::Node) -> Result<GraphNode, String> {
 
 const ENTITY_LABELS: &[&str] = &[
     "Figure", "People", "Event", "Institution", "Source",
-    "Place", "Work", "Archetype", "Dynamic", "PsychoidOperator",
+    "Place", "Work", "Archetype", "Dynamic",
 ];
 
 fn validate_entity_label(entity_type: &str) -> Result<&str, String> {
