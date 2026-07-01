@@ -370,6 +370,13 @@ interface WorkspaceTransport {
   // ---- Two-lens / archetypal lighting ----
   archetypalLighting(input: { operatorGraphNodeId: string }): Promise<ArchetypalLighting>;
   resonancesForInstance(input: { graphNodeId: string }): Promise<LitInstance[]>;
+
+  // ---- Content / image import ----
+  importNodeImage(input: {
+    workspaceRoot: string;
+    graphNodeId: string;
+    sourceAbsolutePath: string;
+  }): Promise<string>;
 }
 
 const DEFAULT_BRIDGE_PORT = 4789;
@@ -529,6 +536,15 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async resonancesForInstance(input) {
       return invokeTauri<LitInstance[]>("resonances_for_instance_command", { request: input });
     },
+    async importNodeImage(input) {
+      return invokeTauri<string>("import_node_image_command", {
+        request: {
+          workspaceRoot: input.workspaceRoot,
+          graphNodeId: input.graphNodeId,
+          sourceAbsolutePath: input.sourceAbsolutePath,
+        },
+      });
+    },
   };
 }
 
@@ -665,6 +681,7 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     async upsertNodeLayouts() { throw new Error("read-only web build"); },
     async upsertEdgeLayout() { throw new Error("read-only web build"); },
     async upsertCanvasAppState() { throw new Error("read-only web build"); },
+    async importNodeImage() { throw new Error("read-only web build"); },
   };
 }
 

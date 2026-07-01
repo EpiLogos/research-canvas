@@ -17,8 +17,10 @@ import { useStore } from "zustand";
 import {
   createAnnotationStore,
   createCanvasStore,
+  createContentLinkingActions,
   entityTypeForNodeType,
   serializeLayoutSnapshot,
+  type ContentLinkingActions,
 } from "@research-canvas/canvas";
 import { buildNewGraphNodeInput } from "./nodeCreation";
 import { canvasViewToCanvasNodes } from "./canvasViewToNodes";
@@ -34,6 +36,7 @@ import {
   type SearchHit,
   type WorkspaceProject
 } from "@research-canvas/desktop-api";
+type WorkspaceTransport = ReturnType<typeof createWorkspaceTransport>;
 import {
   deriveResourceImportPlan,
   toAssetUrl,
@@ -100,6 +103,8 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   registerFlyToEdge: (fn: (edgeId: string, viewport?: { x: number; y: number; zoom: number }) => void) => void;
   captureViewport: () => Viewport;
   registerCaptureViewport: (fn: () => Viewport) => void;
+  transport: WorkspaceTransport;
+  contentLinkingActions: ContentLinkingActions;
 }
 
 const CanvasWorkspaceContext = createContext<CanvasWorkspaceContextValue | null>(
@@ -127,6 +132,22 @@ export function CanvasWorkspaceProvider({
   const [isHydrated, setIsHydrated] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [workingRoot, setWorkingRoot] = useState<string | null>(null);
+  const contentLinkingActions = useMemo<ContentLinkingActions>(
+    () =>
+      createContentLinkingActions({
+        readGraphNode: (input) => transport.readGraphNode(input),
+        updateGraphNode: (input) => transport.updateGraphNode(input),
+        connectGraphNodes: (input) => transport.connectGraphNodes(input),
+        createGraphNode: (input) => transport.createGraphNode(input),
+        importNodeImage: (input) =>
+          transport.importNodeImage({
+            workspaceRoot: workingRoot ?? "",
+            graphNodeId: input.graphNodeId,
+            sourceAbsolutePath: input.sourceAbsolutePath,
+          }),
+      }),
+    [transport, workingRoot],
+  );
   const selectedEntryIdRef = useRef<string | null>(null);
   const selectedNodeIdRef = useRef<string | null>(null);
   const selectedEdgeIdRef = useRef<string | null>(null);
@@ -722,10 +743,13 @@ export function CanvasWorkspaceProvider({
       registerFlyToEdge: (fn) => { flyToEdgeRef.current = fn; },
       captureViewport: () => captureViewportRef.current(),
       registerCaptureViewport: (fn) => { captureViewportRef.current = fn; },
+      transport,
+      contentLinkingActions,
     }),
     [
       activeProject,
       activeProjectId,
+      contentLinkingActions,
       databasePath,
       entries,
       errorMessage,

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildIndexedEntryTree,
   buildProjectTree,
+  createWorkspaceTransport,
   type IndexedEntry,
   type ProjectTreeNode
 } from "./index";
@@ -77,5 +78,18 @@ describe("desktop api tree helpers", () => {
     const noteFolder = tree.find((entry) => entry.name === "notes");
     expect(noteFolder?.children).toHaveLength(1);
     expect(noteFolder?.children[0].name).toBe("outline.md");
+  });
+});
+
+describe("importNodeImage transport", () => {
+  it("rejects in the non-Tauri (read-only web) build", async () => {
+    const transport = createWorkspaceTransport();
+    await expect(
+      transport.importNodeImage({
+        workspaceRoot: "/ws",
+        graphNodeId: "n1",
+        sourceAbsolutePath: "/x/cat.png",
+      }),
+    ).rejects.toThrow(/read-only web build/i);
   });
 });
