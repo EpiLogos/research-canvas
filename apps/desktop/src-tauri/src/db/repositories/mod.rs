@@ -1,5 +1,6 @@
 pub mod annotations;
 pub mod canvas;
+pub mod graph;
 pub mod layout;
 pub mod projects;
 pub mod resource_roots;
@@ -11,6 +12,7 @@ pub use canvas::{
     Canvas, CanvasEdgeRecord, CanvasGraphRepository, CanvasNodeRecord, CanvasRepository,
     CanvasSnapshotRecord,
 };
+pub use graph::GraphRepository;
 pub use layout::{CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord};
 pub use projects::{Project, ProjectRepository};
 pub use resource_roots::{ResourceRootRecord, ResourceRootRepository};
