@@ -8,6 +8,7 @@ import type {
 import { markdownToBlockNoteJson } from "@research-canvas/exporter";
 
 import { appendBlocksToBody, imageBlock, paragraphsToBlocks } from "./contentBlocks";
+import { isRelationshipKind, type RelationshipKind } from "./relationshipKinds";
 
 export interface ContentLinkingDeps {
   readGraphNode: (input: { graphNodeId: string }) => Promise<GraphNode>;
@@ -34,6 +35,12 @@ export interface ContentLinkingActions {
     fileName: string;
     markdown: string;
   }) => Promise<GraphNode>;
+  linkNodes: (input: {
+    sourceGraphNodeId: string;
+    targetGraphNodeId: string;
+    kind: RelationshipKind;
+    properties?: Record<string, unknown>;
+  }) => Promise<GraphRelationship>;
 }
 
 export function createContentLinkingActions(deps: ContentLinkingDeps): ContentLinkingActions {
@@ -73,6 +80,20 @@ export function createContentLinkingActions(deps: ContentLinkingDeps): ContentLi
         { type: "paragraph", content: [{ type: "text", text: `Linked source: ${fileName}` }] },
       ]);
       return deps.updateGraphNode({ graphNodeId, patch: { body } });
+    },
+
+    async linkNodes({ sourceGraphNodeId, targetGraphNodeId, kind, properties }) {
+      if (!isRelationshipKind(kind)) {
+        throw new Error(`unknown relationship kind: ${String(kind)}`);
+      }
+      return deps.connectGraphNodes({
+        sourceGraphNodeId,
+        targetGraphNodeId,
+        // map the typed `kind` to the transport's `relType` field (WS0 §5.2 / WS2);
+        // RelationshipKind values are the Neo4j SCREAMING_SNAKE rel-type names verbatim.
+        relType: kind,
+        ...(properties === undefined ? {} : { properties }),
+      });
     },
   };
 }

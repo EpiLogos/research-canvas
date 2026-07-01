@@ -128,3 +128,41 @@ describe("linkMarkdownFileToNode", () => {
     expect(updateGraphNode).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("linkNodes", () => {
+  it("creates a typed relationship through connectGraphNodes", async () => {
+    const { deps } = makeDeps(makeNode());
+    const connectGraphNodes = deps.connectGraphNodes as ReturnType<typeof vi.fn>;
+    const actions = createContentLinkingActions(deps);
+
+    await actions.linkNodes({
+      sourceGraphNodeId: "n1",
+      targetGraphNodeId: "n2",
+      kind: "INSTANTIATES",
+      properties: { dominance: "dominant" },
+    });
+
+    expect(connectGraphNodes).toHaveBeenCalledWith({
+      sourceGraphNodeId: "n1",
+      targetGraphNodeId: "n2",
+      relType: "INSTANTIATES",
+      properties: { dominance: "dominant" },
+    });
+  });
+
+  it("rejects an unknown relationship kind before any write", async () => {
+    const { deps } = makeDeps(makeNode());
+    const connectGraphNodes = deps.connectGraphNodes as ReturnType<typeof vi.fn>;
+    const actions = createContentLinkingActions(deps);
+
+    await expect(
+      actions.linkNodes({
+        sourceGraphNodeId: "n1",
+        targetGraphNodeId: "n2",
+        // @ts-expect-error intentionally invalid to test the runtime guard
+        kind: "RELATES",
+      }),
+    ).rejects.toThrow(/unknown relationship kind/i);
+    expect(connectGraphNodes).not.toHaveBeenCalled();
+  });
+});
