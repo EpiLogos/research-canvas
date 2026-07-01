@@ -193,25 +193,14 @@ export function CanvasWorkspaceProvider({
 
         if (cancelled) return;
 
-        // Hydrate nodes/edges from Neo4j-joined view; fall back to legacy
-        // document fields if loadCanvasView is unavailable (e.g. browser bridge).
-        let graphNodes: CanvasNode[] = document.nodes;
-        let graphEdges: CanvasEdge[] = document.edges;
-
-        try {
-          const view = await transport.loadCanvasView({
-            databasePath,
-            canvasId: document.project.primaryCanvasId,
-            lens: "canvas",
-          });
-          if (cancelled) return;
-          const mapped = canvasViewToCanvasNodes(view);
-          graphNodes = mapped.nodes;
-          graphEdges = mapped.edges;
-        } catch {
-          // loadCanvasView not available (e.g. browser bridge or Neo4j offline);
-          // fall back to legacy document nodes/edges silently.
-        }
+        // Hydrate nodes/edges from Neo4j-joined view (clean cutover — no legacy fallback).
+        const view = await transport.loadCanvasView({
+          databasePath,
+          canvasId: document.project.primaryCanvasId,
+          lens: "canvas",
+        });
+        if (cancelled) return;
+        const { nodes: graphNodes, edges: graphEdges } = canvasViewToCanvasNodes(view);
 
         if (cancelled) return;
 
@@ -386,8 +375,9 @@ export function CanvasWorkspaceProvider({
       const { nodes, edges } = canvasViewToCanvasNodes(view);
       // Hydrate in-place to update nodes/edges without replacing stores
       stores.store.getState().hydrate({ nodes, edges });
-    } catch {
-      // ignore refresh errors silently
+    } catch (error) {
+      console.error("refreshCanvas: loadCanvasView failed", error);
+      setErrorMessage(error instanceof Error ? error.message : "failed to refresh canvas");
     }
   }, [databasePath, activeProject, stores.store, transport]);
 
