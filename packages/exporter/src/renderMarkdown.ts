@@ -180,3 +180,86 @@ function findSingleStar(text: string, startIndex: number) {
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => HTML_ESCAPE_LOOKUP[character] ?? character);
 }
+
+// ─── BlockNote → Markdown (WS3, single producer — WS0 §7) ───────────────────
+
+interface BnInline {
+  type?: string;
+  text?: string;
+  styles?: { bold?: boolean; italic?: boolean; code?: boolean };
+}
+
+interface BnBlock {
+  type?: string;
+  props?: { level?: number; url?: string; caption?: string };
+  content?: unknown;
+}
+
+function renderBnInline(content: unknown): string {
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  return (content as BnInline[])
+    .map((node) => {
+      if (typeof node.text !== "string") {
+        return "";
+      }
+      let text = node.text;
+      const styles = node.styles ?? {};
+      if (styles.code) {
+        text = `\`${text}\``;
+      }
+      if (styles.bold) {
+        text = `**${text}**`;
+      }
+      if (styles.italic) {
+        text = `*${text}*`;
+      }
+      return text;
+    })
+    .join("");
+}
+
+function renderBnBlock(block: BnBlock): string {
+  const inline = renderBnInline(block.content);
+  switch (block.type) {
+    case "heading": {
+      const level = Math.min(Math.max(block.props?.level ?? 1, 1), 3);
+      return `${"#".repeat(level)} ${inline}`;
+    }
+    case "bulletListItem":
+      return `- ${inline}`;
+    case "numberedListItem":
+      return `1. ${inline}`;
+    case "quote":
+      return `> ${inline}`;
+    case "codeBlock":
+      return `\`\`\`\n${inline}\n\`\`\``;
+    case "image": {
+      const url = block.props?.url ?? "";
+      const caption = block.props?.caption ?? "";
+      return `![${caption}](${url})`;
+    }
+    case "paragraph":
+    default:
+      return inline;
+  }
+}
+
+/**
+ * Convert a stored BlockNote/ProseMirror body JSON string to Markdown.
+ * Used by the static web layer and "export node to .md" linking. (WS0 §7)
+ */
+export function blockNoteJsonToMarkdown(bodyJson: string): string {
+  let blocks: BnBlock[];
+  try {
+    const parsed = JSON.parse(bodyJson);
+    if (!Array.isArray(parsed)) {
+      return "";
+    }
+    blocks = parsed as BnBlock[];
+  } catch {
+    return "";
+  }
+  return blocks.map((block) => renderBnBlock(block)).join("\n\n");
+}
