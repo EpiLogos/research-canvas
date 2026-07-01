@@ -9,6 +9,11 @@ services:
       NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD}"
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
+      # Local dev only: the default auth_max_failed_attempts (3) locks the
+      # account under rapid test-suite connection bursts; raise it so the
+      # full Rust integration suite doesn't spuriously hit "too many failed
+      # attempts". Not a security setting for a throwaway local graph.
+      NEO4J_dbms_security_auth__max__failed__attempts: "1000000"
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
