@@ -278,4 +278,42 @@ impl GraphRepository {
             .map_err(|e| format!("delete_node failed: {e}"))?;
         Ok(())
     }
+
+    pub async fn list_nodes_for_lens(&self, lens: &str) -> Result<Vec<GraphNode>, String> {
+        let cypher = match lens {
+            "timeline" => "MATCH (n:TheoryNode) WHERE n.is_temporal = true RETURN n",
+            "canvas" => "MATCH (n:TheoryNode) RETURN n",
+            other => return Err(format!("unknown lens: {other}")),
+        };
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, query(cypher))
+            .await
+            .map_err(|e| format!("list_nodes_for_lens failed: {e}"))?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            let node: neo4rs::Node = row.get("n").map_err(|e| e.to_string())?;
+            out.push(node_from_neo(node)?);
+        }
+        Ok(out)
+    }
+
+    pub async fn get_nodes(&self, ids: &[String]) -> Result<Vec<GraphNode>, String> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let q = query("MATCH (n:TheoryNode) WHERE n.graph_node_id IN $ids RETURN n")
+            .param("ids", ids.to_vec());
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("get_nodes failed: {e}"))?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            let node: neo4rs::Node = row.get("n").map_err(|e| e.to_string())?;
+            out.push(node_from_neo(node)?);
+        }
+        Ok(out)
+    }
 }
