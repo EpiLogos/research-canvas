@@ -1,17 +1,24 @@
+// apps/desktop/src-tauri/src/api/handlers.rs
 use crate::{
     api::types::*,
-    db::{connection::Database, repositories::CanvasGraphRepository},
+    db::{
+        connection::Database,
+        repositories::layout::{LayoutRepository, NodeLayoutRecord},
+    },
     SharedApiState,
 };
 
-fn open_db(state: &SharedApiState) -> Result<Database, String> {
-    let db_path = state
+fn now() -> String {
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+}
+
+fn db_path(state: &SharedApiState) -> Result<String, String> {
+    state
         .lock()
         .unwrap()
         .db_path
         .clone()
-        .ok_or_else(|| "App not bootstrapped yet".to_string())?;
-    Database::open(&db_path).map_err(|e| e.to_string())
+        .ok_or_else(|| "App not bootstrapped yet".to_string())
 }
 
 fn active_canvas_id(state: &SharedApiState) -> Result<String, String> {
@@ -23,218 +30,113 @@ fn active_canvas_id(state: &SharedApiState) -> Result<String, String> {
         .ok_or_else(|| "No active canvas — open a canvas in the app first".to_string())
 }
 
-/// GET /api/canvas
-pub fn get_canvas(state: &SharedApiState) -> Result<CanvasStateResponse, String> {
-    let canvas_id = active_canvas_id(state)?;
-    let db = open_db(state)?;
-    let conn = db.connection();
-    let graph = CanvasGraphRepository::new(conn);
-    let snapshot = graph.load_canvas_snapshot(&canvas_id).map_err(|e| e.to_string())?;
-    Ok(CanvasStateResponse {
-        canvas_id: canvas_id.clone(),
-        nodes: snapshot.nodes.into_iter().map(NodeResponse::from).collect(),
-        edges: snapshot.edges.into_iter().map(EdgeResponse::from).collect(),
-    })
+fn style_json(
+    dot: &Option<String>,
+    bg: &Option<String>,
+    text: &Option<String>,
+    thumb: &Option<String>,
+) -> String {
+    let mut map = serde_json::Map::new();
+    if let Some(v) = dot { map.insert("dotColour".into(), serde_json::Value::String(v.clone())); }
+    if let Some(v) = bg { map.insert("bgColour".into(), serde_json::Value::String(v.clone())); }
+    if let Some(v) = text { map.insert("textColour".into(), serde_json::Value::String(v.clone())); }
+    if let Some(v) = thumb { map.insert("thumbnail".into(), serde_json::Value::String(v.clone())); }
+    serde_json::Value::Object(map).to_string()
 }
 
-/// POST /api/nodes
-pub fn create_node(req: CreateNodeRequest, state: &SharedApiState) -> Result<NodeResponse, String> {
+/// GET /api/canvas — layout-only view.
+/// Returns the raw layout rows + canvas id; the agent uses this to know what
+/// exists and where it sits. (Substance fields come from Neo4j through the app's
+/// own load_canvas_view command; the :9876 read returns layout placement only,
+/// which is all the place-on-canvas agent needs.)
+pub fn get_canvas(state: &SharedApiState) -> Result<serde_json::Value, String> {
     let canvas_id = active_canvas_id(state)?;
-    let db = open_db(state)?;
-    let conn = db.connection();
-    let graph = CanvasGraphRepository::new(conn);
+    let path = db_path(state)?;
+    let db = Database::open(&path).map_err(|e| e.to_string())?;
+    let repo = LayoutRepository::new(db.connection());
+    let nodes = repo.list_node_layout(&canvas_id).map_err(|e| e.to_string())?;
+    let edges = repo.list_edge_layout(&canvas_id).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({
+        "canvasId": canvas_id,
+        "nodes": nodes,
+        "edges": edges,
+    }))
+}
 
-    let node = match req.node_type.as_str() {
-        "note" => graph.create_note_node(
-            &canvas_id,
-            &req.title,
-            req.content.as_deref().unwrap_or(""),
-            req.x,
-            req.y,
-        ),
-        "group" => graph.create_group_node(
-            &canvas_id,
-            &req.title,
-            req.color.as_deref().unwrap_or("#e67e22"),
-            req.x,
-            req.y,
-        ),
-        "resource" => graph.create_resource_node(
-            &canvas_id,
-            &req.title,
-            req.absolute_path.as_deref().unwrap_or(""),
-            req.relative_path.as_deref().unwrap_or(""),
-            req.resource_kind.as_deref().unwrap_or("binary"),
-            "application/octet-stream",
-            "",
-            req.x,
-            req.y,
-        ),
-        other => return Err(format!("Unknown node_type: {}", other)),
-    }
-    .map_err(|e| e.to_string())?;
-
-    // Apply style fields if provided
-    if req.dot_colour.is_some() || req.bg_colour.is_some() || req.text_colour.is_some() {
-        graph
-            .update_node_style(
-                &node.id,
-                req.dot_colour.as_deref(),
-                req.bg_colour.as_deref(),
-                req.text_colour.as_deref(),
-                None,
-            )
-            .map_err(|e| e.to_string())?;
-    }
-
-    let final_node = graph
-        .get_node_by_id(&node.id)
+/// PUT /api/layout/node — place/move/restyle one node (upsert layout only).
+pub fn upsert_node_layout(
+    req: PlaceNodeRequest,
+    state: &SharedApiState,
+) -> Result<PlacedNodeResponse, String> {
+    let canvas_id = active_canvas_id(state)?;
+    let path = db_path(state)?;
+    let db = Database::open(&path).map_err(|e| e.to_string())?;
+    let repo = LayoutRepository::new(db.connection());
+    // Preserve existing position/size when only restyling: read, then merge.
+    let existing = repo
+        .list_node_layout(&canvas_id)
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Node disappeared after create".to_string())?;
-
-    Ok(NodeResponse::from(final_node))
-}
-
-/// PATCH /api/nodes/:id
-pub fn update_node(
-    node_id: String,
-    req: UpdateNodeRequest,
-    state: &SharedApiState,
-) -> Result<OkResponse, String> {
-    let db = open_db(state)?;
-    let conn = db.connection();
-    let graph = CanvasGraphRepository::new(conn);
-
-    if req.title.is_some() || req.content.is_some() || req.x.is_some() || req.y.is_some() {
-        graph
-            .update_node(&node_id, req.title.as_deref(), req.content.as_deref(), req.x, req.y)
-            .map_err(|e| e.to_string())?;
-    }
-
-    if req.dot_colour.is_some() || req.bg_colour.is_some() || req.text_colour.is_some() || req.thumbnail.is_some() {
-        graph
-            .update_node_style(
-                &node_id,
-                req.dot_colour.as_deref(),
-                req.bg_colour.as_deref(),
-                req.text_colour.as_deref(),
-                req.thumbnail.as_deref(),
-            )
-            .map_err(|e| e.to_string())?;
-    }
-
-    Ok(OkResponse { ok: true })
-}
-
-/// DELETE /api/nodes/:id
-pub fn delete_node(node_id: String, state: &SharedApiState) -> Result<OkResponse, String> {
-    let db = open_db(state)?;
-    let conn = db.connection();
-    CanvasGraphRepository::new(conn)
-        .delete_node(&node_id)
-        .map_err(|e| e.to_string())?;
-    Ok(OkResponse { ok: true })
-}
-
-/// POST /api/edges
-pub fn create_edge(req: CreateEdgeRequest, state: &SharedApiState) -> Result<EdgeResponse, String> {
-    let canvas_id = active_canvas_id(state)?;
-    let db = open_db(state)?;
-    let conn = db.connection();
-    let label = req.label.as_deref().unwrap_or("reference");
-    let edge = CanvasGraphRepository::new(conn)
-        .connect_nodes(&canvas_id, &req.source_id, &req.target_id, label)
-        .map_err(|e| e.to_string())?;
-    Ok(EdgeResponse::from(edge))
-}
-
-/// DELETE /api/edges/:id
-pub fn delete_edge(edge_id: String, state: &SharedApiState) -> Result<OkResponse, String> {
-    let db = open_db(state)?;
-    let conn = db.connection();
-    CanvasGraphRepository::new(conn)
-        .delete_edge(&edge_id)
-        .map_err(|e| e.to_string())?;
-    Ok(OkResponse { ok: true })
-}
-
-/// POST /api/batch
-pub fn batch_create(
-    req: BatchCreateRequest,
-    state: &SharedApiState,
-) -> Result<BatchCreateResponse, String> {
-    let canvas_id = active_canvas_id(state)?;
-    let db = open_db(state)?;
-    let conn = db.connection();
-    let graph = CanvasGraphRepository::new(conn);
-
-    let mut created_node_ids: Vec<String> = Vec::new();
-    let mut node_results: Vec<BatchCreatedItem> = Vec::new();
-
-    for (i, node_req) in req.nodes.iter().enumerate() {
-        let node = match node_req.node_type.as_str() {
-            "note" => graph.create_note_node(
-                &canvas_id,
-                &node_req.title,
-                node_req.content.as_deref().unwrap_or(""),
-                node_req.x,
-                node_req.y,
-            ),
-            "group" => graph.create_group_node(
-                &canvas_id,
-                &node_req.title,
-                node_req.color.as_deref().unwrap_or("#e67e22"),
-                node_req.x,
-                node_req.y,
-            ),
-            "resource" => graph.create_resource_node(
-                &canvas_id,
-                &node_req.title,
-                node_req.absolute_path.as_deref().unwrap_or(""),
-                node_req.relative_path.as_deref().unwrap_or(""),
-                node_req.resource_kind.as_deref().unwrap_or("binary"),
-                "application/octet-stream",
-                "",
-                node_req.x,
-                node_req.y,
-            ),
-            other => return Err(format!("node[{}]: unknown node_type '{}'", i, other)),
-        }
-        .map_err(|e| format!("node[{}]: {}", i, e))?;
-
-        if node_req.dot_colour.is_some() || node_req.bg_colour.is_some() || node_req.text_colour.is_some() {
-            graph
-                .update_node_style(
-                    &node.id,
-                    node_req.dot_colour.as_deref(),
-                    node_req.bg_colour.as_deref(),
-                    node_req.text_colour.as_deref(),
-                    None,
-                )
-                .map_err(|e| format!("node[{}] style: {}", i, e))?;
-        }
-
-        created_node_ids.push(node.id.clone());
-        node_results.push(BatchCreatedItem { index: i, id: node.id });
-    }
-
-    let mut edge_results: Vec<BatchCreatedItem> = Vec::new();
-    for (i, edge_req) in req.edges.iter().enumerate() {
-        let src = created_node_ids
-            .get(edge_req.source_index)
-            .ok_or_else(|| format!("edge[{}]: source_index {} out of range", i, edge_req.source_index))?;
-        let tgt = created_node_ids
-            .get(edge_req.target_index)
-            .ok_or_else(|| format!("edge[{}]: target_index {} out of range", i, edge_req.target_index))?;
-        let label = edge_req.label.as_deref().unwrap_or("reference");
-        let edge = graph
-            .connect_nodes(&canvas_id, src, tgt, label)
-            .map_err(|e| format!("edge[{}]: {}", i, e))?;
-        edge_results.push(BatchCreatedItem { index: i, id: edge.id });
-    }
-
-    Ok(BatchCreateResponse {
-        nodes: node_results,
-        edges: edge_results,
+        .into_iter()
+        .find(|r| r.graph_node_id == req.graph_node_id);
+    let (created_at, base_w, base_h) = match &existing {
+        Some(r) => (r.created_at.clone(), r.width, r.height),
+        None => (now(), 240.0, 160.0),
+    };
+    repo.upsert_node_layout(&NodeLayoutRecord {
+        graph_node_id: req.graph_node_id.clone(),
+        canvas_id,
+        position_x: req.x,
+        position_y: req.y,
+        width: req.width.unwrap_or(base_w),
+        height: req.height.unwrap_or(base_h),
+        style_json: style_json(&req.dot_colour, &req.bg_colour, &req.text_colour, &req.thumbnail),
+        created_at,
+        updated_at: now(),
     })
+    .map_err(|e| e.to_string())?;
+    Ok(PlacedNodeResponse { ok: true, graph_node_id: req.graph_node_id })
+}
+
+/// DELETE /api/layout/node/:graphNodeId — remove placement (theory NOT deleted).
+pub fn remove_node_layout(
+    graph_node_id: String,
+    state: &SharedApiState,
+) -> Result<RemoveNodeResponse, String> {
+    let canvas_id = active_canvas_id(state)?;
+    let path = db_path(state)?;
+    let db = Database::open(&path).map_err(|e| e.to_string())?;
+    LayoutRepository::new(db.connection())
+        .delete_node_layout(&canvas_id, &graph_node_id)
+        .map_err(|e| e.to_string())?;
+    Ok(RemoveNodeResponse { ok: true })
+}
+
+/// POST /api/layout/batch — place many existing graph nodes at once.
+pub fn batch_place(
+    req: BatchPlaceRequest,
+    state: &SharedApiState,
+) -> Result<BatchPlaceResponse, String> {
+    let canvas_id = active_canvas_id(state)?;
+    let path = db_path(state)?;
+    let mut db = Database::open(&path).map_err(|e| e.to_string())?;
+    let tx = db.connection_mut().transaction().map_err(|e| e.to_string())?;
+    {
+        let repo = LayoutRepository::new(&tx);
+        for item in &req.placements {
+            repo.upsert_node_layout(&NodeLayoutRecord {
+                graph_node_id: item.graph_node_id.clone(),
+                canvas_id: canvas_id.clone(),
+                position_x: item.x,
+                position_y: item.y,
+                width: item.width.unwrap_or(240.0),
+                height: item.height.unwrap_or(160.0),
+                style_json: "{}".into(),
+                created_at: now(),
+                updated_at: now(),
+            })
+            .map_err(|e| e.to_string())?;
+        }
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(BatchPlaceResponse { ok: true, placed: req.placements.len() })
 }

@@ -13,9 +13,9 @@ pub fn start_server(state: SharedApiState, app_handle: tauri::AppHandle) {
         let method = request.method().clone();
         let url = request.url().to_string();
 
-        // Read body for POST/PATCH
+        // Read body for POST/PATCH/PUT
         let body: Option<String> = match method {
-            Method::Post | Method::Patch => {
+            Method::Post | Method::Patch | Method::Put => {
                 let mut body = String::new();
                 request.as_reader().read_to_string(&mut body).ok();
                 Some(body)
@@ -66,31 +66,17 @@ fn dispatch(
     }
 
     match (method, path) {
-        // GET /api/canvas
+        // GET /api/canvas — joined read-only view
         (Method::Get, "/api/canvas") => match handlers::get_canvas(state) {
-            Ok(data) => (200, serde_json::to_string(&data).unwrap(), false),
+            Ok(data) => (200, data.to_string(), false),
             Err(e) => err(500, &e),
         },
 
-        // POST /api/nodes
-        (Method::Post, "/api/nodes") => {
+        // PUT /api/layout/node — place/move/restyle one node
+        (Method::Put, "/api/layout/node") => {
             let Some(raw) = body else { return err(400, "missing body") };
             match serde_json::from_str(&raw) {
-                Ok(req) => match handlers::create_node(req, state) {
-                    Ok(data) => (201, serde_json::to_string(&data).unwrap(), true),
-                    Err(e) => err(500, &e),
-                },
-                Err(e) => err(400, &e.to_string()),
-            }
-        }
-
-        // PATCH /api/nodes/:id
-        (Method::Patch, node_patch_path) if node_patch_path.starts_with("/api/nodes/") => {
-            let node_id = node_patch_path.trim_start_matches("/api/nodes/").to_string();
-            if node_id.is_empty() { return err(400, "missing node id") }
-            let Some(raw) = body else { return err(400, "missing body") };
-            match serde_json::from_str(&raw) {
-                Ok(req) => match handlers::update_node(node_id, req, state) {
+                Ok(req) => match handlers::upsert_node_layout(req, state) {
                     Ok(data) => (200, serde_json::to_string(&data).unwrap(), true),
                     Err(e) => err(500, &e),
                 },
@@ -98,43 +84,21 @@ fn dispatch(
             }
         }
 
-        // DELETE /api/nodes/:id
-        (Method::Delete, node_delete_path) if node_delete_path.starts_with("/api/nodes/") => {
-            let node_id = node_delete_path.trim_start_matches("/api/nodes/").to_string();
-            if node_id.is_empty() { return err(400, "missing node id") }
-            match handlers::delete_node(node_id, state) {
+        // DELETE /api/layout/node/:graphNodeId — remove placement
+        (Method::Delete, p) if p.starts_with("/api/layout/node/") => {
+            let graph_node_id = p.trim_start_matches("/api/layout/node/").to_string();
+            if graph_node_id.is_empty() { return err(400, "missing graph node id") }
+            match handlers::remove_node_layout(graph_node_id, state) {
                 Ok(data) => (200, serde_json::to_string(&data).unwrap(), true),
                 Err(e) => err(500, &e),
             }
         }
 
-        // POST /api/edges
-        (Method::Post, "/api/edges") => {
+        // POST /api/layout/batch — batch place
+        (Method::Post, "/api/layout/batch") => {
             let Some(raw) = body else { return err(400, "missing body") };
             match serde_json::from_str(&raw) {
-                Ok(req) => match handlers::create_edge(req, state) {
-                    Ok(data) => (201, serde_json::to_string(&data).unwrap(), true),
-                    Err(e) => err(500, &e),
-                },
-                Err(e) => err(400, &e.to_string()),
-            }
-        }
-
-        // DELETE /api/edges/:id
-        (Method::Delete, edge_delete_path) if edge_delete_path.starts_with("/api/edges/") => {
-            let edge_id = edge_delete_path.trim_start_matches("/api/edges/").to_string();
-            if edge_id.is_empty() { return err(400, "missing edge id") }
-            match handlers::delete_edge(edge_id, state) {
-                Ok(data) => (200, serde_json::to_string(&data).unwrap(), true),
-                Err(e) => err(500, &e),
-            }
-        }
-
-        // POST /api/batch
-        (Method::Post, "/api/batch") => {
-            let Some(raw) = body else { return err(400, "missing body") };
-            match serde_json::from_str(&raw) {
-                Ok(req) => match handlers::batch_create(req, state) {
+                Ok(req) => match handlers::batch_place(req, state) {
                     Ok(data) => (201, serde_json::to_string(&data).unwrap(), true),
                     Err(e) => err(500, &e),
                 },
