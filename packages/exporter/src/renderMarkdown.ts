@@ -183,17 +183,24 @@ function escapeHtml(value: string) {
 
 // ─── BlockNote → Markdown (WS3, single producer — WS0 §7) ───────────────────
 
-interface BnInline {
-  type?: string;
-  text?: string;
+/** Public contract type for a BlockNote inline node (WS0 §7). */
+export interface BlockNoteInline {
+  type: "text";
+  text: string;
   styles?: { bold?: boolean; italic?: boolean; code?: boolean };
 }
 
-interface BnBlock {
-  type?: string;
-  props?: { level?: number; url?: string; caption?: string };
-  content?: unknown;
+/** Public contract type for a BlockNote block node (WS0 §7). */
+export interface BlockNoteBlock {
+  type: string;
+  props?: Record<string, unknown>;
+  content?: BlockNoteInline[];
+  children?: BlockNoteBlock[];
 }
+
+// Internal aliases (looser, for parsing robustness)
+type BnInline = { type?: string; text?: string; styles?: { bold?: boolean; italic?: boolean; code?: boolean } };
+type BnBlock = { type?: string; props?: { level?: number; url?: string; caption?: string }; content?: unknown };
 
 function renderBnInline(content: unknown): string {
   if (!Array.isArray(content)) {

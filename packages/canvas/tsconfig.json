@@ -12,6 +12,9 @@
       "path": "../desktop-api"
     },
     {
+      "path": "../exporter"
+    },
+    {
       "path": "../schema"
     }
   ],

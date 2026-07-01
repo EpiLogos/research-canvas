@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@research-canvas/desktop-api": "workspace:*",
+    "@research-canvas/exporter": "workspace:*",
     "@research-canvas/schema": "workspace:*",
     "@xyflow/react": "^12.8.5",
     "perfect-freehand": "^1.2.2",
