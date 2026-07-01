@@ -140,6 +140,32 @@ fn validate_entity_label(entity_type: &str) -> Result<&str, String> {
         .ok_or_else(|| format!("unknown entity_type: {entity_type}"))
 }
 
+const REL_TYPES: &[&str] = &[
+    "INSTANTIATES", "ECHOES", "CAUSES", "INFLUENCES", "OPPOSES",
+    "INHERITS", "TRANSFORMS_INTO", "LOCATED_AT", "SOURCED_FROM", "RESONATES_WITH",
+];
+
+fn validate_rel_type(rel_type: &str) -> Result<&str, String> {
+    REL_TYPES
+        .iter()
+        .find(|r| **r == rel_type)
+        .copied()
+        .ok_or_else(|| format!("unknown rel_type: {rel_type}"))
+}
+
+fn relationship_from_row(
+    row: &neo4rs::Row,
+    properties: serde_json::Value,
+) -> Result<GraphRelationship, String> {
+    Ok(GraphRelationship {
+        id: row.get::<String>("id").map_err(|e| e.to_string())?,
+        rel_type: row.get::<String>("rel_type").map_err(|e| e.to_string())?,
+        source_graph_node_id: row.get::<String>("src").map_err(|e| e.to_string())?,
+        target_graph_node_id: row.get::<String>("tgt").map_err(|e| e.to_string())?,
+        properties,
+    })
+}
+
 impl GraphRepository {
     pub fn new(graph: crate::db::neo4j::SharedGraph, database: String) -> Self {
         Self { graph, database }
@@ -313,6 +339,93 @@ impl GraphRepository {
         while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
             let node: neo4rs::Node = row.get("n").map_err(|e| e.to_string())?;
             out.push(node_from_neo(node)?);
+        }
+        Ok(out)
+    }
+
+    pub async fn connect_nodes(
+        &self,
+        source_graph_node_id: &str,
+        target_graph_node_id: &str,
+        rel_type: &str,
+        properties: serde_json::Value,
+    ) -> Result<GraphRelationship, String> {
+        let rel = validate_rel_type(rel_type)?;
+        // Properties is a flat JSON object; serialize to a JSON string and set via apoc-free map.
+        let props_str = serde_json::to_string(&properties).map_err(|e| e.to_string())?;
+        let cypher = format!(
+            "MATCH (s:TheoryNode {{graph_node_id: $src}}), (t {{graph_node_id: $tgt}}) \
+             CREATE (s)-[r:{rel}]->(t) \
+             SET r += apoc.convert.fromJsonMap($props) \
+             RETURN elementId(r) AS id, type(r) AS rel_type, \
+                    s.graph_node_id AS src, t.graph_node_id AS tgt, $props AS props"
+        );
+        let q = query(&cypher)
+            .param("src", source_graph_node_id.to_string())
+            .param("tgt", target_graph_node_id.to_string())
+            .param("props", props_str);
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("connect_nodes failed: {e}"))?;
+        let row = rows
+            .next()
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "connect_nodes: endpoints not found".to_string())?;
+        relationship_from_row(&row, properties)
+    }
+
+    pub async fn disconnect(&self, relationship_id: &str) -> Result<(), String> {
+        let q = query("MATCH ()-[r]-() WHERE elementId(r) = $id DELETE r")
+            .param("id", relationship_id.to_string());
+        self.graph
+            .run_on(&self.database, q)
+            .await
+            .map_err(|e| format!("disconnect failed: {e}"))?;
+        Ok(())
+    }
+
+    pub async fn list_relationships(&self) -> Result<Vec<GraphRelationship>, String> {
+        let q = query(
+            "MATCH (s:TheoryNode)-[r]->(t) \
+             RETURN elementId(r) AS id, type(r) AS rel_type, \
+                    s.graph_node_id AS src, t.graph_node_id AS tgt, \
+                    apoc.convert.toJson(properties(r)) AS props",
+        );
+        self.collect_relationships(q).await
+    }
+
+    pub async fn relationships_for_node(
+        &self,
+        graph_node_id: &str,
+    ) -> Result<Vec<GraphRelationship>, String> {
+        let q = query(
+            "MATCH (s)-[r]-(t) WHERE s.graph_node_id = $id \
+             RETURN elementId(r) AS id, type(r) AS rel_type, \
+                    startNode(r).graph_node_id AS src, endNode(r).graph_node_id AS tgt, \
+                    apoc.convert.toJson(properties(r)) AS props",
+        )
+        .param("id", graph_node_id.to_string());
+        self.collect_relationships(q).await
+    }
+
+    async fn collect_relationships(
+        &self,
+        q: neo4rs::Query,
+    ) -> Result<Vec<GraphRelationship>, String> {
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("relationship query failed: {e}"))?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            let props_json: String = row.get("props").unwrap_or_else(|_| "{}".to_string());
+            let props: serde_json::Value =
+                serde_json::from_str(&props_json).unwrap_or(serde_json::json!({}));
+            out.push(relationship_from_row(&row, props)?);
         }
         Ok(out)
     }
