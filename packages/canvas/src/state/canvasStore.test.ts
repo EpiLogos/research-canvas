@@ -1,6 +1,6 @@
 import { describe, expect, it, test } from "vitest";
 
-import { createCanvasStore } from "./canvasStore";
+import { createCanvasStore, entityTypeForNodeType } from "./canvasStore";
 
 describe("deleteNode", () => {
   it("removes the node from the store", () => {
@@ -256,4 +256,73 @@ test("captureNodeSequenceViewport sets viewport on node", () => {
   store.getState().setNodeSequenceViewport(node.id, viewport);
   const updated = store.getState().nodes.find((n) => n.id === node.id)!;
   expect(updated.sequenceViewport).toEqual(viewport);
+});
+
+describe("pre-minted id and graphNodeId", () => {
+  const PRE_MINTED = "22222222-2222-4222-8222-222222222222";
+
+  it("createNoteNode uses a provided id and graphNodeId", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const node = store.getState().createNoteNode({
+      title: "t",
+      content: "",
+      id: PRE_MINTED,
+      graphNodeId: PRE_MINTED
+    });
+    expect(node.id).toBe(PRE_MINTED);
+    expect(node.graphNodeId).toBe(PRE_MINTED);
+  });
+
+  it("createNoteNode mints a random id and graphNodeId defaults to null when no id supplied", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const node = store.getState().createNoteNode({ title: "t", content: "" });
+    expect(typeof node.id).toBe("string");
+    expect(node.id.length).toBeGreaterThan(0);
+    expect(node.graphNodeId).toBeNull();
+  });
+
+  it("createGroupNode uses a provided id and graphNodeId", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const node = store.getState().createGroupNode({
+      title: "g",
+      x: 0,
+      y: 0,
+      id: PRE_MINTED,
+      graphNodeId: PRE_MINTED
+    });
+    expect(node.id).toBe(PRE_MINTED);
+    expect(node.graphNodeId).toBe(PRE_MINTED);
+  });
+
+  it("createResourceNode uses a provided id and graphNodeId", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const node = store.getState().createResourceNode({
+      title: "r",
+      absolutePath: "/tmp/r.md",
+      relativePath: "r.md",
+      resourceKind: "markdown",
+      id: PRE_MINTED,
+      graphNodeId: PRE_MINTED
+    });
+    expect(node.id).toBe(PRE_MINTED);
+    expect(node.graphNodeId).toBe(PRE_MINTED);
+  });
+});
+
+describe("entityTypeForNodeType", () => {
+  it("maps resource to Source", () => {
+    expect(entityTypeForNodeType("resource")).toBe("Source");
+  });
+
+  it("maps note to Work", () => {
+    expect(entityTypeForNodeType("note")).toBe("Work");
+  });
+
+  it("maps group to Work", () => {
+    expect(entityTypeForNodeType("group")).toBe("Work");
+  });
+
+  it("maps portal to Work", () => {
+    expect(entityTypeForNodeType("portal")).toBe("Work");
+  });
 });

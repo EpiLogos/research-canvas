@@ -14,12 +14,16 @@ interface CreateCanvasStoreOptions {
 interface CreateNoteNodeInput {
   content: string;
   title: string;
+  id?: string;
+  graphNodeId?: string;
 }
 
 interface CreateGroupNodeInput {
   title: string;
   x: number;
   y: number;
+  id?: string;
+  graphNodeId?: string;
 }
 
 interface CreateResourceNodeInput {
@@ -27,6 +31,8 @@ interface CreateResourceNodeInput {
   relativePath: string;
   resourceKind: "markdown" | "image" | "pdf" | "text" | "binary" | "directory" | "url" | "audio" | "video";
   title: string;
+  id?: string;
+  graphNodeId?: string;
 }
 
 interface ConnectNodesInput {
@@ -131,9 +137,10 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
       set((state) => ({ edges: [...state.edges, edge] }));
       return edge;
     },
-    createNoteNode: ({ content, title }) => {
+    createNoteNode: ({ content, title, id, graphNodeId }) => {
       const node = nodeSchema.parse({
-        id: crypto.randomUUID(),
+        id: id ?? crypto.randomUUID(),
+        graphNodeId: graphNodeId ?? null,
         canvasId,
         type: "note",
         title,
@@ -149,9 +156,10 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
       set((state) => ({ nodes: [...state.nodes, node] }));
       return node;
     },
-    createGroupNode: ({ title, x, y }) => {
+    createGroupNode: ({ title, x, y, id, graphNodeId }) => {
       const node = nodeSchema.parse({
-        id: crypto.randomUUID(),
+        id: id ?? crypto.randomUUID(),
+        graphNodeId: graphNodeId ?? null,
         canvasId,
         type: "group",
         title,
@@ -171,10 +179,13 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
       absolutePath,
       relativePath,
       resourceKind,
-      title
+      title,
+      id,
+      graphNodeId
     }) => {
       const node = nodeSchema.parse({
-        id: crypto.randomUUID(),
+        id: id ?? crypto.randomUUID(),
+        graphNodeId: graphNodeId ?? null,
         canvasId,
         type: "resource",
         title,
@@ -435,4 +446,10 @@ function nextDirectionality(directionality: CanvasEdge["directionality"]) {
 
 function now() {
   return new Date().toISOString();
+}
+
+export function entityTypeForNodeType(
+  type: "note" | "group" | "resource" | "portal"
+): "Work" | "Source" {
+  return type === "resource" ? "Source" : "Work";
 }
