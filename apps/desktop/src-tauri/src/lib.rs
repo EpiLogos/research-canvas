@@ -1,6 +1,7 @@
 pub mod api;
 pub mod commands {
     pub mod export;
+    pub mod graph;
     pub mod layout;
     pub mod projects;
     pub mod search;
@@ -36,9 +37,45 @@ pub fn run() {
         api::start_server(api_state_for_server, app_handle);
     });
 
-    tauri::Builder::default()
+    // Long-lived multi-thread runtime that owns the bolt I/O. Kept alive for the
+    // whole app via managed state; its Handle is shared into SharedGraphState so
+    // the plain :9876 server thread (Task 15) can block_on graph reads.
+    let runtime = std::sync::Arc::new(
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("build tokio runtime"),
+    );
+
+    // Build the shared Neo4j connection on that runtime (best-effort at startup).
+    let graph_state: Option<commands::graph::SharedGraphState> = {
+        let rt = runtime.clone();
+        (|| {
+            let config = crate::db::neo4j::config::Neo4jConfig::from_env().ok()?;
+            let database = config.database.clone();
+            let graph = rt.block_on(crate::db::neo4j::connect(&config)).ok()?;
+            // Ensure schema once on startup.
+            let repo = crate::db::repositories::graph::GraphRepository::new(
+                graph.clone(),
+                database.clone(),
+            );
+            let _ = rt.block_on(repo.ensure_schema());
+            Some(commands::graph::SharedGraphState {
+                graph,
+                database,
+                runtime: rt.handle().clone(),
+            })
+        })()
+    };
+
+    let mut builder = tauri::Builder::default()
         .manage(pty::TerminalManager::new())
         .manage(api_state)
+        .manage(runtime); // Arc<tokio::runtime::Runtime> — keeps the bolt pool alive
+    if let Some(gs) = graph_state {
+        builder = builder.manage(gs);
+    }
+    builder
         .setup(move |app| {
             // Send the AppHandle to the HTTP server thread
             handle_tx.send(app.handle().clone()).ok();
@@ -67,6 +104,20 @@ pub fn run() {
             commands::projects::update_saved_sequence_command,
             commands::projects::delete_saved_sequence_command,
             commands::layout::flush_canvas_layout_command,
+            commands::graph::read_graph_node_command,
+            commands::graph::create_graph_node_command,
+            commands::graph::update_graph_node_command,
+            commands::graph::delete_graph_node_command,
+            commands::graph::connect_graph_nodes_command,
+            commands::graph::disconnect_graph_nodes_command,
+            commands::graph::search_graph_command,
+            commands::graph::archetypal_lighting_command,
+            commands::graph::resonances_for_instance_command,
+            commands::graph::load_canvas_view_command,
+            commands::graph::upsert_node_layout_command,
+            commands::graph::upsert_node_layouts_command,
+            commands::graph::upsert_edge_layout_command,
+            commands::graph::upsert_canvas_app_state_command,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Research Canvas");
