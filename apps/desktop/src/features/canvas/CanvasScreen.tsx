@@ -61,14 +61,14 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, onPlaySequence, 
         <div className="canvas-chrome">
           <header className="canvas-toolbar">
             <div className="canvas-toolbar__group">
-              <button onClick={() => workspace.createNoteNode()} type="button">
+              <button onClick={() => { void workspace.createNoteNode(); }} type="button">
                 Add note node
               </button>
               <WorkspaceFilePickerButton
                 buttonLabel="Add resource node"
                 entries={workspace.entries}
                 onSelect={(entry) => {
-                  workspace.addResourceNode(entry, { x: 200, y: 200 });
+                  void workspace.addResourceNode(entry, { x: 200, y: 200 });
                 }}
               />
             </div>
@@ -120,10 +120,10 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, onPlaySequence, 
               workspace.duplicateNode(nodeId);
             }}
             onCreateNote={(position) => {
-              workspace.createNoteNode(position);
+              void workspace.createNoteNode(position);
             }}
             onCreateGroup={(position) => {
-              workspace.createGroupNode(position);
+              void workspace.createGroupNode(position);
             }}
             onConnectNodes={(input) => {
               workspace.addEdge(input);
@@ -144,7 +144,7 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, onPlaySequence, 
               workspace.resizeNode(nodeId, width, height);
             }}
             onCreateResourceFromFile={(entry, position) => {
-              workspace.addResourceNode(entry, position);
+              void workspace.addResourceNode(entry, position);
             }}
             fileEntries={fileEntries}
             leftPanelOpen={leftPanelOpen}

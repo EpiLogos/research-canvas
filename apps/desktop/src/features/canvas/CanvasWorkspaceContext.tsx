@@ -19,6 +19,7 @@ import {
   createCanvasStore,
   serializeLayoutSnapshot,
 } from "@research-canvas/canvas";
+import { buildNewGraphNodeInput } from "./nodeCreation";
 import type { Viewport } from "@research-canvas/schema";
 import {
   createWorkspaceTransport,
@@ -60,9 +61,9 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
     directionality?: "none" | "forward" | "backward" | "bidirectional";
   }) => void;
   attachResourceRoot: (rootPath: string, displayName?: string) => Promise<void>;
-  createNoteNode: (position?: { x: number; y: number }) => void;
-  createGroupNode: (position?: { x: number; y: number }) => void;
-  addResourceNode: (entry: { id?: string; name: string; path?: string; absolutePath?: string; relativePath?: string; kind?: string }, position: { x: number; y: number }) => void;
+  createNoteNode: (position?: { x: number; y: number }) => Promise<void>;
+  createGroupNode: (position?: { x: number; y: number }) => Promise<void>;
+  addResourceNode: (entry: { id?: string; name: string; path?: string; absolutePath?: string; relativePath?: string; kind?: string }, position: { x: number; y: number }) => Promise<void>;
   addResourceNodeFromAbsolutePath: (absolutePath: string, position: { x: number; y: number }) => Promise<void>;
   deleteEdge: (edgeId: string) => void;
   deleteNode: (nodeId: string) => void;
@@ -465,31 +466,67 @@ export function CanvasWorkspaceProvider({
       addEdge: (input) => {
         stores.store.getState().connectNodes(input);
       },
-      createNoteNode: (position) => {
+      async createNoteNode(position) {
+        const graphNodeId = crypto.randomUUID();
+        try {
+          await transport.createGraphNode({
+            ...buildNewGraphNodeInput({ nodeType: "note", title: "Untitled note" }),
+            graphNodeId,
+          } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string });
+        } catch (error) {
+          setErrorMessage(error instanceof Error ? error.message : "failed to create node");
+          return;
+        }
         const node = stores.store.getState().createNoteNode({
           title: "Untitled note",
-          content: ""
+          content: "",
+          id: graphNodeId,
+          graphNodeId,
         });
         if (position) {
           stores.store.getState().updateNodePosition(node.id, position);
         }
       },
-      createGroupNode: (position) => {
+      async createGroupNode(position) {
+        const graphNodeId = crypto.randomUUID();
+        try {
+          await transport.createGraphNode({
+            ...buildNewGraphNodeInput({ nodeType: "group", title: "New group" }),
+            graphNodeId,
+          } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string });
+        } catch (error) {
+          setErrorMessage(error instanceof Error ? error.message : "failed to create node");
+          return;
+        }
         stores.store.getState().createGroupNode({
           title: "New group",
           x: position?.x ?? 100,
           y: position?.y ?? 100,
+          id: graphNodeId,
+          graphNodeId,
         });
       },
-      addResourceNode: (entry, position) => {
+      async addResourceNode(entry, position) {
         const absolutePath = ("absolutePath" in entry ? entry.absolutePath : entry.path) ?? "";
         const relativePath = ("relativePath" in entry ? entry.relativePath : entry.path) ?? entry.name;
         const kind = (entry.kind ?? "binary") as "markdown" | "image" | "pdf" | "text" | "binary" | "directory" | "url" | "audio" | "video";
+        const graphNodeId = crypto.randomUUID();
+        try {
+          await transport.createGraphNode({
+            ...buildNewGraphNodeInput({ nodeType: "resource", title: entry.name }),
+            graphNodeId,
+          } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string });
+        } catch (error) {
+          setErrorMessage(error instanceof Error ? error.message : "failed to create node");
+          return;
+        }
         const node = stores.store.getState().createResourceNode({
           title: entry.name,
           absolutePath,
           relativePath,
-          resourceKind: kind === "directory" ? "binary" : kind
+          resourceKind: kind === "directory" ? "binary" : kind,
+          id: graphNodeId,
+          graphNodeId,
         });
         stores.store.getState().updateNodePosition(node.id, position);
       },
@@ -511,11 +548,23 @@ export function CanvasWorkspaceProvider({
           });
         }
 
+        const graphNodeId = crypto.randomUUID();
+        try {
+          await transport.createGraphNode({
+            ...buildNewGraphNodeInput({ nodeType: "resource", title: plan.title }),
+            graphNodeId,
+          } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string });
+        } catch (error) {
+          setErrorMessage(error instanceof Error ? error.message : "failed to create node");
+          return;
+        }
         const node = stores.store.getState().createResourceNode({
           title: plan.title,
           absolutePath,
           relativePath: plan.relativePath,
           resourceKind: plan.kind,
+          id: graphNodeId,
+          graphNodeId,
         });
         stores.store.getState().updateNodePosition(node.id, position);
       },
