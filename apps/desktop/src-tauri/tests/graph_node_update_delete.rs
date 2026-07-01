@@ -14,6 +14,7 @@ fn update_node_applies_patch_and_clears_with_some_none() {
     support::block_on(repo.ensure_schema()).expect("schema");
 
     let created = support::block_on(repo.create_node(NewGraphNode {
+        graph_node_id: None,
         entity_type: "Dynamic".into(),
         title: format!("Monopoly {run_id}"),
         body: "[]".into(),

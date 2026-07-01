@@ -13,6 +13,7 @@ fn timeline_lens_returns_only_temporal_nodes() {
     support::block_on(repo.ensure_schema()).expect("schema");
 
     let event = support::block_on(repo.create_node(NewGraphNode {
+        graph_node_id: None,
         entity_type: "Event".into(),
         title: format!("Banda {run_id}"),
         body: "[]".into(),
@@ -24,6 +25,7 @@ fn timeline_lens_returns_only_temporal_nodes() {
         temporal_precision: Some("year".into()),
     })).expect("event");
     let archetype = support::block_on(repo.create_node(NewGraphNode {
+        graph_node_id: None,
         entity_type: "Archetype".into(),
         title: format!("Antichrist {run_id}"),
         body: "[]".into(),

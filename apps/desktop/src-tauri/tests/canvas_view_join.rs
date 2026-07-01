@@ -33,11 +33,13 @@ fn load_canvas_view_joins_substance_with_layout_and_autoplaces_missing() {
     let repo = GraphRepository::new(graph.clone(), database.clone());
     support::block_on(repo.ensure_schema()).expect("schema");
     let placed = support::block_on(repo.create_node(NewGraphNode {
+        graph_node_id: None,
         entity_type: "Event".into(), title: format!("Placed {run_id}"), body: "[]".into(),
         coordinate: None, source_coordinates: vec![], is_temporal: true,
         valid_from: Some("1602".into()), valid_to: Some("1602".into()), temporal_precision: Some("year".into()),
     })).expect("placed");
     let floating = support::block_on(repo.create_node(NewGraphNode {
+        graph_node_id: None,
         entity_type: "Archetype".into(), title: format!("Floating {run_id}"), body: "[]".into(),
         coordinate: None, source_coordinates: vec![], is_temporal: false,
         valid_from: None, valid_to: None, temporal_precision: None,

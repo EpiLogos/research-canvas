@@ -33,6 +33,12 @@ pub struct GraphRelationship {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewGraphNode {
+    /// Optional client-supplied id. When `Some`, used verbatim as the Neo4j
+    /// `graph_node_id`; when `None`, a fresh UUIDv4 is minted. This lets the
+    /// frontend pre-mint a single id shared across all three stores (Neo4j,
+    /// SQLite layout, canvas node) giving a true 1:1 join.
+    #[serde(default)]
+    pub graph_node_id: Option<String>,
     pub entity_type: String,
     pub title: String,
     pub body: String,
@@ -192,7 +198,10 @@ impl GraphRepository {
     }
 
     pub async fn create_node(&self, input: NewGraphNode) -> Result<GraphNode, String> {
-        let id = uuid::Uuid::new_v4().to_string();
+        let id = input
+            .graph_node_id
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let now = now_rfc3339();
         // Entity-type label is interpolated (validated against a known set) because
         // Cypher labels cannot be parameterized.

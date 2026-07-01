@@ -13,12 +13,14 @@ fn archetypal_lighting_returns_datable_instances() {
     support::block_on(repo.ensure_schema()).expect("schema");
 
     let operator = support::block_on(repo.create_node(NewGraphNode {
+        graph_node_id: None,
         entity_type: "Dynamic".into(),
         title: format!("Monopoly mechanism {run_id}"),
         body: "[]".into(), coordinate: None, source_coordinates: vec![],
         is_temporal: false, valid_from: None, valid_to: None, temporal_precision: None,
     })).expect("operator");
     let event = support::block_on(repo.create_node(NewGraphNode {
+        graph_node_id: None,
         entity_type: "Event".into(),
         title: format!("VOC charter {run_id}"),
         body: "[]".into(), coordinate: None, source_coordinates: vec![],

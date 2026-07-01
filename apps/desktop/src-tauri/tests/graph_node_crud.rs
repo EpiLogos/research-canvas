@@ -13,6 +13,7 @@ fn create_then_get_node_round_trips_substance_and_labels() {
     support::block_on(repo.ensure_schema()).expect("schema");
 
     let created = support::block_on(repo.create_node(NewGraphNode {
+        graph_node_id: None,
         entity_type: "Figure".into(),
         title: format!("Cosimo {run_id}"),
         body: "[]".into(),

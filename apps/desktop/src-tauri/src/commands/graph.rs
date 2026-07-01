@@ -45,6 +45,10 @@ pub struct ReadGraphNodeRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateGraphNodeRequest {
+    /// Optional client-supplied graph_node_id (WS4a Task 1). When absent,
+    /// the repository mints a fresh UUIDv4 (existing callers unaffected).
+    #[serde(default)]
+    pub graph_node_id: Option<String>,
     pub entity_type: String,
     pub title: String,
     pub body: String,
@@ -241,6 +245,7 @@ pub async fn create_graph_node_command(
 ) -> Result<GraphNode, String> {
     repo(&graph_state)
         .create_node(NewGraphNode {
+            graph_node_id: request.graph_node_id,
             entity_type: request.entity_type,
             title: request.title,
             body: request.body,

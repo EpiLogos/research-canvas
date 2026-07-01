@@ -31,6 +31,7 @@ fn graph_node_serializes_camel_case() {
 #[test]
 fn new_graph_node_and_patch_defaults() {
     let new = NewGraphNode {
+        graph_node_id: None,
         entity_type: "Event".into(),
         title: "Banda genocide".into(),
         body: "[]".into(),

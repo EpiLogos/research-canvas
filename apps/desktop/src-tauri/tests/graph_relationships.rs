@@ -5,6 +5,7 @@ use research_canvas_desktop_lib::db::repositories::graph::{GraphRepository, NewG
 
 fn mk(repo: &GraphRepository, run_id: &str, title: &str, et: &str, temporal: bool) -> String {
     support::block_on(repo.create_node(NewGraphNode {
+        graph_node_id: None,
         entity_type: et.into(),
         title: format!("{title} {run_id}"),
         body: "[]".into(),
