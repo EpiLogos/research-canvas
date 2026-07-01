@@ -5,6 +5,7 @@ import type { CanvasEdge, CanvasNode } from "@research-canvas/schema";
 function makeNode(id: string): CanvasNode {
   return {
     id,
+    graphNodeId: null,
     canvasId: "c1",
     type: "note",
     title: id,

@@ -93,6 +93,7 @@ export function createSampleExportBundle(): ExportBundle {
     nodes: [
       {
         canvasId,
+        graphNodeId: null,
         content:
           "# Opening note\n\nThe thesis starts here.\n\n- first supporting point\n- second supporting point",
         createdAt: "2026-03-30T22:00:00Z",
@@ -110,6 +111,7 @@ export function createSampleExportBundle(): ExportBundle {
       {
         absolutePath: path.join(sampleProjectRoot, "README.md"),
         canvasId,
+        graphNodeId: null,
         createdAt: "2026-03-30T22:00:00Z",
         fileFingerprint: "file:README.md",
         id: resourceNodeId,

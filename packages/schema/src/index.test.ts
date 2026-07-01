@@ -225,6 +225,42 @@ describe("schema package", () => {
     expect(node.sequenceViewport).toBeNull();
   });
 
+  it("parses a note node preserving graphNodeId", () => {
+    const graphNodeId = "11111111-1111-4111-8111-111111111111";
+    const node = noteNodeSchema.parse({
+      id: crypto.randomUUID(),
+      canvasId: crypto.randomUUID(),
+      type: "note",
+      title: "Test",
+      position: { x: 0, y: 0 },
+      size: { width: 200, height: 150 },
+      content: "hello",
+      tags: [],
+      graphNodeId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    expect(node.graphNodeId).toBe(graphNodeId);
+  });
+
+  it("defaults graphNodeId to null when absent", () => {
+    const node = noteNodeSchema.parse({
+      id: crypto.randomUUID(),
+      canvasId: crypto.randomUUID(),
+      type: "note",
+      title: "Test",
+      position: { x: 0, y: 0 },
+      size: { width: 200, height: 150 },
+      content: "hello",
+      tags: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    expect(node.graphNodeId).toBeNull();
+  });
+
   it("validates export bundle payloads with nested graph data", () => {
     const bundle = exportBundleSchema.parse({
       generatedAt: now,

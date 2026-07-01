@@ -10,6 +10,7 @@ type NoteCanvasNode = Extract<CanvasNode, { type: "note" }>;
 function noteNode(overrides: Partial<NoteCanvasNode> = {}): NoteCanvasNode {
   return {
     id: "11111111-1111-4111-8111-111111111111",
+    graphNodeId: null,
     canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
     type: "note",
     title: "Opening note",
@@ -29,6 +30,7 @@ function noteNode(overrides: Partial<NoteCanvasNode> = {}): NoteCanvasNode {
 function markdownNode(): CanvasNode {
   return {
     id: "22222222-2222-4222-8222-222222222222",
+    graphNodeId: null,
     canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
     type: "resource",
     title: "Research note",

@@ -9,6 +9,7 @@ describe("DetailsPanel", () => {
   it("renders note content, related nodes, and the focused view action", () => {
     const noteNode: CanvasNode = {
       id: "11111111-1111-4111-8111-111111111111",
+      graphNodeId: null,
       canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
       type: "note",
       title: "Opening note",
@@ -24,6 +25,7 @@ describe("DetailsPanel", () => {
     };
     const resourceNode: CanvasNode = {
       id: "22222222-2222-4222-8222-222222222222",
+      graphNodeId: null,
       canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
       type: "resource",
       title: "Source report",
@@ -83,6 +85,7 @@ describe("DetailsPanel", () => {
   it("renders file metadata for a resource node", () => {
     const resourceNode: CanvasNode = {
       id: "22222222-2222-4222-8222-222222222222",
+      graphNodeId: null,
       canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
       type: "resource",
       title: "Source report",
