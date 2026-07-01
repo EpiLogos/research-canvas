@@ -4,6 +4,14 @@ export type EntityType =
   | "Figure" | "People" | "Event" | "Institution" | "Source"
   | "Place" | "Work" | "Archetype" | "Dynamic" | "PsychoidOperator";
 
+/**
+ * Entity types that can be passed to `createGraphNode`.
+ * `PsychoidOperator` is excluded because that label is only ever added by the
+ * operator-seeding path (never by the create command) — callers who pass it
+ * will get a runtime rejection from the Rust handler.
+ */
+export type CreatableEntityType = Exclude<EntityType, "PsychoidOperator">;
+
 export interface GraphNode {
   graphNodeId: string;
   entityType: EntityType;
@@ -69,7 +77,7 @@ export interface CanvasView {
 
 export interface LitInstance {
   node: GraphNode;
-  relType: "INSTANTIATES" | "ECHOES";
+  relType: "INSTANTIATES" | "ECHOES" | "RESONATES_WITH";
   dominance: "dominant" | "secondary" | null;
 }
 
@@ -79,7 +87,7 @@ export interface ArchetypalLighting {
 }
 
 export interface NewGraphNodeInput {
-  entityType: EntityType;
+  entityType: CreatableEntityType;
   title: string;
   body: string;
   coordinate?: string | null;

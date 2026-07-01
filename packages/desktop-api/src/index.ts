@@ -8,6 +8,7 @@ import type {
 export type {
   ArchetypalLighting,
   CanvasView,
+  CreatableEntityType,
   EdgeLayout,
   EntityType,
   GraphNode,
