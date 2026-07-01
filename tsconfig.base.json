@@ -22,6 +22,7 @@
       "@research-canvas/search": ["packages/search/src/index.ts"],
       "@research-canvas/schema": ["packages/schema/src/index.ts"],
       "@research-canvas/viewers": ["packages/viewers/src/index.ts"],
+      "@research-canvas/node-document": ["packages/node-document/src/index.ts"],
       "@research-canvas/public-viewer": ["apps/public-viewer/src/App.tsx"]
     }
   }

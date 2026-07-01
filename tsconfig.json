@@ -20,6 +20,9 @@
       "path": "./packages/schema"
     },
     {
+      "path": "./packages/node-document"
+    },
+    {
       "path": "./apps/desktop"
     },
     {
