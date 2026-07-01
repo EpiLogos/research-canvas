@@ -13,6 +13,9 @@
       "path": "../exporter"
     },
     {
+      "path": "../node-document"
+    },
+    {
       "path": "../schema"
     }
   ],
