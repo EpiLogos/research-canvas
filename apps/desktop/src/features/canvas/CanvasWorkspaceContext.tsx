@@ -20,7 +20,8 @@ import {
   serializeLayoutSnapshot,
 } from "@research-canvas/canvas";
 import { buildNewGraphNodeInput } from "./nodeCreation";
-import type { Viewport } from "@research-canvas/schema";
+import { canvasViewToCanvasNodes } from "./canvasViewToNodes";
+import type { CanvasNode, CanvasEdge, Viewport } from "@research-canvas/schema";
 import {
   createWorkspaceTransport,
   type DirectoryEntry,
@@ -183,18 +184,41 @@ export function CanvasWorkspaceProvider({
     let cancelled = false;
     setIsHydrated(false);
 
-    void transport
-      .loadProjectDocument({
-        databasePath,
-        projectId: activeProjectId
-      })
-      .then((document) => {
-        if (cancelled) {
-          return;
+    void (async () => {
+      try {
+        const document = await transport.loadProjectDocument({
+          databasePath,
+          projectId: activeProjectId
+        });
+
+        if (cancelled) return;
+
+        // Hydrate nodes/edges from Neo4j-joined view; fall back to legacy
+        // document fields if loadCanvasView is unavailable (e.g. browser bridge).
+        let graphNodes: CanvasNode[] = document.nodes;
+        let graphEdges: CanvasEdge[] = document.edges;
+
+        try {
+          const view = await transport.loadCanvasView({
+            databasePath,
+            canvasId: document.project.primaryCanvasId,
+            lens: "canvas",
+          });
+          if (cancelled) return;
+          const mapped = canvasViewToCanvasNodes(view);
+          graphNodes = mapped.nodes;
+          graphEdges = mapped.edges;
+        } catch {
+          // loadCanvasView not available (e.g. browser bridge or Neo4j offline);
+          // fall back to legacy document nodes/edges silently.
         }
+
+        if (cancelled) return;
 
         hydrateWorkspaceDocument(
           document,
+          graphNodes,
+          graphEdges,
           {
             selectedEntryId: selectedEntryIdRef.current,
             selectedEdgeId: selectedEdgeIdRef.current,
@@ -214,14 +238,11 @@ export function CanvasWorkspaceProvider({
         if (isTauriRuntime()) {
           invoke("activate_canvas_command", { canvasId: document.canvasId }).catch(() => {});
         }
-      })
-      .catch((error: Error) => {
-        if (cancelled) {
-          return;
-        }
-
-        setErrorMessage(error.message);
-      });
+      } catch (error) {
+        if (cancelled) return;
+        setErrorMessage((error as Error).message);
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -355,21 +376,20 @@ export function CanvasWorkspaceProvider({
   }, [activeProject, databasePath, isHydrated, stores, transport]);
 
   const refreshCanvas = useCallback(async () => {
-    if (!databasePath || !activeProjectId) return;
+    if (!databasePath || !activeProject) return;
     try {
-      const document = await transport.loadProjectDocument({
+      const view = await transport.loadCanvasView({
         databasePath,
-        projectId: activeProjectId
+        canvasId: activeProject.primaryCanvasId,
+        lens: "canvas",
       });
+      const { nodes, edges } = canvasViewToCanvasNodes(view);
       // Hydrate in-place to update nodes/edges without replacing stores
-      stores.store.getState().hydrate({
-        edges: document.edges,
-        nodes: document.nodes,
-      });
+      stores.store.getState().hydrate({ nodes, edges });
     } catch {
       // ignore refresh errors silently
     }
-  }, [databasePath, activeProjectId, stores.store, transport]);
+  }, [databasePath, activeProject, stores.store, transport]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -706,6 +726,8 @@ function createWorkspaceStores(canvasId: string, _projectId: string): WorkspaceS
 
 function hydrateWorkspaceDocument(
   document: ProjectDocument,
+  nodes: CanvasNode[],
+  edges: CanvasEdge[],
   selection: {
     selectedEntryId: string | null;
     selectedEdgeId: string | null;
@@ -724,10 +746,7 @@ function hydrateWorkspaceDocument(
     document.canvasId,
     document.project.id
   );
-  nextStores.store.getState().hydrate({
-    edges: document.edges,
-    nodes: document.nodes
-  });
+  nextStores.store.getState().hydrate({ nodes, edges });
   nextStores.annotationStore.getState().hydrate(document.annotations);
 
   setStores(nextStores);
@@ -745,15 +764,15 @@ function hydrateWorkspaceDocument(
   );
   setSelectedEdgeId(
     selection.selectedEdgeId &&
-      document.edges.some((edge) => edge.id === selection.selectedEdgeId)
+      edges.some((edge) => edge.id === selection.selectedEdgeId)
       ? selection.selectedEdgeId
       : null
   );
   setSelectedNodeId(
     selection.selectedNodeId &&
-      document.nodes.some((node) => node.id === selection.selectedNodeId)
+      nodes.some((node) => node.id === selection.selectedNodeId)
       ? selection.selectedNodeId
-      : document.nodes[0]?.id ?? null
+      : nodes[0]?.id ?? null
   );
 }
 
