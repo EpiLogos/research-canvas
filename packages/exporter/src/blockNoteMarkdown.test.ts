@@ -38,7 +38,7 @@ describe("blockNoteJsonToMarkdown", () => {
       { type: "bulletListItem", content: [{ type: "text", text: "first" }] },
       { type: "numberedListItem", content: [{ type: "text", text: "second" }] },
     ]);
-    expect(blockNoteJsonToMarkdown(body)).toBe("- first\n\n1. second");
+    expect(blockNoteJsonToMarkdown(body)).toBe("- first\n1. second");
   });
 
   it("renders an image block as markdown image with caption alt", () => {
@@ -53,7 +53,7 @@ describe("blockNoteJsonToMarkdown", () => {
       { type: "quote", content: [{ type: "text", text: "as above" }] },
       { type: "codeBlock", content: [{ type: "text", text: "const x = 1;" }] },
     ]);
-    expect(blockNoteJsonToMarkdown(body)).toBe("> as above\n\n```\nconst x = 1;\n```");
+    expect(blockNoteJsonToMarkdown(body)).toBe("> as above\n```\nconst x = 1;\n```");
   });
 });
 

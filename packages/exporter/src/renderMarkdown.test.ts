@@ -30,7 +30,7 @@ describe("blockNoteJsonToMarkdown", () => {
     expect(blockNoteJsonToMarkdown(json)).toBe("## Title");
   });
 
-  it("renders bullet and numbered list items separated by blank lines", () => {
+  it("renders bullet and numbered lists and a quote and a code block", () => {
     const json = JSON.stringify([
       { type: "bulletListItem", content: [{ type: "text", text: "one" }] },
       { type: "bulletListItem", content: [{ type: "text", text: "two" }] },
@@ -39,7 +39,7 @@ describe("blockNoteJsonToMarkdown", () => {
       { type: "codeBlock", content: [{ type: "text", text: "x = 1" }] },
     ]);
     expect(blockNoteJsonToMarkdown(json)).toBe(
-      "- one\n\n- two\n\n1. first\n\n> said\n\n```\nx = 1\n```",
+      "- one\n- two\n1. first\n> said\n```\nx = 1\n```",
     );
   });
 

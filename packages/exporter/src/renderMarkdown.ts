@@ -276,7 +276,7 @@ export function blockNoteJsonToMarkdown(bodyJson: string): string {
   } catch {
     return "";
   }
-  return blocks.map((block) => renderBnBlock(block)).join("\n\n");
+  return blocks.map((block) => renderBnBlock(block)).join("\n");
 }
 
 /**
