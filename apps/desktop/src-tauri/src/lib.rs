@@ -1,5 +1,6 @@
 pub mod api;
 pub mod commands {
+    pub mod assets;
     pub mod export;
     pub mod graph;
     pub mod layout;
@@ -98,6 +99,7 @@ pub fn run() {
             commands::terminal::send_terminal_input,
             commands::projects::activate_canvas_command,
             commands::projects::read_workspace_text_file_command,
+            commands::assets::import_node_image_command,
             commands::projects::list_directories_command,
             commands::projects::list_saved_sequences_command,
             commands::projects::create_saved_sequence_command,
