@@ -11,3 +11,10 @@ export function paragraphsToBlocks(text: string): BlockNoteBlock[] {
       content: [{ type: "text", text: line }],
     }));
 }
+
+export function imageBlock(url: string, caption = ""): BlockNoteBlock {
+  return {
+    type: "image",
+    props: { url, caption },
+  };
+}

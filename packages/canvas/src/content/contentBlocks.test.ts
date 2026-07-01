@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { paragraphsToBlocks } from "./contentBlocks";
+import { imageBlock, paragraphsToBlocks } from "./contentBlocks";
 
 describe("paragraphsToBlocks", () => {
   it("returns no blocks for empty text", () => {
@@ -20,5 +20,21 @@ describe("paragraphsToBlocks", () => {
       { type: "paragraph", content: [{ type: "text", text: "a" }] },
       { type: "paragraph", content: [{ type: "text", text: "b" }] },
     ]);
+  });
+});
+
+describe("imageBlock", () => {
+  it("builds an image block from a url with empty caption by default", () => {
+    expect(imageBlock("assets/n1/cat.png")).toEqual({
+      type: "image",
+      props: { url: "assets/n1/cat.png", caption: "" },
+    });
+  });
+
+  it("uses the provided caption", () => {
+    expect(imageBlock("assets/n1/cat.png", "A cat")).toEqual({
+      type: "image",
+      props: { url: "assets/n1/cat.png", caption: "A cat" },
+    });
   });
 });
