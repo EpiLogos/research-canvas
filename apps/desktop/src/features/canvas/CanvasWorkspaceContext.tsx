@@ -279,12 +279,18 @@ export function CanvasWorkspaceProvider({
             setErrorMessage("failed to persist canvas layout");
           } else {
             setErrorMessage(null);
+            // Annotations-only write: nodes/edges substance is owned by Neo4j
+            // (WS4a Task 6 cutover). Passing nodes:[] + edges:[] clears the
+            // legacy canvas_nodes/canvas_edges rows (harmless — that abandoned
+            // substance is exactly what the cutover drops). canvas_annotations
+            // has no FK dependency on canvas_nodes (confirmed in migration
+            // 0001_initial.sql), so the annotation write is safe independently.
             await transport.persistProjectDocument({
               annotations: stores.annotationStore.getState().serialize(),
               canvasId: activeProject.primaryCanvasId,
               databasePath,
-              edges: stores.store.getState().serialize().edges,
-              nodes: stores.store.getState().serialize().nodes,
+              edges: [],
+              nodes: [],
               projectId: activeProject.id,
             });
           }
@@ -605,15 +611,28 @@ export function CanvasWorkspaceProvider({
       selectNode: setSelectedNodeId,
       selectProject: async (projectId: string) => {
         if (activeProject && databasePath) {
-          const currentState = {
+          // Flush layout of the outgoing canvas so positions are saved.
+          const snapshot = serializeLayoutSnapshot(stores.store.getState().serialize());
+          const viewport = captureViewportRef.current();
+          transport.flushCanvasLayout({
+            databasePath,
+            canvasId: activeProject.primaryCanvasId,
+            layouts: snapshot.layouts,
+            edges: snapshot.edges,
+            viewport,
+            appState: {},
+          });
+          // Annotations-only write: node/edge substance lives in Neo4j
+          // (WS4a Task 6 cutover). canvas_annotations has no FK dependency
+          // on canvas_nodes, so passing nodes:[] + edges:[] is safe.
+          await transport.persistProjectDocument({
             annotations: stores.annotationStore.getState().serialize(),
             canvasId: activeProject.primaryCanvasId,
             databasePath,
-            edges: stores.store.getState().serialize().edges,
-            nodes: stores.store.getState().serialize().nodes,
+            edges: [],
+            nodes: [],
             projectId: activeProject.id,
-          };
-          await transport.persistProjectDocument(currentState);
+          });
         }
         setSelectedEdgeId(null);
         setSelectedNodeId(null);
