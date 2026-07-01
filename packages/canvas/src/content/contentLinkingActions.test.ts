@@ -93,3 +93,38 @@ describe("addTextToNode", () => {
     expect(result.graphNodeId).toBe("n1");
   });
 });
+
+describe("linkMarkdownFileToNode", () => {
+  it("creates a Source node from the markdown and links target via SOURCED_FROM", async () => {
+    const node = makeNode({ graphNodeId: "n1", body: "[]" });
+    const { deps, updateGraphNode } = makeDeps(node);
+    const createGraphNode = deps.createGraphNode as ReturnType<typeof vi.fn>;
+    const connectGraphNodes = deps.connectGraphNodes as ReturnType<typeof vi.fn>;
+    createGraphNode.mockResolvedValueOnce(
+      makeNode({ graphNodeId: "src1", entityType: "Source", title: "notes.md" }),
+    );
+    const actions = createContentLinkingActions(deps);
+
+    await actions.linkMarkdownFileToNode({
+      graphNodeId: "n1",
+      fileName: "notes.md",
+      markdown: "# Heading\nbody text",
+    });
+
+    const createArg = createGraphNode.mock.calls[0][0];
+    expect(createArg.entityType).toBe("Source");
+    expect(createArg.title).toBe("notes.md");
+    expect(JSON.parse(createArg.body)).toEqual([
+      { type: "heading", props: { level: 1 }, content: [{ type: "text", text: "Heading" }] },
+      { type: "paragraph", content: [{ type: "text", text: "body text" }] },
+    ]);
+
+    expect(connectGraphNodes).toHaveBeenCalledWith({
+      sourceGraphNodeId: "n1",
+      targetGraphNodeId: "src1",
+      relType: "SOURCED_FROM",
+    });
+
+    expect(updateGraphNode).toHaveBeenCalledTimes(1);
+  });
+});

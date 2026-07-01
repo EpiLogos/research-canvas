@@ -5,6 +5,8 @@ import type {
   NewGraphNodeInput,
 } from "@research-canvas/desktop-api";
 
+import { markdownToBlockNoteJson } from "@research-canvas/exporter";
+
 import { appendBlocksToBody, imageBlock, paragraphsToBlocks } from "./contentBlocks";
 
 export interface ContentLinkingDeps {
@@ -27,6 +29,11 @@ export interface ContentLinkingActions {
     sourceAbsolutePath: string,
     caption?: string,
   ) => Promise<GraphNode>;
+  linkMarkdownFileToNode: (input: {
+    graphNodeId: string;
+    fileName: string;
+    markdown: string;
+  }) => Promise<GraphNode>;
 }
 
 export function createContentLinkingActions(deps: ContentLinkingDeps): ContentLinkingActions {
@@ -45,6 +52,26 @@ export function createContentLinkingActions(deps: ContentLinkingDeps): ContentLi
       const url = await deps.importNodeImage({ graphNodeId, sourceAbsolutePath });
       const node = await deps.readGraphNode({ graphNodeId });
       const body = appendBlocksToBody(node.body, [imageBlock(url, caption)]);
+      return deps.updateGraphNode({ graphNodeId, patch: { body } });
+    },
+
+    async linkMarkdownFileToNode({ graphNodeId, fileName, markdown }) {
+      const source = await deps.createGraphNode({
+        entityType: "Source",
+        title: fileName,
+        body: markdownToBlockNoteJson(markdown),
+        isTemporal: false,
+        sourceCoordinates: [],
+      });
+      await deps.connectGraphNodes({
+        sourceGraphNodeId: graphNodeId,
+        targetGraphNodeId: source.graphNodeId,
+        relType: "SOURCED_FROM",
+      });
+      const node = await deps.readGraphNode({ graphNodeId });
+      const body = appendBlocksToBody(node.body, [
+        { type: "paragraph", content: [{ type: "text", text: `Linked source: ${fileName}` }] },
+      ]);
       return deps.updateGraphNode({ graphNodeId, patch: { body } });
     },
   };
