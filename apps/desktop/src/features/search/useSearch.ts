@@ -52,12 +52,7 @@ export function useSearch(query: string, options: UseSearchOptions = {}) {
         summary: "Create a new note node on the canvas",
         title: "Create note",
         onSelect: () => {
-          const node = workspace.store.getState().createNoteNode({
-            title: "Opening note",
-            content:
-              "# Opening note\n\nThe thesis starts here.\n\n- first supporting point\n- second supporting point"
-          });
-          workspace.selectNode(node.id);
+          void workspace.createNoteNode();
         }
       },
       {
@@ -81,11 +76,11 @@ export function useSearch(query: string, options: UseSearchOptions = {}) {
     return [...fileItems, ...nodeItems, ...commandItems];
   }, [
     onOpenExport,
+    workspace.createNoteNode,
     workspace.entries,
     workspace.nodes,
     workspace.selectEntry,
-    workspace.selectNode,
-    workspace.store
+    workspace.selectNode
   ]);
 
   const rankedLocalItems = useMemo(() => {
