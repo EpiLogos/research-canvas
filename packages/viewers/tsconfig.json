@@ -8,5 +8,13 @@
     "outDir": "./dist",
     "rootDir": "src"
   },
+  "references": [
+    {
+      "path": "../exporter"
+    },
+    {
+      "path": "../schema"
+    }
+  ],
   "include": ["src"]
 }

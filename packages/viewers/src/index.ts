@@ -1,3 +1,4 @@
+export { BlockNoteReadOnly } from "./BlockNoteReadOnly";
 export { FileMetaViewer } from "./FileMetaViewer";
 export { ImageViewer } from "./ImageViewer";
 export { MarkdownViewer } from "./MarkdownViewer";

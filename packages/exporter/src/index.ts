@@ -12,7 +12,7 @@ export { buildSearchIndex } from "./buildSearchIndex";
 export { copyAssets } from "./copyAssets";
 export { buildExportManifest, slugify } from "./manifest";
 export type { ExportManifest, ExportNodePage } from "./manifest";
-export { renderMarkdownToHtml } from "./renderMarkdown";
+export { blockNoteJsonToMarkdown, markdownToBlockNoteJson, renderMarkdownToHtml } from "./renderMarkdown";
 
 export interface StaticExportResult {
   outputDir: string;

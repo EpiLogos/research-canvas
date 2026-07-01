@@ -12,6 +12,7 @@
     "@blocknote/core": "^0.39.1",
     "@blocknote/mantine": "^0.39.1",
     "@blocknote/react": "^0.39.1",
+    "@research-canvas/exporter": "workspace:*",
     "@research-canvas/node-document": "workspace:*",
     "@research-canvas/schema": "workspace:*",
     "react": "^19.1.1"

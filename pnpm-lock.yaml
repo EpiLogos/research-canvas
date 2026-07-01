@@ -173,6 +173,9 @@ importers:
       '@blocknote/react':
         specifier: ^0.39.1
         version: 0.39.2(@floating-ui/dom@1.7.6)(@tiptap/extensions@3.27.1(@tiptap/core@3.27.1(@tiptap/pm@3.27.1))(@tiptap/pm@3.27.1))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@research-canvas/exporter':
+        specifier: workspace:*
+        version: link:../exporter
       '@research-canvas/node-document':
         specifier: workspace:*
         version: link:../node-document
