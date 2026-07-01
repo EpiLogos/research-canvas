@@ -364,6 +364,7 @@ export function CanvasWorkspaceProvider({
       }
     };
 
+    // LIMITATION (WS3 review): beforeunload cannot await this async flush; the final layout write is best-effort on hard window close. The document-view body flush has the same constraint (WS3 flushOnClose). Not addressed here — tracked for a future durable-flush task.
     window.addEventListener("beforeunload", flushLatest);
     window.addEventListener("pagehide", flushLatest);
 
