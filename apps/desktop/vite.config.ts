@@ -25,6 +25,9 @@ export default defineConfig({
       ),
       "@research-canvas/viewers": fileURLToPath(
         new URL("../../packages/viewers/src/index.ts", import.meta.url),
+      ),
+      "@research-canvas/node-document": fileURLToPath(
+        new URL("../../packages/node-document/src/index.ts", import.meta.url),
       )
     }
   }

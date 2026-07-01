@@ -15,6 +15,7 @@
   "dependencies": {
     "@research-canvas/canvas": "workspace:*",
     "@research-canvas/desktop-api": "workspace:*",
+    "@research-canvas/node-document": "workspace:*",
     "@research-canvas/search": "workspace:*",
     "@research-canvas/schema": "workspace:*",
     "@research-canvas/viewers": "workspace:*",
