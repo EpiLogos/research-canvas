@@ -47,6 +47,25 @@ function makeDeps(node: GraphNode): {
   return { deps, updateGraphNode };
 }
 
+describe("addImageToNode", () => {
+  it("imports the image and appends an image block referencing the returned path", async () => {
+    const node = makeNode({ body: "[]" });
+    const { deps, updateGraphNode } = makeDeps(node);
+    const actions = createContentLinkingActions(deps);
+
+    await actions.addImageToNode("n1", "/Users/me/Pictures/cat.png", "A cat");
+
+    expect(deps.importNodeImage).toHaveBeenCalledWith({
+      graphNodeId: "n1",
+      sourceAbsolutePath: "/Users/me/Pictures/cat.png",
+    });
+    const patchBody = updateGraphNode.mock.calls[0][0].patch.body as string;
+    expect(JSON.parse(patchBody)).toEqual([
+      { type: "image", props: { url: "assets/n1/cat.png", caption: "A cat" } },
+    ]);
+  });
+});
+
 describe("addTextToNode", () => {
   it("appends pasted text as paragraph blocks and persists the new body", async () => {
     const node = makeNode({ body: "[]" });

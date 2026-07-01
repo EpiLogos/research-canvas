@@ -5,7 +5,7 @@ import type {
   NewGraphNodeInput,
 } from "@research-canvas/desktop-api";
 
-import { appendBlocksToBody, paragraphsToBlocks } from "./contentBlocks";
+import { appendBlocksToBody, imageBlock, paragraphsToBlocks } from "./contentBlocks";
 
 export interface ContentLinkingDeps {
   readGraphNode: (input: { graphNodeId: string }) => Promise<GraphNode>;
@@ -22,6 +22,11 @@ export interface ContentLinkingDeps {
 
 export interface ContentLinkingActions {
   addTextToNode: (graphNodeId: string, text: string) => Promise<GraphNode>;
+  addImageToNode: (
+    graphNodeId: string,
+    sourceAbsolutePath: string,
+    caption?: string,
+  ) => Promise<GraphNode>;
 }
 
 export function createContentLinkingActions(deps: ContentLinkingDeps): ContentLinkingActions {
@@ -33,6 +38,13 @@ export function createContentLinkingActions(deps: ContentLinkingDeps): ContentLi
         return node;
       }
       const body = appendBlocksToBody(node.body, blocks);
+      return deps.updateGraphNode({ graphNodeId, patch: { body } });
+    },
+
+    async addImageToNode(graphNodeId, sourceAbsolutePath, caption = "") {
+      const url = await deps.importNodeImage({ graphNodeId, sourceAbsolutePath });
+      const node = await deps.readGraphNode({ graphNodeId });
+      const body = appendBlocksToBody(node.body, [imageBlock(url, caption)]);
       return deps.updateGraphNode({ graphNodeId, patch: { body } });
     },
   };
