@@ -12,7 +12,10 @@ pub use canvas::{
     Canvas, CanvasEdgeRecord, CanvasGraphRepository, CanvasNodeRecord, CanvasRepository,
     CanvasSnapshotRecord,
 };
-pub use graph::GraphRepository;
+pub use graph::{
+    ArchetypalLightingResult, GraphNode, GraphNodePatch, GraphRelationship, GraphRepository,
+    LitInstance, NewGraphNode,
+};
 pub use layout::{CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord};
 pub use projects::{Project, ProjectRepository};
 pub use resource_roots::{ResourceRootRecord, ResourceRootRepository};
