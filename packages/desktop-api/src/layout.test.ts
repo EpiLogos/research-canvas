@@ -50,7 +50,10 @@ describe("buildFlushRequest", () => {
     expect(request.layouts).toHaveLength(1);
     expect(request.layouts[0].graphNodeId).toBe("node-1");
     expect(request.layouts[0].positionX).toBe(12);
-    expect(request.layouts[0].styleJson).toBe(JSON.stringify({ dotColour: "#abc" }));
+    // styleJson now includes the __canvasNode sidecar — parse and check dotColour
+    const style = JSON.parse(request.layouts[0].styleJson) as Record<string, unknown>;
+    expect(style.dotColour).toBe("#abc");
+    expect((style.__canvasNode as Record<string, unknown>).type).toBe("note");
     expect(request.edges[0].id).toBe("edge-1");
     expect(request.edges[0].sourceGraphNodeId).toBe("node-1");
     expect(request.edges[0].styleJson).toBe(

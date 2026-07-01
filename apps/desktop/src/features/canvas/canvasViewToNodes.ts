@@ -8,7 +8,7 @@
 
 import { nodeSchema, edgeSchema } from "@research-canvas/schema";
 import type { CanvasNode, CanvasEdge } from "@research-canvas/schema";
-import type { CanvasView } from "@research-canvas/desktop-api";
+import type { CanvasView, CanvasNodeSidecar } from "@research-canvas/desktop-api";
 
 export function canvasViewToCanvasNodes(view: CanvasView): {
   nodes: CanvasNode[];
@@ -19,27 +19,97 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
   const nodes: CanvasNode[] = [];
   for (const joined of view.nodes) {
     const { node, layout } = joined;
+    const sidecar = layout.style.__canvasNode as CanvasNodeSidecar | undefined;
 
-    const parsed = nodeSchema.parse({
-      type: "note",
-      id: node.graphNodeId,
-      graphNodeId: node.graphNodeId,
-      canvasId: view.canvasId,
-      title: node.title,
-      content: "",
-      summary: node.summary ?? "",
-      position: { x: layout.positionX, y: layout.positionY },
-      size: { width: layout.width, height: layout.height },
-      dotColour: layout.style.dotColour ?? null,
-      bgColour: layout.style.bgColour ?? null,
-      textColour: layout.style.textColour ?? null,
-      thumbnail: layout.style.thumbnail ?? null,
-      tags: [],
-      sequenceCaption: null,
-      sequenceViewport: null,
-      createdAt: node.createdAt,
-      updatedAt: node.updatedAt,
-    });
+    let parsed: CanvasNode;
+    if (sidecar?.type === "resource") {
+      parsed = nodeSchema.parse({
+        type: "resource",
+        id: node.graphNodeId,
+        graphNodeId: node.graphNodeId,
+        canvasId: view.canvasId,
+        title: node.title,
+        summary: node.summary ?? "",
+        position: { x: layout.positionX, y: layout.positionY },
+        size: { width: layout.width, height: layout.height },
+        dotColour: layout.style.dotColour ?? null,
+        bgColour: layout.style.bgColour ?? null,
+        textColour: layout.style.textColour ?? null,
+        thumbnail: layout.style.thumbnail ?? null,
+        resourceKind: sidecar.resourceKind,
+        absolutePath: sidecar.absolutePath,
+        relativePath: sidecar.relativePath,
+        mimeType: sidecar.mimeType,
+        fileFingerprint: sidecar.fileFingerprint,
+        sequenceCaption: null,
+        sequenceViewport: null,
+        createdAt: node.createdAt,
+        updatedAt: node.updatedAt,
+      });
+    } else if (sidecar?.type === "group") {
+      parsed = nodeSchema.parse({
+        type: "group",
+        id: node.graphNodeId,
+        graphNodeId: node.graphNodeId,
+        canvasId: view.canvasId,
+        title: node.title,
+        summary: node.summary ?? "",
+        position: { x: layout.positionX, y: layout.positionY },
+        size: { width: layout.width, height: layout.height },
+        dotColour: layout.style.dotColour ?? null,
+        bgColour: layout.style.bgColour ?? null,
+        textColour: layout.style.textColour ?? null,
+        thumbnail: layout.style.thumbnail ?? null,
+        color: sidecar.color,
+        childNodeIds: sidecar.childNodeIds,
+        sequenceCaption: null,
+        sequenceViewport: null,
+        createdAt: node.createdAt,
+        updatedAt: node.updatedAt,
+      });
+    } else if (sidecar?.type === "portal") {
+      parsed = nodeSchema.parse({
+        type: "portal",
+        id: node.graphNodeId,
+        graphNodeId: node.graphNodeId,
+        canvasId: view.canvasId,
+        title: node.title,
+        summary: node.summary ?? "",
+        position: { x: layout.positionX, y: layout.positionY },
+        size: { width: layout.width, height: layout.height },
+        dotColour: layout.style.dotColour ?? null,
+        bgColour: layout.style.bgColour ?? null,
+        textColour: layout.style.textColour ?? null,
+        thumbnail: layout.style.thumbnail ?? null,
+        targetCanvasId: sidecar.targetCanvasId,
+        sequenceCaption: null,
+        sequenceViewport: null,
+        createdAt: node.createdAt,
+        updatedAt: node.updatedAt,
+      });
+    } else {
+      // note type (sidecar?.type === "note") OR no sidecar (graph-only / agent-authored node)
+      parsed = nodeSchema.parse({
+        type: "note",
+        id: node.graphNodeId,
+        graphNodeId: node.graphNodeId,
+        canvasId: view.canvasId,
+        title: node.title,
+        content: sidecar?.type === "note" ? sidecar.content : "",
+        summary: node.summary ?? "",
+        position: { x: layout.positionX, y: layout.positionY },
+        size: { width: layout.width, height: layout.height },
+        dotColour: layout.style.dotColour ?? null,
+        bgColour: layout.style.bgColour ?? null,
+        textColour: layout.style.textColour ?? null,
+        thumbnail: layout.style.thumbnail ?? null,
+        tags: sidecar?.type === "note" ? sidecar.tags : [],
+        sequenceCaption: null,
+        sequenceViewport: null,
+        createdAt: node.createdAt,
+        updatedAt: node.updatedAt,
+      });
+    }
 
     nodes.push(parsed);
   }

@@ -16,8 +16,8 @@ export const sizeSchema = z.object({
 });
 
 const baseNodeSchema = z.object({
-  id: z.string().uuid(),
-  graphNodeId: z.string().uuid().nullable().default(null),
+  id: z.string().min(1),
+  graphNodeId: z.string().min(1).nullable().default(null),
   canvasId: z.string().uuid(),
   title: z.string().min(1),
   position: positionSchema,

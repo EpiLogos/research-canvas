@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { CanvasView } from "@research-canvas/desktop-api";
+import { nodeLayoutFromCanvasNode } from "@research-canvas/desktop-api";
+import type { CanvasNode } from "@research-canvas/schema";
 import { canvasViewToCanvasNodes } from "./canvasViewToNodes";
 
 const GRAPH_NODE_ID = "33333333-3333-4333-8333-333333333333";
@@ -104,5 +106,202 @@ describe("canvasViewToCanvasNodes", () => {
     const { nodes } = canvasViewToCanvasNodes(view);
     expect(nodes[0]!.dotColour).toBe("#ff0000");
     expect(nodes[0]!.bgColour).toBe("#ffffff");
+  });
+});
+
+// ---- Fix 1: round-trip type preservation via style.__canvasNode sidecar ----
+
+function buildGraphNode(graphNodeId: string, title: string) {
+  return {
+    graphNodeId,
+    entityType: "Work" as const,
+    title,
+    body: "[]",
+    summary: "",
+    archetypalResonance: null,
+    coordinate: null,
+    sourceCoordinates: [],
+    isTemporal: false,
+    validFrom: null,
+    validTo: null,
+    temporalPrecision: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+  };
+}
+
+describe("canvasViewToCanvasNodes — Fix 1: node type round-trip via __canvasNode sidecar", () => {
+  it("resource node round-trips: nodeLayoutFromCanvasNode → layout → canvasViewToCanvasNodes preserves type and paths", () => {
+    const resourceNode: CanvasNode = {
+      id: GRAPH_NODE_ID,
+      graphNodeId: GRAPH_NODE_ID,
+      canvasId: CANVAS_ID,
+      type: "resource",
+      title: "My Report",
+      summary: "",
+      position: { x: 10, y: 20 },
+      size: { width: 260, height: 180 },
+      resourceKind: "markdown",
+      absolutePath: "/workspace/report.md",
+      relativePath: "report.md",
+      mimeType: "text/markdown",
+      fileFingerprint: "markdown:report.md",
+      sequenceCaption: null,
+      sequenceViewport: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+
+    const layout = nodeLayoutFromCanvasNode(resourceNode);
+
+    const view: CanvasView = {
+      canvasId: CANVAS_ID,
+      nodes: [{ node: buildGraphNode(GRAPH_NODE_ID, "My Report"), layout }],
+      edges: [],
+      relationships: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      appState: {},
+    };
+
+    const { nodes } = canvasViewToCanvasNodes(view);
+    expect(nodes).toHaveLength(1);
+    const out = nodes[0]!;
+    expect(out.type).toBe("resource");
+    if (out.type !== "resource") throw new Error("not resource");
+    expect(out.resourceKind).toBe("markdown");
+    expect(out.absolutePath).toBe("/workspace/report.md");
+    expect(out.relativePath).toBe("report.md");
+    expect(out.mimeType).toBe("text/markdown");
+  });
+
+  it("group node round-trips: type:'group' and color/childNodeIds are preserved", () => {
+    const groupNode: CanvasNode = {
+      id: GRAPH_NODE_ID,
+      graphNodeId: GRAPH_NODE_ID,
+      canvasId: CANVAS_ID,
+      type: "group",
+      title: "Chapter 1",
+      summary: "",
+      position: { x: 0, y: 0 },
+      size: { width: 320, height: 240 },
+      color: "#334155",
+      childNodeIds: [],
+      sequenceCaption: null,
+      sequenceViewport: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+
+    const layout = nodeLayoutFromCanvasNode(groupNode);
+
+    const view: CanvasView = {
+      canvasId: CANVAS_ID,
+      nodes: [{ node: buildGraphNode(GRAPH_NODE_ID, "Chapter 1"), layout }],
+      edges: [],
+      relationships: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      appState: {},
+    };
+
+    const { nodes } = canvasViewToCanvasNodes(view);
+    const out = nodes[0]!;
+    expect(out.type).toBe("group");
+    if (out.type !== "group") throw new Error("not group");
+    expect(out.color).toBe("#334155");
+    expect(out.childNodeIds).toEqual([]);
+  });
+
+  it("note node round-trips: type:'note' with content and tags preserved", () => {
+    const noteNode: CanvasNode = {
+      id: GRAPH_NODE_ID,
+      graphNodeId: GRAPH_NODE_ID,
+      canvasId: CANVAS_ID,
+      type: "note",
+      title: "Thesis",
+      summary: "",
+      position: { x: 0, y: 0 },
+      size: { width: 240, height: 160 },
+      content: "The central claim.",
+      tags: ["thesis"],
+      sequenceCaption: null,
+      sequenceViewport: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+
+    const layout = nodeLayoutFromCanvasNode(noteNode);
+
+    const view: CanvasView = {
+      canvasId: CANVAS_ID,
+      nodes: [{ node: buildGraphNode(GRAPH_NODE_ID, "Thesis"), layout }],
+      edges: [],
+      relationships: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      appState: {},
+    };
+
+    const { nodes } = canvasViewToCanvasNodes(view);
+    const out = nodes[0]!;
+    expect(out.type).toBe("note");
+    if (out.type !== "note") throw new Error("not note");
+    expect(out.content).toBe("The central claim.");
+    expect(out.tags).toEqual(["thesis"]);
+  });
+
+  it("node with no __canvasNode sidecar falls back to type:'note' (agent-authored / graph-only node)", () => {
+    const view = buildFixtureView();
+    // fixture view has no __canvasNode in style (style: {})
+    const { nodes } = canvasViewToCanvasNodes(view);
+    expect(nodes[0]!.type).toBe("note");
+  });
+});
+
+// ---- Fix 2: non-UUID graph ids are accepted without throwing ----
+
+describe("canvasViewToCanvasNodes — Fix 2: non-UUID graphNodeId accepted", () => {
+  it("parses a node with a non-UUID id (e.g. operator id 'op-anuttara-0') without throwing", () => {
+    const nonUuidId = "op-anuttara-0";
+    const view: CanvasView = {
+      canvasId: CANVAS_ID,
+      nodes: [
+        {
+          node: {
+            graphNodeId: nonUuidId,
+            entityType: "PsychoidOperator",
+            title: "Anuttara",
+            body: "[]",
+            summary: "",
+            archetypalResonance: null,
+            coordinate: null,
+            sourceCoordinates: [],
+            isTemporal: false,
+            validFrom: null,
+            validTo: null,
+            temporalPrecision: null,
+            createdAt: NOW,
+            updatedAt: NOW,
+          },
+          layout: {
+            graphNodeId: nonUuidId,
+            canvasId: CANVAS_ID,
+            positionX: 0,
+            positionY: 0,
+            width: 240,
+            height: 160,
+            style: {},
+          },
+        },
+      ],
+      edges: [],
+      relationships: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      appState: {},
+    };
+
+    // Must not throw — the whole canvas would blank out if it did
+    const { nodes } = canvasViewToCanvasNodes(view);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]!.id).toBe(nonUuidId);
+    expect(nodes[0]!.graphNodeId).toBe(nonUuidId);
   });
 });

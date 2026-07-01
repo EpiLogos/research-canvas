@@ -7,6 +7,7 @@ import type {
 
 export type {
   ArchetypalLighting,
+  CanvasNodeSidecar,
   CanvasView,
   CreatableEntityType,
   EdgeLayout,
@@ -161,6 +162,43 @@ export interface SavedSequence {
 }
 
 export function nodeLayoutFromCanvasNode(node: CanvasNode): NodeLayout {
+  // Build the type-specific sidecar so canvasViewToNodes can reconstruct the
+  // discriminated union type on reload (Fix 1 — WS4a).
+  type CanvasNodeSidecar =
+    | { type: "note"; content: string; tags: string[] }
+    | { type: "resource"; resourceKind: string; absolutePath: string; relativePath: string; mimeType: string; fileFingerprint: string }
+    | { type: "group"; color: string; childNodeIds: string[] }
+    | { type: "portal"; targetCanvasId: string };
+
+  let canvasNode: CanvasNodeSidecar;
+  if (node.type === "resource") {
+    canvasNode = {
+      type: "resource",
+      resourceKind: node.resourceKind,
+      absolutePath: node.absolutePath,
+      relativePath: node.relativePath,
+      mimeType: node.mimeType,
+      fileFingerprint: node.fileFingerprint,
+    };
+  } else if (node.type === "group") {
+    canvasNode = {
+      type: "group",
+      color: node.color,
+      childNodeIds: node.childNodeIds,
+    };
+  } else if (node.type === "portal") {
+    canvasNode = {
+      type: "portal",
+      targetCanvasId: node.targetCanvasId,
+    };
+  } else {
+    canvasNode = {
+      type: "note",
+      content: node.content,
+      tags: node.tags,
+    };
+  }
+
   return {
     graphNodeId: node.id,
     canvasId: node.canvasId,
@@ -173,6 +211,7 @@ export function nodeLayoutFromCanvasNode(node: CanvasNode): NodeLayout {
       bgColour: node.bgColour ?? undefined,
       textColour: node.textColour ?? undefined,
       thumbnail: node.thumbnail ?? undefined,
+      __canvasNode: canvasNode,
     },
   };
 }

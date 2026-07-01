@@ -261,6 +261,24 @@ describe("schema package", () => {
     expect(node.graphNodeId).toBeNull();
   });
 
+  it("Fix 2: accepts a non-UUID graphNodeId (e.g. seeded operator id 'op-anuttara-0')", () => {
+    const node = noteNodeSchema.parse({
+      id: crypto.randomUUID(),
+      graphNodeId: "op-anuttara-0",
+      canvasId: crypto.randomUUID(),
+      type: "note",
+      title: "Anuttara",
+      position: { x: 0, y: 0 },
+      size: { width: 200, height: 150 },
+      content: "",
+      tags: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    expect(node.graphNodeId).toBe("op-anuttara-0");
+  });
+
   it("validates export bundle payloads with nested graph data", () => {
     const bundle = exportBundleSchema.parse({
       generatedAt: now,

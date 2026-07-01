@@ -38,6 +38,14 @@ export interface GraphRelationship {
   properties: Record<string, unknown>;
 }
 
+/** Sidecar stored inside style.__canvasNode to reconstruct the discriminated
+ *  union type of a CanvasNode on hydrate (WS4a Fix 1). */
+export type CanvasNodeSidecar =
+  | { type: "note"; content: string; tags: string[] }
+  | { type: "resource"; resourceKind: string; absolutePath: string; relativePath: string; mimeType: string; fileFingerprint: string }
+  | { type: "group"; color: string; childNodeIds: string[] }
+  | { type: "portal"; targetCanvasId: string };
+
 export interface NodeLayout {
   graphNodeId: string;
   canvasId: string;
@@ -47,6 +55,8 @@ export interface NodeLayout {
   height: number;
   style: {
     dotColour?: string; bgColour?: string; textColour?: string; thumbnail?: string;
+    /** Reserved key for canvas-presentation sidecar (WS4a Fix 1). Opaque to Rust — stored in style_json TEXT. */
+    __canvasNode?: CanvasNodeSidecar;
   };
 }
 
