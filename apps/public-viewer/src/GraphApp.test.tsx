@@ -5,6 +5,10 @@ import type { GraphExportBundle } from "@research-canvas/exporter";
 
 import { GraphApp } from "./GraphApp";
 
+// A REAL in-memory GraphExportBundle. Only the *data* is a fixture — every
+// component (GraphApp, the shared <TimelineLens>/<CanvasView>) and the
+// WorkspaceTransport (createStaticBundleTransport, constructed inside GraphApp)
+// are the real units under test. Nothing is vi.mock'd.
 function bundle(): GraphExportBundle {
   const banda: GraphExportBundle["nodes"][number] = {
     graphNodeId: "node-banda",
@@ -19,8 +23,24 @@ function bundle(): GraphExportBundle {
     validFrom: "1621-01-01",
     validTo: "1621-12-31",
     temporalPrecision: "year",
-    createdAt: "t",
-    updatedAt: "t"
+    createdAt: "2026-06-28T12:00:00Z",
+    updatedAt: "2026-06-28T12:00:00Z"
+  };
+  const monopoly: GraphExportBundle["nodes"][number] = {
+    graphNodeId: "node-monopoly",
+    entityType: "Dynamic",
+    title: "Monopoly mechanism",
+    body: "[]",
+    summary: "pattern",
+    archetypalResonance: null,
+    coordinate: null,
+    sourceCoordinates: [],
+    isTemporal: false,
+    validFrom: null,
+    validTo: null,
+    temporalPrecision: null,
+    createdAt: "2026-06-28T12:00:00Z",
+    updatedAt: "2026-06-28T12:00:00Z"
   };
   return {
     generatedAt: "2026-06-28T12:00:00Z",
@@ -30,37 +50,80 @@ function bundle(): GraphExportBundle {
       displayName: "Antichrist",
       id: "11111111-1111-4111-8111-111111111111",
       parentProjectId: null,
-      primaryCanvasId: "c1",
+      primaryCanvasId: "22222222-2222-4222-8222-222222222222",
       publishSettings: { includeResources: true, mobileSequenceFirst: true, theme: "paper" },
       rootPath: "/tmp/antichrist",
       slug: "antichrist",
       summary: "Theory graph",
-      updatedAt: "t"
+      updatedAt: "2026-06-28T12:00:00Z"
     },
-    canvasId: "c1",
-    nodes: [banda],
+    canvasId: "22222222-2222-4222-8222-222222222222",
+    // node-monopoly has NO layout row: it must still surface via defaultLayoutFor
+    // auto-placement (design §5.6) in the canvas lens.
+    nodes: [monopoly, banda],
     relationships: [],
     nodeLayout: [],
     edgeLayout: [],
     viewport: { x: 0, y: 0, zoom: 1 },
     appState: {},
-    lightingIndex: {},
+    // Precomputed lighting: the trans-temporal operator lights the dated event.
+    // The web must light from THIS index — no backend query.
+    lightingIndex: {
+      "node-monopoly": [{ node: banda, relType: "INSTANTIATES", dominance: "dominant" }]
+    },
     assets: []
   };
 }
 
-describe("GraphApp", () => {
-  it("defaults to the canvas lens and switches to the timeline lens", async () => {
+describe("GraphApp (mounted web entry, real static-bundle transport)", () => {
+  it("shows the lens switch and defaults to the canvas lens", async () => {
     render(<GraphApp bundle={bundle()} />);
 
+    // (a) lens switch appears
+    expect(screen.getByTestId("lens-switch")).toBeInTheDocument();
+
+    // (d) the canvas lens renders the SHARED <CanvasView> (React Flow), not the
+    // old flat <article> cards.
+    const surface = await screen.findByTestId("canvas-surface");
     await waitFor(() => {
-      expect(screen.getByText("Canvas lens (read-only)")).toBeInTheDocument();
+      expect(surface.querySelector(".react-flow")).not.toBeNull();
     });
+    // The layout-less node (node-monopoly had no nodeLayout row) still surfaces
+    // via defaultLayoutFor auto-placement (design §5.6) — React Flow renders a
+    // node keyed by its graphNodeId.
+    await waitFor(() => {
+      expect(surface.querySelector('.react-flow__node[data-id="node-monopoly"]')).not.toBeNull();
+    });
+    // The dated event node is present too.
+    expect(surface.querySelector('.react-flow__node[data-id="node-banda"]')).not.toBeNull();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: /timeline/i }));
+  it("renders the bundle's temporal nodes in the shared TimelineLens and lights instances from lightingIndex with no backend", async () => {
+    render(<GraphApp bundle={bundle()} />);
+
+    fireEvent.click(screen.getByTestId("lens-switch-timeline"));
+
+    // (b) the SHARED TimelineLens renders the bundle's temporal node; the
+    // trans-temporal operator is NOT projected onto the axis.
+    await waitFor(() => {
+      expect(screen.getByTestId("timeline-lens")).toBeInTheDocument();
+    });
+    const event = await screen.findByTestId("timeline-node-node-banda");
+    expect(event).toHaveTextContent("Banda genocide");
+    expect(screen.queryByTestId("timeline-node-node-monopoly")).toBeNull();
+    expect(event.getAttribute("data-lit")).toBeNull();
+
+    // (c) Selecting the instance surfaces its resonant operator (from the
+    // bundle's resonance graph), and lighting that operator marks the instance
+    // as lit — driven entirely by bundle.lightingIndex, no backend.
+    fireEvent.click(event);
+    const row = await screen.findByTestId("resonance-row-node-monopoly");
+    fireEvent.click(row);
 
     await waitFor(() => {
-      expect(screen.getByText("Timeline lens (read-only)")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("timeline-node-node-banda").getAttribute("data-lit")
+      ).toBe("dominant");
     });
   });
 
