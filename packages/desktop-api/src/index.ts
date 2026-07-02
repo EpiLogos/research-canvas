@@ -442,6 +442,16 @@ export function createWorkspaceTransport(): WorkspaceTransport {
     : createBrowserBridgeTransport();
 }
 
+export function createReadLayerTransport(
+  bundle: GraphExportBundle | null
+): WorkspaceTransport {
+  if (bundle) {
+    return createStaticBundleTransport(bundle);
+  }
+
+  return createWorkspaceTransport();
+}
+
 export async function readWorkspaceTextFile(absolutePath: string) {
   if (isTauriRuntime()) {
     return invokeTauri<string>("read_workspace_text_file_command", {
