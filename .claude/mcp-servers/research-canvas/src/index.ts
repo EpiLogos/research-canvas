@@ -5,10 +5,8 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { canvasTools } from "./tools/canvas.js";
-import { edgeTools } from "./tools/edges.js";
-import { batchTools } from "./tools/batch.js";
 
-const allTools = [...canvasTools, ...edgeTools, ...batchTools];
+const allTools = [...canvasTools];
 
 const server = new Server(
   { name: "research-canvas", version: "1.0.0" },
