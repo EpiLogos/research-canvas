@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { useStore } from "zustand";
+import { listen } from "@tauri-apps/api/event";
 import type { NodeLayout, WorkspaceTransport } from "@research-canvas/desktop-api";
 import { createAgentActivityStore } from "./agentActivityStore";
 
@@ -34,6 +35,27 @@ export function AgentActivityPanel({
 
   useEffect(() => {
     void store.getState().refresh();
+  }, [store]);
+
+  useEffect(() => {
+    if (!(typeof window !== "undefined" && "__TAURI_INTERNALS__" in window)) {
+      return undefined;
+    }
+    let active = true;
+    let unlisten: (() => void) | undefined;
+    void listen("canvas:updated", () => {
+      void store.getState().refresh();
+    }).then((fn) => {
+      if (active) {
+        unlisten = fn;
+      } else {
+        fn();
+      }
+    });
+    return () => {
+      active = false;
+      unlisten?.();
+    };
   }, [store]);
 
   async function reviewAndPlace(graphNodeId: string | null, id: string, index: number) {

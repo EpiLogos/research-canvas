@@ -3,6 +3,15 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import type { AgentActivity, NodeLayout } from "@research-canvas/desktop-api";
 import { AgentActivityPanel } from "./AgentActivityPanel";
 
+const canvasUpdatedHandlers: Array<() => void> = [];
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: (_name: string, cb: () => void) => {
+    canvasUpdatedHandlers.push(cb);
+    return Promise.resolve(() => {});
+  },
+}));
+
 function activity(over: Partial<AgentActivity>): AgentActivity {
   return {
     id: "a1",
@@ -65,5 +74,17 @@ describe("AgentActivityPanel", () => {
         screen.queryByRole("button", { name: /review & place/i }),
       ).not.toBeInTheDocument(),
     );
+  });
+
+  it("refreshes when canvas:updated fires", async () => {
+    (window as unknown as { __TAURI_INTERNALS__: object }).__TAURI_INTERNALS__ = {};
+    const list = vi.fn(async () => [] as never);
+    const transport = { listAgentActivity: list, upsertNodeLayout: vi.fn() } as never;
+    render(
+      <AgentActivityPanel transport={transport} canvasId="c1" databasePath="/tmp/db.sqlite" />,
+    );
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+    canvasUpdatedHandlers.forEach((h) => h());
+    await waitFor(() => expect(list.mock.calls.length).toBeGreaterThanOrEqual(2));
   });
 });
