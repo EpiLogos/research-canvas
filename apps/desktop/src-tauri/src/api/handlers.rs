@@ -3,6 +3,7 @@ use crate::{
     api::types::*,
     db::{
         connection::Database,
+        repositories::agent_activity::{AgentActivityRepository, NewAgentActivity},
         repositories::layout::{LayoutRepository, NodeLayoutRecord},
     },
     SharedApiState,
@@ -84,7 +85,7 @@ pub fn upsert_node_layout(
     };
     repo.upsert_node_layout(&NodeLayoutRecord {
         graph_node_id: req.graph_node_id.clone(),
-        canvas_id,
+        canvas_id: canvas_id.clone(),
         position_x: req.x,
         position_y: req.y,
         width: req.width.unwrap_or(base_w),
@@ -94,6 +95,22 @@ pub fn upsert_node_layout(
         updated_at: now(),
     })
     .map_err(|e| e.to_string())?;
+
+    // WS6: record the placement in the agent-activity feed (layout only; theory untouched).
+    // `existing` is the same binding computed above for position/size merge.
+    let kind = if existing.is_some() { "node_updated" } else { "node_created" };
+    AgentActivityRepository::new(db.connection())
+        .record(&NewAgentActivity {
+            kind: kind.to_string(),
+            canvas_id: Some(canvas_id.clone()),
+            graph_node_id: Some(req.graph_node_id.clone()),
+            relationship_id: None,
+            title: String::new(), // enrichment is gated on a WS2 runtime-handle amendment (see brief 6.2)
+            entity_type: None,
+            detail_json: "{}".to_string(),
+        })
+        .map_err(|e| e.to_string())?;
+
     Ok(PlacedNodeResponse { ok: true, graph_node_id: req.graph_node_id })
 }
 
@@ -138,5 +155,23 @@ pub fn batch_place(
         }
     }
     tx.commit().map_err(|e| e.to_string())?;
+
+    // WS6: log each batch placement (best-effort; outside the layout transaction).
+    let db2 = Database::open(&path).map_err(|e| e.to_string())?;
+    let activity = AgentActivityRepository::new(db2.connection());
+    for item in &req.placements {
+        activity
+            .record(&NewAgentActivity {
+                kind: "node_created".to_string(),
+                canvas_id: Some(canvas_id.clone()),
+                graph_node_id: Some(item.graph_node_id.clone()),
+                relationship_id: None,
+                title: String::new(),
+                entity_type: None,
+                detail_json: "{}".to_string(),
+            })
+            .map_err(|e| e.to_string())?;
+    }
+
     Ok(BatchPlaceResponse { ok: true, placed: req.placements.len() })
 }
