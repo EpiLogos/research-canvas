@@ -1,3 +1,5 @@
+pub mod graph_bundle;
+
 use std::{
     fs,
     path::{Path, PathBuf},
