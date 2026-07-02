@@ -305,3 +305,129 @@ describe("canvasViewToCanvasNodes — Fix 2: non-UUID graphNodeId accepted", () 
     expect(nodes[0]!.graphNodeId).toBe(nonUuidId);
   });
 });
+
+// ---- lf-task-3: title from node OR sidecar (drop the frontend union hack) ----
+
+describe("canvasViewToCanvasNodes — lf-task-3: title falls back to sidecar when node.title is empty/synthesized", () => {
+  it("uses the sidecar title when the joined GraphNode's title is empty (synthesized substance)", () => {
+    const view: CanvasView = {
+      canvasId: CANVAS_ID,
+      nodes: [
+        {
+          // Simulates a layout row whose Neo4j sync hasn't landed: Rust
+          // synthesizes a GraphNode, but here we pin the frontend contract
+          // by giving it an empty title directly.
+          node: {
+            graphNodeId: GRAPH_NODE_ID,
+            entityType: "Work",
+            title: "",
+            body: "[]",
+            summary: "",
+            archetypalResonance: null,
+            coordinate: null,
+            sourceCoordinates: [],
+            isTemporal: false,
+            validFrom: null,
+            validTo: null,
+            temporalPrecision: null,
+            createdAt: NOW,
+            updatedAt: NOW,
+          },
+          layout: {
+            graphNodeId: GRAPH_NODE_ID,
+            canvasId: CANVAS_ID,
+            positionX: 5,
+            positionY: 6,
+            width: 240,
+            height: 160,
+            style: {
+              __canvasNode: {
+                type: "note",
+                title: "Local Draft Title",
+                content: "written offline",
+                tags: [],
+              },
+            },
+          },
+        },
+      ],
+      edges: [],
+      relationships: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      appState: {},
+    };
+
+    const { nodes } = canvasViewToCanvasNodes(view);
+    expect(nodes).toHaveLength(1);
+    const node = nodes[0]!;
+    expect(node.title).toBe("Local Draft Title");
+    if (node.type !== "note") throw new Error("expected note");
+    expect(node.content).toBe("written offline");
+  });
+
+  it("prefers node.title over the sidecar title when the joined GraphNode has a real (non-empty) title", () => {
+    const view = buildFixtureView();
+    view.nodes[0]!.node.title = "Neo4j Title";
+    view.nodes[0]!.layout.style = {
+      __canvasNode: {
+        type: "note",
+        title: "Sidecar Title",
+        content: "",
+        tags: [],
+      },
+    };
+
+    const { nodes } = canvasViewToCanvasNodes(view);
+    expect(nodes[0]!.title).toBe("Neo4j Title");
+  });
+
+  it("resource node with empty node.title reconstructs using the sidecar title and resource fields", () => {
+    const resourceNode: CanvasNode = {
+      id: GRAPH_NODE_ID,
+      graphNodeId: GRAPH_NODE_ID,
+      canvasId: CANVAS_ID,
+      type: "resource",
+      title: "My Report",
+      summary: "",
+      position: { x: 10, y: 20 },
+      size: { width: 260, height: 180 },
+      resourceKind: "markdown",
+      absolutePath: "/workspace/report.md",
+      relativePath: "report.md",
+      mimeType: "text/markdown",
+      fileFingerprint: "markdown:report.md",
+      sequenceCaption: null,
+      sequenceViewport: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+
+    const layout = nodeLayoutFromCanvasNode(resourceNode);
+    const graphNode = buildGraphNode(GRAPH_NODE_ID, "");
+
+    const view: CanvasView = {
+      canvasId: CANVAS_ID,
+      nodes: [{ node: graphNode, layout }],
+      edges: [],
+      relationships: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      appState: {},
+    };
+
+    const { nodes } = canvasViewToCanvasNodes(view);
+    const out = nodes[0]!;
+    expect(out.title).toBe("My Report");
+    if (out.type !== "resource") throw new Error("not resource");
+    expect(out.resourceKind).toBe("markdown");
+  });
+
+  it("never throws when both node.title and sidecar title are absent (falls back to a non-empty placeholder)", () => {
+    const view = buildFixtureView();
+    view.nodes[0]!.node.title = "";
+    view.nodes[0]!.layout.style = {};
+
+    const { nodes } = canvasViewToCanvasNodes(view);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]!.title.length).toBeGreaterThan(0);
+  });
+});

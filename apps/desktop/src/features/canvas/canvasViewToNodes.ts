@@ -10,6 +10,12 @@ import { nodeSchema, edgeSchema } from "@research-canvas/schema";
 import type { CanvasNode, CanvasEdge } from "@research-canvas/schema";
 import type { CanvasView, CanvasNodeSidecar } from "@research-canvas/desktop-api";
 
+/** Used only when neither the joined GraphNode nor the layout sidecar carries
+ *  a usable title — should be rare (e.g. a layout row written before the
+ *  sidecar carried a title, with no synced Neo4j node either). Mirrors the
+ *  Rust-side SYNTHESIZED_DEFAULT_TITLE fallback in canvas_service.rs. */
+const SYNTHESIZED_DEFAULT_TITLE = "Untitled";
+
 export function canvasViewToCanvasNodes(view: CanvasView): {
   nodes: CanvasNode[];
   edges: CanvasEdge[];
@@ -20,6 +26,12 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
   for (const joined of view.nodes) {
     const { node, layout } = joined;
     const sidecar = layout.style.__canvasNode as CanvasNodeSidecar | undefined;
+    // Local-first title reconstruction (lf-task-3): the joined GraphNode's
+    // title wins when Neo4j substance is actually present, but a layout row
+    // whose best-effort sync hasn't landed (or Neo4j is unreachable) gets a
+    // synthesized GraphNode with no real title — fall back to the sidecar's
+    // title, which is always written locally by nodeLayoutFromCanvasNode.
+    const title = node.title || sidecar?.title || SYNTHESIZED_DEFAULT_TITLE;
 
     let parsed: CanvasNode;
     if (sidecar?.type === "resource") {
@@ -28,7 +40,7 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
         id: node.graphNodeId,
         graphNodeId: node.graphNodeId,
         canvasId: view.canvasId,
-        title: node.title,
+        title,
         summary: node.summary ?? "",
         position: { x: layout.positionX, y: layout.positionY },
         size: { width: layout.width, height: layout.height },
@@ -52,7 +64,7 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
         id: node.graphNodeId,
         graphNodeId: node.graphNodeId,
         canvasId: view.canvasId,
-        title: node.title,
+        title,
         summary: node.summary ?? "",
         position: { x: layout.positionX, y: layout.positionY },
         size: { width: layout.width, height: layout.height },
@@ -73,7 +85,7 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
         id: node.graphNodeId,
         graphNodeId: node.graphNodeId,
         canvasId: view.canvasId,
-        title: node.title,
+        title,
         summary: node.summary ?? "",
         position: { x: layout.positionX, y: layout.positionY },
         size: { width: layout.width, height: layout.height },
@@ -94,7 +106,7 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
         id: node.graphNodeId,
         graphNodeId: node.graphNodeId,
         canvasId: view.canvasId,
-        title: node.title,
+        title,
         content: sidecar?.type === "note" ? sidecar.content : "",
         summary: node.summary ?? "",
         position: { x: layout.positionX, y: layout.positionY },

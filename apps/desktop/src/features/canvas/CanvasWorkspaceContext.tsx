@@ -218,11 +218,12 @@ export function CanvasWorkspaceProvider({
 
         if (cancelled) return;
 
-        // Local-first hydration: the canvas renders from the local document
-        // immediately. Prefer the Neo4j-joined view when it actually has nodes;
-        // otherwise (empty, or the graph is unreachable) keep the local nodes so
-        // existing canvases and offline work still show. Neo4j is a best-effort
-        // sync/enrichment target, never a gate on seeing your canvas.
+        // Local-first hydration: load_canvas_view is layout-authoritative
+        // (every layout row is returned, with a synthesized GraphNode when
+        // Neo4j substance hasn't landed yet or is unreachable), so the
+        // canvas hydrates from it directly — no union with document.nodes
+        // needed. Only fall back to the local document nodes if the call
+        // itself fails (e.g. transport/backend error), for resilience.
         let graphNodes = document.nodes;
         let graphEdges = document.edges;
         try {
@@ -233,19 +234,8 @@ export function CanvasWorkspaceProvider({
           });
           if (cancelled) return;
           const joined = canvasViewToCanvasNodes(view);
-          // Union the Neo4j-joined nodes (new, graph-backed) with any local
-          // document nodes not yet in the graph (e.g. pre-cutover nodes, or ones
-          // whose best-effort sync hasn't landed), deduped by id — Neo4j wins.
-          const viewNodeIds = new Set(joined.nodes.map((n) => n.id));
-          graphNodes = [
-            ...joined.nodes,
-            ...document.nodes.filter((n) => !viewNodeIds.has(n.id)),
-          ];
-          const viewEdgeIds = new Set(joined.edges.map((e) => e.id));
-          graphEdges = [
-            ...joined.edges,
-            ...document.edges.filter((e) => !viewEdgeIds.has(e.id)),
-          ];
+          graphNodes = joined.nodes;
+          graphEdges = joined.edges;
         } catch (error) {
           console.warn("loadCanvasView failed; rendering local document nodes", error);
         }
