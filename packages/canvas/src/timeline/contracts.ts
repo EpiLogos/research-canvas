@@ -81,7 +81,10 @@ export interface CanvasView {
 
 export interface LitInstance {
   node: GraphNode;
-  relType: "INSTANTIATES" | "ECHOES";
+  // archetypalLighting() only ever yields INSTANTIATES|ECHOES (WS0 §8.2's
+  // MATCH ...-[r:INSTANTIATES|ECHOES]->(op)); resonancesForInstance() widens
+  // to RESONATES_WITH (MATCH ...-[r:INSTANTIATES|ECHOES|RESONATES_WITH]->(op)).
+  relType: "INSTANTIATES" | "ECHOES" | "RESONATES_WITH";
   dominance: "dominant" | "secondary" | null;
 }
 

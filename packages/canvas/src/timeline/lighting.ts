@@ -4,12 +4,12 @@ export type Dominance = "dominant" | "secondary";
 
 export interface LitNodeState {
   dominance: Dominance;
-  relType: "INSTANTIATES" | "ECHOES";
+  relType: LitInstance["relType"];
 }
 
 export type LitMap = Map<string, LitNodeState>;
 
-function rank(instance: { relType: "INSTANTIATES" | "ECHOES"; dominance: Dominance }): number {
+function rank(instance: { relType: LitInstance["relType"]; dominance: Dominance }): number {
   // Higher rank = stronger lighting. INSTANTIATES(2) > ECHOES(0);
   // dominant(+1) > secondary(+0). Range 0..3.
   const relScore = instance.relType === "INSTANTIATES" ? 2 : 0;

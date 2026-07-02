@@ -302,7 +302,7 @@ export function buildFlushRequest(
   };
 }
 
-interface WorkspaceTransport {
+export interface WorkspaceTransport {
   attachProjectResourceRoot(
     request: ResourceRootMutationRequest
   ): Promise<ResourceRoot>;
