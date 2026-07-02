@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CanvasPane } from "./CanvasPane";
 import { FullScreenReader } from "./FullScreenReader";
 import { IconStrip } from "./IconStrip";
@@ -6,9 +6,13 @@ import { LeftOverlay } from "./LeftOverlay";
 import { RightPanelSlot } from "./RightPanelSlot";
 import { StatusBar } from "./StatusBar";
 import { useShellLayout } from "./useShellLayout";
+import { useLensMode } from "./useLensMode";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { SequencesManager } from "../features/sequences/SequencesManager";
 import { SettingsOverlay } from "../features/settings/SettingsOverlay";
+import { TimelineLens } from "@research-canvas/canvas";
+import { createWorkspaceTransport } from "@research-canvas/desktop-api";
+import { createTimelineDataSource } from "../features/timeline/createTimelineDataSource";
 
 export function Shell() {
   const layout = useShellLayout();
@@ -20,6 +24,27 @@ export function Shell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [drawingMode, setDrawingMode] = useState(false);
   const [strokeColour, setStrokeColour] = useState("#f97316");
+
+  const { lens, setLens } = useLensMode();
+  const timelineDataSource = useMemo(
+    () =>
+      createTimelineDataSource({
+        transport: createWorkspaceTransport(),
+        canvasId: workspace.canvasId,
+      }),
+    [workspace.canvasId],
+  );
+  // Open a timeline node through the SAME path the canvas uses: select the node
+  // on the workspace, then flip the Shell's local full-screen reader to "node".
+  // setFullScreenMode is Shell-local state (not on the workspace context), so
+  // this callback lives in the Shell body where setFullScreenMode is in scope.
+  const openNodeDocument = useCallback(
+    (graphNodeId: string) => {
+      workspace.selectNode(graphNodeId);
+      setFullScreenMode("node");
+    },
+    [workspace, setFullScreenMode],
+  );
 
   const handleSetLeftMode = useCallback((mode: "files" | "search" | "annotations") => {
     setLeftMode(mode);
@@ -69,6 +94,8 @@ export function Shell() {
     [layout, workspace],
   );
 
+  const handlePlaySequence = useCallback(() => setFullScreenMode("sequence"), []);
+
   return (
     <div
       className="app-shell"
@@ -100,15 +127,47 @@ export function Shell() {
           onSetStrokeColour={setStrokeColour}
         />
 
-        <CanvasPane
-          onNodeSelect={handleNodeSelect}
-          onNodeDoubleClick={handleNodeDoubleClick}
-          onPlaySequence={useCallback(() => setFullScreenMode("sequence"), [])}
-          leftPanelOpen={layout.leftOpen}
-          rightPanelOpen={layout.rightOpen}
-          drawingMode={drawingMode}
-          strokeColour={strokeColour}
-        />
+        <div className="lens-switch" data-testid="lens-switch">
+          <button
+            type="button"
+            data-testid="lens-switch-canvas"
+            data-active={lens === "canvas" ? "true" : undefined}
+            onClick={() => setLens("canvas")}
+          >
+            Canvas
+          </button>
+          <button
+            type="button"
+            data-testid="lens-switch-timeline"
+            data-active={lens === "timeline" ? "true" : undefined}
+            onClick={() => setLens("timeline")}
+          >
+            Timeline
+          </button>
+        </div>
+
+        {lens === "canvas" ? (
+          <CanvasPane
+            onNodeSelect={handleNodeSelect}
+            onNodeDoubleClick={handleNodeDoubleClick}
+            onPlaySequence={handlePlaySequence}
+            leftPanelOpen={layout.leftOpen}
+            rightPanelOpen={layout.rightOpen}
+            drawingMode={drawingMode}
+            strokeColour={strokeColour}
+          />
+        ) : (
+          <section
+            className="canvas-pane"
+            data-testid="timeline-pane"
+            style={{ position: "absolute", inset: 0, left: 26 }}
+          >
+            <TimelineLens
+              dataSource={timelineDataSource}
+              onOpenNode={openNodeDocument}
+            />
+          </section>
+        )}
 
         <RightPanelSlot
           open={layout.rightOpen}
