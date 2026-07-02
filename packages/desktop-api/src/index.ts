@@ -302,6 +302,50 @@ export function buildFlushRequest(
   };
 }
 
+export interface AgentActivity {
+  id: string;
+  canvasId: string | null;
+  kind: "node_created" | "node_updated" | "relationship_created" | "episode_ingested";
+  graphNodeId: string | null;
+  relationshipId: string | null;
+  title: string;
+  entityType: string | null;
+  detailJson: string;
+  reviewed: boolean;
+  placed: boolean;
+  createdAt: string;
+}
+
+interface RawAgentActivityRow {
+  id: string;
+  canvasId: string | null;
+  kind: string;
+  graphNodeId: string | null;
+  relationshipId: string | null;
+  title: string;
+  entityType: string | null;
+  detailJson: string;
+  reviewed: boolean;
+  placed: boolean;
+  createdAt: string;
+}
+
+export function mapAgentActivityRow(row: RawAgentActivityRow): AgentActivity {
+  return {
+    id: row.id,
+    canvasId: row.canvasId ?? null,
+    kind: row.kind as AgentActivity["kind"],
+    graphNodeId: row.graphNodeId ?? null,
+    relationshipId: row.relationshipId ?? null,
+    title: row.title ?? "",
+    entityType: row.entityType ?? null,
+    detailJson: row.detailJson ?? "{}",
+    reviewed: Boolean(row.reviewed),
+    placed: Boolean(row.placed),
+    createdAt: row.createdAt,
+  };
+}
+
 export interface WorkspaceTransport {
   attachProjectResourceRoot(
     request: ResourceRootMutationRequest
@@ -377,6 +421,9 @@ export interface WorkspaceTransport {
     graphNodeId: string;
     sourceAbsolutePath: string;
   }): Promise<string>;
+
+  // ---- Agent activity (WS6) ----
+  listAgentActivity(input: { limit?: number }): Promise<AgentActivity[]>;
 }
 
 const DEFAULT_BRIDGE_PORT = 4789;
@@ -545,6 +592,12 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
         },
       });
     },
+    async listAgentActivity(input) {
+      const rows = await invokeTauri<RawAgentActivityRow[]>("list_agent_activity_command", {
+        limit: input.limit ?? null,
+      });
+      return rows.map(mapAgentActivityRow);
+    },
   };
 }
 
@@ -682,6 +735,13 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     async upsertEdgeLayout() { throw new Error("read-only web build"); },
     async upsertCanvasAppState() { throw new Error("read-only web build"); },
     async importNodeImage() { throw new Error("read-only web build"); },
+    async listAgentActivity(input) {
+      const url = `${BRIDGE_BASE_URL}/agent-activity?limit=${input.limit ?? 50}`;
+      const response = await fetch(url);
+      if (!response.ok) return [];
+      const rows = (await response.json()) as RawAgentActivityRow[];
+      return rows.map(mapAgentActivityRow);
+    },
   };
 }
 

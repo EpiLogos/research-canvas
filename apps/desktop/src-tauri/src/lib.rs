@@ -1,5 +1,6 @@
 pub mod api;
 pub mod commands {
+    pub mod agent_activity;
     pub mod assets;
     pub mod export;
     pub mod graph;
@@ -120,6 +121,7 @@ pub fn run() {
             commands::graph::upsert_node_layouts_command,
             commands::graph::upsert_edge_layout_command,
             commands::graph::upsert_canvas_app_state_command,
+            commands::agent_activity::list_agent_activity_command,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Research Canvas");

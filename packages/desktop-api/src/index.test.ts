@@ -4,6 +4,8 @@ import {
   buildIndexedEntryTree,
   buildProjectTree,
   createWorkspaceTransport,
+  mapAgentActivityRow,
+  type AgentActivity,
   type IndexedEntry,
   type ProjectTreeNode
 } from "./index";
@@ -91,5 +93,27 @@ describe("importNodeImage transport", () => {
         sourceAbsolutePath: "/x/cat.png",
       }),
     ).rejects.toThrow(/read-only web build/i);
+  });
+});
+
+describe("agent activity mapping", () => {
+  it("maps a raw row into the AgentActivity shape", () => {
+    const row = {
+      id: "a1",
+      canvasId: "c1",
+      kind: "node_created",
+      graphNodeId: "gn-1",
+      relationshipId: null,
+      title: "Cosimo de Medici",
+      entityType: "Figure",
+      detailJson: "{}",
+      reviewed: false,
+      placed: false,
+      createdAt: "2026-06-28T00:00:00Z",
+    };
+    const mapped: AgentActivity = mapAgentActivityRow(row);
+    expect(mapped.kind).toBe("node_created");
+    expect(mapped.graphNodeId).toBe("gn-1");
+    expect(mapped.reviewed).toBe(false);
   });
 });
