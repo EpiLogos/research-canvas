@@ -1,6 +1,8 @@
 import { TerminalPane } from "../features/terminal/TerminalPane";
 import { ContentTab } from "../features/viewer/ContentTab";
 import { InspectorTab } from "../features/inspector/InspectorTab";
+import { AgentActivityPanel } from "../features/agent/AgentActivityPanel";
+import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import type { RightTab } from "./useShellLayout";
 
 interface RightPanelSlotProps {
@@ -16,6 +18,7 @@ const TABS: { id: RightTab; label: string }[] = [
   { id: "inspector", label: "Inspector" },
   { id: "content", label: "Content" },
   { id: "terminal", label: "Terminal" },
+  { id: "agent", label: "Agent" },
 ];
 
 export function RightPanelSlot({
@@ -26,6 +29,7 @@ export function RightPanelSlot({
   onResizeStart,
   onFullScreen,
 }: RightPanelSlotProps) {
+  const workspace = useCanvasWorkspace();
   return (
     <aside className="right-panel-slot" data-open={open ? "true" : "false"} aria-hidden={!open} data-testid="right-panel">
       {/* Resize handle on left edge */}
@@ -63,6 +67,13 @@ export function RightPanelSlot({
           </div>
           <div className="rps-pane" data-visible={activeTab === "terminal" ? "true" : "false"}>
             <TerminalPane />
+          </div>
+          <div className="rps-pane" data-visible={activeTab === "agent" ? "true" : "false"}>
+            <AgentActivityPanel
+              transport={workspace.transport}
+              canvasId={workspace.canvasId}
+              databasePath={workspace.databasePath}
+            />
           </div>
         </div>
       </div>
