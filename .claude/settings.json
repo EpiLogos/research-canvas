@@ -8,6 +8,58 @@
         ".claude/mcp-servers/research-canvas/src/index.ts"
       ],
       "cwd": "."
+    },
+    "graphiti": {
+      "command": "uvx",
+      "args": ["graphiti-mcp"],
+      "env": {
+        "NEO4J_URI": "${NEO4J_URI}",
+        "NEO4J_USER": "${NEO4J_USER}",
+        "NEO4J_PASSWORD": "${NEO4J_PASSWORD}",
+        "NEO4J_DATABASE": "${NEO4J_DATABASE}",
+        "GOOGLE_API_KEY": "${GOOGLE_API_KEY}",
+        "GRAPHITI_LLM_MODEL": "${GRAPHITI_LLM_MODEL}",
+        "GRAPHITI_EMBEDDER_MODEL": "${GRAPHITI_EMBEDDER_MODEL}",
+        "GRAPHITI_RERANKER_MODEL": "${GRAPHITI_RERANKER_MODEL}"
+      }
     }
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --directory antichrist-vault/claude-memory-compiler python hooks/session-start.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --directory antichrist-vault/claude-memory-compiler python hooks/pre-compact.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --directory antichrist-vault/claude-memory-compiler python hooks/session-end.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
   }
 }
