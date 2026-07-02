@@ -57,10 +57,10 @@ pub struct CanvasService {
     db_path: String,
 }
 
-const DEFAULT_NODE_WIDTH: f64 = 240.0;
-const DEFAULT_NODE_HEIGHT: f64 = 160.0;
-const AUTO_PLACE_STEP: f64 = 64.0;
-const AUTO_PLACE_PER_ROW: usize = 8;
+/// Default title used when a layout row has no `__canvasNode` sidecar (or the
+/// sidecar has no usable title) and no matching Neo4j node — should only
+/// happen for layout rows written before the sidecar carried a title.
+const SYNTHESIZED_DEFAULT_TITLE: &str = "Untitled";
 
 impl CanvasService {
     pub fn new(graph: GraphRepository, db_path: String) -> Self {
@@ -72,63 +72,75 @@ impl CanvasService {
         canvas_id: &str,
         lens: &str,
     ) -> Result<CanvasView, String> {
-        // 1. Substance from Neo4j (lens-filtered).
-        let nodes = self.graph.list_nodes_for_lens(lens).await?;
-        let relationships = self.graph.list_relationships().await?;
-
-        // 2. Layout from SQLite.
-        let db = Database::open(&self.db_path).map_err(|e| e.to_string())?;
-        let conn = db.connection();
-        let layout_repo = LayoutRepository::new(conn);
-        let layout_rows = layout_repo
-            .list_node_layout(canvas_id)
-            .map_err(|e| e.to_string())?;
-        let edge_rows = layout_repo
-            .list_edge_layout(canvas_id)
-            .map_err(|e| e.to_string())?;
-        let app_state = layout_repo
-            .get_app_state(canvas_id)
-            .map_err(|e| e.to_string())?;
-
-        // 3. Zip on graph_node_id; auto-place nodes without a layout row.
-        let mut layout_by_id: std::collections::HashMap<String, NodeLayoutRecord> =
-            std::collections::HashMap::new();
-        for row in layout_rows {
-            layout_by_id.insert(row.graph_node_id.clone(), row);
+        if lens != "canvas" && lens != "timeline" {
+            return Err(format!("unknown lens: {lens}"));
         }
 
-        let mut joined = Vec::with_capacity(nodes.len());
-        let mut auto_index = 0usize;
-        for node in nodes {
-            let layout = match layout_by_id.get(&node.graph_node_id) {
-                Some(row) => NodeLayoutDto {
-                    graph_node_id: row.graph_node_id.clone(),
-                    canvas_id: row.canvas_id.clone(),
-                    position_x: row.position_x,
-                    position_y: row.position_y,
-                    width: row.width,
-                    height: row.height,
-                    style: serde_json::from_str(&row.style_json)
-                        .unwrap_or_else(|_| serde_json::json!({})),
-                },
-                None => {
-                    let col = (auto_index % AUTO_PLACE_PER_ROW) as f64;
-                    let row_idx = (auto_index / AUTO_PLACE_PER_ROW) as f64;
-                    auto_index += 1;
-                    NodeLayoutDto {
-                        graph_node_id: node.graph_node_id.clone(),
-                        canvas_id: canvas_id.to_string(),
-                        position_x: col * (DEFAULT_NODE_WIDTH + AUTO_PLACE_STEP),
-                        position_y: row_idx * (DEFAULT_NODE_HEIGHT + AUTO_PLACE_STEP),
-                        width: DEFAULT_NODE_WIDTH,
-                        height: DEFAULT_NODE_HEIGHT,
-                        style: serde_json::json!({}),
-                    }
-                }
+        // 1. Layout from SQLite — the LOCAL, LAYOUT-AUTHORITATIVE source of
+        // truth for "what nodes are on this canvas". A node that only exists
+        // locally (best-effort Neo4j sync hasn't landed, or Neo4j is
+        // unreachable) must still render. Scoped in a block so the
+        // non-`Send` `Connection`/`LayoutRepository` are dropped before the
+        // Neo4j `.await`s below (required for this future to be `Send`,
+        // which `#[tauri::command]` needs).
+        let (layout_rows, edge_rows, app_state) = {
+            let db = Database::open(&self.db_path).map_err(|e| e.to_string())?;
+            let conn = db.connection();
+            let layout_repo = LayoutRepository::new(conn);
+            let layout_rows = layout_repo
+                .list_node_layout(canvas_id)
+                .map_err(|e| e.to_string())?;
+            let edge_rows = layout_repo
+                .list_edge_layout(canvas_id)
+                .map_err(|e| e.to_string())?;
+            let app_state = layout_repo
+                .get_app_state(canvas_id)
+                .map_err(|e| e.to_string())?;
+            (layout_rows, edge_rows, app_state)
+        };
+
+        let relationships = self.graph.list_relationships().await?;
+
+        // 2. Substance from Neo4j, batch-fetched for exactly the layout
+        // rows' ids (best-effort — a lookup failure degrades to "no node
+        // found", which synthesizes substance below rather than erroring).
+        let ids: Vec<String> = layout_rows.iter().map(|r| r.graph_node_id.clone()).collect();
+        let mut nodes_by_id: std::collections::HashMap<String, GraphNode> =
+            std::collections::HashMap::new();
+        if let Ok(found) = self.graph.get_nodes(&ids).await {
+            for node in found {
+                nodes_by_id.insert(node.graph_node_id.clone(), node);
+            }
+        }
+
+        // 3. For each layout row: use the real Neo4j node if present, else
+        // synthesize a GraphNode from the __canvasNode sidecar so the row is
+        // never dropped.
+        let mut joined = Vec::with_capacity(layout_rows.len());
+        for row in layout_rows {
+            let node = match nodes_by_id.remove(&row.graph_node_id) {
+                Some(node) => node,
+                None => synthesize_node_from_layout(&row),
+            };
+            let layout = NodeLayoutDto {
+                graph_node_id: row.graph_node_id.clone(),
+                canvas_id: row.canvas_id.clone(),
+                position_x: row.position_x,
+                position_y: row.position_y,
+                width: row.width,
+                height: row.height,
+                style: serde_json::from_str(&row.style_json)
+                    .unwrap_or_else(|_| serde_json::json!({})),
             };
             joined.push(JoinedCanvasNode { node, layout });
         }
-        // Orphan layout rows (no substance) are simply not emitted.
+
+        // 4. Lens filter (mirrors list_nodes_for_lens: timeline shows only
+        // is_temporal nodes). A synthesized node is always is_temporal =
+        // false, so it is naturally excluded from the timeline lens.
+        if lens == "timeline" {
+            joined.retain(|j| j.node.is_temporal);
+        }
 
         let edges = edge_rows
             .into_iter()
@@ -153,6 +165,71 @@ impl CanvasService {
             viewport,
             app_state: app_state_json,
         })
+    }
+}
+
+/// Minimal shape of the `__canvasNode` sidecar stored in `style_json`
+/// (see `CanvasNodeSidecar` in packages/desktop-api/src/graph.ts). Only the
+/// fields needed to synthesize substance (`type`, `title`) are extracted;
+/// unknown/extra fields are ignored.
+#[derive(Debug, Deserialize)]
+struct CanvasNodeSidecar {
+    #[serde(rename = "type")]
+    node_type: Option<String>,
+    title: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StyleWithSidecar {
+    #[serde(rename = "__canvasNode")]
+    canvas_node: Option<CanvasNodeSidecar>,
+}
+
+/// Maps a `__canvasNode.type` to the Neo4j entity label a synced version of
+/// that node would carry, mirroring the frontend's `entityTypeForNodeType`
+/// (packages/canvas/src/state/canvasStore.ts): "resource" -> Source,
+/// everything else (note/group/portal) -> Work.
+fn entity_type_for_sidecar_type(node_type: &str) -> &'static str {
+    if node_type == "resource" { "Source" } else { "Work" }
+}
+
+/// Builds a GraphNode's substance from a layout row's `__canvasNode` sidecar
+/// when no Neo4j node exists for its `graph_node_id` — e.g. a node created
+/// locally whose best-effort Neo4j sync hasn't landed (or Neo4j was
+/// unreachable at creation time). Always `is_temporal: false` so a
+/// synthesized node is naturally excluded from the timeline lens.
+fn synthesize_node_from_layout(row: &NodeLayoutRecord) -> GraphNode {
+    let sidecar: Option<CanvasNodeSidecar> = serde_json::from_str::<StyleWithSidecar>(&row.style_json)
+        .ok()
+        .and_then(|s| s.canvas_node);
+
+    let title = sidecar
+        .as_ref()
+        .and_then(|s| s.title.clone())
+        .filter(|t| !t.is_empty())
+        .unwrap_or_else(|| SYNTHESIZED_DEFAULT_TITLE.to_string());
+    let entity_type = sidecar
+        .as_ref()
+        .and_then(|s| s.node_type.as_deref())
+        .map(entity_type_for_sidecar_type)
+        .unwrap_or("Work")
+        .to_string();
+
+    GraphNode {
+        graph_node_id: row.graph_node_id.clone(),
+        entity_type,
+        title,
+        body: "[]".to_string(),
+        summary: String::new(),
+        archetypal_resonance: None,
+        coordinate: None,
+        source_coordinates: Vec::new(),
+        is_temporal: false,
+        valid_from: None,
+        valid_to: None,
+        temporal_precision: None,
+        created_at: row.created_at.clone(),
+        updated_at: row.updated_at.clone(),
     }
 }
 
