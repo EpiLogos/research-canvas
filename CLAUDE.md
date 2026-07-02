@@ -5,10 +5,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 This is a dual-purpose repository:
-1. **Research content** — episode specifications and research logs for a series on archetypes and civilizational power structures (in `ep-0.1/`, `ep-0.2/`)
-2. **Research Canvas app** — a planned local-first Tauri v2 desktop application for organizing and presenting research through interactive visual graphs (implementation plan in `docs/plans/`)
+1. **Research content** — episode specifications and research logs for a series on archetypes and civilizational power structures (in `ep-0.1/`, `ep-0.2/`, `antichrist-vault/`)
+2. **Research Canvas app** — a local-first Tauri v2 desktop application for developing the theory of the *Image of the Antichrist* series as a knowledge graph, navigated through two lenses (a trans-temporal **canvas** and a temporal **timeline**), with a backend-less **web read-layer**.
 
-The app is **not yet implemented**. Start from `docs/plans/2026-03-30-research-canvas-implementation-plan.md` for the full 15-task build sequence.
+The app is **substantially built**: Tauri v2 + React 19 + Vite 7 shell, an XYFlow canvas, an embedded terminal, the `WorkspaceTransport` seam, the static exporter, and the `public-viewer` web app all exist. The data model is being cut over to **Neo4j + Graphiti** (theory substance) joined with **SQLite** (layout only) by `graph_node_id`. The authoritative contracts live in `docs/superpowers/plans/2026-06-28-ws0-contracts-and-architecture.md`; the design is `docs/superpowers/specs/2026-06-28-antichrist-theory-tool-design.md`.
+
+## Documentation
+
+- `docs/setup.md` — clone-and-run: Docker + Neo4j + Graphiti, Gemini keys, terminal + MCP wiring.
+- `docs/architecture.md` — the two-store model, the transport seam, the two lenses, the web read-layer.
+- `docs/data-model.md` — entity + relationship types, the coordinate grammar, the seeded operators.
 
 ## Development Commands
 
@@ -82,7 +88,7 @@ tests/
 
 ### Data Persistence
 
-All authoring state (projects, nodes, edges, annotations, sequences) lives in SQLite. The frontend communicates exclusively through typed Tauri IPC commands defined in `packages/desktop-api`. Never bypass the repository layer to access SQLite directly from frontend code.
+Two stores, cleanly split, joined only by `graph_node_id` (an app-minted UUIDv4). **Neo4j + Graphiti** holds theory substance (node bodies, relationships, temporal validity, provenance); **SQLite** holds presentation only (position, size, style, viewport, app-state), each layout row keyed by `graph_node_id`. The join is performed in the Rust repository layer and re-exposed to the frontend already joined — never join across the database boundary in SQL. The frontend communicates exclusively through the `WorkspaceTransport` interface (`packages/desktop-api`); the web build swaps in a read-only static-bundle transport. Never bypass the repository/transport layer to reach a database directly from frontend code.
 
 ## Development Rules (from implementation plan)
 
