@@ -39,12 +39,14 @@ export interface GraphRelationship {
 }
 
 /** Sidecar stored inside style.__canvasNode to reconstruct the discriminated
- *  union type of a CanvasNode on hydrate (WS4a Fix 1). */
+ *  union type of a CanvasNode on hydrate (WS4a Fix 1).
+ *  `title` (lf-task-1) lets a layout row fully describe a node offline, so a
+ *  local-only node (no synced Neo4j GraphNode yet) can still be named. */
 export type CanvasNodeSidecar =
-  | { type: "note"; content: string; tags: string[] }
-  | { type: "resource"; resourceKind: string; absolutePath: string; relativePath: string; mimeType: string; fileFingerprint: string }
-  | { type: "group"; color: string; childNodeIds: string[] }
-  | { type: "portal"; targetCanvasId: string };
+  | { type: "note"; title: string; content: string; tags: string[] }
+  | { type: "resource"; title: string; resourceKind: string; absolutePath: string; relativePath: string; mimeType: string; fileFingerprint: string }
+  | { type: "group"; title: string; color: string; childNodeIds: string[] }
+  | { type: "portal"; title: string; targetCanvasId: string };
 
 export interface NodeLayout {
   graphNodeId: string;

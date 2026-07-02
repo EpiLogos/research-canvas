@@ -71,11 +71,13 @@ const graphRelationshipSchema: z.ZodType<GraphRelationship> = z.object({
 const canvasNodeSidecarSchema: z.ZodType<CanvasNodeSidecar> = z.union([
   z.object({
     type: z.literal("note"),
+    title: z.string(),
     content: z.string(),
     tags: z.array(z.string())
   }),
   z.object({
     type: z.literal("resource"),
+    title: z.string(),
     resourceKind: z.string(),
     absolutePath: z.string(),
     relativePath: z.string(),
@@ -84,11 +86,13 @@ const canvasNodeSidecarSchema: z.ZodType<CanvasNodeSidecar> = z.union([
   }),
   z.object({
     type: z.literal("group"),
+    title: z.string(),
     color: z.string(),
     childNodeIds: z.array(z.string())
   }),
   z.object({
     type: z.literal("portal"),
+    title: z.string(),
     targetCanvasId: z.string()
   })
 ]);

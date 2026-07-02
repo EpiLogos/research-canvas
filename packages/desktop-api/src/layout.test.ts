@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { nodeLayoutFromCanvasNode, edgeLayoutFromCanvasEdge, buildFlushRequest } from "./index";
+import type { CanvasNodeSidecar } from "./graph";
 import type { CanvasEdge, CanvasNode } from "@research-canvas/schema";
 
 const baseNode: CanvasNode = {
@@ -84,5 +85,67 @@ describe("layout mappers", () => {
     expect(layout.relationKind).toBe("supports");
     expect(layout.sourceHandleId).toBe("node-1-right");
     expect(layout.style.stroke).toBe("#f0b45a");
+  });
+});
+
+describe("nodeLayoutFromCanvasNode — sidecar carries title (lf-task-1)", () => {
+  it("round-trips a note node's title into layout.style.__canvasNode.title", () => {
+    const noteNode: CanvasNode = {
+      ...baseNode,
+      type: "note",
+      title: "My Note Title",
+      content: "body text",
+      tags: ["a"],
+    } as unknown as CanvasNode;
+
+    const layout = nodeLayoutFromCanvasNode(noteNode);
+    const sidecar = layout.style.__canvasNode as CanvasNodeSidecar;
+    expect(sidecar.type).toBe("note");
+    expect(sidecar.title).toBe("My Note Title");
+  });
+
+  it("round-trips a group node's title into layout.style.__canvasNode.title", () => {
+    const groupNode: CanvasNode = {
+      id: "node-2",
+      canvasId: "canvas-1",
+      type: "group",
+      title: "My Group Title",
+      position: { x: 0, y: 0 },
+      size: { width: 320, height: 240 },
+      summary: "",
+      color: "#334155",
+      childNodeIds: [],
+      createdAt: "2026-06-28T00:00:00Z",
+      updatedAt: "2026-06-28T00:00:00Z",
+    } as unknown as CanvasNode;
+
+    const layout = nodeLayoutFromCanvasNode(groupNode);
+    const sidecar = layout.style.__canvasNode as CanvasNodeSidecar;
+    expect(sidecar.type).toBe("group");
+    expect(sidecar.title).toBe("My Group Title");
+  });
+
+  it("round-trips a resource node's title into layout.style.__canvasNode.title", () => {
+    const resourceNode: CanvasNode = {
+      id: "node-3",
+      canvasId: "canvas-1",
+      type: "resource",
+      title: "My Resource Title",
+      position: { x: 0, y: 0 },
+      size: { width: 260, height: 180 },
+      summary: "",
+      resourceKind: "markdown",
+      absolutePath: "/workspace/report.md",
+      relativePath: "report.md",
+      mimeType: "text/markdown",
+      fileFingerprint: "markdown:report.md",
+      createdAt: "2026-06-28T00:00:00Z",
+      updatedAt: "2026-06-28T00:00:00Z",
+    } as unknown as CanvasNode;
+
+    const layout = nodeLayoutFromCanvasNode(resourceNode);
+    const sidecar = layout.style.__canvasNode as CanvasNodeSidecar;
+    expect(sidecar.type).toBe("resource");
+    expect(sidecar.title).toBe("My Resource Title");
   });
 });

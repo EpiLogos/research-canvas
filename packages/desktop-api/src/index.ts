@@ -23,6 +23,7 @@ export type {
 } from "./graph";
 import type {
   ArchetypalLighting,
+  CanvasNodeSidecar,
   CanvasView,
   GraphNode,
   GraphNodePatch,
@@ -165,17 +166,14 @@ export interface SavedSequence {
 
 export function nodeLayoutFromCanvasNode(node: CanvasNode): NodeLayout {
   // Build the type-specific sidecar so canvasViewToNodes can reconstruct the
-  // discriminated union type on reload (Fix 1 — WS4a).
-  type CanvasNodeSidecar =
-    | { type: "note"; content: string; tags: string[] }
-    | { type: "resource"; resourceKind: string; absolutePath: string; relativePath: string; mimeType: string; fileFingerprint: string }
-    | { type: "group"; color: string; childNodeIds: string[] }
-    | { type: "portal"; targetCanvasId: string };
-
+  // discriminated union type on reload (Fix 1 — WS4a). `title` (lf-task-1)
+  // is carried too, so a layout row fully describes a node offline — with
+  // no synced Neo4j GraphNode yet, the sidecar alone still names the node.
   let canvasNode: CanvasNodeSidecar;
   if (node.type === "resource") {
     canvasNode = {
       type: "resource",
+      title: node.title,
       resourceKind: node.resourceKind,
       absolutePath: node.absolutePath,
       relativePath: node.relativePath,
@@ -185,17 +183,20 @@ export function nodeLayoutFromCanvasNode(node: CanvasNode): NodeLayout {
   } else if (node.type === "group") {
     canvasNode = {
       type: "group",
+      title: node.title,
       color: node.color,
       childNodeIds: node.childNodeIds,
     };
   } else if (node.type === "portal") {
     canvasNode = {
       type: "portal",
+      title: node.title,
       targetCanvasId: node.targetCanvasId,
     };
   } else {
     canvasNode = {
       type: "note",
+      title: node.title,
       content: node.content,
       tags: node.tags,
     };
