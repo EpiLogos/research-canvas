@@ -1,3 +1,4 @@
+import type { GraphExportBundle } from "@research-canvas/exporter";
 import type {
   Annotation,
   CanvasEdge,
@@ -26,6 +27,7 @@ import type {
   GraphNode,
   GraphNodePatch,
   GraphRelationship,
+  JoinedCanvasNode,
   LitInstance,
   NewGraphNodeInput,
   NodeLayout,
@@ -976,4 +978,139 @@ function parentDirectory(path: string): string | null {
   }
 
   return path.slice(0, index);
+}
+
+const READ_ONLY_MESSAGE = "read-only web build";
+
+function defaultLayoutFor(graphNodeId: string, canvasId: string): NodeLayout {
+  // Deterministic auto-placement for substance with no layout row, so an
+  // agent-authored node still surfaces in the read-only viewer.
+  let hash = 0;
+  for (let i = 0; i < graphNodeId.length; i += 1) {
+    hash = (hash * 31 + graphNodeId.charCodeAt(i)) >>> 0;
+  }
+  const column = hash % 6;
+  const row = Math.floor(hash / 6) % 6;
+  return {
+    graphNodeId,
+    canvasId,
+    positionX: 80 + column * 320,
+    positionY: 80 + row * 220,
+    width: 240,
+    height: 160,
+    style: {}
+  };
+}
+
+export function createStaticBundleTransport(bundle: GraphExportBundle): WorkspaceTransport {
+  const nodeById = new Map<string, GraphNode>(
+    bundle.nodes.map((node) => [node.graphNodeId, node])
+  );
+  const layoutById = new Map<string, NodeLayout>(
+    bundle.nodeLayout.map((layout) => [layout.graphNodeId, layout])
+  );
+
+  const readOnlyReject = () => Promise.reject(new Error(READ_ONLY_MESSAGE));
+  const readOnlyThrow = (): never => {
+    throw new Error(READ_ONLY_MESSAGE);
+  };
+
+  return {
+    // ---- existing project/file/annotation methods: not served by the static bundle ----
+    attachProjectResourceRoot: readOnlyReject,
+    bootstrapWorkspace: readOnlyReject,
+    detachProjectResourceRoot: readOnlyReject,
+    listProjectResourceRoots: readOnlyReject,
+    loadProjectDocument: readOnlyReject,
+    flushProjectDocument: readOnlyThrow,
+    persistProjectDocument: readOnlyReject,
+    searchProject: readOnlyReject,
+    listDirectories: readOnlyReject,
+    listSavedSequences: readOnlyReject,
+    createSavedSequence: readOnlyReject,
+    updateSavedSequence: readOnlyReject,
+    deleteSavedSequence: readOnlyReject,
+
+    // ---- substance reads ----
+    async readGraphNode({ graphNodeId }) {
+      const node = nodeById.get(graphNodeId);
+      if (!node) {
+        throw new Error(`graph node not found: ${graphNodeId}`);
+      }
+      return node;
+    },
+    async searchGraph({ query, limit }) {
+      const needle = query.trim().toLowerCase();
+      if (needle === "") {
+        return [];
+      }
+      const hits = bundle.nodes.filter((node) =>
+        `${node.title}\n${node.summary}\n${node.archetypalResonance ?? ""}`
+          .toLowerCase()
+          .includes(needle)
+      );
+      return typeof limit === "number" ? hits.slice(0, limit) : hits;
+    },
+    async loadCanvasView({ canvasId, lens }) {
+      const visible =
+        lens === "timeline"
+          ? bundle.nodes.filter((node) => node.isTemporal)
+          : bundle.nodes;
+      const joined: JoinedCanvasNode[] = visible.map((node) => ({
+        node,
+        layout: layoutById.get(node.graphNodeId) ?? defaultLayoutFor(node.graphNodeId, canvasId)
+      }));
+      return {
+        canvasId,
+        nodes: joined,
+        edges: bundle.edgeLayout,
+        relationships: bundle.relationships,
+        viewport: bundle.viewport,
+        appState: bundle.appState
+      };
+    },
+    async archetypalLighting({ operatorGraphNodeId }) {
+      const operator = nodeById.get(operatorGraphNodeId);
+      if (!operator) {
+        throw new Error(`operator node not found: ${operatorGraphNodeId}`);
+      }
+      return {
+        operator,
+        instances: bundle.lightingIndex[operatorGraphNodeId] ?? []
+      };
+    },
+    async resonancesForInstance({ graphNodeId }) {
+      const result: LitInstance[] = [];
+      for (const [operatorId, instances] of Object.entries(bundle.lightingIndex)) {
+        const hit = instances.find((instance) => instance.node.graphNodeId === graphNodeId);
+        if (!hit) {
+          continue;
+        }
+        const operator = nodeById.get(operatorId);
+        if (!operator) {
+          continue;
+        }
+        result.push({ node: operator, relType: hit.relType, dominance: hit.dominance });
+      }
+      return result;
+    },
+
+    // ---- mutations: structurally forbidden on the web read-layer ----
+    createGraphNode: readOnlyReject,
+    updateGraphNode: readOnlyReject,
+    deleteGraphNode: readOnlyReject,
+    connectGraphNodes: readOnlyReject,
+    disconnectGraphNodes: readOnlyReject,
+    upsertNodeLayout: readOnlyReject,
+    upsertNodeLayouts: readOnlyReject,
+    upsertEdgeLayout: readOnlyReject,
+    upsertCanvasAppState: readOnlyReject,
+    flushCanvasLayout: readOnlyThrow,
+
+    // ---- content / image import: not served by the static bundle ----
+    importNodeImage: readOnlyReject,
+
+    // ---- agent activity (WS6): excluded from the exported bundle per design §6 ----
+    listAgentActivity: readOnlyReject
+  };
 }

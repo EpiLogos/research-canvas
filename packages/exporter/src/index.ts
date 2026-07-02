@@ -14,6 +14,8 @@ export { buildExportManifest, slugify } from "./manifest";
 export type { ExportManifest, ExportNodePage } from "./manifest";
 export { blockNoteJsonToMarkdown, markdownToBlockNoteJson, renderMarkdownToHtml } from "./renderMarkdown";
 export type { BlockNoteBlock, BlockNoteInline } from "./renderMarkdown";
+export { graphExportBundleSchema, parseGraphExportBundle } from "./graphBundle";
+export type { GraphExportBundle } from "./graphBundle";
 
 export interface StaticExportResult {
   outputDir: string;

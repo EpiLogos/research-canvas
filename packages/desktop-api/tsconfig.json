@@ -3,7 +3,7 @@
   "compilerOptions": {
     "composite": true,
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": "../..",
     "declaration": true,
     "emitDeclarationOnly": true,
     "noEmit": false
@@ -13,5 +13,6 @@
       "path": "../schema"
     }
   ],
-  "include": ["src"]
+  "include": ["src", "../exporter/src"],
+  "exclude": ["../exporter/src/**/*.test.ts"]
 }

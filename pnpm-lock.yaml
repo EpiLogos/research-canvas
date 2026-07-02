@@ -141,6 +141,9 @@ importers:
 
   packages/desktop-api:
     dependencies:
+      '@research-canvas/exporter':
+        specifier: workspace:*
+        version: link:../exporter
       '@research-canvas/schema':
         specifier: workspace:*
         version: link:../schema
