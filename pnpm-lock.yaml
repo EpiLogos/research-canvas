@@ -147,9 +147,15 @@ importers:
 
   packages/exporter:
     dependencies:
+      '@research-canvas/desktop-api':
+        specifier: workspace:*
+        version: link:../desktop-api
       '@research-canvas/schema':
         specifier: workspace:*
         version: link:../schema
+      zod:
+        specifier: ^4.1.11
+        version: 4.3.6
 
   packages/node-document:
     dependencies:

@@ -9,6 +9,8 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@research-canvas/schema": "workspace:*"
+    "@research-canvas/desktop-api": "workspace:*",
+    "@research-canvas/schema": "workspace:*",
+    "zod": "^4.1.11"
   }
 }
