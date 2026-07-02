@@ -218,14 +218,37 @@ export function CanvasWorkspaceProvider({
 
         if (cancelled) return;
 
-        // Hydrate nodes/edges from Neo4j-joined view (clean cutover — no legacy fallback).
-        const view = await transport.loadCanvasView({
-          databasePath,
-          canvasId: document.project.primaryCanvasId,
-          lens: "canvas",
-        });
-        if (cancelled) return;
-        const { nodes: graphNodes, edges: graphEdges } = canvasViewToCanvasNodes(view);
+        // Local-first hydration: the canvas renders from the local document
+        // immediately. Prefer the Neo4j-joined view when it actually has nodes;
+        // otherwise (empty, or the graph is unreachable) keep the local nodes so
+        // existing canvases and offline work still show. Neo4j is a best-effort
+        // sync/enrichment target, never a gate on seeing your canvas.
+        let graphNodes = document.nodes;
+        let graphEdges = document.edges;
+        try {
+          const view = await transport.loadCanvasView({
+            databasePath,
+            canvasId: document.project.primaryCanvasId,
+            lens: "canvas",
+          });
+          if (cancelled) return;
+          const joined = canvasViewToCanvasNodes(view);
+          // Union the Neo4j-joined nodes (new, graph-backed) with any local
+          // document nodes not yet in the graph (e.g. pre-cutover nodes, or ones
+          // whose best-effort sync hasn't landed), deduped by id — Neo4j wins.
+          const viewNodeIds = new Set(joined.nodes.map((n) => n.id));
+          graphNodes = [
+            ...joined.nodes,
+            ...document.nodes.filter((n) => !viewNodeIds.has(n.id)),
+          ];
+          const viewEdgeIds = new Set(joined.edges.map((e) => e.id));
+          graphEdges = [
+            ...joined.edges,
+            ...document.edges.filter((e) => !viewEdgeIds.has(e.id)),
+          ];
+        } catch (error) {
+          console.warn("loadCanvasView failed; rendering local document nodes", error);
+        }
 
         if (cancelled) return;
 
@@ -512,15 +535,8 @@ export function CanvasWorkspaceProvider({
       },
       async createNoteNode(position) {
         const graphNodeId = crypto.randomUUID();
-        try {
-          await transport.createGraphNode({
-            ...buildNewGraphNodeInput({ nodeType: "note", title: "Untitled note" }),
-            graphNodeId,
-          } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string });
-        } catch (error) {
-          setErrorMessage(error instanceof Error ? error.message : "failed to create node");
-          return;
-        }
+        // Local-first: add the node immediately so it always appears and
+        // persists (SQLite layout), regardless of Neo4j availability.
         const node = stores.store.getState().createNoteNode({
           title: "Untitled note",
           content: "",
@@ -530,18 +546,18 @@ export function CanvasWorkspaceProvider({
         if (position) {
           stores.store.getState().updateNodePosition(node.id, position);
         }
+        // Best-effort sync of theory substance to Neo4j; never discard the
+        // local node if the graph is unavailable.
+        void transport
+          .createGraphNode({
+            ...buildNewGraphNodeInput({ nodeType: "note", title: "Untitled note" }),
+            graphNodeId,
+          } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string })
+          .catch((error) => console.warn("createGraphNode sync failed; node kept locally", error));
       },
       async createGroupNode(position) {
         const graphNodeId = crypto.randomUUID();
-        try {
-          await transport.createGraphNode({
-            ...buildNewGraphNodeInput({ nodeType: "group", title: "New group" }),
-            graphNodeId,
-          } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string });
-        } catch (error) {
-          setErrorMessage(error instanceof Error ? error.message : "failed to create node");
-          return;
-        }
+        // Local-first: add the node immediately; sync to Neo4j best-effort.
         stores.store.getState().createGroupNode({
           title: "New group",
           x: position?.x ?? 100,
@@ -549,21 +565,19 @@ export function CanvasWorkspaceProvider({
           id: graphNodeId,
           graphNodeId,
         });
+        void transport
+          .createGraphNode({
+            ...buildNewGraphNodeInput({ nodeType: "group", title: "New group" }),
+            graphNodeId,
+          } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string })
+          .catch((error) => console.warn("createGraphNode sync failed; node kept locally", error));
       },
       async addResourceNode(entry, position) {
         const absolutePath = ("absolutePath" in entry ? entry.absolutePath : entry.path) ?? "";
         const relativePath = ("relativePath" in entry ? entry.relativePath : entry.path) ?? entry.name;
         const kind = (entry.kind ?? "binary") as "markdown" | "image" | "pdf" | "text" | "binary" | "directory" | "url" | "audio" | "video";
         const graphNodeId = crypto.randomUUID();
-        try {
-          await transport.createGraphNode({
-            ...buildNewGraphNodeInput({ nodeType: "resource", title: entry.name }),
-            graphNodeId,
-          } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string });
-        } catch (error) {
-          setErrorMessage(error instanceof Error ? error.message : "failed to create node");
-          return;
-        }
+        // Local-first: place the resource node immediately; sync best-effort.
         const node = stores.store.getState().createResourceNode({
           title: entry.name,
           absolutePath,
@@ -573,6 +587,12 @@ export function CanvasWorkspaceProvider({
           graphNodeId,
         });
         stores.store.getState().updateNodePosition(node.id, position);
+        void transport
+          .createGraphNode({
+            ...buildNewGraphNodeInput({ nodeType: "resource", title: entry.name }),
+            graphNodeId,
+          } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string })
+          .catch((error) => console.warn("createGraphNode sync failed; node kept locally", error));
       },
       async addResourceNodeFromAbsolutePath(absolutePath, position) {
         const plan = deriveResourceImportPlan({
@@ -593,15 +613,7 @@ export function CanvasWorkspaceProvider({
         }
 
         const graphNodeId = crypto.randomUUID();
-        try {
-          await transport.createGraphNode({
-            ...buildNewGraphNodeInput({ nodeType: "resource", title: plan.title }),
-            graphNodeId,
-          } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string });
-        } catch (error) {
-          setErrorMessage(error instanceof Error ? error.message : "failed to create node");
-          return;
-        }
+        // Local-first: place the resource node immediately; sync best-effort.
         const node = stores.store.getState().createResourceNode({
           title: plan.title,
           absolutePath,
@@ -611,6 +623,12 @@ export function CanvasWorkspaceProvider({
           graphNodeId,
         });
         stores.store.getState().updateNodePosition(node.id, position);
+        void transport
+          .createGraphNode({
+            ...buildNewGraphNodeInput({ nodeType: "resource", title: plan.title }),
+            graphNodeId,
+          } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string })
+          .catch((error) => console.warn("createGraphNode sync failed; node kept locally", error));
       },
       deleteEdge: (edgeId) => {
         stores.store.getState().deleteEdge(edgeId);
@@ -636,33 +654,32 @@ export function CanvasWorkspaceProvider({
         if (!original) return;
 
         const newId = crypto.randomUUID();
-
-        // Read the original's graph substance if it has a real Neo4j node, then
-        // create a fully independent Neo4j node for the duplicate (WS4a invariant:
-        // every canvas node maps 1:1 to its OWN GraphNode).
-        try {
-          let body = "[]";
-          let entityType = entityTypeForNodeType(original.type as "note" | "group" | "resource" | "portal");
-          if (original.graphNodeId) {
-            const sourceNode = await transport.readGraphNode({ graphNodeId: original.graphNodeId });
-            body = sourceNode.body;
-            entityType = entityTypeForNodeType(original.type as "note" | "group" | "resource" | "portal");
-          }
-
-          await transport.createGraphNode({
-            entityType,
-            title: original.title,
-            body,
-            isTemporal: false,
-            sourceCoordinates: [],
-            graphNodeId: newId,
-          } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string });
-        } catch (error) {
-          setErrorMessage(error instanceof Error ? error.message : "failed to duplicate node");
-          return;
-        }
-
+        // Local-first: duplicate the node immediately; sync an independent Neo4j
+        // node for the copy best-effort (WS4a invariant: each canvas node maps
+        // 1:1 to its OWN GraphNode — the duplicate never shares the original's).
         stores.store.getState().duplicateNode(nodeId, { id: newId, graphNodeId: newId });
+        void (async () => {
+          try {
+            let body = "[]";
+            const entityType = entityTypeForNodeType(
+              original.type as "note" | "group" | "resource" | "portal"
+            );
+            if (original.graphNodeId) {
+              const sourceNode = await transport.readGraphNode({ graphNodeId: original.graphNodeId });
+              body = sourceNode.body;
+            }
+            await transport.createGraphNode({
+              entityType,
+              title: original.title,
+              body,
+              isTemporal: false,
+              sourceCoordinates: [],
+              graphNodeId: newId,
+            } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string });
+          } catch (error) {
+            console.warn("duplicate createGraphNode sync failed; node kept locally", error);
+          }
+        })();
       },
       selectEntry: setSelectedEntryId,
       selectEdge: setSelectedEdgeId,
