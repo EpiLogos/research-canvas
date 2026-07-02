@@ -1,3 +1,4 @@
+pub mod agent_activity;
 pub mod annotations;
 pub mod canvas;
 pub mod graph;
@@ -7,6 +8,7 @@ pub mod resource_roots;
 pub mod saved_sequences;
 pub mod search;
 
+pub use agent_activity::{AgentActivityRecord, AgentActivityRepository, NewAgentActivity};
 pub use annotations::{AnnotationRecord, AnnotationRepository};
 pub use canvas::{
     Canvas, CanvasEdgeRecord, CanvasGraphRepository, CanvasNodeRecord, CanvasRepository,
