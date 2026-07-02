@@ -1871,6 +1871,38 @@ body[data-shell-dragging="true"] {
   min-height: 0;
 }
 
+/* ─── Lens switch (canvas / timeline) ─────────────────── */
+.lens-switch {
+  position: absolute;
+  left: 36px;
+  top: 10px;
+  z-index: 300;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 0.75rem;
+  background: rgba(10, 10, 22, 0.9);
+  border: 1px solid rgba(244, 232, 208, 0.12);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+}
+
+.lens-switch button {
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.7rem;
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.lens-switch button[data-active="true"] {
+  border-color: rgba(240, 180, 90, 0.26);
+  background: rgba(240, 180, 90, 0.12);
+}
+
 .fullscreen-placeholder {
   position: absolute;
   inset: 0;
