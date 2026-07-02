@@ -38,7 +38,8 @@ export default defineConfig({
       "packages/**/*.test.ts",
       "packages/**/*.test.tsx",
       "apps/**/*.test.ts",
-      "apps/**/*.test.tsx"
+      "apps/**/*.test.tsx",
+      "tests/docs/**/*.test.ts"
     ],
     setupFiles: ["./tests/setup/vitest.setup.ts"]
   }
