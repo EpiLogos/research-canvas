@@ -15,6 +15,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::db::connection::Database;
 use crate::db::repositories::graph::{GraphNode, GraphRelationship, GraphRepository};
 use crate::db::repositories::layout::{
     CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord,
@@ -126,32 +127,27 @@ fn viewport_from_app_state(state: &Option<CanvasAppStateRecord>) -> (BundleViewp
 }
 
 /// Join Neo4j substance with SQLite layout into the backend-less bundle.
+///
+/// Takes a SQLite `database_path` (not an already-open `&rusqlite::Connection`)
+/// and opens the `Database` itself, *after* every `graph_repo` await has
+/// completed — mirroring `CanvasService::load_canvas_view`'s ordering.
+/// `rusqlite::Connection` is `!Sync`; if a `&Connection` were instead accepted
+/// as a parameter, rustc treats it as potentially live across the whole
+/// function body (including the `.await`s above its first use), which makes
+/// this `async fn`'s returned future `!Send`. That's invisible when this
+/// function is driven via `block_on` in a sync test, but breaks when it's
+/// awaited inside a `#[tauri::command] async fn`, since Tauri's
+/// `generate_handler!` requires command futures to be `Send`
+/// (export_graph_bundle_command, Task 9). Opening the connection as a local
+/// after all awaits — never as a parameter — sidesteps that.
 pub async fn build_graph_bundle(
     graph_repo: &GraphRepository,
-    conn: &rusqlite::Connection,
+    database_path: &str,
     canvas_id: &str,
     project_json: Value,
 ) -> Result<GraphExportBundle, String> {
     let nodes = graph_repo.list_nodes_for_lens("canvas").await?;
     let relationships = graph_repo.list_relationships().await?;
-
-    let layout_repo = LayoutRepository::new(conn);
-    let node_layout = layout_repo
-        .list_node_layout(canvas_id)
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .map(node_layout_from_record)
-        .collect::<Vec<_>>();
-    let edge_layout = layout_repo
-        .list_edge_layout(canvas_id)
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .map(edge_layout_from_record)
-        .collect::<Vec<_>>();
-    let app_state_record = layout_repo
-        .get_app_state(canvas_id)
-        .map_err(|error| error.to_string())?;
-    let (viewport, app_state) = viewport_from_app_state(&app_state_record);
 
     // Precompute lighting per lighting-source operator so the read-only viewer
     // can light the timeline without a query engine. Lighting sources are the
@@ -184,6 +180,27 @@ pub async fn build_graph_bundle(
             .collect::<Vec<_>>();
         lighting_index.insert(node.graph_node_id.clone(), instances);
     }
+
+    // All Neo4j awaits are complete; the remaining work is synchronous SQLite
+    // access, so no `.await` follows this point.
+    let db = Database::open(database_path).map_err(|error| error.to_string())?;
+    let layout_repo = LayoutRepository::new(db.connection());
+    let node_layout = layout_repo
+        .list_node_layout(canvas_id)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(node_layout_from_record)
+        .collect::<Vec<_>>();
+    let edge_layout = layout_repo
+        .list_edge_layout(canvas_id)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(edge_layout_from_record)
+        .collect::<Vec<_>>();
+    let app_state_record = layout_repo
+        .get_app_state(canvas_id)
+        .map_err(|error| error.to_string())?;
+    let (viewport, app_state) = viewport_from_app_state(&app_state_record);
 
     Ok(GraphExportBundle {
         generated_at: chrono::Utc::now().to_rfc3339(),

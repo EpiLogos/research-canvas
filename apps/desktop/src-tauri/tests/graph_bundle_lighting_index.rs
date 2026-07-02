@@ -84,7 +84,7 @@ fn build_graph_bundle_populates_lighting_index_for_seeded_operator() {
     // Build the bundle against the live graph + the temp SQLite connection.
     let bundle = support::block_on(build_graph_bundle(
         &repo,
-        db.connection(),
+        db_path.to_str().unwrap(),
         &canvas_id,
         serde_json::json!({ "id": project.id, "displayName": "Antichrist" }),
     ))

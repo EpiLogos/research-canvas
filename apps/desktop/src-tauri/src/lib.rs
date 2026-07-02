@@ -3,6 +3,7 @@ pub mod commands {
     pub mod agent_activity;
     pub mod assets;
     pub mod export;
+    pub mod export_graph_bundle;
     pub mod graph;
     pub mod layout;
     pub mod projects;
@@ -89,6 +90,7 @@ pub fn run() {
             commands::projects::detach_project_resource_root_command,
             commands::export::export_project_bundle_command,
             commands::export::resolve_publish_profile_command,
+            commands::export_graph_bundle::export_graph_bundle_command,
             commands::projects::load_project_document_command,
             commands::projects::list_project_resource_roots_command,
             commands::projects::persist_project_document_command,
