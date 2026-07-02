@@ -4,6 +4,9 @@ import { createWorkspaceTransport, readWorkspaceTextFile } from "@research-canva
 import type { GraphNode, GraphNodePatch } from "@research-canvas/desktop-api";
 import { NodeContentPane } from "./NodeContentPane";
 import { NodeDocumentPane } from "./NodeDocumentPane";
+import { NodeContentDropSurface } from "../canvas/NodeContentDropSurface";
+import { LinkFilePicker } from "../canvas/LinkFilePicker";
+import { LinkNodePicker } from "../canvas/LinkNodePicker";
 
 interface ContentTabProps {
   onFullScreen: () => void;
@@ -72,10 +75,16 @@ export function GraphDocumentContent({
   editable?: boolean;
 }) {
   return (
-    <NodeDocumentPane
-      graphNodeId={graphNodeId}
-      transport={transport}
-      editable={editable}
-    />
+    <NodeContentDropSurface graphNodeId={graphNodeId}>
+      <NodeDocumentPane
+        graphNodeId={graphNodeId}
+        transport={transport}
+        editable={editable}
+      />
+      <div className="graph-document-content__linking">
+        <LinkFilePicker graphNodeId={graphNodeId} />
+        <LinkNodePicker sourceGraphNodeId={graphNodeId} />
+      </div>
+    </NodeContentDropSurface>
   );
 }

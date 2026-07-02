@@ -107,9 +107,11 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   contentLinkingActions: ContentLinkingActions;
 }
 
-const CanvasWorkspaceContext = createContext<CanvasWorkspaceContextValue | null>(
-  null
-);
+// Exported so tests (and future provider composition) can supply a stable
+// context value directly, rather than mounting the full bootstrapping
+// CanvasWorkspaceProvider.
+export const CanvasWorkspaceContext =
+  createContext<CanvasWorkspaceContextValue | null>(null);
 
 export function CanvasWorkspaceProvider({
   children

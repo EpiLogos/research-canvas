@@ -7,7 +7,7 @@ import {
 } from "./relationshipKinds";
 
 describe("relationshipKinds", () => {
-  it("lists exactly the nine spec relationship kinds in order", () => {
+  it("lists exactly the ten spec relationship kinds in order", () => {
     expect(RELATIONSHIP_KINDS.map((option) => option.kind)).toEqual([
       "INSTANTIATES",
       "ECHOES",

@@ -22,9 +22,32 @@ pub fn compute_node_asset_relative_path(graph_node_id: &str, source_file_name: &
     format!("assets/{graph_node_id}/{file_name}")
 }
 
+/// Validate that `graph_node_id` is a plain identifier segment: it must not contain
+/// path separators or `..` components that could escape the `assets/` directory.
+fn validate_graph_node_id(graph_node_id: &str) -> Result<(), String> {
+    let p = Path::new(graph_node_id);
+    // Reject anything that resolves to a different final component than the raw string,
+    // which catches separators, `..`, absolute paths, and multi-component paths.
+    let is_plain = p
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| n == graph_node_id)
+        .unwrap_or(false);
+    if is_plain {
+        Ok(())
+    } else {
+        Err(format!(
+            "invalid graph_node_id {:?}: must be a plain identifier with no path separators or '..'",
+            graph_node_id
+        ))
+    }
+}
+
 /// Copy an external image into `<workspace_root>/assets/<graph_node_id>/<file>` and
 /// return the workspace-relative path. Errors are returned as strings (Tauri command shape).
 pub fn import_node_image(request: ImportNodeImageRequest) -> Result<String, String> {
+    validate_graph_node_id(&request.graph_node_id)?;
+
     let source = Path::new(&request.source_absolute_path);
     let file_name = source
         .file_name()
@@ -90,6 +113,34 @@ mod tests {
 
         let copied = workspace.join("assets").join("n1").join("cat.png");
         assert_eq!(fs::read(&copied).unwrap(), b"PNGDATA");
+
+        fs::remove_dir_all(&temp).ok();
+    }
+
+    #[test]
+    fn rejects_graph_node_id_with_path_traversal() {
+        let temp = std::env::temp_dir().join(format!("ws4-assets-traversal-{}", std::process::id()));
+        let workspace = temp.join("workspace");
+        fs::create_dir_all(&workspace).unwrap();
+
+        // A valid source file so the error must come from graph_node_id validation.
+        let source_dir = temp.join("src");
+        fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("cat.png");
+        fs::write(&source, b"PNGDATA").unwrap();
+
+        for bad_id in &["../../etc", "../sibling", "/absolute", "a/b"] {
+            let request = ImportNodeImageRequest {
+                workspace_root: workspace.to_string_lossy().to_string(),
+                graph_node_id: bad_id.to_string(),
+                source_absolute_path: source.to_string_lossy().to_string(),
+            };
+            assert!(
+                import_node_image(request).is_err(),
+                "expected Err for graph_node_id {:?}",
+                bad_id
+            );
+        }
 
         fs::remove_dir_all(&temp).ok();
     }
