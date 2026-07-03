@@ -24,6 +24,7 @@ import {
 } from "@research-canvas/canvas";
 import { buildNewGraphNodeInput } from "./nodeCreation";
 import { canvasViewToCanvasNodes } from "./canvasViewToNodes";
+import { selectLegacyNodesNeedingImport, importLegacyCanvasNodes } from "./legacyNodeImport";
 import type { CanvasNode, CanvasEdge, Viewport } from "@research-canvas/schema";
 import {
   createWorkspaceTransport,
@@ -227,12 +228,43 @@ export function CanvasWorkspaceProvider({
         let graphNodes = document.nodes;
         let graphEdges = document.edges;
         try {
-          const view = await transport.loadCanvasView({
+          let view = await transport.loadCanvasView({
             databasePath,
             canvasId: document.project.primaryCanvasId,
             lens: "canvas",
           });
           if (cancelled) return;
+
+          // lf-task-4: one-time import of any legacy canvas_nodes rows (the
+          // pre-cutover substance table) that aren't yet represented in the
+          // layout store, so nothing already on a user's canvas is stranded
+          // by the cutover to a layout-authoritative load. Idempotent (skips
+          // nodes that already have a layout row) and best-effort: a failure
+          // here must never block hydration or the canvas render.
+          try {
+            const toImport = selectLegacyNodesNeedingImport(document.nodes, view);
+            if (toImport.length > 0) {
+              await importLegacyCanvasNodes({
+                legacyNodes: toImport,
+                view,
+                databasePath,
+                upsertNodeLayout: (input) => transport.upsertNodeLayout(input),
+                createGraphNode: (input) => transport.createGraphNode(input),
+              });
+              if (cancelled) return;
+              // Re-fetch so the just-imported nodes appear immediately
+              // instead of only after the next reload.
+              view = await transport.loadCanvasView({
+                databasePath,
+                canvasId: document.project.primaryCanvasId,
+                lens: "canvas",
+              });
+              if (cancelled) return;
+            }
+          } catch (error) {
+            console.warn("legacy canvas_nodes import failed; continuing with layout-authoritative view", error);
+          }
+
           const joined = canvasViewToCanvasNodes(view);
           graphNodes = joined.nodes;
           graphEdges = joined.edges;
