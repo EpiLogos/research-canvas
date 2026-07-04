@@ -37,7 +37,7 @@ export function LeftOverlay({ open, mode, onResizeStart, drawingMode, onToggleDr
   }, [workspace]);
 
   return (
-    <aside className="left-overlay" data-open={open ? "true" : "false"} aria-hidden={!open}>
+    <aside className="left-overlay" data-testid="left-overlay" data-open={open ? "true" : "false"} aria-hidden={!open}>
       <div className="left-overlay__inner">
 
         {mode === "files" && (

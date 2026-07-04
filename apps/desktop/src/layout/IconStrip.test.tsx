@@ -5,14 +5,16 @@ import { IconStrip } from "./IconStrip";
 
 function setup(overrides: Partial<Parameters<typeof IconStrip>[0]> = {}) {
   const props = {
-    leftOpen: false,
+    browserActive: false,
     activeLeftMode: "files" as const,
-    onToggleLeft: vi.fn(),
-    onSetLeftMode: vi.fn(),
+    onToggleBrowser: vi.fn(),
+    onSetBrowserMode: vi.fn(),
     onOpenSequences: vi.fn(),
     onOpenSettings: vi.fn(),
-    onOpenInspector: vi.fn(),
-    onOpenTerminal: vi.fn(),
+    inspectorActive: false,
+    onToggleInspector: vi.fn(),
+    terminalActive: false,
+    onToggleTerminal: vi.fn(),
     ...overrides,
   };
   render(<IconStrip {...props} />);
@@ -29,12 +31,18 @@ describe("IconStrip rail", () => {
   it("summons the terminal", () => {
     const props = setup();
     fireEvent.click(screen.getByRole("button", { name: "Terminal" }));
-    expect(props.onOpenTerminal).toHaveBeenCalledTimes(1);
+    expect(props.onToggleTerminal).toHaveBeenCalledTimes(1);
   });
 
   it("summons the inspector", () => {
     const props = setup();
     fireEvent.click(screen.getByRole("button", { name: "Inspector" }));
-    expect(props.onOpenInspector).toHaveBeenCalledTimes(1);
+    expect(props.onToggleInspector).toHaveBeenCalledTimes(1);
+  });
+
+  it("toggles the browser from the Files verb", () => {
+    const props = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Files & Project" }));
+    expect(props.onToggleBrowser).toHaveBeenCalledTimes(1);
   });
 });
