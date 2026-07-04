@@ -7,7 +7,7 @@ import { BottomDock } from "./BottomDock";
 import { InspectorOverlay } from "./InspectorOverlay";
 import { StatusStrip } from "./StatusStrip";
 import { TransportBar } from "./TransportBar";
-import { ReadingStub } from "./ReadingStub";
+import { ReadingLens } from "./ReadingLens";
 import { InspectorTab } from "../features/inspector/InspectorTab";
 import { TerminalPane } from "../features/terminal/TerminalPane";
 import { useShellLayout } from "./useShellLayout";
@@ -43,9 +43,9 @@ export function Shell() {
   const openNodeDocument = useCallback(
     (graphNodeId: string) => {
       workspace.selectNode(graphNodeId);
-      setFullScreenMode("node");
+      setLens("reading");
     },
-    [workspace],
+    [workspace, setLens],
   );
 
   const setBrowserMode = useCallback(
@@ -88,9 +88,9 @@ export function Shell() {
   const handleNodeDoubleClick = useCallback(
     (nodeId: string) => {
       workspace.selectNode(nodeId);
-      setFullScreenMode("node");
+      setLens("reading");
     },
-    [workspace],
+    [workspace, setLens],
   );
 
   const handlePlaySequence = useCallback(() => setFullScreenMode("sequence"), []);
@@ -99,7 +99,7 @@ export function Shell() {
   const inspectorVisible = layout.inspectorOpen && (Boolean(workspace.selectedNodeId) || layout.inspectorPinned);
 
   return (
-    <div className="ishell" ref={layout.shellRef} style={{ "--browser-width": `${layout.browserWidth}px` } as React.CSSProperties}>
+    <div className="ishell" data-lens={lens} ref={layout.shellRef} style={{ "--browser-width": `${layout.browserWidth}px` } as React.CSSProperties}>
       <TransportBar
         lens={lens}
         onSetLens={setLens}
@@ -111,18 +111,20 @@ export function Shell() {
       />
 
       <div className="ishell-body">
-        <IconStrip
-          browserActive={layout.browserOpen}
-          activeLeftMode={leftMode}
-          onToggleBrowser={layout.toggleBrowser}
-          onSetBrowserMode={setBrowserMode}
-          onOpenSequences={() => setSequencesOpen(true)}
-          onOpenSettings={() => setSettingsOpen(true)}
-          inspectorActive={layout.inspectorOpen}
-          onToggleInspector={layout.toggleInspector}
-          terminalActive={layout.dockOpen}
-          onToggleTerminal={layout.toggleDock}
-        />
+        {lens !== "reading" && (
+          <IconStrip
+            browserActive={layout.browserOpen}
+            activeLeftMode={leftMode}
+            onToggleBrowser={layout.toggleBrowser}
+            onSetBrowserMode={setBrowserMode}
+            onOpenSequences={() => setSequencesOpen(true)}
+            onOpenSettings={() => setSettingsOpen(true)}
+            inspectorActive={inspectorVisible}
+            onToggleInspector={layout.toggleInspector}
+            terminalActive={layout.dockOpen}
+            onToggleTerminal={layout.toggleDock}
+          />
+        )}
 
         <div className="ishell-stage">
           {layout.browserOpen && (
@@ -155,7 +157,7 @@ export function Shell() {
             </section>
           )}
 
-          {lens === "reading" && <ReadingStub title={selectedTitle} />}
+          {lens === "reading" && <ReadingLens onFullScreen={() => setFullScreenMode("node")} />}
 
           <InspectorOverlay
             open={inspectorVisible}
