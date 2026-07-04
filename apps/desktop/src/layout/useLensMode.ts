@@ -1,15 +1,17 @@
 import { useCallback, useState } from "react";
 
-export type LensMode = "canvas" | "timeline";
+export type LensMode = "canvas" | "timeline" | "reading";
+
+const ORDER: LensMode[] = ["canvas", "timeline", "reading"];
 
 export function useLensMode(initial: LensMode = "canvas"): {
   lens: LensMode;
   setLens: (lens: LensMode) => void;
-  toggleLens: () => void;
+  cycleLens: () => void;
 } {
   const [lens, setLens] = useState<LensMode>(initial);
-  const toggleLens = useCallback(() => {
-    setLens((current) => (current === "canvas" ? "timeline" : "canvas"));
+  const cycleLens = useCallback(() => {
+    setLens((current) => ORDER[(ORDER.indexOf(current) + 1) % ORDER.length]);
   }, []);
-  return { lens, setLens, toggleLens };
+  return { lens, setLens, cycleLens };
 }

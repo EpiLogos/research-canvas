@@ -1,29 +1,29 @@
-import { describe, expect, test } from "vitest";
 import { act, renderHook } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+
 import { useLensMode } from "./useLensMode";
 
 describe("useLensMode", () => {
-  test("defaults to canvas", () => {
+  it("defaults to canvas", () => {
     const { result } = renderHook(() => useLensMode());
     expect(result.current.lens).toBe("canvas");
   });
 
-  test("honours an explicit initial lens", () => {
-    const { result } = renderHook(() => useLensMode("timeline"));
-    expect(result.current.lens).toBe("timeline");
-  });
-
-  test("setLens switches to a chosen lens", () => {
+  it("sets any of the three lenses", () => {
     const { result } = renderHook(() => useLensMode());
+    act(() => result.current.setLens("reading"));
+    expect(result.current.lens).toBe("reading");
     act(() => result.current.setLens("timeline"));
     expect(result.current.lens).toBe("timeline");
   });
 
-  test("toggleLens flips between the two lenses", () => {
+  it("cycles canvas -> timeline -> reading -> canvas", () => {
     const { result } = renderHook(() => useLensMode());
-    act(() => result.current.toggleLens());
+    act(() => result.current.cycleLens());
     expect(result.current.lens).toBe("timeline");
-    act(() => result.current.toggleLens());
+    act(() => result.current.cycleLens());
+    expect(result.current.lens).toBe("reading");
+    act(() => result.current.cycleLens());
     expect(result.current.lens).toBe("canvas");
   });
 });
