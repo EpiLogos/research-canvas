@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 
 import { CanvasView } from "@research-canvas/canvas";
 
 import { useCanvasWorkspace } from "./CanvasWorkspaceContext";
-import { WorkspaceFilePickerButton } from "./WorkspaceFilePickerButton";
 
 interface CanvasScreenProps {
   onNodeSelect?: (nodeId: string) => void;
@@ -17,17 +16,8 @@ interface CanvasScreenProps {
 
 export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, onPlaySequence, leftPanelOpen, rightPanelOpen, drawingMode = false, strokeColour = "#f97316" }: CanvasScreenProps) {
   const workspace = useCanvasWorkspace();
-  const [localAnnotationMode, setLocalAnnotationMode] = useState(false);
 
-  // When Shell turns off drawingMode, also reset local annotation mode so panel always wins
-  useEffect(() => {
-    if (!drawingMode) {
-      setLocalAnnotationMode(false);
-    }
-  }, [drawingMode]);
-
-  // Use external drawingMode if provided (controlled from Shell), otherwise fall back to local state
-  const annotationMode = drawingMode || localAnnotationMode;
+  const annotationMode = drawingMode;
   void strokeColour; // threaded from Shell for future per-stroke colour support
 
   const createAnnotation = useCallback((points: Parameters<
@@ -37,7 +27,6 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, onPlaySequence, 
       points,
       strokeKind: "stroke"
     });
-    setLocalAnnotationMode(false);
   }, [workspace.annotationStore]);
 
   if (!workspace.isHydrated) {
@@ -59,31 +48,6 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, onPlaySequence, 
     <div className="canvas-workspace">
       <div className="canvas-stage">
         <div className="canvas-chrome">
-          <header className="canvas-toolbar">
-            <div className="canvas-toolbar__group">
-              <button onClick={() => { void workspace.createNoteNode(); }} type="button">
-                Add note node
-              </button>
-              <WorkspaceFilePickerButton
-                buttonLabel="Add resource node"
-                entries={workspace.entries}
-                onSelect={(entry) => {
-                  void workspace.addResourceNode(entry, { x: 200, y: 200 });
-                }}
-              />
-            </div>
-
-            <div className="canvas-toolbar__group">
-              <button
-                aria-pressed={localAnnotationMode}
-                onClick={() => setLocalAnnotationMode((value) => !value)}
-                type="button"
-              >
-                Draw annotation
-              </button>
-            </div>
-          </header>
-
           {workspace.errorMessage ? (
             <p className="canvas-status" role="status">
               {workspace.errorMessage}
