@@ -15,6 +15,7 @@ import { useLensMode } from "./useLensMode";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { SequencesManager } from "../features/sequences/SequencesManager";
 import { SettingsOverlay } from "../features/settings/SettingsOverlay";
+import { CommandPalette } from "../features/search/CommandPalette";
 import { TimelineLens } from "@research-canvas/canvas";
 import { createWorkspaceTransport } from "@research-canvas/desktop-api";
 import { createTimelineDataSource } from "../features/timeline/createTimelineDataSource";
@@ -27,6 +28,7 @@ export function Shell() {
   const [leftMode, setLeftMode] = useState<"files" | "search" | "annotations">("files");
   const [sequencesOpen, setSequencesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [drawingMode, setDrawingMode] = useState(false);
   const [strokeColour, setStrokeColour] = useState("#f97316");
 
@@ -61,8 +63,7 @@ export function Shell() {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
-        setLeftMode("search");
-        layout.setBrowserOpen(true);
+        setPaletteOpen(true);
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "j") { e.preventDefault(); layout.toggleDock(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "i") { e.preventDefault(); layout.toggleInspector(); }
@@ -104,10 +105,7 @@ export function Shell() {
         lens={lens}
         onSetLens={setLens}
         breadcrumb={selectedTitle}
-        onOpenPalette={() => {
-          setLeftMode("search");
-          layout.setBrowserOpen(true);
-        }}
+        onOpenPalette={() => setPaletteOpen(true)}
       />
 
       <div className="ishell-body">
@@ -204,6 +202,13 @@ export function Shell() {
       )}
 
       {settingsOpen && <SettingsOverlay onClose={() => setSettingsOpen(false)} />}
+
+      <CommandPalette
+        isOpen={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onSetLens={setLens}
+        onToggleTerminal={layout.toggleDock}
+      />
     </div>
   );
 }
