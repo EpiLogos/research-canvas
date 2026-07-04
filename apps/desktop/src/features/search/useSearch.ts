@@ -13,14 +13,15 @@ export interface SearchPaletteItem {
 }
 
 interface UseSearchOptions {
-  onOpenExport?: () => void;
+  onSetLens?: (lens: "canvas" | "timeline" | "reading") => void;
+  onToggleTerminal?: () => void;
 }
 
 export function useSearch(query: string, options: UseSearchOptions = {}) {
   const workspace = useCanvasWorkspace();
   const deferredQuery = useDeferredValue(query);
   const [backendItems, setBackendItems] = useState<SearchPaletteItem[]>([]);
-  const { onOpenExport } = options;
+  const { onSetLens, onToggleTerminal } = options;
 
   const localItems = useMemo<SearchPaletteItem[]>(() => {
     const fileItems = workspace.entries
@@ -54,28 +55,48 @@ export function useSearch(query: string, options: UseSearchOptions = {}) {
         onSelect: () => {
           void workspace.createNoteNode();
         }
-      },
-      {
-        id: "command:export-project",
-        kind: "command",
-        summary: "Open the publish/export flow",
-        title: "Export project",
-        onSelect: () => {
-          onOpenExport?.();
-        }
-      },
-      {
-        id: "command:focus-terminal",
-        kind: "command",
-        summary: "Keep the shell ready for project work",
-        title: "Focus terminal",
-        onSelect: () => {}
       }
     ];
 
+    if (onSetLens) {
+      commandItems.push(
+        {
+          id: "command:lens-canvas",
+          kind: "command",
+          title: "Go to Canvas",
+          summary: "Switch to the canvas lens",
+          onSelect: () => onSetLens("canvas")
+        },
+        {
+          id: "command:lens-timeline",
+          kind: "command",
+          title: "Go to Timeline",
+          summary: "Switch to the timeline lens",
+          onSelect: () => onSetLens("timeline")
+        },
+        {
+          id: "command:lens-reading",
+          kind: "command",
+          title: "Go to Reading",
+          summary: "Switch to the reading lens",
+          onSelect: () => onSetLens("reading")
+        }
+      );
+    }
+    if (onToggleTerminal) {
+      commandItems.push({
+        id: "command:toggle-terminal",
+        kind: "command",
+        title: "Toggle terminal",
+        summary: "Show or hide the terminal dock",
+        onSelect: () => onToggleTerminal()
+      });
+    }
+
     return [...fileItems, ...nodeItems, ...commandItems];
   }, [
-    onOpenExport,
+    onSetLens,
+    onToggleTerminal,
     workspace.createNoteNode,
     workspace.entries,
     workspace.nodes,

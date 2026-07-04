@@ -5,27 +5,30 @@ import { useSearch } from "./useSearch";
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
-  onOpenExport?: () => void;
+  onSetLens?: (lens: "canvas" | "timeline" | "reading") => void;
+  onToggleTerminal?: () => void;
 }
 
 export function CommandPalette({
   isOpen,
   onClose,
-  onOpenExport
+  onSetLens,
+  onToggleTerminal
 }: CommandPaletteProps) {
   if (!isOpen) {
     return null;
   }
 
-  return <CommandPaletteDialog onClose={onClose} onOpenExport={onOpenExport} />;
+  return <CommandPaletteDialog onClose={onClose} onSetLens={onSetLens} onToggleTerminal={onToggleTerminal} />;
 }
 
 function CommandPaletteDialog({
   onClose,
-  onOpenExport
+  onSetLens,
+  onToggleTerminal
 }: Omit<CommandPaletteProps, "isOpen">) {
   const [query, setQuery] = useState("");
-  const items = useSearch(query, { onOpenExport });
+  const items = useSearch(query, { onSetLens, onToggleTerminal });
 
   useEffect(() => {
     setQuery("");
