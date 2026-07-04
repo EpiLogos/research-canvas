@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CanvasNode } from "@research-canvas/schema";
-import { createWorkspaceTransport, readWorkspaceTextFile } from "@research-canvas/desktop-api";
-import type { GraphNode, GraphNodePatch } from "@research-canvas/desktop-api";
+import { readWorkspaceTextFile } from "@research-canvas/desktop-api";
 import { SequencePresenter } from "@research-canvas/canvas";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { NodeContentPane } from "../features/viewer/NodeContentPane";
-import { NodeDocumentPane } from "../features/viewer/NodeDocumentPane";
+import { NodeReaderBody } from "../features/viewer/NodeReaderBody";
 
 interface FullScreenReaderProps {
   mode: "node" | "sequence";
@@ -23,21 +22,6 @@ function NodeMode({ onClose }: { onClose: () => void }) {
   const workspace = useCanvasWorkspace();
   const node: CanvasNode | null =
     workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
-  const textResourceNode =
-    node?.type === "resource" &&
-    node.absolutePath &&
-    (node.resourceKind === "markdown" || node.resourceKind === "text")
-      ? node
-      : null;
-  const [textContent, setTextContent] = useState<string | null>(null);
-
-  useEffect(() => {
-    setTextContent(null);
-    if (!textResourceNode) return;
-    readWorkspaceTextFile(textResourceNode.absolutePath)
-      .then(setTextContent)
-      .catch(() => setTextContent(null));
-  }, [textResourceNode]);
 
   useEffect(() => {
     if (!node) onClose();
@@ -53,33 +37,6 @@ function NodeMode({ onClose }: { onClose: () => void }) {
 
   if (!node) return null;
 
-  const graphNodeId = (node as unknown as { graphNodeId?: string }).graphNodeId ?? null;
-  if (graphNodeId) {
-    return (
-      <div className="fullscreen-reader">
-        <header className="fullscreen-reader__header">
-          <nav className="fullscreen-reader__breadcrumb">
-            <span>{workspace.activeProject?.displayName ?? "Project"}</span>
-            <span className="fsr-sep">&rsaquo;</span>
-            <span>Canvas</span>
-            <span className="fsr-sep">&rsaquo;</span>
-            <span className="fsr-current">{node.title}</span>
-          </nav>
-          <button className="fullscreen-reader__close" onClick={onClose} title="Back to canvas (Esc)">&larr; Back</button>
-        </header>
-        <main className="fullscreen-reader__body">
-          <NodeDocumentPane
-            graphNodeId={graphNodeId}
-            transport={createWorkspaceTransport() as unknown as {
-              readGraphNode: (input: { graphNodeId: string }) => Promise<GraphNode>;
-              updateGraphNode: (input: { graphNodeId: string; patch: GraphNodePatch }) => Promise<GraphNode>;
-            }}
-          />
-        </main>
-      </div>
-    );
-  }
-
   return (
     <div className="fullscreen-reader">
       <header className="fullscreen-reader__header">
@@ -93,13 +50,7 @@ function NodeMode({ onClose }: { onClose: () => void }) {
         <button className="fullscreen-reader__close" onClick={onClose} title="Back to canvas (Esc)">&larr; Back</button>
       </header>
       <main className="fullscreen-reader__body">
-        <NodeContentPane
-          node={node}
-          textContent={textContent}
-          onFullScreen={onClose}
-          onNoteContentChange={(content) => workspace.updateNodeContent(node.id, content)}
-          showToolbar={false}
-        />
+        <NodeReaderBody node={node} />
       </main>
     </div>
   );
