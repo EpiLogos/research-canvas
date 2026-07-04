@@ -193,3 +193,59 @@
 .ishell-dock__close { margin-left: auto; background: transparent; border: 0; color: var(--ob-faint); font-size: 11px; cursor: pointer; }
 .ishell-dock__body { flex: 1; min-height: 0; overflow: hidden; }
 .ishell-dock__resize { position: absolute; left: 0; right: 0; top: 0; height: 5px; cursor: ns-resize; }
+
+/* ===== Phase 3: reading lens ===== */
+.ishell-reading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--ob-bg-2);
+  overflow: hidden;
+}
+.ishell-reading__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  flex: 0 0 auto;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--ob-line);
+}
+.ishell-reading__title {
+  font-family: var(--ob-serif);
+  font-size: 13px;
+  color: var(--ob-dim);
+}
+.ishell-reading__full {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--ob-line-2);
+  border-radius: 6px;
+  color: var(--ob-dim);
+  cursor: pointer;
+  padding: 3px 9px;
+  font-size: 13px;
+}
+.ishell-reading__full:hover { color: var(--ob-accent); border-color: var(--ob-accent-deep); }
+.ishell-reading__col {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+}
+.ishell-reading__col > * {
+  width: min(720px, 92%);
+}
+.ishell-reading__empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ob-faint);
+  font-family: var(--ob-serif);
+  font-size: 15px;
+}
+/* Reading lens runs edge-to-edge: no rail column, stage is the whole body. */
+.ishell[data-lens="reading"] .ishell-body { }
