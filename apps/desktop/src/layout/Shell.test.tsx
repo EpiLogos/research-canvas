@@ -11,33 +11,31 @@ function renderShell() {
       <CanvasWorkspaceProvider>
         <Shell />
       </CanvasWorkspaceProvider>
-    </MemoryRouter>
+    </MemoryRouter>,
   );
 }
 
-// Reused by any test that needs to inspect the right panel's tab bar/panes —
-// the panel is closed by default, so open it via the same Cmd+T shortcut
-// Shell wires up for the Terminal tab (see Shell.tsx's global keydown handler).
-function renderShellWithRightPanelOpen() {
-  const result = renderShell();
-  fireEvent.keyDown(window, { key: "t", metaKey: true });
-  return result;
-}
-
-describe("Shell", () => {
-  it("renders all four primary regions", () => {
+describe("Shell frame", () => {
+  it("renders the persistent chrome and the canvas stage by default", () => {
     renderShell();
-
+    expect(screen.getByTestId("transport-bar")).toBeVisible();
     expect(screen.getByTestId("left-rail")).toBeVisible();
+    expect(screen.getByTestId("status-strip")).toBeVisible();
     expect(screen.getByTestId("canvas-pane")).toBeVisible();
-    expect(screen.getByTestId("right-panel")).toBeVisible();
-    expect(screen.getByTestId("bottom-dock")).toBeVisible();
   });
 
-  it("shows an Agent tab in the right panel", async () => {
-    renderShellWithRightPanelOpen();
-    expect(
-      await screen.findByRole("button", { name: "Agent" }),
-    ).toBeInTheDocument();
+  it("switches the stage surface when a lens is chosen", () => {
+    renderShell();
+    fireEvent.click(screen.getByTestId("lens-timeline"));
+    expect(screen.getByTestId("timeline-pane")).toBeVisible();
+    fireEvent.click(screen.getByTestId("lens-reading"));
+    expect(screen.getByTestId("reading-pane")).toBeVisible();
+    fireEvent.click(screen.getByTestId("lens-canvas"));
+    expect(screen.getByTestId("canvas-pane")).toBeVisible();
+  });
+
+  it("no longer renders the legacy floating lens switch", () => {
+    renderShell();
+    expect(screen.queryByTestId("lens-switch")).not.toBeInTheDocument();
   });
 });

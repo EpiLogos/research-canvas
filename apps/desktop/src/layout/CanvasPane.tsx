@@ -15,7 +15,7 @@ export function CanvasPane({ onNodeSelect, onNodeDoubleClick, onPlaySequence, le
     <section
       className="canvas-pane"
       data-testid="canvas-pane"
-      style={{ position: "absolute", inset: 0, left: 26 }}
+      style={{ position: "absolute", inset: 0 }}
     >
       <CanvasScreen
         onNodeSelect={onNodeSelect}
