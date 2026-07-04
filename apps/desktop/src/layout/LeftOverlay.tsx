@@ -20,6 +20,8 @@ export function LeftOverlay({ open, mode, onResizeStart, drawingMode, onToggleDr
   const [showFolderPicker, setShowFolderPicker] = useState(false);
   const [folderEntries, setFolderEntries] = useState<{ name: string; path: string; kind: string }[]>([]);
   const [folderPickerAnchor, setFolderPickerAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [browserView, setBrowserView] = useState<"graph" | "files">("graph");
+  const [filter, setFilter] = useState("");
 
   const handleAddFolder = useCallback(async (e: React.MouseEvent) => {
     const rect = (e.target as HTMLElement).getBoundingClientRect();
@@ -40,121 +42,194 @@ export function LeftOverlay({ open, mode, onResizeStart, drawingMode, onToggleDr
 
         {mode === "files" && (
           <>
-            {/* Project selector */}
-            <div className="lo-section">
-              <div className="lo-section__header">
-                <span className="lo-label">Projects</span>
-              </div>
-              <div className="lo-project-list">
-                {workspace.projects.map((project) => (
-                  <button
-                    key={project.id}
-                    className="lo-project-item"
-                    data-active={workspace.activeProjectId === project.id ? "true" : "false"}
-                    onClick={() => workspace.selectProject(project.id)}
-                    title={project.rootPath}
-                  >
-                    {project.name}
-                  </button>
-                ))}
-                {workspace.projects.length === 0 && (
-                  <div className="lo-empty">No projects</div>
-                )}
-              </div>
-            </div>
-
-            {/* Resource roots */}
-            <div className="lo-section">
-              <div className="lo-section__header">
-                <span className="lo-label">Resource Folders</span>
+            <div className="lo-browser-controls">
+              <div className="lo-seg" role="tablist" aria-label="Browser view">
                 <button
-                  className="lo-icon-btn"
-                  title="Add folder from machine"
-                  onClick={(e) => { void handleAddFolder(e); }}
+                  type="button"
+                  data-testid="browser-graph"
+                  data-active={browserView === "graph" ? "true" : "false"}
+                  onClick={() => setBrowserView("graph")}
                 >
-                  +
+                  Graph
+                </button>
+                <button
+                  type="button"
+                  data-testid="browser-files"
+                  data-active={browserView === "files" ? "true" : "false"}
+                  onClick={() => setBrowserView("files")}
+                >
+                  Files
                 </button>
               </div>
-              {folderError && <div className="lo-folder-input__error">{folderError}</div>}
-              {showFolderPicker && folderPickerAnchor && (
-                <FuzzyFilePicker
-                  anchorX={folderPickerAnchor.x}
-                  anchorY={folderPickerAnchor.y}
-                  entries={folderEntries}
-                  onClose={() => setShowFolderPicker(false)}
-                  onSelect={async (entry) => {
-                    setShowFolderPicker(false);
-                    try {
-                      await workspace.attachResourceRoot(entry.path);
-                    } catch (err) {
-                      setFolderError(err instanceof Error ? err.message : String(err));
-                    }
-                  }}
-                />
-              )}
-              {workspace.resourceRoots.length > 0 ? (
-                workspace.resourceRoots.map((root) => (
-                  <div key={root.id} className="lo-root-row" title={root.rootPath}>
-                    <span className="lo-root-icon">⊞</span>
-                    <span className="lo-root-path">{root.rootPath.split("/").pop()}</span>
-                    <button
-                      className="lo-icon-btn lo-icon-btn--danger"
-                      title="Remove folder"
-                      onClick={() => { void workspace.detachResourceRoot(root.rootPath); }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <div className="lo-empty">No folders added</div>
-              )}
+              <input
+                className="lo-filter"
+                data-testid="browser-filter"
+                placeholder="Filter…"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+              />
             </div>
 
-            {/* File tree */}
-            <div className="lo-section lo-section--grow">
-              <div className="lo-section__header">
-                <span className="lo-label">Files</span>
+            {browserView === "graph" && (
+              <div className="lo-section lo-section--grow">
+                {(() => {
+                  const q = filter.trim().toLowerCase();
+                  const matches = workspace.nodes.filter(
+                    (n) => !q || n.title.toLowerCase().includes(q),
+                  );
+                  const groups = new Map<string, typeof matches>();
+                  for (const n of matches) {
+                    const arr = groups.get(n.type) ?? [];
+                    arr.push(n);
+                    groups.set(n.type, arr);
+                  }
+                  if (matches.length === 0) {
+                    return <div className="lo-empty">No matching nodes</div>;
+                  }
+                  return Array.from(groups.entries()).map(([type, ns]) => (
+                    <div key={type}>
+                      <div className="lo-section__header">
+                        <span className="lo-label">{type} · {ns.length}</span>
+                      </div>
+                      <div className="lo-file-list">
+                        {ns.map((n) => (
+                          <button
+                            key={n.id}
+                            type="button"
+                            className="lo-file-row"
+                            data-testid={`graph-node-${n.id}`}
+                            onClick={() => workspace.selectNode(n.id)}
+                            title={n.title}
+                          >
+                            <span className="lo-file-icon">·</span>
+                            <span className="lo-file-name">{n.title}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ));
+                })()}
               </div>
-              <div className="lo-file-list">
-                {workspace.entries.map((entry) => (
-                  <button
-                    key={entry.id}
-                    className="lo-file-row"
-                    data-selected={workspace.selectedEntryId === entry.id ? "true" : "false"}
-                    data-directory={entry.isDirectory ? "true" : "false"}
-                    style={{ paddingLeft: `${8 + entry.depth * 12}px` }}
-                    onClick={() => workspace.selectEntry(entry.id)}
-                    title={entry.relativePath}
-                    draggable={!entry.isDirectory}
-                    onDragStart={(e) => {
-                      if (entry.isDirectory) {
-                        e.preventDefault();
-                        return;
-                      }
-                      e.dataTransfer.setData(
-                        "application/x-canvas-entry",
-                        JSON.stringify({
-                          id: entry.id,
-                          name: entry.name,
-                          relativePath: entry.relativePath,
-                          kind: entry.kind,
-                        })
-                      );
-                      e.dataTransfer.effectAllowed = "copy";
-                    }}
-                  >
-                    <span className="lo-file-icon">
-                      {entry.isDirectory ? "▸" : "·"}
-                    </span>
-                    <span className="lo-file-name">{entry.name}</span>
-                  </button>
-                ))}
-                {workspace.entries.length === 0 && (
-                  <div className="lo-empty">Add a folder to see files</div>
-                )}
-              </div>
-            </div>
+            )}
+
+            {browserView === "files" && (
+              <>
+                {/* Project selector */}
+                <div className="lo-section">
+                  <div className="lo-section__header">
+                    <span className="lo-label">Projects</span>
+                  </div>
+                  <div className="lo-project-list">
+                    {workspace.projects.map((project) => (
+                      <button
+                        key={project.id}
+                        className="lo-project-item"
+                        data-active={workspace.activeProjectId === project.id ? "true" : "false"}
+                        onClick={() => workspace.selectProject(project.id)}
+                        title={project.rootPath}
+                      >
+                        {project.name}
+                      </button>
+                    ))}
+                    {workspace.projects.length === 0 && (
+                      <div className="lo-empty">No projects</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Resource roots */}
+                <div className="lo-section">
+                  <div className="lo-section__header">
+                    <span className="lo-label">Resource Folders</span>
+                    <button
+                      className="lo-icon-btn"
+                      title="Add folder from machine"
+                      onClick={(e) => { void handleAddFolder(e); }}
+                    >
+                      +
+                    </button>
+                  </div>
+                  {folderError && <div className="lo-folder-input__error">{folderError}</div>}
+                  {showFolderPicker && folderPickerAnchor && (
+                    <FuzzyFilePicker
+                      anchorX={folderPickerAnchor.x}
+                      anchorY={folderPickerAnchor.y}
+                      entries={folderEntries}
+                      onClose={() => setShowFolderPicker(false)}
+                      onSelect={async (entry) => {
+                        setShowFolderPicker(false);
+                        try {
+                          await workspace.attachResourceRoot(entry.path);
+                        } catch (err) {
+                          setFolderError(err instanceof Error ? err.message : String(err));
+                        }
+                      }}
+                    />
+                  )}
+                  {workspace.resourceRoots.length > 0 ? (
+                    workspace.resourceRoots.map((root) => (
+                      <div key={root.id} className="lo-root-row" title={root.rootPath}>
+                        <span className="lo-root-icon">⊞</span>
+                        <span className="lo-root-path">{root.rootPath.split("/").pop()}</span>
+                        <button
+                          className="lo-icon-btn lo-icon-btn--danger"
+                          title="Remove folder"
+                          onClick={() => { void workspace.detachResourceRoot(root.rootPath); }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="lo-empty">No folders added</div>
+                  )}
+                </div>
+
+                {/* File tree */}
+                <div className="lo-section lo-section--grow">
+                  <div className="lo-section__header">
+                    <span className="lo-label">Files</span>
+                  </div>
+                  <div className="lo-file-list">
+                    {workspace.entries.map((entry) => (
+                      <button
+                        key={entry.id}
+                        className="lo-file-row"
+                        data-selected={workspace.selectedEntryId === entry.id ? "true" : "false"}
+                        data-directory={entry.isDirectory ? "true" : "false"}
+                        style={{ paddingLeft: `${8 + entry.depth * 12}px` }}
+                        onClick={() => workspace.selectEntry(entry.id)}
+                        title={entry.relativePath}
+                        draggable={!entry.isDirectory}
+                        onDragStart={(e) => {
+                          if (entry.isDirectory) {
+                            e.preventDefault();
+                            return;
+                          }
+                          const payload = JSON.stringify({
+                            id: entry.id,
+                            name: entry.name,
+                            relativePath: entry.relativePath,
+                            kind: entry.kind,
+                          });
+                          e.dataTransfer.setData("application/x-canvas-entry", payload);
+                          e.dataTransfer.setData("text/plain", payload);
+                          e.dataTransfer.effectAllowed = "copy";
+                        }}
+                      >
+                        <span className="lo-file-icon">
+                          {entry.isDirectory ? "▸" : "·"}
+                        </span>
+                        <span className="lo-file-name">{entry.name}</span>
+                      </button>
+                    ))}
+                    {workspace.entries.length === 0 && (
+                      <div className="lo-empty">Add a folder to see files</div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
           </>
         )}
         {mode === "search" && <SearchPanel />}
