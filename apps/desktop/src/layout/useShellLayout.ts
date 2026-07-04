@@ -1,91 +1,102 @@
 import { useCallback, useRef, useState } from "react";
 
-export type RightTab = "inspector" | "content" | "terminal" | "agent";
-
-const LEFT_MIN = 200;
-const LEFT_MAX = 480;
-const RIGHT_MIN = 280;
-const RIGHT_MAX = 560;
+const BROWSER_MIN = 200;
+const BROWSER_MAX = 380;
+const INSPECTOR_MIN = 220;
+const INSPECTOR_MAX = 380;
+const DOCK_MIN = 120;
+const DOCK_MAX = 560;
 
 export function useShellLayout() {
-  // Attached to the top-level shell <div> in Shell.tsx
   const shellRef = useRef<HTMLDivElement>(null);
 
-  const [leftOpen, setLeftOpen] = useState(false);
-  const [leftWidth, setLeftWidth] = useState(240);
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [browserWidth, setBrowserWidth] = useState(240);
+  const toggleBrowser = useCallback(() => setBrowserOpen((v) => !v), []);
 
-  const [rightOpen, setRightOpen] = useState(false);
-  const [rightWidth, setRightWidth] = useState(320);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [inspectorPinned, setInspectorPinned] = useState(false);
+  const [inspectorWidth, setInspectorWidth] = useState(260);
+  const toggleInspector = useCallback(() => setInspectorOpen((v) => !v), []);
+  const toggleInspectorPin = useCallback(() => setInspectorPinned((v) => !v), []);
 
-  const leftWidthRef = useRef(leftWidth);
-  leftWidthRef.current = leftWidth;
+  const [dockOpen, setDockOpen] = useState(false);
+  const [dockHeight, setDockHeight] = useState(240);
+  const toggleDock = useCallback(() => setDockOpen((v) => !v), []);
 
-  const rightWidthRef = useRef(rightWidth);
-  rightWidthRef.current = rightWidth;
-  const [rightTab, setRightTab] = useState<RightTab>("inspector");
+  const browserWidthRef = useRef(browserWidth);
+  browserWidthRef.current = browserWidth;
+  const inspectorWidthRef = useRef(inspectorWidth);
+  inspectorWidthRef.current = inspectorWidth;
+  const dockHeightRef = useRef(dockHeight);
+  dockHeightRef.current = dockHeight;
 
-  const openRightTab = useCallback((tab: RightTab) => {
-    setRightTab(tab);
-    setRightOpen(true);
+  const beginBrowserResize = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = browserWidthRef.current;
+    const onMove = (ev: PointerEvent) => {
+      const next = Math.min(BROWSER_MAX, Math.max(BROWSER_MIN, startW + ev.clientX - startX));
+      setBrowserWidth(next);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
   }, []);
 
-  const toggleLeft = useCallback(() => setLeftOpen((v) => !v), []);
-  const toggleRight = useCallback(() => setRightOpen((v) => !v), []);
+  const beginInspectorResize = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = inspectorWidthRef.current;
+    const onMove = (ev: PointerEvent) => {
+      const next = Math.min(INSPECTOR_MAX, Math.max(INSPECTOR_MIN, startW + startX - ev.clientX));
+      setInspectorWidth(next);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, []);
 
-  const beginLeftResize = useCallback(
-    (e: React.PointerEvent) => {
-      e.preventDefault();
-      const startX = e.clientX;
-      const startW = leftWidthRef.current;
-      const onMove = (ev: PointerEvent) => {
-        const next = Math.min(LEFT_MAX, Math.max(LEFT_MIN, startW + ev.clientX - startX));
-        setLeftWidth(next);
-        if (next <= LEFT_MIN) setLeftOpen(false);
-      };
-      const onUp = () => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-      };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
-    },
-    [], // stable — reads width via ref, not closure
-  );
-
-  const beginRightResize = useCallback(
-    (e: React.PointerEvent) => {
-      e.preventDefault();
-      const startX = e.clientX;
-      const startW = rightWidthRef.current;
-      const onMove = (ev: PointerEvent) => {
-        const delta = startX - ev.clientX;
-        const next = Math.min(RIGHT_MAX, Math.max(RIGHT_MIN, startW + delta));
-        setRightWidth(next);
-        if (next <= RIGHT_MIN) setRightOpen(false);
-      };
-      const onUp = () => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-      };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
-    },
-    [], // stable
-  );
+  const beginDockResize = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = dockHeightRef.current;
+    const onMove = (ev: PointerEvent) => {
+      const next = Math.min(DOCK_MAX, Math.max(DOCK_MIN, startH + startY - ev.clientY));
+      setDockHeight(next);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, []);
 
   return {
     shellRef,
-    leftOpen,
-    leftWidth,
-    setLeftOpen,
-    toggleLeft,
-    beginLeftResize,
-    rightOpen,
-    rightWidth,
-    rightTab,
-    setRightOpen,
-    openRightTab,
-    toggleRight,
-    beginRightResize,
+    browserOpen,
+    setBrowserOpen,
+    toggleBrowser,
+    browserWidth,
+    beginBrowserResize,
+    inspectorOpen,
+    setInspectorOpen,
+    toggleInspector,
+    inspectorPinned,
+    toggleInspectorPin,
+    inspectorWidth,
+    beginInspectorResize,
+    dockOpen,
+    setDockOpen,
+    toggleDock,
+    dockHeight,
+    beginDockResize,
   };
 }

@@ -1,12 +1,14 @@
 interface IconStripProps {
-  leftOpen: boolean;
+  browserActive: boolean;
   activeLeftMode: "files" | "search" | "annotations";
-  onToggleLeft: () => void;
-  onSetLeftMode: (mode: "files" | "search" | "annotations") => void;
+  onToggleBrowser: () => void;
+  onSetBrowserMode: (mode: "files" | "search" | "annotations") => void;
   onOpenSequences: () => void;
   onOpenSettings: () => void;
-  onOpenInspector?: () => void;
-  onOpenTerminal?: () => void;
+  inspectorActive: boolean;
+  onToggleInspector: () => void;
+  terminalActive: boolean;
+  onToggleTerminal: () => void;
 }
 
 const NAV_ICONS: { id: string; label: string; svg: string }[] = [
@@ -32,15 +34,14 @@ const NAV_ICONS: { id: string; label: string; svg: string }[] = [
   },
 ];
 
-export function IconStrip({ leftOpen, activeLeftMode, onToggleLeft, onSetLeftMode, onOpenSequences, onOpenSettings, onOpenInspector, onOpenTerminal }: IconStripProps) {
+export function IconStrip({ browserActive, activeLeftMode, onToggleBrowser, onSetBrowserMode, onOpenSequences, onOpenSettings, inspectorActive, onToggleInspector, terminalActive, onToggleTerminal }: IconStripProps) {
   const handleNavClick = (id: string) => {
-    if (id === "files" || id === "search" || id === "annotate") {
-      const mode = id === "annotate" ? "annotations" : id as "files" | "search";
-      if (leftOpen && activeLeftMode === mode) {
-        onToggleLeft();
-      } else {
-        onSetLeftMode(mode);
-      }
+    if (id === "files") {
+      onToggleBrowser();
+    } else if (id === "search") {
+      onSetBrowserMode("search");
+    } else if (id === "annotate") {
+      onSetBrowserMode("annotations");
     } else if (id === "sequences") {
       onOpenSequences();
     }
@@ -54,9 +55,9 @@ export function IconStrip({ leftOpen, activeLeftMode, onToggleLeft, onSetLeftMod
             key={icon.id}
             className="icon-strip__btn"
             data-active={
-              (icon.id === "files" && leftOpen && activeLeftMode === "files") ||
-              (icon.id === "search" && leftOpen && activeLeftMode === "search") ||
-              (icon.id === "annotate" && leftOpen && activeLeftMode === "annotations")
+              (icon.id === "files" && browserActive) ||
+              (icon.id === "search" && browserActive && activeLeftMode === "search") ||
+              (icon.id === "annotate" && browserActive && activeLeftMode === "annotations")
                 ? "true"
                 : undefined
             }
@@ -70,7 +71,8 @@ export function IconStrip({ leftOpen, activeLeftMode, onToggleLeft, onSetLeftMod
           className="icon-strip__btn"
           title="Inspector"
           aria-label="Inspector"
-          onClick={() => onOpenInspector?.()}
+          data-active={inspectorActive ? "true" : undefined}
+          onClick={onToggleInspector}
           dangerouslySetInnerHTML={{
             __html: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="10" height="10" rx="2"/><line x1="8" y1="3" x2="8" y2="13"/></svg>`,
           }}
@@ -79,7 +81,8 @@ export function IconStrip({ leftOpen, activeLeftMode, onToggleLeft, onSetLeftMod
           className="icon-strip__btn"
           title="Terminal"
           aria-label="Terminal"
-          onClick={() => onOpenTerminal?.()}
+          data-active={terminalActive ? "true" : undefined}
+          onClick={onToggleTerminal}
           dangerouslySetInnerHTML={{
             __html: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 5l3 3-3 3"/><line x1="8.5" y1="11" x2="12" y2="11"/></svg>`,
           }}

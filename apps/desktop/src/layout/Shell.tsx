@@ -3,10 +3,13 @@ import { CanvasPane } from "./CanvasPane";
 import { FullScreenReader } from "./FullScreenReader";
 import { IconStrip } from "./IconStrip";
 import { LeftOverlay } from "./LeftOverlay";
-import { RightPanelSlot } from "./RightPanelSlot";
+import { BottomDock } from "./BottomDock";
+import { InspectorOverlay } from "./InspectorOverlay";
 import { StatusStrip } from "./StatusStrip";
 import { TransportBar } from "./TransportBar";
 import { ReadingStub } from "./ReadingStub";
+import { InspectorTab } from "../features/inspector/InspectorTab";
+import { TerminalPane } from "../features/terminal/TerminalPane";
 import { useShellLayout } from "./useShellLayout";
 import { useLensMode } from "./useLensMode";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
@@ -40,15 +43,18 @@ export function Shell() {
   const openNodeDocument = useCallback(
     (graphNodeId: string) => {
       workspace.selectNode(graphNodeId);
-      setLens("reading");
+      setFullScreenMode("node");
     },
-    [workspace, setLens],
+    [workspace],
   );
 
-  const handleSetLeftMode = useCallback((mode: "files" | "search" | "annotations") => {
-    setLeftMode(mode);
-    layout.setLeftOpen(true);
-  }, [layout]);
+  const setBrowserMode = useCallback(
+    (mode: "files" | "search" | "annotations") => {
+      setLeftMode(mode);
+      layout.setBrowserOpen(true);
+    },
+    [layout],
+  );
 
   // Global keyboard shortcuts.
   useEffect(() => {
@@ -56,20 +62,11 @@ export function Shell() {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         setLeftMode("search");
-        layout.setLeftOpen(true);
+        layout.setBrowserOpen(true);
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === "j") {
-        e.preventDefault();
-        layout.openRightTab("terminal");
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "i") {
-        e.preventDefault();
-        layout.openRightTab("inspector");
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "b") {
-        e.preventDefault();
-        layout.toggleLeft();
-      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "j") { e.preventDefault(); layout.toggleDock(); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "i") { e.preventDefault(); layout.toggleInspector(); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "b") { e.preventDefault(); layout.toggleBrowser(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "1") { e.preventDefault(); setLens("canvas"); }
       if ((e.metaKey || e.ctrlKey) && e.key === "2") { e.preventDefault(); setLens("timeline"); }
       if ((e.metaKey || e.ctrlKey) && e.key === "3") { e.preventDefault(); setLens("reading"); }
@@ -81,8 +78,8 @@ export function Shell() {
   const handleNodeSelect = useCallback(
     (nodeId: string) => {
       workspace.selectNode(nodeId);
-      if (!layout.rightOpen) {
-        layout.openRightTab("inspector");
+      if (!layout.inspectorPinned) {
+        layout.setInspectorOpen(true);
       }
     },
     [workspace, layout],
@@ -91,86 +88,95 @@ export function Shell() {
   const handleNodeDoubleClick = useCallback(
     (nodeId: string) => {
       workspace.selectNode(nodeId);
-      setLens("reading");
+      setFullScreenMode("node");
     },
-    [workspace, setLens],
+    [workspace],
   );
 
   const handlePlaySequence = useCallback(() => setFullScreenMode("sequence"), []);
 
   const selectedTitle = workspace.nodes.find((n) => n.id === workspace.selectedNodeId)?.title;
+  const inspectorVisible = layout.inspectorOpen && (Boolean(workspace.selectedNodeId) || layout.inspectorPinned);
 
   return (
-    <div
-      className="ishell"
-      ref={layout.shellRef}
-      style={{ "--left-width": `${layout.leftWidth}px`, "--right-width": `${layout.rightWidth}px` } as React.CSSProperties}
-    >
+    <div className="ishell" ref={layout.shellRef} style={{ "--browser-width": `${layout.browserWidth}px` } as React.CSSProperties}>
       <TransportBar
         lens={lens}
         onSetLens={setLens}
         breadcrumb={selectedTitle}
         onOpenPalette={() => {
           setLeftMode("search");
-          layout.setLeftOpen(true);
+          layout.setBrowserOpen(true);
         }}
       />
 
       <div className="ishell-body">
         <IconStrip
-          leftOpen={layout.leftOpen}
+          browserActive={layout.browserOpen}
           activeLeftMode={leftMode}
-          onToggleLeft={layout.toggleLeft}
-          onSetLeftMode={handleSetLeftMode}
+          onToggleBrowser={layout.toggleBrowser}
+          onSetBrowserMode={setBrowserMode}
           onOpenSequences={() => setSequencesOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
-          onOpenInspector={() => layout.openRightTab("inspector")}
-          onOpenTerminal={() => layout.openRightTab("terminal")}
+          inspectorActive={layout.inspectorOpen}
+          onToggleInspector={layout.toggleInspector}
+          terminalActive={layout.dockOpen}
+          onToggleTerminal={layout.toggleDock}
         />
 
         <div className="ishell-stage">
-          <LeftOverlay
-            open={layout.leftOpen}
-            mode={leftMode}
-            onResizeStart={layout.beginLeftResize}
-            drawingMode={drawingMode}
-            onToggleDrawing={() => setDrawingMode((v) => !v)}
-            strokeColour={strokeColour}
-            onSetStrokeColour={setStrokeColour}
-          />
+          {layout.browserOpen && (
+            <LeftOverlay
+              open
+              mode={leftMode}
+              onResizeStart={layout.beginBrowserResize}
+              drawingMode={drawingMode}
+              onToggleDrawing={() => setDrawingMode((v) => !v)}
+              strokeColour={strokeColour}
+              onSetStrokeColour={setStrokeColour}
+            />
+          )}
 
           {lens === "canvas" && (
             <CanvasPane
               onNodeSelect={handleNodeSelect}
               onNodeDoubleClick={handleNodeDoubleClick}
               onPlaySequence={handlePlaySequence}
-              leftPanelOpen={layout.leftOpen}
-              rightPanelOpen={layout.rightOpen}
+              leftPanelOpen={layout.browserOpen}
+              rightPanelOpen={inspectorVisible}
               drawingMode={drawingMode}
               strokeColour={strokeColour}
             />
           )}
 
           {lens === "timeline" && (
-            <section
-              className="canvas-pane"
-              data-testid="timeline-pane"
-              style={{ position: "absolute", inset: 0 }}
-            >
+            <section className="canvas-pane" data-testid="timeline-pane" style={{ position: "absolute", inset: 0 }}>
               <TimelineLens dataSource={timelineDataSource} onOpenNode={openNodeDocument} />
             </section>
           )}
 
           {lens === "reading" && <ReadingStub title={selectedTitle} />}
 
-          <RightPanelSlot
-            open={layout.rightOpen}
-            activeTab={layout.rightTab}
-            onTabChange={layout.openRightTab}
-            onClose={() => layout.setRightOpen(false)}
-            onResizeStart={layout.beginRightResize}
-            onFullScreen={() => setFullScreenMode("node")}
-          />
+          <InspectorOverlay
+            open={inspectorVisible}
+            pinned={layout.inspectorPinned}
+            width={layout.inspectorWidth}
+            onTogglePin={layout.toggleInspectorPin}
+            onClose={() => layout.setInspectorOpen(false)}
+            onResizeStart={layout.beginInspectorResize}
+          >
+            <InspectorTab />
+          </InspectorOverlay>
+
+          <BottomDock
+            open={layout.dockOpen}
+            height={layout.dockHeight}
+            title="Terminal · antichrist"
+            onClose={() => layout.setDockOpen(false)}
+            onResizeStart={layout.beginDockResize}
+          >
+            <TerminalPane />
+          </BottomDock>
 
           {fullScreenMode !== "closed" && (
             <FullScreenReader mode={fullScreenMode} onClose={closeFullScreen} />
