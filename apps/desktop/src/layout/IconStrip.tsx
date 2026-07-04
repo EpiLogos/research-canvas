@@ -5,6 +5,8 @@ interface IconStripProps {
   onSetLeftMode: (mode: "files" | "search" | "annotations") => void;
   onOpenSequences: () => void;
   onOpenSettings: () => void;
+  onOpenInspector?: () => void;
+  onOpenTerminal?: () => void;
 }
 
 const NAV_ICONS: { id: string; label: string; svg: string }[] = [
@@ -30,7 +32,7 @@ const NAV_ICONS: { id: string; label: string; svg: string }[] = [
   },
 ];
 
-export function IconStrip({ leftOpen, activeLeftMode, onToggleLeft, onSetLeftMode, onOpenSequences, onOpenSettings }: IconStripProps) {
+export function IconStrip({ leftOpen, activeLeftMode, onToggleLeft, onSetLeftMode, onOpenSequences, onOpenSettings, onOpenInspector, onOpenTerminal }: IconStripProps) {
   const handleNavClick = (id: string) => {
     if (id === "files" || id === "search" || id === "annotate") {
       const mode = id === "annotate" ? "annotations" : id as "files" | "search";
@@ -64,6 +66,24 @@ export function IconStrip({ leftOpen, activeLeftMode, onToggleLeft, onSetLeftMod
             dangerouslySetInnerHTML={{ __html: icon.svg }}
           />
         ))}
+        <button
+          className="icon-strip__btn"
+          title="Inspector"
+          aria-label="Inspector"
+          onClick={() => onOpenInspector?.()}
+          dangerouslySetInnerHTML={{
+            __html: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="10" height="10" rx="2"/><line x1="8" y1="3" x2="8" y2="13"/></svg>`,
+          }}
+        />
+        <button
+          className="icon-strip__btn"
+          title="Terminal"
+          aria-label="Terminal"
+          onClick={() => onOpenTerminal?.()}
+          dangerouslySetInnerHTML={{
+            __html: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 5l3 3-3 3"/><line x1="8.5" y1="11" x2="12" y2="11"/></svg>`,
+          }}
+        />
       </div>
       <div className="icon-strip__bottom">
         <button

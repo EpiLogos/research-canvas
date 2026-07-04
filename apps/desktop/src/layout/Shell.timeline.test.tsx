@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 // Stub the workspace context so the Shell mounts without a live backend.
 // The brief's baseline mock only supplies {selectNode, canvasId, activeProjectId};
-// Shell's descendants (LeftOverlay, CanvasScreen, StatusBar, FullScreenReader) read
+// Shell's descendants (LeftOverlay, CanvasScreen, StatusStrip, FullScreenReader) read
 // additional workspace fields on every render, so those are filled in here with
 // empty/neutral defaults to let the Shell mount without a live backend.
 const selectNode = vi.fn();
@@ -83,7 +83,7 @@ describe("Shell timeline lens", () => {
 
   test("switching to the timeline lens renders the timeline and its nodes", async () => {
     render(<Shell />);
-    fireEvent.click(screen.getByTestId("lens-switch-timeline"));
+    fireEvent.click(screen.getByTestId("lens-timeline"));
     await waitFor(() => {
       expect(screen.getByTestId("timeline-lens")).toBeInTheDocument();
       expect(screen.getByTestId("timeline-node-banda")).toBeInTheDocument();
@@ -92,7 +92,7 @@ describe("Shell timeline lens", () => {
 
   test("opening a timeline node routes through workspace.selectNode (same document)", async () => {
     render(<Shell />);
-    fireEvent.click(screen.getByTestId("lens-switch-timeline"));
+    fireEvent.click(screen.getByTestId("lens-timeline"));
     const node = await screen.findByTestId("timeline-node-banda");
     fireEvent.doubleClick(node);
     expect(selectNode).toHaveBeenCalledWith("banda");

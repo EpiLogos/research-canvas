@@ -1,0 +1,121 @@
+/* Observatory design tokens — authoritative for the instrument shell. */
+:root {
+  --ob-bg: #090d13;
+  --ob-bg-2: #0c1119;
+  --ob-panel: #111825;
+  --ob-panel-2: #16202f;
+  --ob-float: #18202e;
+  --ob-ink: #e4ebf4;
+  --ob-dim: #8797ab;
+  --ob-faint: #5a6a7d;
+  --ob-line: #1b2634;
+  --ob-line-2: #2a3a4d;
+  --ob-line-3: #3a4e64;
+  --ob-accent: #79c0d4;
+  --ob-accent-deep: #3f7d90;
+  --ob-tint: rgba(121, 192, 212, 0.12);
+  --ob-amber: #d0a24a; /* archetypal-lighting semantic only */
+  --ob-live: #5fb8a0;
+  --ob-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --ob-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --ob-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* Frame: a column of title-area(existing) / transport / body / status. */
+.ishell {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: 34px minmax(0, 1fr) 24px;
+  background: radial-gradient(130% 90% at 50% -10%, #10161f 0%, var(--ob-bg) 58%);
+  color: var(--ob-ink);
+  font-family: var(--ob-sans);
+}
+
+.ishell-transport {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px;
+  background: var(--ob-bg-2);
+  border-bottom: 1px solid var(--ob-line);
+}
+.ishell-lensswitch {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--ob-panel);
+  border: 1px solid var(--ob-line-2);
+  border-radius: 8px;
+}
+.ishell-lensswitch button {
+  font: inherit;
+  font-size: 11px;
+  border: 0;
+  background: transparent;
+  color: var(--ob-dim);
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ishell-lensswitch button[data-active="true"] {
+  background: var(--ob-tint);
+  color: var(--ob-accent);
+}
+.ishell-breadcrumb { font-size: 11px; color: var(--ob-dim); }
+.ishell-transport__spacer { flex: 1; }
+.ishell-palette-affordance {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--ob-dim);
+  background: var(--ob-panel);
+  border: 1px solid var(--ob-line-2);
+  border-radius: 7px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.ishell-palette-affordance kbd {
+  font-family: var(--ob-mono);
+  font-size: 10px;
+  background: var(--ob-line-2);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--ob-ink);
+}
+
+/* Body: rail (44px) + stage (fills). Legacy panels still mount inside. */
+.ishell-body { position: relative; display: flex; min-height: 0; }
+.ishell-stage { position: relative; flex: 1; min-width: 0; overflow: hidden; }
+
+/* Status */
+.ishell-status {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 12px;
+  background: var(--ob-panel);
+  border-top: 1px solid var(--ob-line);
+  font-family: var(--ob-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  color: var(--ob-faint);
+}
+.ishell-status__sync { display: flex; align-items: center; gap: 6px; }
+.ishell-status__dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--ob-live); box-shadow: 0 0 6px var(--ob-live);
+}
+.ishell-status__sync[data-synced="false"] .ishell-status__dot {
+  background: var(--ob-faint); box-shadow: none;
+}
+.ishell-status__register { margin-left: auto; }
+
+/* Reading stub (Phase 3 replaces it) */
+.ishell-reading-stub {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ob-dim); font-family: var(--ob-serif); font-size: 15px;
+}
