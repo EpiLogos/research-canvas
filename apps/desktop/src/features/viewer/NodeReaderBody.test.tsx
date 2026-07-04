@@ -7,7 +7,7 @@ vi.mock("../canvas/CanvasWorkspaceContext", () => ({
   useCanvasWorkspace: () => ({ updateNodeContent: vi.fn() }),
 }));
 
-vi.mock("./ContentTab", () => ({
+vi.mock("./GraphDocumentContent", () => ({
   GraphDocumentContent: ({ graphNodeId }: { graphNodeId: string }) => (
     <div data-testid="doc-pane">doc:{graphNodeId}</div>
   ),

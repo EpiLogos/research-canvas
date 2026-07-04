@@ -247,5 +247,3 @@
   font-family: var(--ob-serif);
   font-size: 15px;
 }
-/* Reading lens runs edge-to-edge: no rail column, stage is the whole body. */
-.ishell[data-lens="reading"] .ishell-body { }

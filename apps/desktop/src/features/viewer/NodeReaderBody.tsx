@@ -4,7 +4,7 @@ import { createWorkspaceTransport, readWorkspaceTextFile } from "@research-canva
 import type { GraphNode, GraphNodePatch } from "@research-canvas/desktop-api";
 import { useCanvasWorkspace } from "../canvas/CanvasWorkspaceContext";
 import { NodeContentPane } from "./NodeContentPane";
-import { GraphDocumentContent } from "./ContentTab";
+import { GraphDocumentContent } from "./GraphDocumentContent";
 
 export function NodeReaderBody({ node }: { node: CanvasNode }) {
   const workspace = useCanvasWorkspace();

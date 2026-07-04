@@ -1,10 +1,9 @@
-import type { CanvasNode } from "@research-canvas/schema";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { NodeReaderBody } from "../features/viewer/NodeReaderBody";
 
 export function ReadingLens({ onFullScreen }: { onFullScreen: () => void }) {
   const workspace = useCanvasWorkspace();
-  const node = (workspace.nodes as CanvasNode[]).find((n) => n.id === workspace.selectedNodeId) ?? null;
+  const node = workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
 
   return (
     <section className="ishell-reading" data-testid="reading-pane">
