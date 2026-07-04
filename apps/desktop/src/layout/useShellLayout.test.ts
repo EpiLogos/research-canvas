@@ -35,4 +35,31 @@ describe("useShellLayout summoned panels", () => {
     act(() => result.current.setBrowserOpen(true));
     expect(result.current.browserOpen).toBe(true);
   });
+
+  it("browser resize widens as the pointer moves right", () => {
+    const { result } = renderHook(() => useShellLayout());
+    const start = { clientX: 100, preventDefault() {} } as unknown as React.PointerEvent;
+    act(() => result.current.beginBrowserResize(start));
+    act(() => window.dispatchEvent(new PointerEvent("pointermove", { clientX: 140 })));
+    expect(result.current.browserWidth).toBe(280);
+    act(() => window.dispatchEvent(new PointerEvent("pointerup")));
+  });
+
+  it("inspector resize widens as the pointer moves LEFT (right-anchored)", () => {
+    const { result } = renderHook(() => useShellLayout());
+    const start = { clientX: 500, preventDefault() {} } as unknown as React.PointerEvent;
+    act(() => result.current.beginInspectorResize(start));
+    act(() => window.dispatchEvent(new PointerEvent("pointermove", { clientX: 460 })));
+    expect(result.current.inspectorWidth).toBe(300);
+    act(() => window.dispatchEvent(new PointerEvent("pointerup")));
+  });
+
+  it("dock grows as the pointer moves UP (bottom-anchored)", () => {
+    const { result } = renderHook(() => useShellLayout());
+    const start = { clientY: 400, preventDefault() {} } as unknown as React.PointerEvent;
+    act(() => result.current.beginDockResize(start));
+    act(() => window.dispatchEvent(new PointerEvent("pointermove", { clientY: 360 })));
+    expect(result.current.dockHeight).toBe(280);
+    act(() => window.dispatchEvent(new PointerEvent("pointerup")));
+  });
 });
