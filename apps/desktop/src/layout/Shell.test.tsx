@@ -44,4 +44,12 @@ describe("Shell frame", () => {
     fireEvent.click(screen.getByTestId("lens-reading"));
     expect(screen.getByTestId("reading-pane")).toBeVisible();
   });
+
+  it("hides the rail while in the reading lens", () => {
+    renderShell();
+    expect(screen.getByTestId("left-rail")).toBeVisible();
+    fireEvent.click(screen.getByTestId("lens-reading"));
+    expect(screen.getByTestId("reading-pane")).toBeVisible();
+    expect(screen.queryByTestId("left-rail")).not.toBeInTheDocument();
+  });
 });

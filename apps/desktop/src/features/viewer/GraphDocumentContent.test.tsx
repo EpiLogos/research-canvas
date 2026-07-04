@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createAnnotationStore, createCanvasStore } from "@research-canvas/canvas";
 
-import { GraphDocumentContent } from "./ContentTab";
+import { GraphDocumentContent } from "./GraphDocumentContent";
 import { CanvasWorkspaceContext } from "../canvas/CanvasWorkspaceContext";
 
 // jsdom is missing a couple of browser APIs the real BlockNote editor touches
