@@ -4,7 +4,7 @@ import { createWorkspaceTransport, readWorkspaceTextFile } from "@research-canva
 import type { GraphNode, GraphNodePatch } from "@research-canvas/desktop-api";
 import { useCanvasWorkspace } from "../canvas/CanvasWorkspaceContext";
 import { NodeContentPane } from "./NodeContentPane";
-import { NodeDocumentPane } from "./NodeDocumentPane";
+import { GraphDocumentContent } from "./ContentTab";
 
 export function NodeReaderBody({ node }: { node: CanvasNode }) {
   const workspace = useCanvasWorkspace();
@@ -27,7 +27,7 @@ export function NodeReaderBody({ node }: { node: CanvasNode }) {
   const graphNodeId = (node as unknown as { graphNodeId?: string }).graphNodeId ?? null;
   if (graphNodeId) {
     return (
-      <NodeDocumentPane
+      <GraphDocumentContent
         graphNodeId={graphNodeId}
         transport={createWorkspaceTransport() as unknown as {
           readGraphNode: (input: { graphNodeId: string }) => Promise<GraphNode>;
