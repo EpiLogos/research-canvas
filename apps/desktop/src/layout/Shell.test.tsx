@@ -52,4 +52,11 @@ describe("Shell frame", () => {
     expect(screen.getByTestId("reading-pane")).toBeVisible();
     expect(screen.queryByTestId("left-rail")).not.toBeInTheDocument();
   });
+
+  it("opens the command palette on Cmd+K", () => {
+    renderShell();
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    expect(screen.getByRole("dialog", { name: "Command palette" })).toBeVisible();
+  });
 });
