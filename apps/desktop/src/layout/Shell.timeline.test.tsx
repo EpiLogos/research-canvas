@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 // Stub the workspace context so the Shell mounts without a live backend.
 // The brief's baseline mock only supplies {selectNode, canvasId, activeProjectId};
-// Shell's descendants (LeftOverlay, CanvasScreen, StatusBar, FullScreenReader) read
+// Shell's descendants (LeftOverlay, CanvasScreen, StatusStrip, FullScreenReader) read
 // additional workspace fields on every render, so those are filled in here with
 // empty/neutral defaults to let the Shell mount without a live backend.
 const selectNode = vi.fn();
