@@ -58,27 +58,130 @@ describe("NodeDocumentPane", () => {
       },
     ]);
     const transport = {
+      readLocalNodeDocument: vi
+        .fn()
+        .mockResolvedValue({ body, summary: "", neo4jSynced: true }),
+      upsertLocalNodeDocument: vi.fn().mockResolvedValue(undefined),
       readGraphNode: vi.fn().mockResolvedValue(makeNode(body)),
       updateGraphNode: vi.fn().mockResolvedValue(makeNode(body)),
     };
 
-    render(<NodeDocumentPane graphNodeId="n1" transport={transport} editable={false} />);
+    render(
+      <NodeDocumentPane
+        graphNodeId="n1"
+        transport={transport}
+        databasePath="/tmp/db.sqlite"
+        editable={false}
+      />
+    );
 
-    expect(transport.readGraphNode).toHaveBeenCalledWith({ graphNodeId: "n1" });
+    expect(transport.readLocalNodeDocument).toHaveBeenCalledWith({
+      databasePath: "/tmp/db.sqlite",
+      graphNodeId: "n1",
+    });
     expect(await screen.findByText("Loaded body")).toBeInTheDocument();
   });
 
-  it("shows an error status when the initial read fails", async () => {
+  it("mounts the editor from the LOCAL document even when readGraphNode rejects (no dead-end)", async () => {
+    const localBody = JSON.stringify([
+      {
+        id: "b1",
+        type: "paragraph",
+        props: {},
+        content: [{ type: "text", text: "LOCAL", styles: {} }],
+        children: [],
+      },
+    ]);
     const transport = {
+      // Local store is authoritative for mount — Neo4j is only a sync target.
+      readLocalNodeDocument: vi
+        .fn()
+        .mockResolvedValue({ body: localBody, summary: "", neo4jSynced: false }),
+      upsertLocalNodeDocument: vi.fn().mockResolvedValue(undefined),
+      // Neo4j down / node never synced: the editor must NOT be blocked.
       readGraphNode: vi.fn().mockRejectedValue(new Error("read failed")),
-      updateGraphNode: vi.fn(),
+      updateGraphNode: vi.fn().mockResolvedValue(makeNode(localBody)),
     };
 
-    render(<NodeDocumentPane graphNodeId="n1" transport={transport} />);
+    render(
+      <NodeDocumentPane
+        graphNodeId="n1"
+        transport={transport}
+        databasePath="/tmp/db.sqlite"
+        editable={false}
+      />
+    );
+
+    // The editor mounts showing the LOCAL body.
+    expect(await screen.findByText("LOCAL")).toBeInTheDocument();
+    expect(transport.readLocalNodeDocument).toHaveBeenCalledWith({
+      databasePath: "/tmp/db.sqlite",
+      graphNodeId: "n1",
+    });
+    // And there is NO full-pane "failed to read node" dead-end.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("flush writes local first (authoritative), then syncs Neo4j best-effort", async () => {
+    const localBody = JSON.stringify([
+      {
+        id: "b1",
+        type: "paragraph",
+        props: {},
+        content: [{ type: "text", text: "LOCAL", styles: {} }],
+        children: [],
+      },
+    ]);
+    const edited = JSON.stringify([
+      {
+        id: "b1",
+        type: "paragraph",
+        props: {},
+        content: [{ type: "text", text: "Edited body", styles: {} }],
+        children: [],
+      },
+    ]);
+    const transport = {
+      readLocalNodeDocument: vi
+        .fn()
+        .mockResolvedValue({ body: localBody, summary: "", neo4jSynced: true }),
+      upsertLocalNodeDocument: vi.fn().mockResolvedValue(undefined),
+      readGraphNode: vi.fn().mockResolvedValue(makeNode(localBody)),
+      updateGraphNode: vi.fn().mockResolvedValue(makeNode(edited)),
+    };
+
+    const { unmount } = render(
+      <NodeDocumentPane
+        graphNodeId="n1"
+        transport={transport}
+        databasePath="/tmp/db.sqlite"
+        __testSetBody={edited}
+      />
+    );
+
+    await screen.findByText("LOCAL");
+    fireEvent.click(screen.getByTestId("set-body"));
+
+    // Force a flush via the close path.
+    unmount();
 
     await waitFor(() =>
-      expect(screen.getByText(/read failed/i)).toBeInTheDocument()
+      expect(transport.upsertLocalNodeDocument).toHaveBeenCalled()
     );
+    // Local upsert is authoritative and happens with the edited body.
+    expect(transport.upsertLocalNodeDocument).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        databasePath: "/tmp/db.sqlite",
+        graphNodeId: "n1",
+        body: edited,
+      })
+    );
+    // Neo4j is still synced best-effort with the same body.
+    await waitFor(() => expect(transport.updateGraphNode).toHaveBeenCalled());
+    expect(transport.updateGraphNode).toHaveBeenLastCalledWith({
+      graphNodeId: "n1",
+      patch: expect.objectContaining({ body: edited }),
+    });
   });
 
   it("flushes the dirty body on unmount (crash-safe close flush)", async () => {
@@ -101,12 +204,21 @@ describe("NodeDocumentPane", () => {
       },
     ]);
     const transport = {
+      readLocalNodeDocument: vi
+        .fn()
+        .mockResolvedValue({ body, summary: "", neo4jSynced: true }),
+      upsertLocalNodeDocument: vi.fn().mockResolvedValue(undefined),
       readGraphNode: vi.fn().mockResolvedValue(makeNode(body)),
       updateGraphNode: vi.fn().mockResolvedValue(makeNode(edited)),
     };
 
     const { unmount } = render(
-      <NodeDocumentPane graphNodeId="n1" transport={transport} __testSetBody={edited} />
+      <NodeDocumentPane
+        graphNodeId="n1"
+        transport={transport}
+        databasePath="/tmp/db.sqlite"
+        __testSetBody={edited}
+      />
     );
 
     // Wait for the editor to mount, then make a dirty edit that has NOT yet
@@ -136,8 +248,16 @@ describe("NodeDocumentPane", () => {
     ]);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const transport = {
+      readLocalNodeDocument: vi
+        .fn()
+        .mockResolvedValue({ body, summary: "", neo4jSynced: true }),
+      // Local upsert fails on the close write → the failure must be surfaced
+      // (local is authoritative, so its failure is the one that matters).
+      upsertLocalNodeDocument: vi
+        .fn()
+        .mockRejectedValue(new Error("close write failed")),
       readGraphNode: vi.fn().mockResolvedValue(makeNode(body)),
-      updateGraphNode: vi.fn().mockRejectedValue(new Error("close write failed")),
+      updateGraphNode: vi.fn().mockResolvedValue(makeNode(body)),
     };
 
     const edited = JSON.stringify([
@@ -150,7 +270,12 @@ describe("NodeDocumentPane", () => {
       },
     ]);
     const { unmount } = render(
-      <NodeDocumentPane graphNodeId="n1" transport={transport} __testSetBody={edited} />
+      <NodeDocumentPane
+        graphNodeId="n1"
+        transport={transport}
+        databasePath="/tmp/db.sqlite"
+        __testSetBody={edited}
+      />
     );
     await screen.findByText("Loaded body");
     fireEvent.click(screen.getByTestId("set-body"));

@@ -10,15 +10,28 @@ interface GraphDocumentTransport {
     graphNodeId: string;
     patch: GraphNodePatch;
   }): Promise<GraphNode>;
+  readLocalNodeDocument(input: {
+    databasePath: string;
+    graphNodeId: string;
+  }): Promise<{ body: string; summary: string; neo4jSynced: boolean } | null>;
+  upsertLocalNodeDocument(input: {
+    databasePath: string;
+    graphNodeId: string;
+    body: string;
+    summary: string;
+    neo4jSynced?: boolean;
+  }): Promise<void>;
 }
 
 export function GraphDocumentContent({
   graphNodeId,
   transport,
+  databasePath,
   editable = true,
 }: {
   graphNodeId: string;
   transport: GraphDocumentTransport;
+  databasePath: string | null;
   editable?: boolean;
 }) {
   return (
@@ -26,6 +39,7 @@ export function GraphDocumentContent({
       <NodeDocumentPane
         graphNodeId={graphNodeId}
         transport={transport}
+        databasePath={databasePath}
         editable={editable}
       />
       <div className="graph-document-content__linking">

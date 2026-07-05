@@ -67,6 +67,11 @@ const transport = {
     updatedAt: "2026-06-28T00:00:00Z",
   }),
   updateGraphNode: vi.fn().mockResolvedValue({ graphNodeId: "g1", body }),
+  // Local store is empty here, so the pane reconciles from Neo4j (readGraphNode)
+  // and seeds the editor with "Graph body" — exercising the local-first mount +
+  // best-effort reconcile path.
+  readLocalNodeDocument: vi.fn().mockResolvedValue(null),
+  upsertLocalNodeDocument: vi.fn().mockResolvedValue(undefined),
   searchGraph: vi.fn().mockResolvedValue([]),
 };
 
@@ -103,6 +108,7 @@ function renderDocument() {
       <GraphDocumentContent
         graphNodeId="g1"
         transport={transport as never}
+        databasePath="/tmp/db.sqlite"
         editable
       />
     </CanvasWorkspaceContext.Provider>,
