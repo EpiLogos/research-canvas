@@ -122,6 +122,76 @@ describe("NodeDocumentPane", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("does not let a slow reconcile clobber in-progress typing into an empty local doc", async () => {
+    const neo4jBody = JSON.stringify([
+      {
+        id: "b1",
+        type: "paragraph",
+        props: {},
+        content: [{ type: "text", text: "NEO4J BODY", styles: {} }],
+        children: [],
+      },
+    ]);
+    const typedBody = JSON.stringify([
+      {
+        id: "b1",
+        type: "paragraph",
+        props: {},
+        content: [{ type: "text", text: "User typed this", styles: {} }],
+        children: [],
+      },
+    ]);
+
+    // The local document is empty at mount, so reconcile-from-Neo4j is
+    // eligible to run. readGraphNode is held open (does not resolve) until
+    // we explicitly release it below, simulating network latency.
+    let releaseReadGraphNode: (node: GraphNode) => void = () => {};
+    const readGraphNodePromise = new Promise<GraphNode>((resolve) => {
+      releaseReadGraphNode = resolve;
+    });
+    const transport = {
+      readLocalNodeDocument: vi
+        .fn()
+        .mockResolvedValue({ body: "", summary: "", neo4jSynced: false }),
+      upsertLocalNodeDocument: vi.fn().mockResolvedValue(undefined),
+      readGraphNode: vi.fn().mockReturnValue(readGraphNodePromise),
+      updateGraphNode: vi.fn().mockResolvedValue(makeNode(typedBody)),
+    };
+
+    render(
+      <NodeDocumentPane
+        graphNodeId="n1"
+        transport={transport}
+        databasePath="/tmp/db.sqlite"
+        __testSetBody={typedBody}
+      />
+    );
+
+    // Wait for the (empty) editor to mount and reconcile's readGraphNode to
+    // have been kicked off.
+    await waitFor(() => expect(transport.readGraphNode).toHaveBeenCalled());
+
+    // Simulate the user typing into the still-empty editor before the Neo4j
+    // read resolves. (BlockNote itself is an uncontrolled editor once
+    // mounted — the store's `body` field, not the rendered DOM, is the
+    // source of truth the reconcile guard must respect.)
+    fireEvent.click(screen.getByTestId("set-body"));
+
+    // Now let the slow Neo4j read resolve with non-empty substance.
+    releaseReadGraphNode(makeNode(neo4jBody));
+    // Flush pending microtasks so the reconcile .then() handler runs (or is
+    // skipped by the guard).
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Reconcile must NOT have persisted the Neo4j body over the user's
+    // in-progress edit: only the typed body may ever be upserted.
+    for (const call of transport.upsertLocalNodeDocument.mock.calls) {
+      expect(call[0].body).not.toBe(neo4jBody);
+    }
+  });
+
   it("flush writes local first (authoritative), then syncs Neo4j best-effort", async () => {
     const localBody = JSON.stringify([
       {

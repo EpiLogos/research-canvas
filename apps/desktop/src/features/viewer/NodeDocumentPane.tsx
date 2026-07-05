@@ -86,48 +86,70 @@ export function NodeDocumentPane({
     setStatusNote(null);
 
     // flush is authoritative-local-first: write the local document (SQLite)
-    // FIRST, then sync Neo4j best-effort. Neo4j failure never blocks — it only
-    // marks the local row neo4j_synced=false and leaves a subtle status.
+    // FIRST — this is the durable write and its failure must propagate so the
+    // doc store surfaces status="error". THEN sync Neo4j best-effort; a Neo4j
+    // failure never blocks or surfaces a blocking error — it only leaves the
+    // local row's neo4j_synced=false and shows a subtle non-blocking status.
     const flush = async (body: string, summary: string): Promise<void> => {
       const dbPath = databasePathRef.current;
-      let neo4jSynced = false;
-      // Fire the Neo4j sync first so we can record its outcome in the local
-      // row, but the local write is what determines durability.
-      try {
-        await transportRef.current.updateGraphNode({
-          graphNodeId,
-          patch: { body, summary } as GraphNodePatch,
-        });
-        neo4jSynced = true;
-        if (!cancelled) {
-          setStatusNote(null);
-        }
-      } catch (error) {
-        neo4jSynced = false;
-        if (!cancelled) {
-          setStatusNote("Saved locally, sync pending");
-        }
-        console.warn("node document Neo4j sync failed; kept locally", error);
-      }
 
       if (!dbPath) {
-        // No local store available (e.g. no workspace db path). The Neo4j
-        // write above is the only persistence; surface it non-blockingly.
-        if (!neo4jSynced) {
+        // No local store available (e.g. no workspace db path). Fall back to
+        // Neo4j as the only persistence; surface its failure non-blockingly
+        // via a thrown error (there is nothing else to fall back on).
+        try {
+          await transportRef.current.updateGraphNode({
+            graphNodeId,
+            patch: { body, summary } as GraphNodePatch,
+          });
+          if (!cancelled) {
+            setStatusNote(null);
+          }
+        } catch (error) {
+          if (!cancelled) {
+            setStatusNote("Saved locally, sync pending");
+          }
+          console.warn("node document Neo4j sync failed; kept locally", error);
           throw new Error("saved locally unavailable: no workspace database");
         }
         return;
       }
 
-      // Authoritative local write. A failure here IS a real save failure and
-      // must propagate so the doc store surfaces status="error".
+      // Authoritative local write, FIRST. A failure here IS a real save
+      // failure and must propagate so the doc store surfaces status="error".
       await transportRef.current.upsertLocalNodeDocument({
         databasePath: dbPath,
         graphNodeId,
         body,
         summary,
-        neo4jSynced,
+        neo4jSynced: false,
       });
+
+      // Best-effort Neo4j sync, AFTER the local write succeeded. Never blocks
+      // and never surfaces a blocking error — only a subtle status note.
+      try {
+        await transportRef.current.updateGraphNode({
+          graphNodeId,
+          patch: { body, summary } as GraphNodePatch,
+        });
+        await transportRef.current.upsertLocalNodeDocument({
+          databasePath: dbPath,
+          graphNodeId,
+          body,
+          summary,
+          neo4jSynced: true,
+        });
+        if (!cancelled) {
+          setStatusNote(null);
+        }
+      } catch (error) {
+        // Local write already succeeded; leave neo4j_synced=false and just
+        // note the pending sync. Non-blocking by design.
+        if (!cancelled) {
+          setStatusNote("Saved locally, sync pending");
+        }
+        console.warn("node document Neo4j sync failed; kept locally", error);
+      }
     };
 
     const mountStore = (initialBody: string) => {
@@ -162,6 +184,13 @@ export function NodeDocumentPane({
             .readGraphNode({ graphNodeId })
             .then((node) => {
               if (cancelled || !node || isEmptyBody(node.body)) {
+                return;
+              }
+              // Re-check the LIVE store body at resolution time (not the
+              // mount-time snapshot): if the user has started typing into the
+              // empty editor while this request was in flight, the store body
+              // is no longer empty and reconcile must NOT clobber it.
+              if (!isEmptyBody(mounted.getState().body)) {
                 return;
               }
               mounted.getState().setBody(node.body);
