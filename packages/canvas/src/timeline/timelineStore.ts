@@ -19,6 +19,8 @@ export interface TimelineStoreState {
   litMap: LitMap;
   selectedNodeId: string | null;
   lightingOperatorId: string | null;
+  cursorYear: number | null;
+  playing: boolean;
 
   viewport: () => TimelineViewport;
   tier: () => ScaleTier;
@@ -31,6 +33,8 @@ export interface TimelineStoreState {
   setLighting: (lighting: ArchetypalLighting) => void;
   clearLighting: () => void;
   setSelected: (nodeId: string | null) => void;
+  setCursorYear: (year: number | null) => void;
+  setPlaying: (playing: boolean) => void;
 }
 
 interface CreateTimelineStoreOptions {
@@ -49,6 +53,8 @@ export function createTimelineStore(
     litMap: new Map(),
     selectedNodeId: null,
     lightingOperatorId: null,
+    cursorYear: null,
+    playing: false,
 
     viewport: () => {
       const s = get();
@@ -79,5 +85,7 @@ export function createTimelineStore(
       }),
     clearLighting: () => set({ litMap: new Map(), lightingOperatorId: null }),
     setSelected: (nodeId) => set({ selectedNodeId: nodeId }),
+    setCursorYear: (year) => set({ cursorYear: year }),
+    setPlaying: (playing) => set({ playing }),
   }));
 }
