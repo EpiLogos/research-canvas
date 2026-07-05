@@ -48,6 +48,10 @@ const MIGRATIONS: &[Migration] = &[
         version: "0009_agent_activity",
         sql: include_str!("../../migrations/0009_agent_activity.sql"),
     },
+    Migration {
+        version: "0010_node_document",
+        sql: include_str!("../../migrations/0010_node_document.sql"),
+    },
 ];
 
 impl MigrationRunner {
