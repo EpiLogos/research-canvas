@@ -427,6 +427,19 @@ export interface WorkspaceTransport {
 
   // ---- Agent activity (WS6) ----
   listAgentActivity(input: { limit?: number }): Promise<AgentActivity[]>;
+
+  // ---- Local node document (SQLite; Task 1.1/1.2) ----
+  readLocalNodeDocument(input: {
+    databasePath: string;
+    graphNodeId: string;
+  }): Promise<{ body: string; summary: string; neo4jSynced: boolean } | null>;
+  upsertLocalNodeDocument(input: {
+    databasePath: string;
+    graphNodeId: string;
+    body: string;
+    summary: string;
+    neo4jSynced?: boolean;
+  }): Promise<void>;
 }
 
 const DEFAULT_BRIDGE_PORT = 4789;
@@ -611,6 +624,15 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
       });
       return rows.map(mapAgentActivityRow);
     },
+    async readLocalNodeDocument(input) {
+      return invokeTauri<{ body: string; summary: string; neo4jSynced: boolean } | null>(
+        "read_local_node_document_command",
+        { request: input }
+      );
+    },
+    async upsertLocalNodeDocument(input) {
+      await invokeTauri<void>("upsert_local_node_document_command", { request: input });
+    },
   };
 }
 
@@ -755,6 +777,8 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       const rows = (await response.json()) as RawAgentActivityRow[];
       return rows.map(mapAgentActivityRow);
     },
+    async readLocalNodeDocument() { throw new Error("read-only web build"); },
+    async upsertLocalNodeDocument() { throw new Error("read-only web build"); },
   };
 }
 
@@ -1122,6 +1146,10 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
     importNodeImage: readOnlyReject,
 
     // ---- agent activity (WS6): excluded from the exported bundle per design §6 ----
-    listAgentActivity: readOnlyReject
+    listAgentActivity: readOnlyReject,
+
+    // ---- local node document: local-only SQLite store, not part of the static bundle ----
+    readLocalNodeDocument: readOnlyReject,
+    upsertLocalNodeDocument: readOnlyReject
   };
 }
