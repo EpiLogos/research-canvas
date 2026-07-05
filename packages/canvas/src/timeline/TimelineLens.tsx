@@ -9,6 +9,14 @@ import { generateTicks } from "./ticks";
 import { TimelineAxis } from "./TimelineAxis";
 import { TimelineNode } from "./TimelineNode";
 import { ResonancePopover } from "./ResonancePopover";
+import { TimelineTransport } from "./TimelineTransport";
+import { pixelToYear, yearToPixel } from "./viewport";
+
+function clamp01(value: number): number {
+  if (value < 0) return 0;
+  if (value > 1) return 1;
+  return value;
+}
 
 export interface TimelineDataSource {
   loadTimelineNodes(): Promise<GraphNode[]>;
@@ -19,6 +27,7 @@ export interface TimelineDataSource {
 export interface TimelineLensProps {
   dataSource: TimelineDataSource;
   onOpenNode: (graphNodeId: string) => void;
+  onPlaySequence?: () => void;
 }
 
 const AXIS_HEIGHT = 48;
@@ -27,7 +36,7 @@ const AXIS_HEIGHT = 48;
 // deltaY (scroll up / pinch out) zooms in.
 const WHEEL_ZOOM_BASE = 1.003;
 
-export function TimelineLens({ dataSource, onOpenNode }: TimelineLensProps): JSX.Element {
+export function TimelineLens({ dataSource, onOpenNode, onPlaySequence }: TimelineLensProps): JSX.Element {
   const store = useMemo(() => createTimelineStore(), []);
   const state = useStore(store);
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -65,6 +74,51 @@ export function TimelineLens({ dataSource, onOpenNode }: TimelineLensProps): JSX
   const ticks = generateTicks(viewport, tier);
   const lighting = state.litMap;
   const lightingActive = state.lightingOperatorId !== null;
+
+  const minYear = pixelToYear(viewport, 0);
+  const maxYear = pixelToYear(viewport, viewport.widthPx);
+  const { cursorYear, playing } = state;
+  const fraction = cursorYear == null ? 0 : clamp01((cursorYear - minYear) / (maxYear - minYear));
+  const cursorLabel = cursorYear == null ? "—" : String(Math.round(cursorYear));
+
+  const handleScrub = (f: number) => {
+    store.getState().setCursorYear(minYear + f * (maxYear - minYear));
+  };
+
+  const handleTogglePlay = () => {
+    store.getState().setPlaying(!playing);
+  };
+
+  // Play animation: advance the cursor across the visible range over ~8s.
+  useEffect(() => {
+    if (!playing) return;
+    if (maxYear === minYear) {
+      store.getState().setPlaying(false);
+      return;
+    }
+    if (store.getState().cursorYear == null) {
+      store.getState().setCursorYear(minYear);
+    }
+    const yearsPerSecond = (maxYear - minYear) / 8;
+    let rafId: number;
+    let lastTs: number | null = null;
+    const step = (ts: number) => {
+      if (lastTs == null) lastTs = ts;
+      const dt = (ts - lastTs) / 1000;
+      lastTs = ts;
+      const current = store.getState().cursorYear ?? minYear;
+      const next = current + yearsPerSecond * dt;
+      if (next >= maxYear) {
+        store.getState().setCursorYear(maxYear);
+        store.getState().setPlaying(false);
+        return;
+      }
+      store.getState().setCursorYear(next);
+      rafId = requestAnimationFrame(step);
+    };
+    rafId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafId);
+  }, [playing, minYear, maxYear, store]);
 
   const handleSelect = (graphNodeId: string) => {
     store.getState().setSelected(graphNodeId);
@@ -144,6 +198,9 @@ export function TimelineLens({ dataSource, onOpenNode }: TimelineLensProps): JSX
             );
           })}
         </div>
+        {cursorYear != null && (
+          <div className="timeline-cursor" style={{ left: `${yearToPixel(viewport, cursorYear)}px` }} />
+        )}
       </div>
       {state.selectedNodeId !== null && (
         <ResonancePopover
@@ -151,6 +208,14 @@ export function TimelineLens({ dataSource, onOpenNode }: TimelineLensProps): JSX
           onLightOperator={handleLightOperator}
         />
       )}
+      <TimelineTransport
+        playing={playing}
+        onTogglePlay={handleTogglePlay}
+        fraction={fraction}
+        onScrub={handleScrub}
+        label={cursorLabel}
+        onPlaySequence={onPlaySequence}
+      />
     </div>
   );
 }

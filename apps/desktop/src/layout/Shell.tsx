@@ -151,7 +151,7 @@ export function Shell() {
 
           {lens === "timeline" && (
             <section className="canvas-pane" data-testid="timeline-pane" style={{ position: "absolute", inset: 0 }}>
-              <TimelineLens dataSource={timelineDataSource} onOpenNode={openNodeDocument} />
+              <TimelineLens dataSource={timelineDataSource} onOpenNode={openNodeDocument} onPlaySequence={handlePlaySequence} />
             </section>
           )}
 
@@ -171,7 +171,7 @@ export function Shell() {
           <BottomDock
             open={layout.dockOpen}
             height={layout.dockHeight}
-            title="Terminal · antichrist"
+            label="Terminal · antichrist"
             onClose={() => layout.setDockOpen(false)}
             onResizeStart={layout.beginDockResize}
           >

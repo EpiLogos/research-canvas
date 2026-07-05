@@ -5,8 +5,15 @@ import type { GraphNode, GraphNodePatch } from "@research-canvas/desktop-api";
 import { useCanvasWorkspace } from "../canvas/CanvasWorkspaceContext";
 import { NodeContentPane } from "./NodeContentPane";
 import { GraphDocumentContent } from "./GraphDocumentContent";
+import { NodeDocumentPane } from "./NodeDocumentPane";
 
-export function NodeReaderBody({ node }: { node: CanvasNode }) {
+export function NodeReaderBody({
+  node,
+  affordances = true,
+}: {
+  node: CanvasNode;
+  affordances?: boolean;
+}) {
   const workspace = useCanvasWorkspace();
   const textResourceNode =
     node.type === "resource" &&
@@ -26,14 +33,14 @@ export function NodeReaderBody({ node }: { node: CanvasNode }) {
 
   const graphNodeId = (node as unknown as { graphNodeId?: string }).graphNodeId ?? null;
   if (graphNodeId) {
-    return (
-      <GraphDocumentContent
-        graphNodeId={graphNodeId}
-        transport={createWorkspaceTransport() as unknown as {
-          readGraphNode: (input: { graphNodeId: string }) => Promise<GraphNode>;
-          updateGraphNode: (input: { graphNodeId: string; patch: GraphNodePatch }) => Promise<GraphNode>;
-        }}
-      />
+    const transport = createWorkspaceTransport() as unknown as {
+      readGraphNode: (input: { graphNodeId: string }) => Promise<GraphNode>;
+      updateGraphNode: (input: { graphNodeId: string; patch: GraphNodePatch }) => Promise<GraphNode>;
+    };
+    return affordances ? (
+      <GraphDocumentContent graphNodeId={graphNodeId} transport={transport} />
+    ) : (
+      <NodeDocumentPane graphNodeId={graphNodeId} transport={transport} />
     );
   }
 

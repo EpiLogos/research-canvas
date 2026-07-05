@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import { createTimelineStore } from "./timelineStore";
 import type { ArchetypalLighting, GraphNode } from "./contracts";
 
@@ -72,5 +72,29 @@ describe("timelineStore", () => {
     const store = createTimelineStore();
     store.getState().setSelected("x");
     expect(store.getState().selectedNodeId).toBe("x");
+  });
+});
+
+describe("timeline transport state", () => {
+  it("defaults cursorYear to null and playing to false", () => {
+    const store = createTimelineStore();
+    expect(store.getState().cursorYear).toBeNull();
+    expect(store.getState().playing).toBe(false);
+  });
+
+  it("sets the cursor year", () => {
+    const store = createTimelineStore();
+    store.getState().setCursorYear(1789);
+    expect(store.getState().cursorYear).toBe(1789);
+    store.getState().setCursorYear(null);
+    expect(store.getState().cursorYear).toBeNull();
+  });
+
+  it("toggles playing", () => {
+    const store = createTimelineStore();
+    store.getState().setPlaying(true);
+    expect(store.getState().playing).toBe(true);
+    store.getState().setPlaying(false);
+    expect(store.getState().playing).toBe(false);
   });
 });
