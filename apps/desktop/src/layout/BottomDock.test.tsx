@@ -6,7 +6,7 @@ import { BottomDock } from "./BottomDock";
 describe("BottomDock", () => {
   it("renders nothing when closed", () => {
     render(
-      <BottomDock open={false} height={200} title="Terminal" onClose={() => {}} onResizeStart={() => {}}>
+      <BottomDock open={false} height={200} label="Terminal" onClose={() => {}} onResizeStart={() => {}}>
         <div>session</div>
       </BottomDock>,
     );
@@ -15,7 +15,7 @@ describe("BottomDock", () => {
 
   it("renders children and title when open", () => {
     render(
-      <BottomDock open height={200} title="Terminal · antichrist" onClose={() => {}} onResizeStart={() => {}}>
+      <BottomDock open height={200} label="Terminal · antichrist" onClose={() => {}} onResizeStart={() => {}}>
         <div>session-body</div>
       </BottomDock>,
     );
@@ -27,7 +27,7 @@ describe("BottomDock", () => {
   it("calls onClose from the close button", () => {
     const onClose = vi.fn();
     render(
-      <BottomDock open height={200} title="Terminal" onClose={onClose} onResizeStart={() => {}}>
+      <BottomDock open height={200} label="Terminal" onClose={onClose} onResizeStart={() => {}}>
         <div>x</div>
       </BottomDock>,
     );
@@ -37,7 +37,7 @@ describe("BottomDock", () => {
 
   it("applies the height to the dock element", () => {
     render(
-      <BottomDock open height={321} title="Terminal" onClose={() => {}} onResizeStart={() => {}}>
+      <BottomDock open height={321} label="Terminal" onClose={() => {}} onResizeStart={() => {}}>
         <div>x</div>
       </BottomDock>,
     );

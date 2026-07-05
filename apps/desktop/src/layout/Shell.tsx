@@ -171,7 +171,7 @@ export function Shell() {
           <BottomDock
             open={layout.dockOpen}
             height={layout.dockHeight}
-            title="Terminal · antichrist"
+            label="Terminal · antichrist"
             onClose={() => layout.setDockOpen(false)}
             onResizeStart={layout.beginDockResize}
           >
