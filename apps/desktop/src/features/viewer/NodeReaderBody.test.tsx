@@ -19,6 +19,12 @@ vi.mock("./NodeContentPane", () => ({
   ),
 }));
 
+vi.mock("./NodeDocumentPane", () => ({
+  NodeDocumentPane: ({ graphNodeId }: { graphNodeId: string }) => (
+    <div data-testid="bare-doc-pane">bare:{graphNodeId}</div>
+  ),
+}));
+
 describe("NodeReaderBody", () => {
   it("renders the document pane for a graph-backed node", () => {
     const node = { id: "n1", title: "T", type: "note", graphNodeId: "g-1" } as never;
@@ -30,5 +36,19 @@ describe("NodeReaderBody", () => {
     const node = { id: "n2", title: "T", type: "note" } as never;
     render(<NodeReaderBody node={node} />);
     expect(screen.getByTestId("content-pane")).toHaveTextContent("content:n2");
+  });
+
+  it("renders GraphDocumentContent (affordances) for a graph node by default", () => {
+    const node = { id: "n1", title: "T", type: "note", graphNodeId: "g-1" } as never;
+    render(<NodeReaderBody node={node} />);
+    expect(screen.getByTestId("doc-pane")).toHaveTextContent("doc:g-1");
+    expect(screen.queryByTestId("bare-doc-pane")).not.toBeInTheDocument();
+  });
+
+  it("renders a bare document pane when affordances is false", () => {
+    const node = { id: "n1", title: "T", type: "note", graphNodeId: "g-1" } as never;
+    render(<NodeReaderBody node={node} affordances={false} />);
+    expect(screen.getByTestId("bare-doc-pane")).toHaveTextContent("bare:g-1");
+    expect(screen.queryByTestId("doc-pane")).not.toBeInTheDocument();
   });
 });

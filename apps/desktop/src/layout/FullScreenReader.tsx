@@ -50,7 +50,7 @@ function NodeMode({ onClose }: { onClose: () => void }) {
         <button className="fullscreen-reader__close" onClick={onClose} title="Back to canvas (Esc)">&larr; Back</button>
       </header>
       <main className="fullscreen-reader__body">
-        <NodeReaderBody node={node} />
+        <NodeReaderBody node={node} affordances={false} />
       </main>
     </div>
   );
