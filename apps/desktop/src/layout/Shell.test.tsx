@@ -72,6 +72,32 @@ function seededNode(id: string, title: string): CanvasNode {
   } as CanvasNode;
 }
 
+// A "resource" node: CanvasView's onNodeDoubleClick is suppressed for "note"
+// nodes (double-click there means "start editing inline"), so the reading
+// lens / full-screen double-click path can only be exercised through a
+// non-note node type such as "resource".
+function seededResourceNode(id: string, title: string): CanvasNode {
+  return {
+    id,
+    graphNodeId: id,
+    canvasId: CANVAS_ID,
+    title,
+    position: { x: 0, y: 0 },
+    size: { width: 160, height: 80 },
+    summary: "",
+    sequenceCaption: null,
+    sequenceViewport: null,
+    type: "resource",
+    resourceKind: "markdown",
+    absolutePath: "/tmp/fake.md",
+    relativePath: "fake.md",
+    mimeType: "text/markdown",
+    fileFingerprint: "fp",
+    createdAt: "2026-06-28T00:00:00.000Z",
+    updatedAt: "2026-06-28T00:00:00.000Z",
+  } as CanvasNode;
+}
+
 // A REAL workspace context value — real canvasStore/annotationStore (so
 // nodes/edges/annotations are reactive via useStore, exactly as in
 // production) and real selection state, wired through selectNode exactly
@@ -196,6 +222,44 @@ describe("Shell frame", () => {
     fireEvent.click(screen.getByTestId("lens-reading"));
     expect(screen.getByTestId("reading-pane")).toBeVisible();
     expect(screen.getByTestId("left-rail")).toBeVisible();
+  });
+
+  it("returns to the canvas from the reading lens via the Back to canvas control", async () => {
+    const nodeA = seededResourceNode("node-a", "Node A");
+    renderShellWithNode(nodeA);
+
+    const canvasNode = await waitFor(() => {
+      const el = document.querySelector('.react-flow__node[data-id="node-a"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    fireEvent.doubleClick(canvasNode);
+    expect(screen.getByTestId("reading-pane")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to canvas" }));
+    expect(screen.getByTestId("canvas-pane")).toBeVisible();
+    expect(screen.queryByTestId("reading-pane")).not.toBeInTheDocument();
+  });
+
+  it("returns to the canvas when closing the full-screen node reader (not back into the reading lens)", async () => {
+    const nodeA = seededResourceNode("node-a", "Node A");
+    renderShellWithNode(nodeA);
+
+    const canvasNode = await waitFor(() => {
+      const el = document.querySelector('.react-flow__node[data-id="node-a"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    fireEvent.doubleClick(canvasNode);
+    expect(screen.getByTestId("reading-pane")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Read full screen" }));
+    const backButton = screen.getByRole("button", { name: /^← Back$/ });
+    expect(backButton).toBeVisible();
+
+    fireEvent.click(backButton);
+    expect(screen.getByTestId("canvas-pane")).toBeVisible();
+    expect(screen.queryByTestId("reading-pane")).not.toBeInTheDocument();
   });
 
   it("opens the command palette on Cmd+K", () => {

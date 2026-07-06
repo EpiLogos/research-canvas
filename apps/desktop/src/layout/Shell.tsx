@@ -24,7 +24,6 @@ export function Shell() {
   const layout = useShellLayout();
   const workspace = useCanvasWorkspace();
   const [fullScreenMode, setFullScreenMode] = useState<"closed" | "node" | "sequence">("closed");
-  const closeFullScreen = useCallback(() => setFullScreenMode("closed"), []);
   const [leftMode, setLeftMode] = useState<"files" | "search" | "annotations">("files");
   const [sequencesOpen, setSequencesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -33,6 +32,17 @@ export function Shell() {
   const [strokeColour, setStrokeColour] = useState("#f97316");
 
   const { lens, setLens } = useLensMode();
+  // Closing the full-screen NODE reader must land back on the canvas, not
+  // back in the in-stage reading lens — otherwise "Back" from a double-click
+  // -> reading lens -> fullscreen round trip never actually reaches the
+  // canvas. Sequence full-screen close must NOT force the lens (a sequence
+  // may have been played from the timeline, and should return there).
+  const closeFullScreen = useCallback(() => {
+    setFullScreenMode((mode) => {
+      if (mode === "node") setLens("canvas");
+      return "closed";
+    });
+  }, [setLens]);
   const timelineDataSource = useMemo(
     () =>
       createTimelineDataSource({
@@ -211,7 +221,12 @@ export function Shell() {
             </section>
           )}
 
-          {lens === "reading" && <ReadingLens onFullScreen={() => enterFullScreen("node")} />}
+          {lens === "reading" && (
+            <ReadingLens
+              onFullScreen={() => enterFullScreen("node")}
+              onExitToCanvas={() => setLens("canvas")}
+            />
+          )}
 
           <InspectorOverlay
             open={inspectorVisible}

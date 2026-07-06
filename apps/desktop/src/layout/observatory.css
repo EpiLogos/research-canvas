@@ -235,8 +235,18 @@
   font-size: 13px;
   color: var(--ob-dim);
 }
-.ishell-reading__full {
+.ishell-reading__canvas {
   margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--ob-line-2);
+  border-radius: 6px;
+  color: var(--ob-dim);
+  cursor: pointer;
+  padding: 3px 9px;
+  font-size: 13px;
+}
+.ishell-reading__canvas:hover { color: var(--ob-accent); border-color: var(--ob-accent-deep); }
+.ishell-reading__full {
   background: transparent;
   border: 1px solid var(--ob-line-2);
   border-radius: 6px;
