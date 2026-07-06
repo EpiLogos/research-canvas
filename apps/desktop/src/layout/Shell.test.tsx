@@ -8,6 +8,37 @@ import { createAnnotationStore, createCanvasStore } from "@research-canvas/canva
 import type { CanvasNode } from "@research-canvas/schema";
 
 import { CanvasWorkspaceContext, CanvasWorkspaceProvider } from "../features/canvas/CanvasWorkspaceContext";
+
+// Stub the timeline-relevant transport methods so the timeline lens's real
+// createTimelineDataSource (wired in Shell.tsx) never reaches the Tauri
+// bridge. Without this, the "switches the stage surface when a lens is
+// chosen" test below clicks into the timeline lens in jsdom, which triggers
+// a real loadCanvasView() call that rejects with a 404 (no bridge present)
+// — an unhandled rejection that vitest reports once the file has more async
+// tests after it. Mirrors the existing mock in Shell.timeline.test.tsx, but
+// wraps the real transport (rather than replacing it outright) so the other
+// tests in this file — which render via CanvasWorkspaceProvider and rely on
+// its real bootstrapWorkspace()/other transport methods — are unaffected.
+vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@research-canvas/desktop-api")>();
+  return {
+    ...actual,
+    createWorkspaceTransport: () => ({
+      ...actual.createWorkspaceTransport(),
+      loadCanvasView: async () => ({
+        canvasId: "c1",
+        nodes: [],
+        edges: [],
+        relationships: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        appState: {},
+      }),
+      archetypalLighting: async () => ({ operator: {}, instances: [] }),
+      resonancesForInstance: async () => [],
+    }),
+  };
+});
+
 import { Shell } from "./Shell";
 
 function renderShell() {
