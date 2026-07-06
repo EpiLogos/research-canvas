@@ -73,6 +73,8 @@ pub fn run() {
     };
 
     let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .manage(pty::TerminalManager::new())
         .manage(api_state)
         .manage(runtime); // Arc<tokio::runtime::Runtime> — keeps the bolt pool alive

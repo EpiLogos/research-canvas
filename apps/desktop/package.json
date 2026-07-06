@@ -20,6 +20,8 @@
     "@research-canvas/schema": "workspace:*",
     "@research-canvas/viewers": "workspace:*",
     "@tauri-apps/api": "^2.1.0",
+    "@tauri-apps/plugin-dialog": "^2",
+    "@tauri-apps/plugin-fs": "^2",
     "@xterm/addon-fit": "^0.10.0",
     "clsx": "^2.1.1",
     "react": "^19.1.1",
