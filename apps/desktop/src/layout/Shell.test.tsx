@@ -328,4 +328,28 @@ describe("Shell frame", () => {
     fireEvent.click(canvasNode);
     expect(screen.queryByTestId("inspector-overlay")).not.toBeInTheDocument();
   });
+
+  it("hides the inspector overlay in the reading lens so it never covers the reading controls, and restores it back in the canvas lens", async () => {
+    const nodeA = seededNode("node-a", "Node A");
+    renderShellWithNode(nodeA);
+
+    const canvasNode = await waitFor(() => {
+      const el = document.querySelector('.react-flow__node[data-id="node-a"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    fireEvent.click(canvasNode);
+    expect(await screen.findByTestId("inspector-overlay")).toBeVisible();
+
+    // Switching to the reading lens must gate the inspector out entirely —
+    // it is a canvas/graph affordance and must never float over the
+    // immersive reading surface's ⤢/back controls.
+    fireEvent.click(screen.getByTestId("lens-reading"));
+    expect(screen.queryByTestId("inspector-overlay")).not.toBeInTheDocument();
+
+    // Switching back to canvas restores it (selection + inspectorOpen state
+    // were never cleared — only gated while in the reading lens).
+    fireEvent.click(screen.getByTestId("lens-canvas"));
+    expect(screen.getByTestId("inspector-overlay")).toBeVisible();
+  });
 });

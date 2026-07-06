@@ -161,7 +161,14 @@ export function Shell() {
   const handlePlaySequence = useCallback(() => enterFullScreen("sequence"), [enterFullScreen]);
 
   const selectedTitle = workspace.nodes.find((n) => n.id === workspace.selectedNodeId)?.title;
-  const inspectorVisible = layout.inspectorOpen && (Boolean(workspace.selectedNodeId) || layout.inspectorPinned);
+  // The inspector is a canvas/graph affordance — it must never float over
+  // the immersive reading lens's stage content (its ⤢ fullscreen / "Back to
+  // canvas" controls have no z-index of their own to defend against it), so
+  // it is gated out entirely while lens === "reading". Selection and
+  // inspectorOpen/pinned state are left untouched, so switching back to
+  // canvas/timeline restores it exactly as it was.
+  const inspectorVisible =
+    layout.inspectorOpen && (Boolean(workspace.selectedNodeId) || layout.inspectorPinned) && lens !== "reading";
 
   return (
     <div className="ishell" data-lens={lens} ref={layout.shellRef} style={{ "--browser-width": `${layout.browserWidth}px` } as React.CSSProperties}>

@@ -1,5 +1,15 @@
 /* Observatory design tokens — authoritative for the instrument shell. */
 :root {
+  /* Unified z-index scale. Anything that used to hard-code a stacking
+     number in this file should reference one of these tokens instead — see
+     also styles.css's .fullscreen-reader (z-index: 500), which is a true
+     top-level modal and corresponds to --z-modal (kept in the old 100-9000
+     scale on purpose; it sits above everything defined here). */
+  --z-stage: 1;
+  --z-reading-bar: 6;
+  --z-panel: 7;
+  --z-dock: 8;
+  --z-modal: 500;
   --ob-bg: #090d13;
   --ob-bg-2: #0c1119;
   --ob-panel: #111825;
@@ -149,7 +159,7 @@
   border: 1px solid var(--ob-line-3);
   border-radius: 11px;
   box-shadow: 0 22px 50px -20px rgba(0,0,0,0.9);
-  z-index: 7;
+  z-index: var(--z-panel);
   overflow: hidden;
 }
 .lo-browser-controls { display: flex; flex-direction: column; gap: 6px; padding: 10px 10px 6px; }
@@ -185,7 +195,7 @@
   border: 1px solid var(--ob-line-3);
   border-radius: 11px;
   box-shadow: 0 22px 50px -20px rgba(0,0,0,0.9);
-  z-index: 7;
+  z-index: var(--z-panel);
   display: flex; flex-direction: column; overflow: hidden;
 }
 .ishell-inspector__bar { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-bottom: 1px solid var(--ob-line); }
@@ -203,7 +213,7 @@
   background: var(--ob-panel);
   border-top: 1px solid var(--ob-line-3);
   box-shadow: 0 -18px 40px -20px rgba(0,0,0,0.8);
-  z-index: 8;
+  z-index: var(--z-dock);
   display: flex; flex-direction: column;
 }
 .ishell-dock__bar { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-bottom: 1px solid var(--ob-line); }
@@ -220,8 +230,11 @@
   flex-direction: column;
   background: var(--ob-bg-2);
   overflow: hidden;
+  z-index: var(--z-stage);
 }
 .ishell-reading__bar {
+  position: relative;
+  z-index: var(--z-reading-bar);
   display: flex;
   align-items: center;
   gap: 10px;
