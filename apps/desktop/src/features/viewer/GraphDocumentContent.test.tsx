@@ -81,6 +81,7 @@ const transport = {
 const contentLinkingActions = {
   addTextToNode: vi.fn().mockResolvedValue(undefined),
   addImageToNode: vi.fn().mockResolvedValue(undefined),
+  attachFileToNode: vi.fn().mockResolvedValue(undefined),
   linkMarkdownFileToNode: vi.fn().mockResolvedValue(undefined),
   linkNodes: vi.fn().mockResolvedValue(undefined),
 };
@@ -131,6 +132,14 @@ describe("GraphDocumentContent — cutover + mounted content/linking affordances
     expect(
       container.querySelector(".node-content-drop-surface"),
     ).not.toBeNull();
+
+    // The native picker affordances (Task 2.2): "Insert image" / "Attach file".
+    expect(
+      screen.getByRole("button", { name: "Insert image" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Attach file" }),
+    ).toBeInTheDocument();
 
     // LinkFilePicker — the inline "Link a file…" affordance.
     expect(
