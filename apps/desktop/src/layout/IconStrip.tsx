@@ -36,12 +36,17 @@ const NAV_ICONS: { id: string; label: string; svg: string }[] = [
 
 export function IconStrip({ browserActive, activeLeftMode, onToggleBrowser, onSetBrowserMode, onOpenSequences, onOpenSettings, inspectorActive, onToggleInspector, terminalActive, onToggleTerminal }: IconStripProps) {
   const handleNavClick = (id: string) => {
-    if (id === "files") {
-      onToggleBrowser();
-    } else if (id === "search") {
-      onSetBrowserMode("search");
-    } else if (id === "annotate") {
-      onSetBrowserMode("annotations");
+    if (id === "files" || id === "search" || id === "annotate") {
+      // Uniform verb pattern: Files/Search/Annotate all set the shared
+      // leftMode, so the panel can never get stranded on another mode's
+      // view (e.g. Files being un-closable while leftMode="annotations").
+      // Re-clicking the already-active mode toggles the browser closed.
+      const mode = id === "annotate" ? "annotations" : (id as "files" | "search");
+      if (browserActive && activeLeftMode === mode) {
+        onToggleBrowser();
+      } else {
+        onSetBrowserMode(mode);
+      }
     } else if (id === "sequences") {
       onOpenSequences();
     }
@@ -55,7 +60,7 @@ export function IconStrip({ browserActive, activeLeftMode, onToggleBrowser, onSe
             key={icon.id}
             className="icon-strip__btn"
             data-active={
-              (icon.id === "files" && browserActive) ||
+              (icon.id === "files" && browserActive && activeLeftMode === "files") ||
               (icon.id === "search" && browserActive && activeLeftMode === "search") ||
               (icon.id === "annotate" && browserActive && activeLeftMode === "annotations")
                 ? "true"

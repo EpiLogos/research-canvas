@@ -58,12 +58,46 @@ export function Shell() {
     [layout],
   );
 
+  // The full-screen/modal layers (palette, sequences manager, settings,
+  // fullscreen reader) are mutually exclusive top layers — only one may be
+  // open at a time. closeOverlays() clears all of them; each open handler
+  // calls it first, then opens just its own layer.
+  const closeOverlays = useCallback(() => {
+    setPaletteOpen(false);
+    setSequencesOpen(false);
+    setSettingsOpen(false);
+    setFullScreenMode("closed");
+  }, []);
+
+  const openPalette = useCallback(() => {
+    closeOverlays();
+    setPaletteOpen(true);
+  }, [closeOverlays]);
+
+  const openSequences = useCallback(() => {
+    closeOverlays();
+    setSequencesOpen(true);
+  }, [closeOverlays]);
+
+  const openSettings = useCallback(() => {
+    closeOverlays();
+    setSettingsOpen(true);
+  }, [closeOverlays]);
+
+  const enterFullScreen = useCallback(
+    (mode: "node" | "sequence") => {
+      closeOverlays();
+      setFullScreenMode(mode);
+    },
+    [closeOverlays],
+  );
+
   // Global keyboard shortcuts.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
-        setPaletteOpen(true);
+        openPalette();
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "j") { e.preventDefault(); layout.toggleDock(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "i") { e.preventDefault(); layout.toggleInspector(); }
@@ -74,12 +108,15 @@ export function Shell() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [layout, setLens]);
+  }, [layout, setLens, openPalette]);
 
   const handleNodeSelect = useCallback(
     (nodeId: string) => {
       workspace.selectNode(nodeId);
-      if (!layout.inspectorPinned) {
+      // Once the user has explicitly closed the inspector, selecting nodes
+      // must not reopen it — closing it needs to stick until the user
+      // reopens it (via the rail, pin, or Cmd+I) themselves.
+      if (!layout.inspectorPinned && !layout.inspectorUserClosed) {
         layout.setInspectorOpen(true);
       }
     },
@@ -94,7 +131,7 @@ export function Shell() {
     [workspace, setLens],
   );
 
-  const handlePlaySequence = useCallback(() => setFullScreenMode("sequence"), []);
+  const handlePlaySequence = useCallback(() => enterFullScreen("sequence"), [enterFullScreen]);
 
   const selectedTitle = workspace.nodes.find((n) => n.id === workspace.selectedNodeId)?.title;
   const inspectorVisible = layout.inspectorOpen && (Boolean(workspace.selectedNodeId) || layout.inspectorPinned);
@@ -105,24 +142,25 @@ export function Shell() {
         lens={lens}
         onSetLens={setLens}
         breadcrumb={selectedTitle}
-        onOpenPalette={() => setPaletteOpen(true)}
+        onOpenPalette={openPalette}
       />
 
       <div className="ishell-body">
-        {lens !== "reading" && (
-          <IconStrip
-            browserActive={layout.browserOpen}
-            activeLeftMode={leftMode}
-            onToggleBrowser={layout.toggleBrowser}
-            onSetBrowserMode={setBrowserMode}
-            onOpenSequences={() => setSequencesOpen(true)}
-            onOpenSettings={() => setSettingsOpen(true)}
-            inspectorActive={inspectorVisible}
-            onToggleInspector={layout.toggleInspector}
-            terminalActive={layout.dockOpen}
-            onToggleTerminal={layout.toggleDock}
-          />
-        )}
+        {/* The rail stays reachable in every lens (including reading) —
+            panels must never become unreachable just because the reading
+            lens is active. Reading can still recede other chrome via CSS. */}
+        <IconStrip
+          browserActive={layout.browserOpen}
+          activeLeftMode={leftMode}
+          onToggleBrowser={layout.toggleBrowser}
+          onSetBrowserMode={setBrowserMode}
+          onOpenSequences={openSequences}
+          onOpenSettings={openSettings}
+          inspectorActive={inspectorVisible}
+          onToggleInspector={layout.toggleInspector}
+          terminalActive={layout.dockOpen}
+          onToggleTerminal={layout.toggleDock}
+        />
 
         <div className="ishell-stage">
           {layout.browserOpen && (
@@ -155,14 +193,14 @@ export function Shell() {
             </section>
           )}
 
-          {lens === "reading" && <ReadingLens onFullScreen={() => setFullScreenMode("node")} />}
+          {lens === "reading" && <ReadingLens onFullScreen={() => enterFullScreen("node")} />}
 
           <InspectorOverlay
             open={inspectorVisible}
             pinned={layout.inspectorPinned}
             width={layout.inspectorWidth}
             onTogglePin={layout.toggleInspectorPin}
-            onClose={() => layout.setInspectorOpen(false)}
+            onClose={layout.closeInspector}
             onResizeStart={layout.beginInspectorResize}
           >
             <InspectorTab />
@@ -194,10 +232,7 @@ export function Shell() {
       {sequencesOpen && (
         <SequencesManager
           onClose={() => setSequencesOpen(false)}
-          onPlaySequence={() => {
-            setSequencesOpen(false);
-            setFullScreenMode("sequence");
-          }}
+          onPlaySequence={() => enterFullScreen("sequence")}
         />
       )}
 
