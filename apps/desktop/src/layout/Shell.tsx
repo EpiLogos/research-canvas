@@ -92,6 +92,23 @@ export function Shell() {
     [closeOverlays],
   );
 
+  // Leaving the annotations mode, or closing the browser panel entirely,
+  // must turn drawing mode off — otherwise the canvas can be left stuck in
+  // a draw cursor with no visible way to exit it. This only ever turns
+  // drawingMode OFF: the annotations toggle (onToggleDrawing) is what turns
+  // it on while leftMode === "annotations" && browserOpen, and this effect's
+  // condition is false in exactly that state, so it never fights the toggle.
+  useEffect(() => {
+    if (leftMode !== "annotations" || !layout.browserOpen) {
+      setDrawingMode(false);
+    }
+  }, [leftMode, layout.browserOpen]);
+
+  const closeBrowser = useCallback(() => {
+    layout.setBrowserOpen(false);
+    setDrawingMode(false);
+  }, [layout]);
+
   // Global keyboard shortcuts.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -168,6 +185,7 @@ export function Shell() {
               open
               mode={leftMode}
               onResizeStart={layout.beginBrowserResize}
+              onClose={closeBrowser}
               drawingMode={drawingMode}
               onToggleDrawing={() => setDrawingMode((v) => !v)}
               strokeColour={strokeColour}

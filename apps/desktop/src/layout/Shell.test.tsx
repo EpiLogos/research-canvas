@@ -219,6 +219,22 @@ describe("Shell frame", () => {
     expect(screen.getByTestId("browser-files")).toBeInTheDocument();
   });
 
+  it("closing the browser via the panel's close button resets drawingMode (no stuck draw cursor)", () => {
+    renderShell();
+    // Open the browser in annotations mode and start drawing.
+    fireEvent.click(screen.getByRole("button", { name: "Annotations" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start drawing" }));
+    expect(screen.getByRole("button", { name: "Stop drawing" })).toHaveAttribute("data-active", "true");
+
+    // Close the panel via its close button — this must also turn drawing off.
+    fireEvent.click(screen.getByRole("button", { name: "Close panel" }));
+    expect(screen.queryByTestId("left-overlay")).not.toBeInTheDocument();
+
+    // Reopen annotations — drawing must not still be "on" from before.
+    fireEvent.click(screen.getByRole("button", { name: "Annotations" }));
+    expect(screen.getByRole("button", { name: "Start drawing" })).toBeInTheDocument();
+  });
+
   it("re-clicking the active rail verb toggles the browser closed", () => {
     renderShell();
     fireEvent.click(screen.getByRole("button", { name: "Files & Project" }));

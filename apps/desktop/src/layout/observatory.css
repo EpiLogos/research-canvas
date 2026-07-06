@@ -159,6 +159,24 @@
 .lo-filter { font: inherit; font-size: 11px; background: var(--ob-panel); border: 1px solid var(--ob-line-2); border-radius: 7px; padding: 5px 9px; color: var(--ob-ink); }
 .lo-filter::placeholder { color: var(--ob-faint); }
 
+/* Close affordance for the browser overlay — mirrors .ishell-inspector__close
+   so the two floating panels feel consistent. */
+.left-overlay__close {
+  position: absolute;
+  top: 8px; right: 8px;
+  z-index: 1;
+  width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--ob-faint);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.left-overlay__close:hover { color: var(--ob-accent); background: var(--ob-line); }
+
 /* Floating inspector overlay. */
 .ishell-inspector {
   position: absolute;
