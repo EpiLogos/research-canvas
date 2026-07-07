@@ -1,8 +1,44 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import type { ComponentProps, ReactNode } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { CanvasWorkspaceProvider } from "../features/canvas/CanvasWorkspaceContext";
+import { createAnnotationStore, createCanvasStore } from "@research-canvas/canvas";
+import type { CanvasNode } from "@research-canvas/schema";
+
+import { CanvasWorkspaceContext, CanvasWorkspaceProvider } from "../features/canvas/CanvasWorkspaceContext";
+
+// Stub the timeline-relevant transport methods so the timeline lens's real
+// createTimelineDataSource (wired in Shell.tsx) never reaches the Tauri
+// bridge. Without this, the "switches the stage surface when a lens is
+// chosen" test below clicks into the timeline lens in jsdom, which triggers
+// a real loadCanvasView() call that rejects with a 404 (no bridge present)
+// — an unhandled rejection that vitest reports once the file has more async
+// tests after it. Mirrors the existing mock in Shell.timeline.test.tsx, but
+// wraps the real transport (rather than replacing it outright) so the other
+// tests in this file — which render via CanvasWorkspaceProvider and rely on
+// its real bootstrapWorkspace()/other transport methods — are unaffected.
+vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@research-canvas/desktop-api")>();
+  return {
+    ...actual,
+    createWorkspaceTransport: () => ({
+      ...actual.createWorkspaceTransport(),
+      loadCanvasView: async () => ({
+        canvasId: "c1",
+        nodes: [],
+        edges: [],
+        relationships: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        appState: {},
+      }),
+      archetypalLighting: async () => ({ operator: {}, instances: [] }),
+      resonancesForInstance: async () => [],
+    }),
+  };
+});
+
 import { Shell } from "./Shell";
 
 function renderShell() {
@@ -11,6 +47,141 @@ function renderShell() {
       <CanvasWorkspaceProvider>
         <Shell />
       </CanvasWorkspaceProvider>
+    </MemoryRouter>,
+  );
+}
+
+const CANVAS_ID = "22222222-2222-4222-8222-222222222222";
+
+function seededNode(id: string, title: string): CanvasNode {
+  return {
+    id,
+    graphNodeId: id,
+    canvasId: CANVAS_ID,
+    title,
+    position: { x: 0, y: 0 },
+    size: { width: 160, height: 80 },
+    summary: "",
+    sequenceCaption: null,
+    sequenceViewport: null,
+    type: "note",
+    content: "",
+    tags: [],
+    createdAt: "2026-06-28T00:00:00.000Z",
+    updatedAt: "2026-06-28T00:00:00.000Z",
+  } as CanvasNode;
+}
+
+// A "resource" node: CanvasView's onNodeDoubleClick is suppressed for "note"
+// nodes (double-click there means "start editing inline"), so the reading
+// lens / full-screen double-click path can only be exercised through a
+// non-note node type such as "resource".
+function seededResourceNode(id: string, title: string): CanvasNode {
+  return {
+    id,
+    graphNodeId: id,
+    canvasId: CANVAS_ID,
+    title,
+    position: { x: 0, y: 0 },
+    size: { width: 160, height: 80 },
+    summary: "",
+    sequenceCaption: null,
+    sequenceViewport: null,
+    type: "resource",
+    resourceKind: "markdown",
+    absolutePath: "/tmp/fake.md",
+    relativePath: "fake.md",
+    mimeType: "text/markdown",
+    fileFingerprint: "fp",
+    createdAt: "2026-06-28T00:00:00.000Z",
+    updatedAt: "2026-06-28T00:00:00.000Z",
+  } as CanvasNode;
+}
+
+// A REAL workspace context value — real canvasStore/annotationStore (so
+// nodes/edges/annotations are reactive via useStore, exactly as in
+// production) and real selection state, wired through selectNode exactly
+// like CanvasWorkspaceProvider does. Only the transport-backed bootstrap
+// side (projects/files/resources) is stubbed, since it depends on Tauri
+// IPC that isn't present in jsdom. This lets Shell-level tests exercise the
+// real node-selection path (CanvasView's onNodeClick -> workspace.selectNode)
+// without needing the full bootstrapping provider to hydrate over IPC.
+function FakeWorkspaceProvider({ children, nodes }: { children: ReactNode; nodes: CanvasNode[] }) {
+  const store = useMemo(() => {
+    const s = createCanvasStore({ canvasId: CANVAS_ID });
+    s.getState().hydrate({ nodes, edges: [] });
+    return s;
+  }, [nodes]);
+  const annotationStore = useMemo(() => createAnnotationStore({ canvasId: CANVAS_ID }), []);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+
+  const selectNode = useCallback((nodeId: string | null) => setSelectedNodeId(nodeId), []);
+
+  const value = useMemo(
+    () => ({
+      store,
+      annotationStore,
+      isHydrated: true,
+      errorMessage: null,
+      canvasId: CANVAS_ID,
+      projectId: "11111111-1111-4111-8111-111111111111",
+      databasePath: null,
+      activeProject: null,
+      activeProjectId: null,
+      projects: [],
+      entries: [],
+      resourceRoots: [],
+      workingRoot: null,
+      selectedEntryId,
+      selectedEdgeId,
+      selectedNodeId,
+      selectNode,
+      selectEdge: setSelectedEdgeId,
+      selectEntry: setSelectedEntryId,
+      selectProject: vi.fn(),
+      addEdge: vi.fn(),
+      createNoteNode: vi.fn().mockResolvedValue(undefined),
+      createGroupNode: vi.fn().mockResolvedValue(undefined),
+      addResourceNode: vi.fn().mockResolvedValue(undefined),
+      addResourceNodeFromAbsolutePath: vi.fn().mockResolvedValue(undefined),
+      deleteEdge: vi.fn(),
+      deleteNode: vi.fn(),
+      duplicateNode: vi.fn().mockResolvedValue(undefined),
+      attachResourceRoot: vi.fn().mockResolvedValue(undefined),
+      detachResourceRoot: vi.fn().mockResolvedValue(undefined),
+      listDirectories: vi.fn().mockResolvedValue([]),
+      searchProject: vi.fn().mockResolvedValue([]),
+      listSavedSequences: vi.fn().mockResolvedValue([]),
+      createSavedSequence: vi.fn(),
+      updateSavedSequence: vi.fn(),
+      deleteSavedSequence: vi.fn().mockResolvedValue(undefined),
+      resizeNode: vi.fn(),
+      updateNodeContent: vi.fn(),
+      setNodeThumbnailFromAbsolutePath: vi.fn().mockResolvedValue(undefined),
+      updateNodeStyle: vi.fn(),
+      flyToNode: vi.fn(),
+      flyToEdge: vi.fn(),
+      registerFlyToNode: vi.fn(),
+      registerFlyToEdge: vi.fn(),
+      captureViewport: () => ({ x: 0, y: 0, zoom: 1 }),
+      registerCaptureViewport: vi.fn(),
+      transport: {},
+      contentLinkingActions: {},
+    }) as unknown as ComponentProps<typeof CanvasWorkspaceContext.Provider>["value"],
+    [store, annotationStore, selectedEntryId, selectedEdgeId, selectedNodeId, selectNode],
+  );
+
+  return <CanvasWorkspaceContext.Provider value={value}>{children}</CanvasWorkspaceContext.Provider>;
+}
+
+function renderShellWithNode(node: CanvasNode) {
+  return render(
+    <MemoryRouter>
+      <FakeWorkspaceProvider nodes={[node]}>
+        <Shell />
+      </FakeWorkspaceProvider>
     </MemoryRouter>,
   );
 }
@@ -45,12 +216,50 @@ describe("Shell frame", () => {
     expect(screen.getByTestId("reading-pane")).toBeVisible();
   });
 
-  it("hides the rail while in the reading lens", () => {
+  it("keeps the rail reachable while in the reading lens (panels must stay reachable while reading)", () => {
     renderShell();
     expect(screen.getByTestId("left-rail")).toBeVisible();
     fireEvent.click(screen.getByTestId("lens-reading"));
     expect(screen.getByTestId("reading-pane")).toBeVisible();
-    expect(screen.queryByTestId("left-rail")).not.toBeInTheDocument();
+    expect(screen.getByTestId("left-rail")).toBeVisible();
+  });
+
+  it("returns to the canvas from the reading lens via the Back to canvas control", async () => {
+    const nodeA = seededResourceNode("node-a", "Node A");
+    renderShellWithNode(nodeA);
+
+    const canvasNode = await waitFor(() => {
+      const el = document.querySelector('.react-flow__node[data-id="node-a"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    fireEvent.doubleClick(canvasNode);
+    expect(screen.getByTestId("reading-pane")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to canvas" }));
+    expect(screen.getByTestId("canvas-pane")).toBeVisible();
+    expect(screen.queryByTestId("reading-pane")).not.toBeInTheDocument();
+  });
+
+  it("returns to the canvas when closing the full-screen node reader (not back into the reading lens)", async () => {
+    const nodeA = seededResourceNode("node-a", "Node A");
+    renderShellWithNode(nodeA);
+
+    const canvasNode = await waitFor(() => {
+      const el = document.querySelector('.react-flow__node[data-id="node-a"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    fireEvent.doubleClick(canvasNode);
+    expect(screen.getByTestId("reading-pane")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Read full screen" }));
+    const backButton = screen.getByRole("button", { name: /^← Back$/ });
+    expect(backButton).toBeVisible();
+
+    fireEvent.click(backButton);
+    expect(screen.getByTestId("canvas-pane")).toBeVisible();
+    expect(screen.queryByTestId("reading-pane")).not.toBeInTheDocument();
   });
 
   it("opens the command palette on Cmd+K", () => {
@@ -58,5 +267,89 @@ describe("Shell frame", () => {
     expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
     fireEvent.keyDown(window, { key: "k", metaKey: true });
     expect(screen.getByRole("dialog", { name: "Command palette" })).toBeVisible();
+  });
+
+  it("Files rail verb reopens the Files view after Annotate was active (leftMode isn't stranded on annotations)", () => {
+    renderShell();
+    // Open the browser in annotations mode via the rail Annotate verb.
+    fireEvent.click(screen.getByRole("button", { name: "Annotations" }));
+    expect(screen.getByTestId("left-overlay")).toBeVisible();
+    expect(screen.queryByTestId("browser-files")).not.toBeInTheDocument();
+
+    // Clicking the Files rail verb must always show the Files view — never
+    // leave the browser stranded on the Annotations panel.
+    fireEvent.click(screen.getByRole("button", { name: "Files & Project" }));
+    expect(screen.getByTestId("left-overlay")).toBeVisible();
+    expect(screen.getByTestId("browser-files")).toBeInTheDocument();
+  });
+
+  it("closing the browser via the panel's close button resets drawingMode (no stuck draw cursor)", () => {
+    renderShell();
+    // Open the browser in annotations mode and start drawing.
+    fireEvent.click(screen.getByRole("button", { name: "Annotations" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start drawing" }));
+    expect(screen.getByRole("button", { name: "Stop drawing" })).toHaveAttribute("data-active", "true");
+
+    // Close the panel via its close button — this must also turn drawing off.
+    fireEvent.click(screen.getByRole("button", { name: "Close panel" }));
+    expect(screen.queryByTestId("left-overlay")).not.toBeInTheDocument();
+
+    // Reopen annotations — drawing must not still be "on" from before.
+    fireEvent.click(screen.getByRole("button", { name: "Annotations" }));
+    expect(screen.getByRole("button", { name: "Start drawing" })).toBeInTheDocument();
+  });
+
+  it("re-clicking the active rail verb toggles the browser closed", () => {
+    renderShell();
+    fireEvent.click(screen.getByRole("button", { name: "Files & Project" }));
+    expect(screen.getByTestId("left-overlay")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Files & Project" }));
+    expect(screen.queryByTestId("left-overlay")).not.toBeInTheDocument();
+  });
+
+  it("selecting a node opens the inspector, and it stays closed after an explicit close even after selecting another node", async () => {
+    const nodeA = seededNode("node-a", "Node A");
+    renderShellWithNode(nodeA);
+
+    const canvasNode = await waitFor(() => {
+      const el = document.querySelector('.react-flow__node[data-id="node-a"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    fireEvent.click(canvasNode);
+
+    expect(await screen.findByTestId("inspector-overlay")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close inspector" }));
+    expect(screen.queryByTestId("inspector-overlay")).not.toBeInTheDocument();
+
+    // Selecting again (same node, since only one is seeded) must NOT reopen
+    // the inspector once the user has explicitly dismissed it.
+    fireEvent.click(canvasNode);
+    expect(screen.queryByTestId("inspector-overlay")).not.toBeInTheDocument();
+  });
+
+  it("hides the inspector overlay in the reading lens so it never covers the reading controls, and restores it back in the canvas lens", async () => {
+    const nodeA = seededNode("node-a", "Node A");
+    renderShellWithNode(nodeA);
+
+    const canvasNode = await waitFor(() => {
+      const el = document.querySelector('.react-flow__node[data-id="node-a"]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    fireEvent.click(canvasNode);
+    expect(await screen.findByTestId("inspector-overlay")).toBeVisible();
+
+    // Switching to the reading lens must gate the inspector out entirely —
+    // it is a canvas/graph affordance and must never float over the
+    // immersive reading surface's ⤢/back controls.
+    fireEvent.click(screen.getByTestId("lens-reading"));
+    expect(screen.queryByTestId("inspector-overlay")).not.toBeInTheDocument();
+
+    // Switching back to canvas restores it (selection + inspectorOpen state
+    // were never cleared — only gated while in the reading lens).
+    fireEvent.click(screen.getByTestId("lens-canvas"));
+    expect(screen.getByTestId("inspector-overlay")).toBeVisible();
   });
 });

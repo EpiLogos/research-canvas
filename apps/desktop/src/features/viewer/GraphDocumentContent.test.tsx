@@ -67,6 +67,11 @@ const transport = {
     updatedAt: "2026-06-28T00:00:00Z",
   }),
   updateGraphNode: vi.fn().mockResolvedValue({ graphNodeId: "g1", body }),
+  // Local store is empty here, so the pane reconciles from Neo4j (readGraphNode)
+  // and seeds the editor with "Graph body" — exercising the local-first mount +
+  // best-effort reconcile path.
+  readLocalNodeDocument: vi.fn().mockResolvedValue(null),
+  upsertLocalNodeDocument: vi.fn().mockResolvedValue(undefined),
   searchGraph: vi.fn().mockResolvedValue([]),
 };
 
@@ -76,6 +81,7 @@ const transport = {
 const contentLinkingActions = {
   addTextToNode: vi.fn().mockResolvedValue(undefined),
   addImageToNode: vi.fn().mockResolvedValue(undefined),
+  attachFileToNode: vi.fn().mockResolvedValue(undefined),
   linkMarkdownFileToNode: vi.fn().mockResolvedValue(undefined),
   linkNodes: vi.fn().mockResolvedValue(undefined),
 };
@@ -103,6 +109,7 @@ function renderDocument() {
       <GraphDocumentContent
         graphNodeId="g1"
         transport={transport as never}
+        databasePath="/tmp/db.sqlite"
         editable
       />
     </CanvasWorkspaceContext.Provider>,
@@ -125,6 +132,14 @@ describe("GraphDocumentContent — cutover + mounted content/linking affordances
     expect(
       container.querySelector(".node-content-drop-surface"),
     ).not.toBeNull();
+
+    // The native picker affordances (Task 2.2): "Insert image" / "Attach file".
+    expect(
+      screen.getByRole("button", { name: "Insert image" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Attach file" }),
+    ).toBeInTheDocument();
 
     // LinkFilePicker — the inline "Link a file…" affordance.
     expect(

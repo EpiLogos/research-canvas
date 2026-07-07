@@ -2186,12 +2186,25 @@ body[data-shell-dragging="true"] {
 }
 
 /* ─── Sequences Manager ──────────────────────────────── */
-.sequences-manager {
+.sequences-overlay__backdrop {
   position: fixed;
   inset: 0;
   z-index: 8000;
-  background: #0a0a18;
+  background: rgba(0, 0, 0, 0.6);
   display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sequences-overlay__card {
+  position: relative;
+  width: min(1040px, 92vw);
+  height: min(720px, 88vh);
+  background: #0a0a18;
+  border: 1px solid #252545;
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  display: flex;
+  overflow: hidden;
   color: #c0c0e0;
 }
 .sm-close {
@@ -2207,6 +2220,7 @@ body[data-shell-dragging="true"] {
 .sm-close:hover { color: #c0c0e0; }
 .sm-sidebar {
   width: 240px;
+  flex-shrink: 0;
   border-right: 1px solid #151530;
   display: flex;
   flex-direction: column;

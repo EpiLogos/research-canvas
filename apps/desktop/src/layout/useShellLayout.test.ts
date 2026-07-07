@@ -30,6 +30,43 @@ describe("useShellLayout summoned panels", () => {
     expect(result.current.inspectorPinned).toBe(true);
   });
 
+  it("inspectorUserClosed defaults to false", () => {
+    const { result } = renderHook(() => useShellLayout());
+    expect(result.current.inspectorUserClosed).toBe(false);
+  });
+
+  it("closeInspector closes the inspector and records the user dismissal", () => {
+    const { result } = renderHook(() => useShellLayout());
+    act(() => result.current.openInspector());
+    act(() => result.current.closeInspector());
+    expect(result.current.inspectorOpen).toBe(false);
+    expect(result.current.inspectorUserClosed).toBe(true);
+  });
+
+  it("openInspector opens the inspector and clears the user dismissal", () => {
+    const { result } = renderHook(() => useShellLayout());
+    act(() => result.current.closeInspector());
+    act(() => result.current.openInspector());
+    expect(result.current.inspectorOpen).toBe(true);
+    expect(result.current.inspectorUserClosed).toBe(false);
+  });
+
+  it("toggleInspector from open closes and records the user dismissal", () => {
+    const { result } = renderHook(() => useShellLayout());
+    act(() => result.current.openInspector());
+    act(() => result.current.toggleInspector());
+    expect(result.current.inspectorOpen).toBe(false);
+    expect(result.current.inspectorUserClosed).toBe(true);
+  });
+
+  it("toggleInspector from closed opens and clears the user dismissal", () => {
+    const { result } = renderHook(() => useShellLayout());
+    act(() => result.current.closeInspector());
+    act(() => result.current.toggleInspector());
+    expect(result.current.inspectorOpen).toBe(true);
+    expect(result.current.inspectorUserClosed).toBe(false);
+  });
+
   it("setBrowserOpen sets explicitly", () => {
     const { result } = renderHook(() => useShellLayout());
     act(() => result.current.setBrowserOpen(true));

@@ -7,7 +7,7 @@ import type {
 
 import { markdownToBlockNoteJson } from "@research-canvas/exporter";
 
-import { appendBlocksToBody, imageBlock, paragraphsToBlocks } from "./contentBlocks";
+import { appendBlocksToBody, fileLinkBlock, imageBlock, paragraphsToBlocks } from "./contentBlocks";
 import { isRelationshipKind, type RelationshipKind } from "./relationshipKinds";
 
 export interface ContentLinkingDeps {
@@ -29,6 +29,11 @@ export interface ContentLinkingActions {
     graphNodeId: string,
     sourceAbsolutePath: string,
     caption?: string,
+  ) => Promise<GraphNode>;
+  attachFileToNode: (
+    graphNodeId: string,
+    sourceAbsolutePath: string,
+    fileName: string,
   ) => Promise<GraphNode>;
   linkMarkdownFileToNode: (input: {
     graphNodeId: string;
@@ -59,6 +64,17 @@ export function createContentLinkingActions(deps: ContentLinkingDeps): ContentLi
       const url = await deps.importNodeImage({ graphNodeId, sourceAbsolutePath });
       const node = await deps.readGraphNode({ graphNodeId });
       const body = appendBlocksToBody(node.body, [imageBlock(url, caption)]);
+      return deps.updateGraphNode({ graphNodeId, patch: { body } });
+    },
+
+    async attachFileToNode(graphNodeId, sourceAbsolutePath, fileName) {
+      // Reuses the same importNodeImage transport call as addImageToNode —
+      // the underlying Rust command (import_node_image) is a generic byte
+      // copy into assets/<graphNodeId>/<file>, not image-specific — so no
+      // new backend command is needed to support arbitrary file attachments.
+      const url = await deps.importNodeImage({ graphNodeId, sourceAbsolutePath });
+      const node = await deps.readGraphNode({ graphNodeId });
+      const body = appendBlocksToBody(node.body, [fileLinkBlock(url, fileName)]);
       return deps.updateGraphNode({ graphNodeId, patch: { body } });
     },
 

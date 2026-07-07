@@ -22,7 +22,8 @@ import {
   serializeLayoutSnapshot,
   type ContentLinkingActions,
 } from "@research-canvas/canvas";
-import { buildNewGraphNodeInput } from "./nodeCreation";
+import { buildNewGraphNodeInput, seedNoteNodeEffects } from "./nodeCreation";
+import { retryPendingGraphNodeSyncs } from "./pendingGraphNodeSync";
 import { canvasViewToCanvasNodes } from "./canvasViewToNodes";
 import { selectLegacyNodesNeedingImport, importLegacyCanvasNodes } from "./legacyNodeImport";
 import type { CanvasNode, CanvasEdge, Viewport } from "@research-canvas/schema";
@@ -454,6 +455,9 @@ export function CanvasWorkspaceProvider({
       const { nodes, edges } = canvasViewToCanvasNodes(view);
       // Hydrate in-place to update nodes/edges without replacing stores
       stores.store.getState().hydrate({ nodes, edges });
+      // A successful transport round-trip is a good signal Neo4j is
+      // reachable again — opportunistically retry anything pending.
+      void retryPendingGraphNodeSyncs((input) => transport.createGraphNode(input));
     } catch (error) {
       console.error("refreshCanvas: loadCanvasView failed", error);
       setErrorMessage(error instanceof Error ? error.message : "failed to refresh canvas");
@@ -478,6 +482,17 @@ export function CanvasWorkspaceProvider({
       unlisten?.();
     };
   }, [refreshCanvas]);
+
+  // Reconnect/retry: nodes created while Neo4j was unreachable are recorded
+  // as "pending sync" (pendingGraphNodeSync.ts). Re-attempt them on a modest
+  // interval — simple and best-effort, never blocking the UI. A node that
+  // syncs successfully is cleared from the pending set by the helper itself.
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      void retryPendingGraphNodeSyncs((input) => transport.createGraphNode(input));
+    }, 15_000);
+    return () => clearInterval(intervalId);
+  }, [transport]);
 
   const contextValue = useMemo<CanvasWorkspaceContextValue>(
     () => ({
@@ -568,14 +583,21 @@ export function CanvasWorkspaceProvider({
         if (position) {
           stores.store.getState().updateNodePosition(node.id, position);
         }
-        // Best-effort sync of theory substance to Neo4j; never discard the
-        // local node if the graph is unavailable.
-        void transport
-          .createGraphNode({
-            ...buildNewGraphNodeInput({ nodeType: "note", title: "Untitled note" }),
-            graphNodeId,
-          } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string })
-          .catch((error) => console.warn("createGraphNode sync failed; node kept locally", error));
+        // Seed a local node document immediately (so the editor can open the
+        // note right away, even fully offline), then best-effort sync theory
+        // substance to Neo4j — a failure here never discards the local node;
+        // it's recorded as pending and retried later (see
+        // pendingGraphNodeSync.ts / the retry effect below).
+        void seedNoteNodeEffects({
+          graphNodeId,
+          title: "Untitled note",
+          databasePath,
+          upsertLocalNodeDocument: (input) => transport.upsertLocalNodeDocument(input),
+          createGraphNode: (input) =>
+            transport.createGraphNode(
+              input as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string }
+            ),
+        });
       },
       async createGroupNode(position) {
         const graphNodeId = crypto.randomUUID();

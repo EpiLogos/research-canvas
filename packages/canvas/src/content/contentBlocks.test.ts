@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { appendBlocksToBody, imageBlock, paragraphsToBlocks } from "./contentBlocks";
+import { appendBlocksToBody, fileLinkBlock, imageBlock, paragraphsToBlocks } from "./contentBlocks";
 
 describe("paragraphsToBlocks", () => {
   it("returns no blocks for empty text", () => {
@@ -35,6 +35,15 @@ describe("imageBlock", () => {
     expect(imageBlock("assets/n1/cat.png", "A cat")).toEqual({
       type: "image",
       props: { url: "assets/n1/cat.png", caption: "A cat" },
+    });
+  });
+});
+
+describe("fileLinkBlock", () => {
+  it("builds a paragraph block referencing the file name and url", () => {
+    expect(fileLinkBlock("assets/n1/notes.pdf", "notes.pdf")).toEqual({
+      type: "paragraph",
+      content: [{ type: "text", text: "Attached file: notes.pdf (assets/n1/notes.pdf)" }],
     });
   });
 });

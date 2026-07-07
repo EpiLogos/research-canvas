@@ -44,13 +44,14 @@ fn db_migrations_applies_initial_migration_to_a_real_temp_database() {
     assert!(table_exists(connection, "edge_layout"));
     assert!(table_exists(connection, "canvas_app_state"));
     assert!(table_exists(connection, "agent_activity"));
+    assert!(table_exists(connection, "node_document"));
 
     let applied_migrations: i64 = connection
         .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
             row.get(0)
         })
         .expect("migration count");
-    assert_eq!(applied_migrations, 9);
+    assert_eq!(applied_migrations, 10);
 }
 
 #[test]
@@ -65,5 +66,5 @@ fn db_migrations_migration_runner_is_idempotent_and_deterministic() {
             row.get(0)
         })
         .expect("migration count");
-    assert_eq!(applied_migrations, 9);
+    assert_eq!(applied_migrations, 10);
 }

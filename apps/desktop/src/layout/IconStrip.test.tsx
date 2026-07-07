@@ -40,9 +40,24 @@ describe("IconStrip rail", () => {
     expect(props.onToggleInspector).toHaveBeenCalledTimes(1);
   });
 
-  it("toggles the browser from the Files verb", () => {
+  it("Files verb sets the files leftMode when the browser is closed (uniform with Search/Annotate)", () => {
     const props = setup();
     fireEvent.click(screen.getByRole("button", { name: "Files & Project" }));
+    expect(props.onSetBrowserMode).toHaveBeenCalledWith("files");
+    expect(props.onToggleBrowser).not.toHaveBeenCalled();
+  });
+
+  it("Files verb toggles the browser closed when Files is already the active mode (re-click closes)", () => {
+    const props = setup({ browserActive: true, activeLeftMode: "files" });
+    fireEvent.click(screen.getByRole("button", { name: "Files & Project" }));
     expect(props.onToggleBrowser).toHaveBeenCalledTimes(1);
+    expect(props.onSetBrowserMode).not.toHaveBeenCalled();
+  });
+
+  it("Files verb restores the Files view when another mode (e.g. Annotations) is active", () => {
+    const props = setup({ browserActive: true, activeLeftMode: "annotations" });
+    fireEvent.click(screen.getByRole("button", { name: "Files & Project" }));
+    expect(props.onSetBrowserMode).toHaveBeenCalledWith("files");
+    expect(props.onToggleBrowser).not.toHaveBeenCalled();
   });
 });

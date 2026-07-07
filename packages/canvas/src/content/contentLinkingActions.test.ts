@@ -66,6 +66,28 @@ describe("addImageToNode", () => {
   });
 });
 
+describe("attachFileToNode", () => {
+  it("imports the file and appends a file-link paragraph referencing the returned path", async () => {
+    const node = makeNode({ body: "[]" });
+    const { deps, updateGraphNode } = makeDeps(node);
+    (deps.importNodeImage as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      "assets/n1/notes.pdf",
+    );
+    const actions = createContentLinkingActions(deps);
+
+    await actions.attachFileToNode("n1", "/Users/me/Documents/notes.pdf", "notes.pdf");
+
+    expect(deps.importNodeImage).toHaveBeenCalledWith({
+      graphNodeId: "n1",
+      sourceAbsolutePath: "/Users/me/Documents/notes.pdf",
+    });
+    const patchBody = updateGraphNode.mock.calls[0][0].patch.body as string;
+    expect(JSON.parse(patchBody)).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "Attached file: notes.pdf (assets/n1/notes.pdf)" }] },
+    ]);
+  });
+});
+
 describe("addTextToNode", () => {
   it("appends pasted text as paragraph blocks and persists the new body", async () => {
     const node = makeNode({ body: "[]" });

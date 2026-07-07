@@ -1,5 +1,6 @@
 import { entityTypeForNodeType } from "@research-canvas/canvas";
 import type { NewGraphNodeInput } from "@research-canvas/desktop-api";
+import { markGraphNodeSyncPending } from "./pendingGraphNodeSync";
 
 /**
  * Build a `NewGraphNodeInput` for a canvas node type.
@@ -18,4 +19,58 @@ export function buildNewGraphNodeInput(args: {
     isTemporal: false,
     sourceCoordinates: [],
   };
+}
+
+/**
+ * Local-first note creation side effects, factored out of
+ * `CanvasWorkspaceContext.createNoteNode` so they're independently testable
+ * (the context itself pulls in Tauri/Zustand bootstrapping that's too heavy
+ * to render in a unit test).
+ *
+ * Order matters: the local node document is seeded FIRST and awaited, so the
+ * note is guaranteed editable (openable in the document viewer) the instant
+ * creation returns — even fully offline. The Neo4j substance sync is
+ * best-effort and fire-and-forget; on failure the node is recorded as
+ * "pending sync" (see `pendingGraphNodeSync.ts`) so a later retry pass can
+ * pick it up once Neo4j is reachable again.
+ */
+export async function seedNoteNodeEffects(args: {
+  graphNodeId: string;
+  title: string;
+  databasePath: string | null;
+  upsertLocalNodeDocument: (input: {
+    databasePath: string;
+    graphNodeId: string;
+    body: string;
+    summary: string;
+  }) => Promise<void>;
+  createGraphNode: (
+    input: NewGraphNodeInput & { graphNodeId: string }
+  ) => Promise<unknown>;
+}): Promise<void> {
+  const { graphNodeId, title, databasePath, upsertLocalNodeDocument, createGraphNode } = args;
+
+  if (databasePath) {
+    try {
+      await upsertLocalNodeDocument({
+        databasePath,
+        graphNodeId,
+        body: "",
+        summary: "",
+      });
+    } catch (error) {
+      console.warn("upsertLocalNodeDocument failed; note kept locally without a seeded doc row", error);
+    }
+  }
+
+  const input = {
+    ...buildNewGraphNodeInput({ nodeType: "note", title }),
+    graphNodeId,
+  };
+  try {
+    await createGraphNode(input);
+  } catch (error) {
+    markGraphNodeSyncPending(input);
+    console.warn("createGraphNode sync failed; node kept locally", error);
+  }
 }

@@ -36,11 +36,31 @@ export function NodeReaderBody({
     const transport = createWorkspaceTransport() as unknown as {
       readGraphNode: (input: { graphNodeId: string }) => Promise<GraphNode>;
       updateGraphNode: (input: { graphNodeId: string; patch: GraphNodePatch }) => Promise<GraphNode>;
+      readLocalNodeDocument: (input: {
+        databasePath: string;
+        graphNodeId: string;
+      }) => Promise<{ body: string; summary: string; neo4jSynced: boolean } | null>;
+      upsertLocalNodeDocument: (input: {
+        databasePath: string;
+        graphNodeId: string;
+        body: string;
+        summary: string;
+        neo4jSynced?: boolean;
+      }) => Promise<void>;
     };
+    const databasePath = workspace.databasePath ?? null;
     return affordances ? (
-      <GraphDocumentContent graphNodeId={graphNodeId} transport={transport} />
+      <GraphDocumentContent
+        graphNodeId={graphNodeId}
+        transport={transport}
+        databasePath={databasePath}
+      />
     ) : (
-      <NodeDocumentPane graphNodeId={graphNodeId} transport={transport} />
+      <NodeDocumentPane
+        graphNodeId={graphNodeId}
+        transport={transport}
+        databasePath={databasePath}
+      />
     );
   }
 

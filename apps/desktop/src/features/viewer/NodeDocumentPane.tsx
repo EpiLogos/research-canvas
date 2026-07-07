@@ -14,11 +14,30 @@ interface NodeDocumentTransport {
     graphNodeId: string;
     patch: GraphNodePatch;
   }): Promise<GraphNode>;
+  readLocalNodeDocument(input: {
+    databasePath: string;
+    graphNodeId: string;
+  }): Promise<{ body: string; summary: string; neo4jSynced: boolean } | null>;
+  upsertLocalNodeDocument(input: {
+    databasePath: string;
+    graphNodeId: string;
+    body: string;
+    summary: string;
+    neo4jSynced?: boolean;
+  }): Promise<void>;
 }
 
 interface NodeDocumentPaneProps {
   graphNodeId: string;
   transport: NodeDocumentTransport;
+  /**
+   * Absolute path of the SQLite workspace database, used for the authoritative
+   * local read/upsert of the node document. Threaded from
+   * `useCanvasWorkspace().databasePath`. When null, the editor still mounts
+   * (empty body) but local persistence is unavailable — a non-blocking status
+   * is shown rather than a dead-end.
+   */
+  databasePath: string | null;
   editable?: boolean;
   /**
    * Test-only: when set, renders a hidden button that pushes this body via
@@ -28,78 +47,213 @@ interface NodeDocumentPaneProps {
   __testSetBody?: string;
 }
 
+/** True when the BlockNote body JSON has no visible text content. */
+function isEmptyBody(body: string): boolean {
+  if (!body) {
+    return true;
+  }
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return true;
+    }
+    const hasText = JSON.stringify(parsed).includes('"text"');
+    return !hasText;
+  } catch {
+    return body.trim().length === 0;
+  }
+}
+
 export function NodeDocumentPane({
   graphNodeId,
   transport,
+  databasePath,
   editable = true,
   __testSetBody,
 }: NodeDocumentPaneProps) {
   const [store, setStore] = useState<NodeDocumentStore | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // Non-blocking, inline-only status; NEVER a full-pane dead-end. Neo4j is a
+  // sync target, not a read gate — the editor must always mount.
+  const [statusNote, setStatusNote] = useState<string | null>(null);
   const transportRef = useRef(transport);
   transportRef.current = transport;
+  const databasePathRef = useRef(databasePath);
+  databasePathRef.current = databasePath;
 
   useEffect(() => {
     let cancelled = false;
     setStore(null);
-    setLoadError(null);
+    setStatusNote(null);
 
-    transportRef.current
-      .readGraphNode({ graphNodeId })
-      .then((node) => {
+    // flush is authoritative-local-first: write the local document (SQLite)
+    // FIRST — this is the durable write and its failure must propagate so the
+    // doc store surfaces status="error". THEN sync Neo4j best-effort; a Neo4j
+    // failure never blocks or surfaces a blocking error — it only leaves the
+    // local row's neo4j_synced=false and shows a subtle non-blocking status.
+    const flush = async (body: string, summary: string): Promise<void> => {
+      const dbPath = databasePathRef.current;
+
+      if (!dbPath) {
+        // No local store available (e.g. no workspace db path). Fall back to
+        // Neo4j as the only persistence; surface its failure non-blockingly
+        // via a thrown error (there is nothing else to fall back on).
+        try {
+          await transportRef.current.updateGraphNode({
+            graphNodeId,
+            patch: { body, summary } as GraphNodePatch,
+          });
+          if (!cancelled) {
+            setStatusNote(null);
+          }
+        } catch (error) {
+          if (!cancelled) {
+            setStatusNote("Saved locally, sync pending");
+          }
+          console.warn("node document Neo4j sync failed; kept locally", error);
+          throw new Error("saved locally unavailable: no workspace database");
+        }
+        return;
+      }
+
+      // Authoritative local write, FIRST. A failure here IS a real save
+      // failure and must propagate so the doc store surfaces status="error".
+      await transportRef.current.upsertLocalNodeDocument({
+        databasePath: dbPath,
+        graphNodeId,
+        body,
+        summary,
+        neo4jSynced: false,
+      });
+
+      // Best-effort Neo4j sync, AFTER the local write succeeded. Never blocks
+      // and never surfaces a blocking error — only a subtle status note.
+      try {
+        await transportRef.current.updateGraphNode({
+          graphNodeId,
+          patch: { body, summary } as GraphNodePatch,
+        });
+        await transportRef.current.upsertLocalNodeDocument({
+          databasePath: dbPath,
+          graphNodeId,
+          body,
+          summary,
+          neo4jSynced: true,
+        });
+        if (!cancelled) {
+          setStatusNote(null);
+        }
+      } catch (error) {
+        // Local write already succeeded; leave neo4j_synced=false and just
+        // note the pending sync. Non-blocking by design.
+        if (!cancelled) {
+          setStatusNote("Saved locally, sync pending");
+        }
+        console.warn("node document Neo4j sync failed; kept locally", error);
+      }
+    };
+
+    const mountStore = (initialBody: string) => {
+      const nextStore = createNodeDocumentStore({
+        graphNodeId,
+        initialBody,
+        flush,
+      });
+      if (!cancelled) {
+        setStore(nextStore);
+      }
+      return nextStore;
+    };
+
+    const readLocal = databasePath
+      ? transportRef.current.readLocalNodeDocument({ databasePath, graphNodeId })
+      : Promise.resolve(null);
+
+    readLocal
+      .then((local) => {
         if (cancelled) {
           return;
         }
-        const nextStore = createNodeDocumentStore({
-          graphNodeId,
-          initialBody: node.body,
-          flush: async (body, summary) => {
-            await transportRef.current.updateGraphNode({
-              graphNodeId,
-              patch: { body, summary } as GraphNodePatch,
+        const localBody = local?.body ?? "";
+        const mounted = mountStore(localBody);
+
+        // Reconcile (best-effort, non-blocking): if the local body was empty
+        // but Neo4j has substance, seed the local store from Neo4j and persist
+        // it as synced. Offline / missing node is fine — ignore failures.
+        if (isEmptyBody(localBody) && databasePath) {
+          transportRef.current
+            .readGraphNode({ graphNodeId })
+            .then((node) => {
+              if (cancelled || !node || isEmptyBody(node.body)) {
+                return;
+              }
+              // Re-check the LIVE store body at resolution time (not the
+              // mount-time snapshot): if the user has started typing into the
+              // empty editor while this request was in flight, the store body
+              // is no longer empty and reconcile must NOT clobber it.
+              if (!isEmptyBody(mounted.getState().body)) {
+                return;
+              }
+              mounted.getState().setBody(node.body);
+              void transportRef.current
+                .upsertLocalNodeDocument({
+                  databasePath,
+                  graphNodeId,
+                  body: node.body,
+                  summary: node.summary ?? "",
+                  neo4jSynced: true,
+                })
+                .catch((error) =>
+                  console.warn("reconcile local seed failed", error)
+                );
+            })
+            .catch(() => {
+              // Offline / node not in Neo4j — the empty local editor stands.
             });
-          },
-        });
-        setStore(nextStore);
+        }
       })
       .catch((error: unknown) => {
         if (cancelled) {
           return;
         }
-        setLoadError(
-          error instanceof Error ? error.message : "failed to read node"
-        );
+        // Local DB read itself failed: still mount an editable editor (empty
+        // body) with a small non-blocking status — never a dead-end pane.
+        console.warn("readLocalNodeDocument failed; mounting empty editor", error);
+        setStatusNote("Local document unavailable");
+        mountStore("");
       });
 
     return () => {
       cancelled = true;
     };
+    // databasePath is intentionally excluded: it is read via ref inside flush
+    // and re-read on the initial local read; a mid-session change of the
+    // workspace db path is not a supported scenario for an open node document.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphNodeId]);
-
-  if (loadError) {
-    return (
-      <div className="node-document-pane node-document-pane--error" role="alert">
-        {loadError}
-      </div>
-    );
-  }
 
   if (!store) {
     return <div className="node-document-pane node-document-pane--loading">Loading…</div>;
   }
 
   return (
-    <NodeDocumentBody store={store} editable={editable} testSetBody={__testSetBody} />
+    <NodeDocumentBody
+      store={store}
+      editable={editable}
+      statusNote={statusNote}
+      testSetBody={__testSetBody}
+    />
   );
 }
 
 function NodeDocumentBody({
   store,
   editable,
+  statusNote,
   testSetBody,
 }: {
   store: NodeDocumentStore;
   editable: boolean;
+  statusNote: string | null;
   testSetBody?: string;
 }) {
   const body = useStore(store, (state) => state.body);
@@ -108,6 +262,7 @@ function NodeDocumentBody({
 
   // Crash-safe flush-on-close (WS1 robustness bar (b)): write the dirty body on
   // window unload AND on unmount, and SURFACE failure rather than dropping it.
+  // The flush now writes local first (authoritative), then syncs Neo4j.
   useEffect(() => {
     const closeFlush = () => {
       void store
@@ -147,7 +302,7 @@ function NodeDocumentBody({
             ? (errorMessage ?? "Save failed")
             : status === "dirty"
               ? "Unsaved changes"
-              : "Saved"}
+              : (statusNote ?? "Saved")}
       </div>
       {testSetBody !== undefined ? (
         <button

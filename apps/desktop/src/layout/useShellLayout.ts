@@ -16,8 +16,26 @@ export function useShellLayout() {
 
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorPinned, setInspectorPinned] = useState(false);
+  const [inspectorUserClosed, setInspectorUserClosed] = useState(false);
   const [inspectorWidth, setInspectorWidth] = useState(260);
-  const toggleInspector = useCallback(() => setInspectorOpen((v) => !v), []);
+  const openInspector = useCallback(() => {
+    setInspectorOpen(true);
+    setInspectorUserClosed(false);
+  }, []);
+  const closeInspector = useCallback(() => {
+    setInspectorOpen(false);
+    setInspectorUserClosed(true);
+  }, []);
+  const toggleInspector = useCallback(() => {
+    setInspectorOpen((v) => {
+      if (v) {
+        setInspectorUserClosed(true);
+        return false;
+      }
+      setInspectorUserClosed(false);
+      return true;
+    });
+  }, []);
   const toggleInspectorPin = useCallback(() => setInspectorPinned((v) => !v), []);
 
   const [dockOpen, setDockOpen] = useState(false);
@@ -89,8 +107,11 @@ export function useShellLayout() {
     inspectorOpen,
     setInspectorOpen,
     toggleInspector,
+    openInspector,
+    closeInspector,
     inspectorPinned,
     toggleInspectorPin,
+    inspectorUserClosed,
     inspectorWidth,
     beginInspectorResize,
     dockOpen,

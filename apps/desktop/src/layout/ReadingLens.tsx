@@ -1,7 +1,13 @@
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { NodeReaderBody } from "../features/viewer/NodeReaderBody";
 
-export function ReadingLens({ onFullScreen }: { onFullScreen: () => void }) {
+export function ReadingLens({
+  onFullScreen,
+  onExitToCanvas,
+}: {
+  onFullScreen: () => void;
+  onExitToCanvas: () => void;
+}) {
   const workspace = useCanvasWorkspace();
   const node = workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
 
@@ -11,6 +17,14 @@ export function ReadingLens({ onFullScreen }: { onFullScreen: () => void }) {
         <>
           <div className="ishell-reading__bar">
             <span className="ishell-reading__title">{node.title}</span>
+            <button
+              type="button"
+              className="ishell-reading__canvas"
+              aria-label="Back to canvas"
+              onClick={onExitToCanvas}
+            >
+              ← Canvas
+            </button>
             <button
               type="button"
               className="ishell-reading__full"

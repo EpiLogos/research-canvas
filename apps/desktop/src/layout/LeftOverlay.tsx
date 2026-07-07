@@ -8,13 +8,14 @@ interface LeftOverlayProps {
   open: boolean;
   mode: "files" | "search" | "annotations";
   onResizeStart: (e: React.PointerEvent) => void;
+  onClose?: () => void;
   drawingMode?: boolean;
   onToggleDrawing?: () => void;
   strokeColour?: string;
   onSetStrokeColour?: (colour: string) => void;
 }
 
-export function LeftOverlay({ open, mode, onResizeStart, drawingMode, onToggleDrawing, strokeColour, onSetStrokeColour }: LeftOverlayProps) {
+export function LeftOverlay({ open, mode, onResizeStart, onClose, drawingMode, onToggleDrawing, strokeColour, onSetStrokeColour }: LeftOverlayProps) {
   const workspace = useCanvasWorkspace();
   const [folderError, setFolderError] = useState<string | null>(null);
   const [showFolderPicker, setShowFolderPicker] = useState(false);
@@ -38,10 +39,43 @@ export function LeftOverlay({ open, mode, onResizeStart, drawingMode, onToggleDr
 
   return (
     <aside className="left-overlay" data-testid="left-overlay" data-open={open ? "true" : "false"} aria-hidden={!open}>
+      <button
+        type="button"
+        className="left-overlay__close"
+        aria-label="Close panel"
+        onClick={() => onClose?.()}
+      >
+        ×
+      </button>
       <div className="left-overlay__inner">
 
         {mode === "files" && (
           <>
+            {/* Project selector — always visible in files mode, regardless
+                of the Graph/Files sub-view, so it doesn't look buried behind
+                the segmented control below. */}
+            <div className="lo-section">
+              <div className="lo-section__header">
+                <span className="lo-label">Projects</span>
+              </div>
+              <div className="lo-project-list" data-testid="lo-projects">
+                {workspace.projects.map((project) => (
+                  <button
+                    key={project.id}
+                    className="lo-project-item"
+                    data-active={workspace.activeProjectId === project.id ? "true" : "false"}
+                    onClick={() => workspace.selectProject(project.id)}
+                    title={project.rootPath}
+                  >
+                    {project.name}
+                  </button>
+                ))}
+                {workspace.projects.length === 0 && (
+                  <div className="lo-empty">No projects</div>
+                )}
+              </div>
+            </div>
+
             <div className="lo-browser-controls">
               <div className="lo-seg" role="tablist" aria-label="Browser view">
                 <button
@@ -114,29 +148,6 @@ export function LeftOverlay({ open, mode, onResizeStart, drawingMode, onToggleDr
 
             {browserView === "files" && (
               <>
-                {/* Project selector */}
-                <div className="lo-section">
-                  <div className="lo-section__header">
-                    <span className="lo-label">Projects</span>
-                  </div>
-                  <div className="lo-project-list">
-                    {workspace.projects.map((project) => (
-                      <button
-                        key={project.id}
-                        className="lo-project-item"
-                        data-active={workspace.activeProjectId === project.id ? "true" : "false"}
-                        onClick={() => workspace.selectProject(project.id)}
-                        title={project.rootPath}
-                      >
-                        {project.name}
-                      </button>
-                    ))}
-                    {workspace.projects.length === 0 && (
-                      <div className="lo-empty">No projects</div>
-                    )}
-                  </div>
-                </div>
-
                 {/* Resource roots */}
                 <div className="lo-section">
                   <div className="lo-section__header">

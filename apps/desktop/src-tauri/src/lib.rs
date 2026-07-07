@@ -6,6 +6,7 @@ pub mod commands {
     pub mod export_graph_bundle;
     pub mod graph;
     pub mod layout;
+    pub mod node_document;
     pub mod projects;
     pub mod search;
     pub mod terminal;
@@ -72,6 +73,8 @@ pub fn run() {
     };
 
     let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .manage(pty::TerminalManager::new())
         .manage(api_state)
         .manage(runtime); // Arc<tokio::runtime::Runtime> — keeps the bolt pool alive
@@ -124,6 +127,8 @@ pub fn run() {
             commands::graph::upsert_edge_layout_command,
             commands::graph::upsert_canvas_app_state_command,
             commands::agent_activity::list_agent_activity_command,
+            commands::node_document::read_local_node_document_command,
+            commands::node_document::upsert_local_node_document_command,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Research Canvas");

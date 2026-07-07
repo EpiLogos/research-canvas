@@ -17,7 +17,7 @@ describe("ReadingLens", () => {
   it("shows an empty state when nothing is selected", () => {
     state.nodes = [];
     state.selectedNodeId = null;
-    render(<ReadingLens onFullScreen={() => {}} />);
+    render(<ReadingLens onFullScreen={() => {}} onExitToCanvas={() => {}} />);
     expect(screen.getByTestId("reading-pane")).toBeVisible();
     expect(screen.getByText(/select a node to read/i)).toBeInTheDocument();
     expect(screen.queryByTestId("reader-body")).not.toBeInTheDocument();
@@ -26,7 +26,7 @@ describe("ReadingLens", () => {
   it("renders the reader body for the selected node", () => {
     state.nodes = [{ id: "n1", title: "The Naked Face", type: "note" }];
     state.selectedNodeId = "n1";
-    render(<ReadingLens onFullScreen={() => {}} />);
+    render(<ReadingLens onFullScreen={() => {}} onExitToCanvas={() => {}} />);
     expect(screen.getByTestId("reader-body")).toHaveTextContent("reading:n1");
   });
 
@@ -34,8 +34,17 @@ describe("ReadingLens", () => {
     state.nodes = [{ id: "n1", title: "T", type: "note" }];
     state.selectedNodeId = "n1";
     const onFullScreen = vi.fn();
-    render(<ReadingLens onFullScreen={onFullScreen} />);
+    render(<ReadingLens onFullScreen={onFullScreen} onExitToCanvas={() => {}} />);
     fireEvent.click(screen.getByRole("button", { name: "Read full screen" }));
     expect(onFullScreen).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onExitToCanvas from the Back to canvas button", () => {
+    state.nodes = [{ id: "n1", title: "T", type: "note" }];
+    state.selectedNodeId = "n1";
+    const onExitToCanvas = vi.fn();
+    render(<ReadingLens onFullScreen={() => {}} onExitToCanvas={onExitToCanvas} />);
+    fireEvent.click(screen.getByRole("button", { name: "Back to canvas" }));
+    expect(onExitToCanvas).toHaveBeenCalledTimes(1);
   });
 });

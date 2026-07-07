@@ -89,46 +89,56 @@ export function SequencesManager({ onClose, onPlaySequence }: SequencesManagerPr
   }, [onClose]);
 
   return (
-    <div className="sequences-manager">
-      <aside className="sm-sidebar">
-        <div className="sm-sidebar__header">
-          <h2>Sequences</h2>
-          <button className="sm-sidebar__add" onClick={() => { void handleCreate(); }}>+ New</button>
-        </div>
-        <div className="sm-sidebar__list">
-          {sequences.map((seq) => (
-            <button
-              key={seq.id}
-              className="sm-sidebar__item"
-              data-active={seq.id === selectedId ? "true" : "false"}
-              onClick={() => setSelectedId(seq.id)}
-            >
-              <span className="sm-sidebar__item-name">{seq.name}</span>
-              <span className="sm-sidebar__item-count">{seq.edgeIds.length} edges</span>
-            </button>
-          ))}
-          {sequences.length === 0 && (
-            <div className="sm-sidebar__empty">No sequences saved. Create one to define a guided path.</div>
+    <div
+      className="sequences-overlay__backdrop"
+      data-testid="sequences-overlay-backdrop"
+      onClick={onClose}
+    >
+      <div
+        className="sequences-overlay__card"
+        data-testid="sequences-overlay-card"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <aside className="sm-sidebar">
+          <div className="sm-sidebar__header">
+            <h2>Sequences</h2>
+            <button className="sm-sidebar__add" onClick={() => { void handleCreate(); }}>+ New</button>
+          </div>
+          <div className="sm-sidebar__list">
+            {sequences.map((seq) => (
+              <button
+                key={seq.id}
+                className="sm-sidebar__item"
+                data-active={seq.id === selectedId ? "true" : "false"}
+                onClick={() => setSelectedId(seq.id)}
+              >
+                <span className="sm-sidebar__item-name">{seq.name}</span>
+                <span className="sm-sidebar__item-count">{seq.edgeIds.length} edges</span>
+              </button>
+            ))}
+            {sequences.length === 0 && (
+              <div className="sm-sidebar__empty">No sequences saved. Create one to define a guided path.</div>
+            )}
+          </div>
+        </aside>
+
+        <main className="sm-main">
+          {selected ? (
+            <SequenceEditor
+              sequence={selected}
+              nodes={workspace.nodes}
+              edges={workspace.edges}
+              onUpdate={handleUpdate}
+              onDelete={handleDelete}
+              onPlay={handlePlay}
+            />
+          ) : (
+            <div className="sm-main__empty">Select a sequence or create a new one</div>
           )}
-        </div>
-      </aside>
+        </main>
 
-      <main className="sm-main">
-        {selected ? (
-          <SequenceEditor
-            sequence={selected}
-            nodes={workspace.nodes}
-            edges={workspace.edges}
-            onUpdate={handleUpdate}
-            onDelete={handleDelete}
-            onPlay={handlePlay}
-          />
-        ) : (
-          <div className="sm-main__empty">Select a sequence or create a new one</div>
-        )}
-      </main>
-
-      <button className="sm-close" onClick={onClose} title="Close (Esc)">&times;</button>
+        <button className="sm-close" onClick={onClose} title="Close (Esc)">&times;</button>
+      </div>
     </div>
   );
 }

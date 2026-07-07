@@ -26,9 +26,9 @@ vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
   }),
 }));
 
-function renderFiles() {
+function renderFiles(onClose = vi.fn()) {
   return render(
-    <LeftOverlay open mode="files" onResizeStart={() => {}} />,
+    <LeftOverlay open mode="files" onResizeStart={() => {}} onClose={onClose} />,
   );
 }
 
@@ -61,5 +61,21 @@ describe("LeftOverlay browser", () => {
     // (Two "Files" texts now exist — the toggle button and the section header —
     // so scope the assertion to the section header label.)
     expect(screen.getByText("Files", { selector: ".lo-label" })).toBeInTheDocument();
+  });
+
+  it("renders a Close panel button that calls onClose", () => {
+    const onClose = vi.fn();
+    renderFiles(onClose);
+    const closeBtn = screen.getByRole("button", { name: "Close panel" });
+    fireEvent.click(closeBtn);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the Projects section in files mode even when browserView is the default Graph view", () => {
+    renderFiles();
+    // Default browserView is "graph" — no click on the Files sub-tab.
+    expect(screen.getByTestId("browser-graph")).toHaveAttribute("data-active", "true");
+    // Projects must be visible regardless — assert via the projects marker.
+    expect(screen.getByTestId("lo-projects")).toBeInTheDocument();
   });
 });
