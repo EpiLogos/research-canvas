@@ -36,6 +36,7 @@ const entityTypeSchema = z.enum([
   "Work",
   "Archetype",
   "Dynamic",
+  "Constellation",
   "PsychoidOperator"
 ]);
 
@@ -52,6 +53,8 @@ const graphNodeSchema: z.ZodType<GraphNode> = z.object({
   archetypalResonance: z.string().nullable(),
   coordinate: z.string().nullable(),
   sourceCoordinates: z.array(z.string()),
+  evidenceTags: z.array(z.string()).optional(),
+  sourceKind: z.string().nullable().optional(),
   isTemporal: z.boolean(),
   validFrom: z.string().nullable(),
   validTo: z.string().nullable(),
@@ -93,7 +96,8 @@ const canvasNodeSidecarSchema: z.ZodType<CanvasNodeSidecar> = z.union([
   z.object({
     type: z.literal("portal"),
     title: z.string(),
-    targetCanvasId: z.string()
+    targetCanvasId: z.string(),
+    constellationKind: z.enum(["standard", "ql-unit"]).optional()
   })
 ]);
 

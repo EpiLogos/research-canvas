@@ -342,7 +342,8 @@ pub fn load_project_document_at(
         .ok_or_else(|| format!("project {} is missing a primary canvas", project.id))?;
 
     let resource_roots = list_project_resource_roots(database.connection(), &project.id)?;
-    let entries = index_project_root(&project.root_path).map_err(|error| error.to_string())?;
+    let entries = index_project_entries(&project.root_path, &resource_roots)
+        .map_err(|error| error.to_string())?;
     let graph = CanvasGraphRepository::new(database.connection());
     let snapshot = graph
         .load_canvas_snapshot(&canvas_id)
@@ -410,12 +411,8 @@ fn workspace_root() -> PathBuf {
 }
 
 pub fn default_database_path(session_id: Option<&str>) -> PathBuf {
-    match session_id {
-        Some(session_id) if !session_id.trim().is_empty() => {
-            env::temp_dir().join(format!("research-canvas-browser-{session_id}.sqlite"))
-        }
-        _ => env::temp_dir().join("research-canvas-authoring.sqlite"),
-    }
+    let _ = session_id;
+    env::temp_dir().join("research-canvas-authoring.sqlite")
 }
 
 fn ensure_seeded_workspace(connection: &Connection, root: &Path) -> Result<(), String> {
@@ -540,26 +537,29 @@ fn replace_project_document(
             [&request.canvas_id],
         )
         .map_err(|error| error.to_string())?;
-    connection
-        .execute(
-            "DELETE FROM canvas_edges WHERE canvas_id = ?1",
-            [&request.canvas_id],
-        )
-        .map_err(|error| error.to_string())?;
-    connection
-        .execute(
-            "DELETE FROM canvas_nodes WHERE canvas_id = ?1",
-            [&request.canvas_id],
-        )
-        .map_err(|error| error.to_string())?;
 
-    for node in &request.nodes {
-        let tags = serde_json::to_string(&node.tags).map_err(|error| error.to_string())?;
-        let child_node_ids =
-            serde_json::to_string(&node.child_node_ids).map_err(|error| error.to_string())?;
+    let replaces_canvas_substance = !request.nodes.is_empty() || !request.edges.is_empty();
+    if replaces_canvas_substance {
         connection
             .execute(
-                "INSERT INTO canvas_nodes (
+                "DELETE FROM canvas_edges WHERE canvas_id = ?1",
+                [&request.canvas_id],
+            )
+            .map_err(|error| error.to_string())?;
+        connection
+            .execute(
+                "DELETE FROM canvas_nodes WHERE canvas_id = ?1",
+                [&request.canvas_id],
+            )
+            .map_err(|error| error.to_string())?;
+
+        for node in &request.nodes {
+            let tags = serde_json::to_string(&node.tags).map_err(|error| error.to_string())?;
+            let child_node_ids =
+                serde_json::to_string(&node.child_node_ids).map_err(|error| error.to_string())?;
+            connection
+                .execute(
+                    "INSERT INTO canvas_nodes (
                     id,
                     canvas_id,
                     type,
@@ -592,45 +592,45 @@ fn replace_project_document(
                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
                     ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28
                 )",
-                params![
-                    node.id,
-                    node.canvas_id,
-                    node.node_type,
-                    node.title,
-                    node.summary,
-                    node.position.x,
-                    node.position.y,
-                    node.size.width,
-                    node.size.height,
-                    node.content.as_deref(),
-                    tags,
-                    node.resource_kind.as_deref(),
-                    node.absolute_path.as_deref(),
-                    node.relative_path.as_deref(),
-                    node.mime_type.as_deref(),
-                    node.file_fingerprint.as_deref(),
-                    node.url.as_deref(),
-                    node.color.as_deref(),
-                    child_node_ids,
-                    node.target_canvas_id.as_deref(),
-                    node.dot_colour.as_deref(),
-                    node.bg_colour.as_deref(),
-                    node.text_colour.as_deref(),
-                    node.thumbnail.as_deref(),
-                    node.sequence_caption.as_deref(),
-                    node.sequence_viewport.as_ref().map(|v| v.to_string()),
-                    node.created_at,
-                    node.updated_at,
-                ],
-            )
-            .map_err(|error| error.to_string())?;
-    }
+                    params![
+                        node.id,
+                        node.canvas_id,
+                        node.node_type,
+                        node.title,
+                        node.summary,
+                        node.position.x,
+                        node.position.y,
+                        node.size.width,
+                        node.size.height,
+                        node.content.as_deref(),
+                        tags,
+                        node.resource_kind.as_deref(),
+                        node.absolute_path.as_deref(),
+                        node.relative_path.as_deref(),
+                        node.mime_type.as_deref(),
+                        node.file_fingerprint.as_deref(),
+                        node.url.as_deref(),
+                        node.color.as_deref(),
+                        child_node_ids,
+                        node.target_canvas_id.as_deref(),
+                        node.dot_colour.as_deref(),
+                        node.bg_colour.as_deref(),
+                        node.text_colour.as_deref(),
+                        node.thumbnail.as_deref(),
+                        node.sequence_caption.as_deref(),
+                        node.sequence_viewport.as_ref().map(|v| v.to_string()),
+                        node.created_at,
+                        node.updated_at,
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+        }
 
-    for edge in &request.edges {
-        let style = serde_json::to_string(&edge.style).map_err(|error| error.to_string())?;
-        connection
-            .execute(
-                "INSERT INTO canvas_edges (
+        for edge in &request.edges {
+            let style = serde_json::to_string(&edge.style).map_err(|error| error.to_string())?;
+            connection
+                .execute(
+                    "INSERT INTO canvas_edges (
                     id,
                     canvas_id,
                     source_node_id,
@@ -647,25 +647,26 @@ fn replace_project_document(
                     created_at,
                     updated_at
                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
-                params![
-                    edge.id,
-                    edge.canvas_id,
-                    edge.source_node_id,
-                    edge.target_node_id,
-                    edge.source_handle_id.as_deref(),
-                    edge.target_handle_id.as_deref(),
-                    edge.relation_kind,
-                    edge.directionality,
-                    edge.label,
-                    edge.note,
-                    style,
-                    edge.sequencing as i64,
-                    edge.sequence_priority,
-                    edge.created_at,
-                    edge.updated_at,
-                ],
-            )
-            .map_err(|error| error.to_string())?;
+                    params![
+                        edge.id,
+                        edge.canvas_id,
+                        edge.source_node_id,
+                        edge.target_node_id,
+                        edge.source_handle_id.as_deref(),
+                        edge.target_handle_id.as_deref(),
+                        edge.relation_kind,
+                        edge.directionality,
+                        edge.label,
+                        edge.note,
+                        style,
+                        edge.sequencing as i64,
+                        edge.sequence_priority,
+                        edge.created_at,
+                        edge.updated_at,
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+        }
     }
 
     for annotation in &request.annotations {
@@ -804,6 +805,46 @@ fn list_project_resource_roots(
     ResourceRootRepository::new(connection)
         .list_for_project(project_id)
         .map_err(|error| error.to_string())
+}
+
+fn index_project_entries(
+    project_root: &str,
+    resource_roots: &[ResourceRootRecord],
+) -> std::io::Result<Vec<IndexedEntry>> {
+    let mut entries = index_project_root(project_root)?;
+
+    for root in resource_roots {
+        let root_path = PathBuf::from(&root.root_path);
+        let root_name = if root.display_name.trim().is_empty() {
+            root_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("resource-root")
+                .to_string()
+        } else {
+            root.display_name.clone()
+        };
+
+        entries.push(IndexedEntry {
+            name: root_name.clone(),
+            relative_path: root_name.clone(),
+            absolute_path: root_path.clone(),
+            kind: IndexedEntryKind::Directory,
+            is_directory: true,
+            depth: 0,
+            size_bytes: 0,
+        });
+
+        let mut nested = index_project_root(&root_path)?;
+        for entry in &mut nested {
+            entry.relative_path = format!("{root_name}/{}", entry.relative_path);
+            entry.depth += 1;
+        }
+        entries.extend(nested);
+    }
+
+    entries.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    Ok(entries)
 }
 
 fn validate_resource_root_attachment(project: &Project, root_path: &str) -> Result<(), String> {
@@ -1001,9 +1042,19 @@ pub fn list_directories_at() -> Result<Vec<DirectoryEntry>, String> {
     let home = dirs::home_dir().ok_or_else(|| "cannot resolve home directory".to_string())?;
     let mut entries = Vec::new();
     let skip_names: std::collections::HashSet<&str> = [
-        "node_modules", ".git", "__pycache__", "target", ".Trash",
-        ".cache", ".npm", ".cargo", "Library", ".local",
-    ].into_iter().collect();
+        "node_modules",
+        ".git",
+        "__pycache__",
+        "target",
+        ".Trash",
+        ".cache",
+        ".npm",
+        ".cargo",
+        "Library",
+        ".local",
+    ]
+    .into_iter()
+    .collect();
 
     walk_directories(&home, 0, 4, &skip_names, &mut entries);
     entries.sort_by(|a, b| a.path.cmp(&b.path));
@@ -1047,10 +1098,7 @@ fn walk_directories(
 }
 
 #[tauri::command]
-pub fn activate_canvas_command(
-    canvas_id: String,
-    api_state: tauri::State<SharedApiState>,
-) {
+pub fn activate_canvas_command(canvas_id: String, api_state: tauri::State<SharedApiState>) {
     let mut state = api_state.lock().unwrap();
     state.active_canvas_id = Some(canvas_id);
 }
@@ -1107,7 +1155,9 @@ pub struct ListSavedSequencesRequest {
 }
 
 #[tauri::command]
-pub fn list_saved_sequences_command(request: ListSavedSequencesRequest) -> Result<Vec<SavedSequencePayload>, String> {
+pub fn list_saved_sequences_command(
+    request: ListSavedSequencesRequest,
+) -> Result<Vec<SavedSequencePayload>, String> {
     let db = Database::open(PathBuf::from(&request.database_path)).map_err(|e| e.to_string())?;
     let repo = SavedSequenceRepository::new(db.connection());
     repo.list_for_canvas(&request.canvas_id)
@@ -1116,7 +1166,9 @@ pub fn list_saved_sequences_command(request: ListSavedSequencesRequest) -> Resul
 }
 
 #[tauri::command]
-pub fn create_saved_sequence_command(request: CreateSavedSequenceRequest) -> Result<SavedSequencePayload, String> {
+pub fn create_saved_sequence_command(
+    request: CreateSavedSequenceRequest,
+) -> Result<SavedSequencePayload, String> {
     let db = Database::open(PathBuf::from(&request.database_path)).map_err(|e| e.to_string())?;
     let repo = SavedSequenceRepository::new(db.connection());
     repo.create(&request.project_id, &request.canvas_id, &request.name)
@@ -1125,12 +1177,19 @@ pub fn create_saved_sequence_command(request: CreateSavedSequenceRequest) -> Res
 }
 
 #[tauri::command]
-pub fn update_saved_sequence_command(request: UpdateSavedSequenceRequest) -> Result<SavedSequencePayload, String> {
+pub fn update_saved_sequence_command(
+    request: UpdateSavedSequenceRequest,
+) -> Result<SavedSequencePayload, String> {
     let db = Database::open(PathBuf::from(&request.database_path)).map_err(|e| e.to_string())?;
     let repo = SavedSequenceRepository::new(db.connection());
-    repo.update(&request.id, &request.name, request.root_node_id.as_deref(), &request.edge_ids)
-        .map(saved_sequence_payload)
-        .map_err(|e| e.to_string())
+    repo.update(
+        &request.id,
+        &request.name,
+        request.root_node_id.as_deref(),
+        &request.edge_ids,
+    )
+    .map(saved_sequence_payload)
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

@@ -38,10 +38,18 @@ fn style_json(
     thumb: &Option<String>,
 ) -> String {
     let mut map = serde_json::Map::new();
-    if let Some(v) = dot { map.insert("dotColour".into(), serde_json::Value::String(v.clone())); }
-    if let Some(v) = bg { map.insert("bgColour".into(), serde_json::Value::String(v.clone())); }
-    if let Some(v) = text { map.insert("textColour".into(), serde_json::Value::String(v.clone())); }
-    if let Some(v) = thumb { map.insert("thumbnail".into(), serde_json::Value::String(v.clone())); }
+    if let Some(v) = dot {
+        map.insert("dotColour".into(), serde_json::Value::String(v.clone()));
+    }
+    if let Some(v) = bg {
+        map.insert("bgColour".into(), serde_json::Value::String(v.clone()));
+    }
+    if let Some(v) = text {
+        map.insert("textColour".into(), serde_json::Value::String(v.clone()));
+    }
+    if let Some(v) = thumb {
+        map.insert("thumbnail".into(), serde_json::Value::String(v.clone()));
+    }
     serde_json::Value::Object(map).to_string()
 }
 
@@ -55,8 +63,12 @@ pub fn get_canvas(state: &SharedApiState) -> Result<serde_json::Value, String> {
     let path = db_path(state)?;
     let db = Database::open(&path).map_err(|e| e.to_string())?;
     let repo = LayoutRepository::new(db.connection());
-    let nodes = repo.list_node_layout(&canvas_id).map_err(|e| e.to_string())?;
-    let edges = repo.list_edge_layout(&canvas_id).map_err(|e| e.to_string())?;
+    let nodes = repo
+        .list_node_layout(&canvas_id)
+        .map_err(|e| e.to_string())?;
+    let edges = repo
+        .list_edge_layout(&canvas_id)
+        .map_err(|e| e.to_string())?;
     Ok(serde_json::json!({
         "canvasId": canvas_id,
         "nodes": nodes,
@@ -90,7 +102,12 @@ pub fn upsert_node_layout(
         position_y: req.y,
         width: req.width.unwrap_or(base_w),
         height: req.height.unwrap_or(base_h),
-        style_json: style_json(&req.dot_colour, &req.bg_colour, &req.text_colour, &req.thumbnail),
+        style_json: style_json(
+            &req.dot_colour,
+            &req.bg_colour,
+            &req.text_colour,
+            &req.thumbnail,
+        ),
         created_at,
         updated_at: now(),
     })
@@ -98,7 +115,11 @@ pub fn upsert_node_layout(
 
     // WS6: record the placement in the agent-activity feed (layout only; theory untouched).
     // `existing` is the same binding computed above for position/size merge.
-    let kind = if existing.is_some() { "node_updated" } else { "node_created" };
+    let kind = if existing.is_some() {
+        "node_updated"
+    } else {
+        "node_created"
+    };
     AgentActivityRepository::new(db.connection())
         .record(&NewAgentActivity {
             kind: kind.to_string(),
@@ -111,7 +132,10 @@ pub fn upsert_node_layout(
         })
         .map_err(|e| e.to_string())?;
 
-    Ok(PlacedNodeResponse { ok: true, graph_node_id: req.graph_node_id })
+    Ok(PlacedNodeResponse {
+        ok: true,
+        graph_node_id: req.graph_node_id,
+    })
 }
 
 /// DELETE /api/layout/node/:graphNodeId — remove placement (theory NOT deleted).
@@ -136,7 +160,10 @@ pub fn batch_place(
     let canvas_id = active_canvas_id(state)?;
     let path = db_path(state)?;
     let mut db = Database::open(&path).map_err(|e| e.to_string())?;
-    let tx = db.connection_mut().transaction().map_err(|e| e.to_string())?;
+    let tx = db
+        .connection_mut()
+        .transaction()
+        .map_err(|e| e.to_string())?;
     {
         let repo = LayoutRepository::new(&tx);
         for item in &req.placements {
@@ -173,5 +200,8 @@ pub fn batch_place(
             .map_err(|e| e.to_string())?;
     }
 
-    Ok(BatchPlaceResponse { ok: true, placed: req.placements.len() })
+    Ok(BatchPlaceResponse {
+        ok: true,
+        placed: req.placements.len(),
+    })
 }

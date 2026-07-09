@@ -14,6 +14,7 @@ import {
 } from "./nodeHandles";
 
 interface GroupNodeData {
+  nodeType?: "group" | "portal";
   title: string;
   summary?: string;
   style?: AdaptiveNodeStyle;
@@ -29,7 +30,34 @@ export function GroupNode({ data, selected }: NodeProps<GroupNodeType>) {
         minWidth={180}
         minHeight={120}
         position="bottom-right"
-        className="node-resize-control"
+        className="node-resize-control node-resize-control--bottom-right"
+        style={{ display: selected ? "flex" : "none" }}
+      >
+        <div className="node-resize-grip" />
+      </NodeResizeControl>
+      <NodeResizeControl
+        minWidth={180}
+        minHeight={120}
+        position="bottom-left"
+        className="node-resize-control node-resize-control--bottom-left"
+        style={{ display: selected ? "flex" : "none" }}
+      >
+        <div className="node-resize-grip" />
+      </NodeResizeControl>
+      <NodeResizeControl
+        minWidth={180}
+        minHeight={120}
+        position="top-right"
+        className="node-resize-control node-resize-control--top-right"
+        style={{ display: selected ? "flex" : "none" }}
+      >
+        <div className="node-resize-grip" />
+      </NodeResizeControl>
+      <NodeResizeControl
+        minWidth={180}
+        minHeight={120}
+        position="top-left"
+        className="node-resize-control node-resize-control--top-left"
         style={{ display: selected ? "flex" : "none" }}
       >
         <div className="node-resize-grip" />
@@ -45,7 +73,7 @@ export function GroupNode({ data, selected }: NodeProps<GroupNodeType>) {
           />
         ))}
         <AdaptiveNode
-          nodeType="group"
+          nodeType={data.nodeType ?? "group"}
           title={data.title}
           summary={data.summary}
           selected={selected}

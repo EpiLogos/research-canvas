@@ -47,4 +47,19 @@ describe("ReadingLens", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back to canvas" }));
     expect(onExitToCanvas).toHaveBeenCalledTimes(1);
   });
+
+  it("closes the overlay variant with Escape", () => {
+    state.nodes = [{ id: "n1", title: "T", type: "note" }];
+    state.selectedNodeId = "n1";
+    const onExitToCanvas = vi.fn();
+    render(
+      <ReadingLens
+        variant="overlay"
+        onFullScreen={() => {}}
+        onExitToCanvas={onExitToCanvas}
+      />,
+    );
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onExitToCanvas).toHaveBeenCalledTimes(1);
+  });
 });

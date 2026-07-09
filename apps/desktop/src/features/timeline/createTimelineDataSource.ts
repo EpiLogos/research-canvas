@@ -1,8 +1,8 @@
 import type { TimelineDataSource } from "@research-canvas/canvas";
 import type {
   ArchetypalLighting,
-  GraphNode,
   LitInstance,
+  TimelineNodeRecord,
   WorkspaceTransport,
 } from "@research-canvas/desktop-api";
 
@@ -23,9 +23,9 @@ export function createTimelineDataSource(input: {
 }): TimelineDataSource {
   const { transport, canvasId } = input;
   return {
-    async loadTimelineNodes(): Promise<GraphNode[]> {
+    async loadTimelineNodes(): Promise<TimelineNodeRecord[]> {
       const view = await transport.loadCanvasView({ canvasId, lens: "timeline" });
-      return view.nodes.map((joined) => joined.node);
+      return view.nodes.map((joined) => ({ node: joined.node, layout: joined.layout }));
     },
     async archetypalLighting(operatorGraphNodeId: string): Promise<ArchetypalLighting> {
       return transport.archetypalLighting({ operatorGraphNodeId });

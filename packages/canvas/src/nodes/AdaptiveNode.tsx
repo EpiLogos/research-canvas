@@ -60,10 +60,10 @@ export function AdaptiveNode({ nodeType, title, summary, selected, style, resour
       }
     >
       <span className="an-dot" />
-      {level !== "dot" && <span className="an-label">{title}</span>}
+      {level !== "dot" && <span className="an-label" style={{ color: textColour }}>{title}</span>}
       {level === "card" && (
         <>
-          <span className="an-type">{nodeType}</span>
+          <span className="an-type" style={{ color: textColour }}>{nodeType}</span>
           {resourceKind === "image" && absolutePath ? (
             <img
               className="an-thumbnail"
@@ -73,7 +73,7 @@ export function AdaptiveNode({ nodeType, title, summary, selected, style, resour
           ) : style?.thumbnail ? (
             <img className="an-thumbnail" src={style.thumbnail} alt="" />
           ) : null}
-          {summary && <span className="an-summary">{summary}</span>}
+          {summary && <span className="an-summary" style={{ color: textColour }}>{summary}</span>}
         </>
       )}
     </div>

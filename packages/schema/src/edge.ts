@@ -10,10 +10,10 @@ export const edgeStyleSchema = z.object({
 });
 
 export const edgeSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().min(1),
   canvasId: z.string().uuid(),
-  sourceNodeId: z.string().uuid(),
-  targetNodeId: z.string().uuid(),
+  sourceNodeId: z.string().min(1),
+  targetNodeId: z.string().min(1),
   sourceHandleId: nullToUndefined(z.string().min(1).optional()),
   targetHandleId: nullToUndefined(z.string().min(1).optional()),
   relationKind: z.string().min(1),

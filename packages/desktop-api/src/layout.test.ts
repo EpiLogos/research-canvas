@@ -15,6 +15,7 @@ const baseNode: CanvasNode = {
   content: "",
   tags: ["note"],
   dotColour: "#abc",
+  timelineCard: { offsetY: 42, width: 310, height: 118 },
   createdAt: "2026-06-28T00:00:00Z",
   updatedAt: "2026-06-28T00:00:00Z",
 } as unknown as CanvasNode;
@@ -55,6 +56,7 @@ describe("buildFlushRequest", () => {
     const style = JSON.parse(request.layouts[0].styleJson) as Record<string, unknown>;
     expect(style.dotColour).toBe("#abc");
     expect((style.__canvasNode as Record<string, unknown>).type).toBe("note");
+    expect(style.__timelineCard).toEqual({ offsetY: 42, width: 310, height: 118 });
     expect(request.edges[0].id).toBe("edge-1");
     expect(request.edges[0].sourceGraphNodeId).toBe("node-1");
     expect(request.edges[0].styleJson).toBe(
@@ -66,7 +68,7 @@ describe("buildFlushRequest", () => {
 });
 
 describe("layout mappers", () => {
-  it("maps a canvas node to a NodeLayout using node.id as graphNodeId", () => {
+  it("maps a canvas node to a NodeLayout using the real graphNodeId", () => {
     const layout = nodeLayoutFromCanvasNode(baseNode);
     expect(layout.graphNodeId).toBe("node-1");
     expect(layout.canvasId).toBe("canvas-1");
@@ -75,6 +77,18 @@ describe("layout mappers", () => {
     expect(layout.width).toBe(240);
     expect(layout.height).toBe(160);
     expect(layout.style.dotColour).toBe("#abc");
+    expect(layout.style.__timelineCard).toEqual({ offsetY: 42, width: 310, height: 118 });
+  });
+
+  it("prefers node.graphNodeId over UI id when they differ", () => {
+    const node = {
+      ...baseNode,
+      id: "canvas-node-1",
+      graphNodeId: "graph-node-1",
+    } as unknown as CanvasNode;
+
+    const layout = nodeLayoutFromCanvasNode(node);
+    expect(layout.graphNodeId).toBe("graph-node-1");
   });
 
   it("maps a canvas edge to an EdgeLayout", () => {
@@ -147,5 +161,30 @@ describe("nodeLayoutFromCanvasNode — sidecar carries title (lf-task-1)", () =>
     const sidecar = layout.style.__canvasNode as CanvasNodeSidecar;
     expect(sidecar.type).toBe("resource");
     expect(sidecar.title).toBe("My Resource Title");
+  });
+
+  it("round-trips constellation portal metadata into layout.style.__canvasNode", () => {
+    const portalNode: CanvasNode = {
+      id: "node-4",
+      canvasId: "canvas-1",
+      type: "portal",
+      title: "QL Unit",
+      position: { x: 0, y: 0 },
+      size: { width: 300, height: 180 },
+      summary: "Nested interpretive unit",
+      targetCanvasId: "22222222-2222-4222-8222-222222222222",
+      constellationKind: "ql-unit",
+      createdAt: "2026-06-28T00:00:00Z",
+      updatedAt: "2026-06-28T00:00:00Z",
+    } as unknown as CanvasNode;
+
+    const layout = nodeLayoutFromCanvasNode(portalNode);
+    const sidecar = layout.style.__canvasNode as CanvasNodeSidecar;
+    expect(sidecar).toMatchObject({
+      type: "portal",
+      title: "QL Unit",
+      targetCanvasId: "22222222-2222-4222-8222-222222222222",
+      constellationKind: "ql-unit",
+    });
   });
 });

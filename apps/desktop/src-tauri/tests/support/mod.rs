@@ -15,7 +15,9 @@ pub fn neo4j_test_graph() -> Option<(SharedGraph, String, String)> {
         .enable_all()
         .build()
         .expect("tokio rt");
-    let graph = rt.block_on(neo4j::connect(&config)).expect("connect to test neo4j");
+    let graph = rt
+        .block_on(neo4j::connect(&config))
+        .expect("connect to test neo4j");
     let run_id = uuid::Uuid::new_v4().to_string();
     Some((graph, run_id, database))
 }

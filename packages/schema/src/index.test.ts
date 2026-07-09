@@ -5,6 +5,7 @@ import {
   edgeSchema,
   exportBundleSchema,
   noteNodeSchema,
+  portalNodeSchema,
   projectSchema,
   resourceNodeSchema,
 } from "./index";
@@ -73,6 +74,44 @@ describe("schema package", () => {
 
     expect(parsed.type).toBe("note");
     expect(parsed.tags).toContain("thesis");
+  });
+
+  it("validates constellation portal nodes with a QL unit marker", () => {
+    const parsed = portalNodeSchema.parse({
+      id: "f83d047c-9fca-4dfe-b8d6-3f763e20da1c",
+      graphNodeId: "constellation-root-ql-unit",
+      canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
+      type: "portal",
+      title: "QL Reading Unit",
+      position: { x: 320, y: 180 },
+      size: { width: 320, height: 240 },
+      summary: "A nested constellation surface aligned to a QL reading.",
+      targetCanvasId: "2a2edca9-e4af-4b2d-b1aa-7353f2bb20f4",
+      constellationKind: "ql-unit",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    expect(parsed.type).toBe("portal");
+    expect(parsed.constellationKind).toBe("ql-unit");
+  });
+
+  it("normalizes null note content from persisted canvas state", () => {
+    const parsed = noteNodeSchema.parse({
+      id: "f83d047c-9fca-4dfe-b8d6-3f763e20da1a",
+      canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
+      type: "note",
+      title: "Recovered note",
+      position: { x: 320, y: 180 },
+      size: { width: 320, height: 240 },
+      summary: "Working summary",
+      content: null,
+      tags: ["episode", "thesis"],
+      createdAt: now,
+      updatedAt: now
+    });
+
+    expect(parsed.content).toBe("");
   });
 
   it("accepts nullable node style fields and nullable edge handles from persisted payloads", () => {
@@ -185,6 +224,25 @@ describe("schema package", () => {
 
     expect(edge.sequencing).toBe(false);
     expect(edge.sequencePriority).toBe(0);
+  });
+
+  it("accepts graph-backed edge and endpoint identifiers", () => {
+    const edge = edgeSchema.parse({
+      id: "root-edge-mk-ultra-instantiates-hypnosis",
+      canvasId: crypto.randomUUID(),
+      sourceNodeId: "root-archetypal-field:mk-ultra-midnight-climax",
+      targetNodeId: "root-archetypal-field:mind-control-hypnosis",
+      relationKind: "INSTANTIATES",
+      directionality: "forward",
+      label: "INSTANTIATES",
+      note: "",
+      style: { stroke: "#7db7a5", width: 2, dashed: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    expect(edge.id).toBe("root-edge-mk-ultra-instantiates-hypnosis");
+    expect(edge.sourceNodeId).toBe("root-archetypal-field:mk-ultra-midnight-climax");
   });
 
   it("validates node with optional sequence caption and viewport", () => {

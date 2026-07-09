@@ -10,7 +10,6 @@ interface TransportBarProps {
 const LENSES: { id: LensMode; label: string }[] = [
   { id: "canvas", label: "Canvas" },
   { id: "timeline", label: "Timeline" },
-  { id: "reading", label: "Reading" },
 ];
 
 export function TransportBar({ lens, onSetLens, breadcrumb, onOpenPalette }: TransportBarProps) {

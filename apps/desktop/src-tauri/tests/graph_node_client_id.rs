@@ -69,8 +69,7 @@ fn create_node_honours_client_supplied_id() {
         graph
             .run_on(
                 &database,
-                query("MATCH (n {graph_node_id: $id}) DETACH DELETE n")
-                    .param("id", wanted.clone()),
+                query("MATCH (n {graph_node_id: $id}) DETACH DELETE n").param("id", wanted.clone()),
             )
             .await
             .expect("cleanup wanted");

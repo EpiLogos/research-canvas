@@ -4,11 +4,10 @@ use std::{
 };
 
 use research_canvas_desktop_lib::commands::projects::{
-    bootstrap_workspace_at, default_database_path, load_project_document_at,
-    persist_project_document_at, AnnotationBoundsPayload, AnnotationPayload,
-    AnnotationPointPayload, AnnotationStylePayload, CanvasEdgePayload, CanvasNodePayload,
-    EdgeStylePayload, PersistProjectDocumentRequest, PositionPayload, ProjectDocumentPayload,
-    SizePayload,
+    bootstrap_workspace_at, load_project_document_at, persist_project_document_at,
+    AnnotationBoundsPayload, AnnotationPayload, AnnotationPointPayload, AnnotationStylePayload,
+    CanvasEdgePayload, CanvasNodePayload, EdgeStylePayload, PersistProjectDocumentRequest,
+    PositionPayload, ProjectDocumentPayload, SizePayload,
 };
 use research_canvas_desktop_lib::commands::search::{
     rebuild_project_search_index_command, search_project_command, RebuildProjectSearchIndexRequest,
@@ -35,7 +34,10 @@ fn cleanup_database(path: &Path) {
 }
 
 fn session_database_path(session_name: &str) -> PathBuf {
-    default_database_path(Some(session_name))
+    std::env::temp_dir().join(format!(
+        "research-canvas-test-{session_name}-{}.sqlite",
+        std::process::id()
+    ))
 }
 
 fn session_timestamp() -> String {
@@ -230,8 +232,14 @@ fn project_document_persistence_survives_reload_and_replaces_previous_canvas_sta
     assert_eq!(persisted.nodes.len(), 2);
     assert_eq!(persisted.edges.len(), 1);
     assert_eq!(persisted.annotations.len(), 1);
-    assert_eq!(persisted.edges[0].source_handle_id.as_deref(), Some("source-bottom"));
-    assert_eq!(persisted.edges[0].target_handle_id.as_deref(), Some("target-top"));
+    assert_eq!(
+        persisted.edges[0].source_handle_id.as_deref(),
+        Some("source-bottom")
+    );
+    assert_eq!(
+        persisted.edges[0].target_handle_id.as_deref(),
+        Some("target-top")
+    );
     assert!(persisted
         .nodes
         .iter()
@@ -243,8 +251,14 @@ fn project_document_persistence_survives_reload_and_replaces_previous_canvas_sta
     assert_eq!(reopened.nodes.len(), 2);
     assert_eq!(reopened.edges.len(), 1);
     assert_eq!(reopened.annotations.len(), 1);
-    assert_eq!(reopened.edges[0].source_handle_id.as_deref(), Some("source-bottom"));
-    assert_eq!(reopened.edges[0].target_handle_id.as_deref(), Some("target-top"));
+    assert_eq!(
+        reopened.edges[0].source_handle_id.as_deref(),
+        Some("source-bottom")
+    );
+    assert_eq!(
+        reopened.edges[0].target_handle_id.as_deref(),
+        Some("target-top")
+    );
     assert!(reopened
         .nodes
         .iter()
@@ -275,6 +289,51 @@ fn project_document_persistence_survives_reload_and_replaces_previous_canvas_sta
     assert_eq!(reopened_after_replace.nodes[0].title, "Replacement note");
     assert!(reopened_after_replace.edges.is_empty());
     assert!(reopened_after_replace.annotations.is_empty());
+
+    cleanup_database(&database_path);
+}
+
+#[test]
+fn empty_persist_payload_preserves_non_empty_canvas_state() {
+    let database_path =
+        session_database_path(&format!("workspace-empty-wipe-{}", std::process::id()));
+    cleanup_database(&database_path);
+
+    let bootstrap = bootstrap_workspace_at(&database_path).expect("bootstrap workspace");
+    let document = load_project_document_at(&database_path, &bootstrap.active_project_id)
+        .expect("load project document");
+
+    let note = node_with_note_text(
+        &document.canvas_id,
+        "session-note-guard",
+        "Guarded note",
+        "This note must survive an accidental empty flush.",
+    );
+    let persisted = persist_document(
+        &database_path,
+        &document,
+        vec![note.clone()],
+        Vec::new(),
+        Vec::new(),
+    );
+    assert_eq!(persisted.nodes.len(), 1);
+
+    let preserved = persist_project_document_at(PersistProjectDocumentRequest {
+        annotations: Vec::new(),
+        canvas_id: persisted.canvas_id.clone(),
+        database_path: database_path.to_string_lossy().to_string(),
+        edges: Vec::new(),
+        nodes: Vec::new(),
+        project_id: persisted.project.id.clone(),
+    })
+    .expect("empty persist preserves existing canvas substance");
+    assert_eq!(preserved.nodes.len(), 1);
+    assert_eq!(preserved.nodes[0].title, "Guarded note");
+
+    let reopened = load_project_document_at(&database_path, &bootstrap.active_project_id)
+        .expect("reload guarded project document");
+    assert_eq!(reopened.nodes.len(), 1);
+    assert_eq!(reopened.nodes[0].title, "Guarded note");
 
     cleanup_database(&database_path);
 }
@@ -334,12 +393,10 @@ fn browser_persist_payload_allows_resource_nodes_without_tags() {
     let persisted = persist_project_document_at(request).expect("persist browser payload");
 
     assert_eq!(persisted.nodes.len(), 2);
-    assert!(
-        persisted
-            .nodes
-            .iter()
-            .any(|node| node.node_type == "resource" && node.title == "README.md")
-    );
+    assert!(persisted
+        .nodes
+        .iter()
+        .any(|node| node.node_type == "resource" && node.title == "README.md"));
 }
 
 #[test]

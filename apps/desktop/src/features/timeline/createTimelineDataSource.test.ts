@@ -27,7 +27,7 @@ function gnode(id: string, isTemporal: boolean): GraphNode {
 }
 
 describe("createTimelineDataSource", () => {
-  test("loadTimelineNodes requests the timeline lens and unwraps node bodies", async () => {
+  test("loadTimelineNodes requests the timeline lens and preserves joined layout metadata", async () => {
     const view: CanvasView = {
       canvasId: "c1",
       nodes: [
@@ -60,7 +60,14 @@ describe("createTimelineDataSource", () => {
     });
     const nodes = await ds.loadTimelineNodes();
     expect(loadCanvasView).toHaveBeenCalledWith({ canvasId: "c1", lens: "timeline" });
-    expect(nodes.map((n) => n.graphNodeId)).toEqual(["banda"]);
+    expect(nodes.map((record) => record.node.graphNodeId)).toEqual(["banda"]);
+    expect(nodes[0]?.layout).toEqual(
+      expect.objectContaining({
+        graphNodeId: "banda",
+        width: 100,
+        height: 50,
+      }),
+    );
   });
 
   test("archetypalLighting forwards the operator id", async () => {

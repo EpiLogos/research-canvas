@@ -1,8 +1,8 @@
 import type { TimelineDataSource } from "@research-canvas/canvas";
 import type {
   ArchetypalLighting,
-  GraphNode,
   LitInstance,
+  TimelineNodeRecord,
   WorkspaceTransport,
 } from "@research-canvas/desktop-api";
 
@@ -19,7 +19,7 @@ type TimelineTransport = Pick<
  * timeline lens runs the exact same view code as the desktop — only the data
  * source differs (static bundle vs. live backend). loadTimelineNodes asks the
  * transport for the server-filtered "timeline" lens (isTemporal === true) and
- * returns the GraphNode substance from each JoinedCanvasNode.
+ * returns each joined node with its layout metadata.
  */
 export function createTimelineDataSource(input: {
   transport: TimelineTransport;
@@ -27,9 +27,9 @@ export function createTimelineDataSource(input: {
 }): TimelineDataSource {
   const { transport, canvasId } = input;
   return {
-    async loadTimelineNodes(): Promise<GraphNode[]> {
+    async loadTimelineNodes(): Promise<TimelineNodeRecord[]> {
       const view = await transport.loadCanvasView({ canvasId, lens: "timeline" });
-      return view.nodes.map((joined) => joined.node);
+      return view.nodes.map((joined) => ({ node: joined.node, layout: joined.layout }));
     },
     async archetypalLighting(operatorGraphNodeId: string): Promise<ArchetypalLighting> {
       return transport.archetypalLighting({ operatorGraphNodeId });

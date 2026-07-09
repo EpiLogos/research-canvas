@@ -38,10 +38,12 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, onPlaySequence, 
   }
 
   const fileEntries = (workspace.entries ?? []).map((entry) => ({
+    absolutePath: entry.absolutePath,
     id: entry.id,
     name: entry.name,
     path: entry.relativePath,
-    kind: entry.kind
+    kind: entry.kind,
+    relativePath: entry.relativePath
   }));
 
   return (

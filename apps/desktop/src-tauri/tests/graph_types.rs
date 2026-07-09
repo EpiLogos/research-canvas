@@ -1,5 +1,7 @@
 // apps/desktop/src-tauri/tests/graph_types.rs
-use research_canvas_desktop_lib::db::repositories::graph::{GraphNode, GraphNodePatch, NewGraphNode};
+use research_canvas_desktop_lib::db::repositories::graph::{
+    GraphNode, GraphNodePatch, NewGraphNode,
+};
 
 #[test]
 fn graph_node_serializes_camel_case() {
@@ -12,6 +14,8 @@ fn graph_node_serializes_camel_case() {
         archetypal_resonance: None,
         coordinate: Some("#2".into()),
         source_coordinates: vec!["#2".into(), "L2".into()],
+        evidence_tags: vec![],
+        source_kind: None,
         is_temporal: true,
         valid_from: Some("1389".into()),
         valid_to: Some("1464".into()),
@@ -46,6 +50,9 @@ fn new_graph_node_and_patch_defaults() {
     let patch = GraphNodePatch::default();
     assert!(patch.title.is_none());
     // Some(None) clears coordinate; None leaves it unchanged.
-    let clearing = GraphNodePatch { coordinate: Some(None), ..Default::default() };
+    let clearing = GraphNodePatch {
+        coordinate: Some(None),
+        ..Default::default()
+    };
     assert_eq!(clearing.coordinate, Some(None));
 }

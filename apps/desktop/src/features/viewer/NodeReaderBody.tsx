@@ -24,12 +24,40 @@ export function NodeReaderBody({
   const [textContent, setTextContent] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     setTextContent(null);
-    if (!textResourceNode) return;
+    if (!textResourceNode) {
+      return () => {
+        cancelled = true;
+      };
+    }
     readWorkspaceTextFile(textResourceNode.absolutePath)
-      .then(setTextContent)
-      .catch(() => setTextContent(null));
+      .then((content) => {
+        if (!cancelled) {
+          setTextContent(content);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTextContent(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [textResourceNode]);
+
+  if (node.type === "resource") {
+    return (
+      <NodeContentPane
+        node={node}
+        textContent={textContent}
+        onFullScreen={() => {}}
+        onNoteContentChange={(content) => workspace.updateNodeContent(node.id, content)}
+        showToolbar={false}
+      />
+    );
+  }
 
   const graphNodeId = (node as unknown as { graphNodeId?: string }).graphNodeId ?? null;
   if (graphNodeId) {

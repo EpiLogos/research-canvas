@@ -28,21 +28,14 @@ export function Shell() {
   const [sequencesOpen, setSequencesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [readingOverlayOpen, setReadingOverlayOpen] = useState(false);
   const [drawingMode, setDrawingMode] = useState(false);
   const [strokeColour, setStrokeColour] = useState("#f97316");
 
   const { lens, setLens } = useLensMode();
-  // Closing the full-screen NODE reader must land back on the canvas, not
-  // back in the in-stage reading lens — otherwise "Back" from a double-click
-  // -> reading lens -> fullscreen round trip never actually reaches the
-  // canvas. Sequence full-screen close must NOT force the lens (a sequence
-  // may have been played from the timeline, and should return there).
   const closeFullScreen = useCallback(() => {
-    setFullScreenMode((mode) => {
-      if (mode === "node") setLens("canvas");
-      return "closed";
-    });
-  }, [setLens]);
+    setFullScreenMode("closed");
+  }, []);
   const timelineDataSource = useMemo(
     () =>
       createTimelineDataSource({
@@ -55,9 +48,21 @@ export function Shell() {
   const openNodeDocument = useCallback(
     (graphNodeId: string) => {
       workspace.selectNode(graphNodeId);
-      setLens("reading");
+      setReadingOverlayOpen(true);
     },
-    [workspace, setLens],
+    [workspace],
+  );
+
+  const setShellLens = useCallback(
+    (mode: "canvas" | "timeline" | "reading") => {
+      if (mode === "reading") {
+        setReadingOverlayOpen(true);
+        return;
+      }
+      setReadingOverlayOpen(false);
+      setLens(mode);
+    },
+    [setLens],
   );
 
   const setBrowserMode = useCallback(
@@ -77,6 +82,7 @@ export function Shell() {
     setSequencesOpen(false);
     setSettingsOpen(false);
     setFullScreenMode("closed");
+    setReadingOverlayOpen(false);
   }, []);
 
   const openPalette = useCallback(() => {
@@ -129,13 +135,13 @@ export function Shell() {
       if ((e.metaKey || e.ctrlKey) && e.key === "j") { e.preventDefault(); layout.toggleDock(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "i") { e.preventDefault(); layout.toggleInspector(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "b") { e.preventDefault(); layout.toggleBrowser(); }
-      if ((e.metaKey || e.ctrlKey) && e.key === "1") { e.preventDefault(); setLens("canvas"); }
-      if ((e.metaKey || e.ctrlKey) && e.key === "2") { e.preventDefault(); setLens("timeline"); }
-      if ((e.metaKey || e.ctrlKey) && e.key === "3") { e.preventDefault(); setLens("reading"); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "1") { e.preventDefault(); setShellLens("canvas"); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "2") { e.preventDefault(); setShellLens("timeline"); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "3") { e.preventDefault(); setShellLens("reading"); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [layout, setLens, openPalette]);
+  }, [layout, setShellLens, openPalette]);
 
   const handleNodeSelect = useCallback(
     (nodeId: string) => {
@@ -152,10 +158,17 @@ export function Shell() {
 
   const handleNodeDoubleClick = useCallback(
     (nodeId: string) => {
+      const node = workspace.nodes.find((candidate) => candidate.id === nodeId);
+      if (node?.type === "portal") {
+        setReadingOverlayOpen(false);
+        void workspace.openCanvas(node.targetCanvasId);
+        return;
+      }
+
       workspace.selectNode(nodeId);
-      setLens("reading");
+      setReadingOverlayOpen(true);
     },
-    [workspace, setLens],
+    [workspace],
   );
 
   const handlePlaySequence = useCallback(() => enterFullScreen("sequence"), [enterFullScreen]);
@@ -168,13 +181,16 @@ export function Shell() {
   // inspectorOpen/pinned state are left untouched, so switching back to
   // canvas/timeline restores it exactly as it was.
   const inspectorVisible =
-    layout.inspectorOpen && (Boolean(workspace.selectedNodeId) || layout.inspectorPinned) && lens !== "reading";
+    layout.inspectorOpen &&
+    (Boolean(workspace.selectedNodeId) || layout.inspectorPinned) &&
+    lens !== "reading" &&
+    !readingOverlayOpen;
 
   return (
     <div className="ishell" data-lens={lens} ref={layout.shellRef} style={{ "--browser-width": `${layout.browserWidth}px` } as React.CSSProperties}>
       <TransportBar
-        lens={lens}
-        onSetLens={setLens}
+        lens={readingOverlayOpen ? "reading" : lens}
+        onSetLens={setShellLens}
         breadcrumb={selectedTitle}
         onOpenPalette={openPalette}
       />
@@ -197,18 +213,16 @@ export function Shell() {
         />
 
         <div className="ishell-stage">
-          {layout.browserOpen && (
-            <LeftOverlay
-              open
-              mode={leftMode}
-              onResizeStart={layout.beginBrowserResize}
-              onClose={closeBrowser}
-              drawingMode={drawingMode}
-              onToggleDrawing={() => setDrawingMode((v) => !v)}
-              strokeColour={strokeColour}
-              onSetStrokeColour={setStrokeColour}
-            />
-          )}
+          <LeftOverlay
+            open={layout.browserOpen}
+            mode={leftMode}
+            onResizeStart={layout.beginBrowserResize}
+            onClose={closeBrowser}
+            drawingMode={drawingMode}
+            onToggleDrawing={() => setDrawingMode((v) => !v)}
+            strokeColour={strokeColour}
+            onSetStrokeColour={setStrokeColour}
+          />
 
           {lens === "canvas" && (
             <CanvasPane
@@ -224,7 +238,13 @@ export function Shell() {
 
           {lens === "timeline" && (
             <section className="canvas-pane" data-testid="timeline-pane" style={{ position: "absolute", inset: 0 }}>
-              <TimelineLens dataSource={timelineDataSource} onOpenNode={openNodeDocument} onPlaySequence={handlePlaySequence} />
+              <TimelineLens
+                dataSource={timelineDataSource}
+                onOpenNode={openNodeDocument}
+                onPlaySequence={handlePlaySequence}
+                onUpdateTimelineCard={workspace.updateNodeTimelineCard}
+                onUpdateNodeStyle={workspace.updateNodeStyle}
+              />
             </section>
           )}
 
@@ -232,6 +252,14 @@ export function Shell() {
             <ReadingLens
               onFullScreen={() => enterFullScreen("node")}
               onExitToCanvas={() => setLens("canvas")}
+            />
+          )}
+
+          {readingOverlayOpen && (
+            <ReadingLens
+              variant="overlay"
+              onFullScreen={() => enterFullScreen("node")}
+              onExitToCanvas={() => setReadingOverlayOpen(false)}
             />
           )}
 
@@ -266,7 +294,7 @@ export function Shell() {
         synced
         nodeCount={workspace.nodes.length}
         relationCount={workspace.edges.length}
-        lens={lens}
+        lens={readingOverlayOpen ? "reading" : lens}
       />
 
       {sequencesOpen && (
@@ -281,7 +309,7 @@ export function Shell() {
       <CommandPalette
         isOpen={paletteOpen}
         onClose={() => setPaletteOpen(false)}
-        onSetLens={setLens}
+        onSetLens={setShellLens}
         onToggleTerminal={layout.toggleDock}
       />
     </div>

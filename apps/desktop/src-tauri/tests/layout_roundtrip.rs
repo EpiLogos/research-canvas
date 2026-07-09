@@ -45,7 +45,10 @@ fn second_flush_updates_in_place_and_survives_reopen() {
     flush_canvas_layout_at(FlushCanvasLayoutRequest {
         database_path: db_path.to_string_lossy().to_string(),
         canvas_id: canvas_id.clone(),
-        layouts: vec![node("n1", &canvas_id, 0.0, 0.0), node("n2", &canvas_id, 100.0, 0.0)],
+        layouts: vec![
+            node("n1", &canvas_id, 0.0, 0.0),
+            node("n2", &canvas_id, 100.0, 0.0),
+        ],
         edges: vec![EdgeLayoutPayload {
             id: "e1".to_string(),
             canvas_id: canvas_id.clone(),
@@ -65,7 +68,10 @@ fn second_flush_updates_in_place_and_survives_reopen() {
     flush_canvas_layout_at(FlushCanvasLayoutRequest {
         database_path: db_path.to_string_lossy().to_string(),
         canvas_id: canvas_id.clone(),
-        layouts: vec![node("n1", &canvas_id, 500.0, 600.0), node("n2", &canvas_id, 100.0, 0.0)],
+        layouts: vec![
+            node("n1", &canvas_id, 500.0, 600.0),
+            node("n2", &canvas_id, 100.0, 0.0),
+        ],
         edges: vec![EdgeLayoutPayload {
             id: "e1".to_string(),
             canvas_id: canvas_id.clone(),

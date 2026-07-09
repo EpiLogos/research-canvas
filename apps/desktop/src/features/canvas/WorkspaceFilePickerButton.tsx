@@ -31,10 +31,12 @@ export function WorkspaceFilePickerButton({
   const pickerEntries = useMemo<FileEntry[]>(
     () =>
       filteredEntries.map((entry) => ({
+        absolutePath: entry.absolutePath,
         id: entry.id,
         kind: entry.kind,
         name: entry.name,
         path: entry.relativePath,
+        relativePath: entry.relativePath,
       })),
     [filteredEntries],
   );

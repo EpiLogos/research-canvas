@@ -87,6 +87,7 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   createSavedSequence: (input: { databasePath: string; projectId: string; canvasId: string; name: string }) => Promise<SavedSequence>;
   updateSavedSequence: (input: { databasePath: string; id: string; name: string; rootNodeId: string | null; edgeIds: string[] }) => Promise<SavedSequence>;
   deleteSavedSequence: (input: { databasePath: string; id: string }) => Promise<void>;
+  openCanvas: (canvasId: string) => Promise<void>;
   selectEntry: (entryId: string | null) => void;
   selectEdge: (edgeId: string | null) => void;
   selectNode: (nodeId: string | null) => void;
@@ -94,10 +95,20 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   selectedEntryId: string | null;
   selectedEdgeId: string | null;
   selectedNodeId: string | null;
-  resizeNode: (nodeId: string, width: number, height: number) => void;
+  resizeNode: (
+    nodeId: string,
+    width: number,
+    height: number,
+    position?: { x?: number; y?: number },
+  ) => void;
   updateNodeContent: (nodeId: string, content: string) => void;
   setNodeThumbnailFromAbsolutePath: (nodeId: string, absolutePath: string) => Promise<void>;
   updateNodeStyle: (nodeId: string, style: { dotColour?: string; bgColour?: string; textColour?: string; thumbnail?: string }) => void;
+  updateNodeTags: (nodeId: string, tags: string[]) => void;
+  updateNodeTimelineCard: (
+    nodeId: string,
+    timelineCard: { offsetY: number; width?: number; height?: number },
+  ) => void;
   workingRoot: string | null;
   flyToNode: (nodeId: string, viewport?: { x: number; y: number; zoom: number }) => void;
   flyToEdge: (edgeId: string, viewport?: { x: number; y: number; zoom: number }) => void;
@@ -128,6 +139,7 @@ export function CanvasWorkspaceProvider({
   const [databasePath, setDatabasePath] = useState<string | null>(null);
   const [activeProject, setActiveProject] = useState<WorkspaceProject | null>(null);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [activeCanvasId, setActiveCanvasId] = useState(EMPTY_CANVAS_ID);
   const [entries, setEntries] = useState<IndexedEntry[]>([]);
   const [resourceRoots, setResourceRoots] = useState<ResourceRoot[]>([]);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
@@ -226,14 +238,15 @@ export function CanvasWorkspaceProvider({
         // canvas hydrates from it directly — no union with document.nodes
         // needed. Only fall back to the local document nodes if the call
         // itself fails (e.g. transport/backend error), for resilience.
-        let graphNodes = document.nodes;
-        let graphEdges = document.edges;
-        try {
-          let view = await transport.loadCanvasView({
-            databasePath,
-            canvasId: document.project.primaryCanvasId,
-            lens: "canvas",
-          });
+          const primaryCanvasId = document.project.primaryCanvasId;
+          let graphNodes = document.nodes;
+          let graphEdges = document.edges;
+          try {
+            let view = await transport.loadCanvasView({
+              databasePath,
+              canvasId: primaryCanvasId,
+              lens: "canvas",
+            });
           if (cancelled) return;
 
           // lf-task-4: one-time import of any legacy canvas_nodes rows (the
@@ -257,7 +270,7 @@ export function CanvasWorkspaceProvider({
               // instead of only after the next reload.
               view = await transport.loadCanvasView({
                 databasePath,
-                canvasId: document.project.primaryCanvasId,
+                canvasId: primaryCanvasId,
                 lens: "canvas",
               });
               if (cancelled) return;
@@ -291,12 +304,14 @@ export function CanvasWorkspaceProvider({
           setSelectedEntryId,
           setSelectedEdgeId,
           setSelectedNodeId,
-          setWorkingRoot
+          setWorkingRoot,
+          setActiveCanvasId,
+          primaryCanvasId
         );
         setErrorMessage(null);
         setIsHydrated(true);
         if (isTauriRuntime()) {
-          invoke("activate_canvas_command", { canvasId: document.canvasId }).catch(() => {});
+          invoke("activate_canvas_command", { canvasId: primaryCanvasId }).catch(() => {});
         }
       } catch (error) {
         if (cancelled) return;
@@ -335,7 +350,7 @@ export function CanvasWorkspaceProvider({
           const viewport = captureViewportRef.current();
           const result = await transport.flushCanvasLayout({
             databasePath,
-            canvasId: activeProject.primaryCanvasId,
+            canvasId: activeCanvasId,
             layouts: snapshot.layouts,
             edges: snapshot.edges,
             viewport,
@@ -360,7 +375,7 @@ export function CanvasWorkspaceProvider({
             const serialized = stores.store.getState().serialize();
             await transport.persistProjectDocument({
               annotations: stores.annotationStore.getState().serialize(),
-              canvasId: activeProject.primaryCanvasId,
+              canvasId: activeCanvasId,
               databasePath,
               edges: writeSubstance ? serialized.edges : [],
               nodes: writeSubstance ? serialized.nodes : [],
@@ -407,7 +422,7 @@ export function CanvasWorkspaceProvider({
       unsubscribeCanvas();
       unsubscribeAnnotations();
     };
-  }, [activeProject, databasePath, isHydrated, stores, transport]);
+  }, [activeCanvasId, activeProject, databasePath, isHydrated, stores, transport]);
 
   useEffect(() => {
     if (!isHydrated || !databasePath || !activeProject) {
@@ -419,7 +434,7 @@ export function CanvasWorkspaceProvider({
       const viewport = captureViewportRef.current();
       const result = transport.flushCanvasLayout({
         databasePath,
-        canvasId: activeProject.primaryCanvasId,
+        canvasId: activeCanvasId,
         layouts: snapshot.layouts,
         edges: snapshot.edges,
         viewport,
@@ -442,14 +457,14 @@ export function CanvasWorkspaceProvider({
       window.removeEventListener("beforeunload", flushLatest);
       window.removeEventListener("pagehide", flushLatest);
     };
-  }, [activeProject, databasePath, isHydrated, stores, transport]);
+  }, [activeCanvasId, activeProject, databasePath, isHydrated, stores, transport]);
 
   const refreshCanvas = useCallback(async () => {
     if (!databasePath || !activeProject) return;
     try {
       const view = await transport.loadCanvasView({
         databasePath,
-        canvasId: activeProject.primaryCanvasId,
+        canvasId: activeCanvasId,
         lens: "canvas",
       });
       const { nodes, edges } = canvasViewToCanvasNodes(view);
@@ -462,7 +477,7 @@ export function CanvasWorkspaceProvider({
       console.error("refreshCanvas: loadCanvasView failed", error);
       setErrorMessage(error instanceof Error ? error.message : "failed to refresh canvas");
     }
-  }, [databasePath, activeProject, stores.store, transport]);
+  }, [activeCanvasId, databasePath, activeProject, stores.store, transport]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -494,12 +509,76 @@ export function CanvasWorkspaceProvider({
     return () => clearInterval(intervalId);
   }, [transport]);
 
+  const flushActiveCanvas = useCallback(async () => {
+    if (!databasePath || !activeProject) {
+      return;
+    }
+
+    const snapshot = serializeLayoutSnapshot(stores.store.getState().serialize());
+    const viewport = captureViewportRef.current();
+    const result = await transport.flushCanvasLayout({
+      databasePath,
+      canvasId: activeCanvasId,
+      layouts: snapshot.layouts,
+      edges: snapshot.edges,
+      viewport,
+      appState: {},
+    });
+    if (result === false) {
+      setErrorMessage("failed to persist canvas layout");
+      return;
+    }
+
+    const writeSubstance = shouldWriteSubstanceOnLayoutFlush();
+    const serialized = stores.store.getState().serialize();
+    await transport.persistProjectDocument({
+      annotations: stores.annotationStore.getState().serialize(),
+      canvasId: activeCanvasId,
+      databasePath,
+      edges: writeSubstance ? serialized.edges : [],
+      nodes: writeSubstance ? serialized.nodes : [],
+      projectId: activeProject.id,
+    });
+  }, [activeCanvasId, activeProject, databasePath, stores, transport]);
+
+  const openCanvas = useCallback(
+    async (canvasId: string) => {
+      if (!databasePath || !activeProject) {
+        return;
+      }
+
+      try {
+        await flushActiveCanvas();
+        const view = await transport.loadCanvasView({
+          databasePath,
+          canvasId,
+          lens: "canvas",
+        });
+        const { nodes, edges } = canvasViewToCanvasNodes(view);
+        const nextStores = createWorkspaceStores(canvasId, activeProject.id);
+        nextStores.store.getState().hydrate({ nodes, edges });
+
+        setStores(nextStores);
+        setActiveCanvasId(canvasId);
+        setSelectedEdgeId(null);
+        setSelectedNodeId(nodes[0]?.id ?? null);
+        setErrorMessage(null);
+        if (isTauriRuntime()) {
+          invoke("activate_canvas_command", { canvasId }).catch(() => {});
+        }
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "failed to open canvas");
+      }
+    },
+    [activeProject, databasePath, flushActiveCanvas, transport],
+  );
+
   const contextValue = useMemo<CanvasWorkspaceContextValue>(
     () => ({
       ...stores,
       activeProject,
       activeProjectId,
-      canvasId: activeProject?.primaryCanvasId ?? EMPTY_CANVAS_ID,
+      canvasId: activeCanvasId,
       databasePath,
       entries,
       errorMessage,
@@ -567,6 +646,7 @@ export function CanvasWorkspaceProvider({
       async deleteSavedSequence(input) {
         return transport.deleteSavedSequence(input);
       },
+      openCanvas,
       addEdge: (input) => {
         stores.store.getState().connectNodes(input);
       },
@@ -626,7 +706,7 @@ export function CanvasWorkspaceProvider({
           title: entry.name,
           absolutePath,
           relativePath,
-          resourceKind: kind === "directory" ? "binary" : kind,
+          resourceKind: kind,
           id: graphNodeId,
           graphNodeId,
         });
@@ -737,7 +817,7 @@ export function CanvasWorkspaceProvider({
           const viewport = captureViewportRef.current();
           const flushResult = transport.flushCanvasLayout({
             databasePath,
-            canvasId: activeProject.primaryCanvasId,
+            canvasId: activeCanvasId,
             layouts: snapshot.layouts,
             edges: snapshot.edges,
             viewport,
@@ -757,7 +837,7 @@ export function CanvasWorkspaceProvider({
           const serialized = stores.store.getState().serialize();
           await transport.persistProjectDocument({
             annotations: stores.annotationStore.getState().serialize(),
-            canvasId: activeProject.primaryCanvasId,
+            canvasId: activeCanvasId,
             databasePath,
             edges: writeSubstance ? serialized.edges : [],
             nodes: writeSubstance ? serialized.nodes : [],
@@ -771,8 +851,18 @@ export function CanvasWorkspaceProvider({
       selectedEntryId,
       selectedEdgeId,
       selectedNodeId,
-      resizeNode: (nodeId, width, height) => {
-        stores.store.getState().updateNodeSize(nodeId, { width, height });
+      resizeNode: (nodeId, width, height, position) => {
+        const store = stores.store.getState();
+        if (position && (position.x !== undefined || position.y !== undefined)) {
+          const node = store.nodes.find((candidate) => candidate.id === nodeId);
+          if (node) {
+            store.updateNodePosition(nodeId, {
+              x: position.x ?? node.position.x,
+              y: position.y ?? node.position.y,
+            });
+          }
+        }
+        store.updateNodeSize(nodeId, { width, height });
       },
       updateNodeContent: (nodeId, content) => {
         stores.store.getState().updateNodeContent(nodeId, content);
@@ -800,6 +890,12 @@ export function CanvasWorkspaceProvider({
       updateNodeStyle: (nodeId, style) => {
         stores.store.getState().updateNodeStyle(nodeId, style);
       },
+      updateNodeTags: (nodeId, tags) => {
+        stores.store.getState().updateNodeTags(nodeId, tags);
+      },
+      updateNodeTimelineCard: (nodeId, timelineCard) => {
+        stores.store.getState().updateNodeTimelineCard(nodeId, timelineCard);
+      },
       flyToNode: (nodeId, viewport) => flyToNodeRef.current(nodeId, viewport),
       flyToEdge: (edgeId, viewport) => flyToEdgeRef.current(edgeId, viewport),
       registerFlyToNode: (fn) => { flyToNodeRef.current = fn; },
@@ -812,6 +908,7 @@ export function CanvasWorkspaceProvider({
     [
       activeProject,
       activeProjectId,
+      activeCanvasId,
       contentLinkingActions,
       databasePath,
       entries,
@@ -822,6 +919,7 @@ export function CanvasWorkspaceProvider({
       selectedEntryId,
       selectedEdgeId,
       selectedNodeId,
+      openCanvas,
       stores,
       transport,
       workingRoot
@@ -882,10 +980,12 @@ function hydrateWorkspaceDocument(
   setSelectedEntryId: (entryId: string | null) => void,
   setSelectedEdgeId: (edgeId: string | null) => void,
   setSelectedNodeId: (nodeId: string | null) => void,
-  setWorkingRoot: (workingRoot: string) => void
+  setWorkingRoot: (workingRoot: string) => void,
+  setActiveCanvasId: (canvasId: string) => void,
+  canvasId: string
 ) {
   const nextStores = createWorkspaceStores(
-    document.canvasId,
+    canvasId,
     document.project.id
   );
   nextStores.store.getState().hydrate({ nodes, edges });
@@ -896,6 +996,7 @@ function hydrateWorkspaceDocument(
   setEntries(document.entries);
   setResourceRoots(document.resourceRoots ?? []);
   setWorkingRoot(document.workingRoot ?? document.project.rootPath);
+  setActiveCanvasId(canvasId);
   setSelectedEntryId(
     selection.selectedEntryId &&
       document.entries.some((entry) => entry.id === selection.selectedEntryId)

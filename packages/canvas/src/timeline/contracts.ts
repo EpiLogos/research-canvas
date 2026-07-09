@@ -5,7 +5,7 @@
 
 export type EntityType =
   | "Figure" | "People" | "Event" | "Institution" | "Source"
-  | "Place" | "Work" | "Archetype" | "Dynamic" | "PsychoidOperator";
+  | "Place" | "Work" | "Archetype" | "Dynamic" | "Constellation" | "PsychoidOperator";
 
 export type TemporalPrecision =
   | "millennium" | "century" | "decade" | "year" | "month" | "day";
@@ -28,6 +28,8 @@ export interface GraphNode {
   archetypalResonance: string | null;
   coordinate: string | null;
   sourceCoordinates: string[];
+  evidenceTags?: string[];
+  sourceKind?: string | null;
   isTemporal: boolean;
   validFrom: string | null;
   validTo: string | null;
@@ -43,7 +45,18 @@ export interface NodeLayout {
   positionY: number;
   width: number;
   height: number;
-  style: { dotColour?: string; bgColour?: string; textColour?: string; thumbnail?: string };
+  style: {
+    dotColour?: string;
+    bgColour?: string;
+    textColour?: string;
+    thumbnail?: string;
+    __timelineCard?: { offsetY: number; width?: number; height?: number };
+  };
+}
+
+export interface TimelineNodeRecord {
+  node: GraphNode;
+  layout: NodeLayout;
 }
 
 export interface JoinedCanvasNode {

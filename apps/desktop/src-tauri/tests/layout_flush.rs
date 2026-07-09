@@ -43,7 +43,10 @@ fn flush_canvas_layout_persists_nodes_edges_and_viewport_in_one_transaction() {
     let response = flush_canvas_layout_at(FlushCanvasLayoutRequest {
         database_path: db_path.to_string_lossy().to_string(),
         canvas_id: canvas_id.clone(),
-        layouts: vec![node("n1", &canvas_id, 10.0, 20.0), node("n2", &canvas_id, 30.0, 40.0)],
+        layouts: vec![
+            node("n1", &canvas_id, 10.0, 20.0),
+            node("n2", &canvas_id, 30.0, 40.0),
+        ],
         edges: vec![EdgeLayoutPayload {
             id: "e1".to_string(),
             canvas_id: canvas_id.clone(),
@@ -105,7 +108,10 @@ fn flush_canvas_layout_rolls_back_when_a_node_violates_the_canvas_foreign_key() 
         app_state_json: "{}".to_string(),
     });
 
-    assert!(result.is_err(), "flush must surface the error, not swallow it");
+    assert!(
+        result.is_err(),
+        "flush must surface the error, not swallow it"
+    );
 
     // Nothing was committed: zero rows for this canvas.
     let database = Database::open(&db_path).expect("reopen");

@@ -17,10 +17,10 @@ export function ProjectTree({
   const tree = flattenProjects(buildProjectTree(projects));
 
   return (
-    <section className="tree-section" aria-label="Project tree">
+    <section className="tree-section" aria-label="Constellation tree">
       <div className="tree-section__heading">
-        <p className="eyebrow">Projects</p>
-        <h2>Switcher</h2>
+        <p className="eyebrow">Constellations</p>
+        <h2>Timeline maps</h2>
       </div>
       <ul className="tree tree--projects" role="tree">
         {tree.map((project) => (

@@ -28,7 +28,10 @@ fn create_then_get_node_round_trips_substance_and_labels() {
 
     assert!(!created.graph_node_id.is_empty());
     assert_eq!(created.entity_type, "Figure");
-    assert_eq!(created.source_coordinates, vec!["#2".to_string(), "L2".to_string()]);
+    assert_eq!(
+        created.source_coordinates,
+        vec!["#2".to_string(), "L2".to_string()]
+    );
     assert_eq!(created.body, "[]");
 
     let fetched = support::block_on(repo.get_node(&created.graph_node_id))
@@ -40,12 +43,19 @@ fn create_then_get_node_round_trips_substance_and_labels() {
     // The node must carry BOTH :TheoryNode and the entity-type label.
     let label_count: i64 = support::block_on(async {
         let mut rows = graph
-            .execute_on(&database, query(
-                "MATCH (n:TheoryNode:Figure {graph_node_id: $id}) RETURN count(n) AS c",
-            ).param("id", created.graph_node_id.clone()))
+            .execute_on(
+                &database,
+                query("MATCH (n:TheoryNode:Figure {graph_node_id: $id}) RETURN count(n) AS c")
+                    .param("id", created.graph_node_id.clone()),
+            )
             .await
             .expect("labels query");
-        rows.next().await.expect("row").expect("some").get::<i64>("c").expect("c")
+        rows.next()
+            .await
+            .expect("row")
+            .expect("some")
+            .get::<i64>("c")
+            .expect("c")
     });
     assert_eq!(label_count, 1, "node carries :TheoryNode and :Figure");
 
@@ -54,8 +64,74 @@ fn create_then_get_node_round_trips_substance_and_labels() {
 
     // Teardown
     support::block_on(async {
-        graph.run_on(&database, query(
-            "MATCH (n {graph_node_id: $id}) DETACH DELETE n",
-        ).param("id", created.graph_node_id.clone())).await.expect("cleanup");
+        graph
+            .run_on(
+                &database,
+                query("MATCH (n {graph_node_id: $id}) DETACH DELETE n")
+                    .param("id", created.graph_node_id.clone()),
+            )
+            .await
+            .expect("cleanup");
+    });
+}
+
+#[test]
+fn create_constellation_node_carries_constellation_label() {
+    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
+        eprintln!("skipping: NEO4J_TEST_URI unset");
+        return;
+    };
+    let repo = GraphRepository::new(graph.clone(), database.clone());
+    support::block_on(repo.ensure_schema()).expect("schema");
+
+    let created = support::block_on(repo.create_node(NewGraphNode {
+        graph_node_id: None,
+        entity_type: "Constellation".into(),
+        title: format!("QL Unit {run_id}"),
+        body: "Nested interpretive grouping".into(),
+        coordinate: Some("#2:L3/P4".into()),
+        source_coordinates: vec!["#2".into(), "L3".into(), "P4".into()],
+        is_temporal: true,
+        valid_from: Some("1621-01-01".into()),
+        valid_to: None,
+        temporal_precision: Some("year".into()),
+    }))
+    .expect("create constellation node");
+
+    assert_eq!(created.entity_type, "Constellation");
+    assert_eq!(created.coordinate, Some("#2:L3/P4".to_string()));
+
+    let label_count: i64 = support::block_on(async {
+        let mut rows = graph
+            .execute_on(
+                &database,
+                query(
+                    "MATCH (n:TheoryNode:Constellation {graph_node_id: $id}) RETURN count(n) AS c",
+                )
+                .param("id", created.graph_node_id.clone()),
+            )
+            .await
+            .expect("labels query");
+        rows.next()
+            .await
+            .expect("row")
+            .expect("some")
+            .get::<i64>("c")
+            .expect("c")
+    });
+    assert_eq!(
+        label_count, 1,
+        "node carries :TheoryNode and :Constellation"
+    );
+
+    support::block_on(async {
+        graph
+            .run_on(
+                &database,
+                query("MATCH (n {graph_node_id: $id}) DETACH DELETE n")
+                    .param("id", created.graph_node_id.clone()),
+            )
+            .await
+            .expect("cleanup");
     });
 }

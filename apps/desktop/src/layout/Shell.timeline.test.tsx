@@ -7,9 +7,14 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 // additional workspace fields on every render, so those are filled in here with
 // empty/neutral defaults to let the Shell mount without a live backend.
 const selectNode = vi.fn();
+const resizeNode = vi.fn();
+const updateNodeTimelineCard = vi.fn();
 vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
   useCanvasWorkspace: () => ({
     selectNode,
+    resizeNode,
+    updateNodeTimelineCard,
+    updateNodeStyle: vi.fn(),
     canvasId: "c1",
     activeProjectId: "p1",
     activeProject: null,
@@ -79,6 +84,8 @@ import { Shell } from "./Shell";
 describe("Shell timeline lens", () => {
   beforeEach(() => {
     selectNode.mockClear();
+    resizeNode.mockClear();
+    updateNodeTimelineCard.mockClear();
   });
 
   test("switching to the timeline lens renders the timeline and its nodes", async () => {
@@ -96,5 +103,22 @@ describe("Shell timeline lens", () => {
     const node = await screen.findByTestId("timeline-node-banda");
     fireEvent.doubleClick(node);
     expect(selectNode).toHaveBeenCalledWith("banda");
+  });
+
+  test("timeline card geometry persists as timeline metadata without moving canvas nodes", async () => {
+    render(<Shell />);
+    fireEvent.click(screen.getByTestId("lens-timeline"));
+    const handle = await screen.findByTestId("timeline-node-resize-banda-se");
+
+    fireEvent.pointerDown(handle, { pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 124, clientY: 118 });
+    fireEvent.pointerUp(window, { pointerId: 1 });
+
+    expect(resizeNode).not.toHaveBeenCalled();
+    expect(updateNodeTimelineCard).toHaveBeenCalledWith("banda", {
+      offsetY: 18,
+      width: 264,
+      height: 90,
+    });
   });
 });

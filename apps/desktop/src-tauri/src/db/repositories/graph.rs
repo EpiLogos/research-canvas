@@ -12,6 +12,8 @@ pub struct GraphNode {
     pub archetypal_resonance: Option<String>,
     pub coordinate: Option<String>,
     pub source_coordinates: Vec<String>,
+    pub evidence_tags: Vec<String>,
+    pub source_kind: Option<String>,
     pub is_temporal: bool,
     pub valid_from: Option<String>,
     pub valid_to: Option<String>,
@@ -90,6 +92,25 @@ pub struct OperatorSeed {
     pub source_coordinates: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeedGraphNode {
+    pub graph_node_id: String,
+    pub entity_type: String,
+    pub title: String,
+    pub body: String,
+    pub summary: String,
+    pub archetypal_resonance: Option<String>,
+    pub coordinate: Option<String>,
+    pub source_coordinates: Vec<String>,
+    pub evidence_tags: Vec<String>,
+    pub source_kind: Option<String>,
+    pub is_temporal: bool,
+    pub valid_from: Option<String>,
+    pub valid_to: Option<String>,
+    pub temporal_precision: Option<String>,
+}
+
 use neo4rs::query;
 
 pub struct GraphRepository {
@@ -134,6 +155,8 @@ fn node_from_neo(node: neo4rs::Node) -> Result<GraphNode, String> {
         archetypal_resonance: node.get("archetypal_resonance").ok(),
         coordinate: node.get("coordinate").ok(),
         source_coordinates,
+        evidence_tags: node.get("evidence_tags").unwrap_or_default(),
+        source_kind: node.get("source_kind").ok(),
         is_temporal: node.get("is_temporal").unwrap_or(false),
         valid_from: node.get("valid_from").ok(),
         valid_to: node.get("valid_to").ok(),
@@ -144,8 +167,16 @@ fn node_from_neo(node: neo4rs::Node) -> Result<GraphNode, String> {
 }
 
 const ENTITY_LABELS: &[&str] = &[
-    "Figure", "People", "Event", "Institution", "Source",
-    "Place", "Work", "Archetype", "Dynamic",
+    "Figure",
+    "People",
+    "Event",
+    "Institution",
+    "Source",
+    "Place",
+    "Work",
+    "Archetype",
+    "Dynamic",
+    "Constellation",
 ];
 
 fn validate_entity_label(entity_type: &str) -> Result<&str, String> {
@@ -157,8 +188,16 @@ fn validate_entity_label(entity_type: &str) -> Result<&str, String> {
 }
 
 const REL_TYPES: &[&str] = &[
-    "INSTANTIATES", "ECHOES", "CAUSES", "INFLUENCES", "OPPOSES",
-    "INHERITS", "TRANSFORMS_INTO", "LOCATED_AT", "SOURCED_FROM", "RESONATES_WITH",
+    "INSTANTIATES",
+    "ECHOES",
+    "CAUSES",
+    "INFLUENCES",
+    "OPPOSES",
+    "INHERITS",
+    "TRANSFORMS_INTO",
+    "LOCATED_AT",
+    "SOURCED_FROM",
+    "RESONATES_WITH",
 ];
 
 fn validate_rel_type(rel_type: &str) -> Result<&str, String> {
@@ -210,6 +249,7 @@ impl GraphRepository {
             "CREATE (n:TheoryNode:{label} {{
                 graph_node_id: $id, title: $title, body: $body, summary: '',
                 coordinate: $coordinate, source_coordinates: $source_coordinates,
+                evidence_tags: [], source_kind: null,
                 is_temporal: $is_temporal, valid_from: $valid_from, valid_to: $valid_to,
                 temporal_precision: $temporal_precision,
                 created_at: $now, updated_at: $now
@@ -263,16 +303,36 @@ impl GraphRepository {
         patch: GraphNodePatch,
     ) -> Result<GraphNode, String> {
         let mut sets: Vec<String> = vec!["n.updated_at = $now".to_string()];
-        if patch.title.is_some() { sets.push("n.title = $title".into()); }
-        if patch.body.is_some() { sets.push("n.body = $body".into()); }
-        if patch.summary.is_some() { sets.push("n.summary = $summary".into()); }
-        if patch.archetypal_resonance.is_some() { sets.push("n.archetypal_resonance = $archetypal_resonance".into()); }
-        if patch.coordinate.is_some() { sets.push("n.coordinate = $coordinate".into()); }
-        if patch.source_coordinates.is_some() { sets.push("n.source_coordinates = $source_coordinates".into()); }
-        if patch.is_temporal.is_some() { sets.push("n.is_temporal = $is_temporal".into()); }
-        if patch.valid_from.is_some() { sets.push("n.valid_from = $valid_from".into()); }
-        if patch.valid_to.is_some() { sets.push("n.valid_to = $valid_to".into()); }
-        if patch.temporal_precision.is_some() { sets.push("n.temporal_precision = $temporal_precision".into()); }
+        if patch.title.is_some() {
+            sets.push("n.title = $title".into());
+        }
+        if patch.body.is_some() {
+            sets.push("n.body = $body".into());
+        }
+        if patch.summary.is_some() {
+            sets.push("n.summary = $summary".into());
+        }
+        if patch.archetypal_resonance.is_some() {
+            sets.push("n.archetypal_resonance = $archetypal_resonance".into());
+        }
+        if patch.coordinate.is_some() {
+            sets.push("n.coordinate = $coordinate".into());
+        }
+        if patch.source_coordinates.is_some() {
+            sets.push("n.source_coordinates = $source_coordinates".into());
+        }
+        if patch.is_temporal.is_some() {
+            sets.push("n.is_temporal = $is_temporal".into());
+        }
+        if patch.valid_from.is_some() {
+            sets.push("n.valid_from = $valid_from".into());
+        }
+        if patch.valid_to.is_some() {
+            sets.push("n.valid_to = $valid_to".into());
+        }
+        if patch.temporal_precision.is_some() {
+            sets.push("n.temporal_precision = $temporal_precision".into());
+        }
 
         // No meaningful fields — return the current node without touching the DB.
         if sets.len() == 1 {
@@ -289,16 +349,36 @@ impl GraphRepository {
         let mut q = query(&cypher)
             .param("id", graph_node_id.to_string())
             .param("now", now_rfc3339());
-        if let Some(v) = patch.title { q = q.param("title", v); }
-        if let Some(v) = patch.body { q = q.param("body", v); }
-        if let Some(v) = patch.summary { q = q.param("summary", v); }
-        if let Some(v) = patch.archetypal_resonance { q = q.param("archetypal_resonance", v); }
-        if let Some(v) = patch.coordinate { q = q.param("coordinate", v); }
-        if let Some(v) = patch.source_coordinates { q = q.param("source_coordinates", v); }
-        if let Some(v) = patch.is_temporal { q = q.param("is_temporal", v); }
-        if let Some(v) = patch.valid_from { q = q.param("valid_from", v); }
-        if let Some(v) = patch.valid_to { q = q.param("valid_to", v); }
-        if let Some(v) = patch.temporal_precision { q = q.param("temporal_precision", v); }
+        if let Some(v) = patch.title {
+            q = q.param("title", v);
+        }
+        if let Some(v) = patch.body {
+            q = q.param("body", v);
+        }
+        if let Some(v) = patch.summary {
+            q = q.param("summary", v);
+        }
+        if let Some(v) = patch.archetypal_resonance {
+            q = q.param("archetypal_resonance", v);
+        }
+        if let Some(v) = patch.coordinate {
+            q = q.param("coordinate", v);
+        }
+        if let Some(v) = patch.source_coordinates {
+            q = q.param("source_coordinates", v);
+        }
+        if let Some(v) = patch.is_temporal {
+            q = q.param("is_temporal", v);
+        }
+        if let Some(v) = patch.valid_from {
+            q = q.param("valid_from", v);
+        }
+        if let Some(v) = patch.valid_to {
+            q = q.param("valid_to", v);
+        }
+        if let Some(v) = patch.temporal_precision {
+            q = q.param("temporal_precision", v);
+        }
 
         let mut rows = self
             .graph
@@ -322,6 +402,61 @@ impl GraphRepository {
             .await
             .map_err(|e| format!("delete_node failed: {e}"))?;
         Ok(())
+    }
+
+    pub async fn upsert_seed_node(&self, input: &SeedGraphNode) -> Result<GraphNode, String> {
+        let label = validate_entity_label(&input.entity_type)?;
+        let cypher = format!(
+            "MERGE (n:TheoryNode {{graph_node_id: $id}}) \
+             SET n:{label}, \
+                 n.title = $title, \
+                 n.body = $body, \
+                 n.summary = $summary, \
+                 n.archetypal_resonance = $archetypal_resonance, \
+                 n.coordinate = $coordinate, \
+                 n.source_coordinates = $source_coordinates, \
+                 n.evidence_tags = $evidence_tags, \
+                 n.source_kind = $source_kind, \
+                 n.is_temporal = $is_temporal, \
+                 n.valid_from = $valid_from, \
+                 n.valid_to = $valid_to, \
+                 n.temporal_precision = $temporal_precision, \
+                 n.created_at = coalesce(n.created_at, $now), \
+                 n.updated_at = $now \
+             RETURN n"
+        );
+        let q = query(&cypher)
+            .param("id", input.graph_node_id.clone())
+            .param("title", input.title.clone())
+            .param("body", input.body.clone())
+            .param("summary", input.summary.clone())
+            .param("archetypal_resonance", input.archetypal_resonance.clone())
+            .param("coordinate", input.coordinate.clone())
+            .param("source_coordinates", input.source_coordinates.clone())
+            .param("evidence_tags", input.evidence_tags.clone())
+            .param("source_kind", input.source_kind.clone())
+            .param("is_temporal", input.is_temporal)
+            .param("valid_from", input.valid_from.clone())
+            .param("valid_to", input.valid_to.clone())
+            .param("temporal_precision", input.temporal_precision.clone())
+            .param("now", now_rfc3339());
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("upsert_seed_node failed for {}: {e}", input.graph_node_id))?;
+        let row = rows
+            .next()
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| {
+                format!(
+                    "upsert_seed_node returned no row for {}",
+                    input.graph_node_id
+                )
+            })?;
+        let node: neo4rs::Node = row.get("n").map_err(|e| e.to_string())?;
+        node_from_neo(node)
     }
 
     pub async fn list_nodes_for_lens(&self, lens: &str) -> Result<Vec<GraphNode>, String> {
@@ -396,6 +531,48 @@ impl GraphRepository {
         relationship_from_row(&row, properties)
     }
 
+    pub async fn merge_seed_relationship(
+        &self,
+        source_graph_node_id: &str,
+        target_graph_node_id: &str,
+        rel_type: &str,
+        seed_key: &str,
+        properties: serde_json::Value,
+    ) -> Result<GraphRelationship, String> {
+        let rel = validate_rel_type(rel_type)?;
+        let props = properties
+            .as_object()
+            .ok_or_else(|| "relationship properties must be a JSON object".to_string())?;
+        let props_str = serde_json::to_string(props).map_err(|e| e.to_string())?;
+        let cypher = format!(
+            "MATCH (s {{graph_node_id: $src}}), (t {{graph_node_id: $tgt}}) \
+             MERGE (s)-[r:{rel} {{seed_key: $seed_key}}]->(t) \
+             SET r += apoc.convert.fromJsonMap($props) \
+             RETURN elementId(r) AS id, type(r) AS rel_type, \
+                    s.graph_node_id AS src, t.graph_node_id AS tgt, \
+                    apoc.convert.toJson(properties(r)) AS props"
+        );
+        let q = query(&cypher)
+            .param("src", source_graph_node_id.to_string())
+            .param("tgt", target_graph_node_id.to_string())
+            .param("seed_key", seed_key.to_string())
+            .param("props", props_str);
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("merge_seed_relationship failed: {e}"))?;
+        let row = rows
+            .next()
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "merge_seed_relationship: endpoints not found".to_string())?;
+        let props_json: String = row.get("props").unwrap_or_else(|_| "{}".to_string());
+        let merged_props =
+            serde_json::from_str(&props_json).unwrap_or_else(|_| serde_json::json!({}));
+        relationship_from_row(&row, merged_props)
+    }
+
     pub async fn disconnect(&self, relationship_id: &str) -> Result<(), String> {
         let q = query("MATCH ()-[r]-() WHERE elementId(r) = $id DELETE r")
             .param("id", relationship_id.to_string());
@@ -424,7 +601,10 @@ impl GraphRepository {
         )
         .param("id", operator_graph_node_id.to_string());
         let instances = self.collect_lit_instances(q, "inst").await?;
-        Ok(ArchetypalLightingResult { operator, instances })
+        Ok(ArchetypalLightingResult {
+            operator,
+            instances,
+        })
     }
 
     pub async fn resonances_for_instance(

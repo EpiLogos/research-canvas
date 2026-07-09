@@ -5,9 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::db::{
     connection::Database,
-    repositories::{
-        CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord,
-    },
+    repositories::{CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord},
 };
 use crate::SharedApiState;
 

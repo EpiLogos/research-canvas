@@ -35,6 +35,16 @@ interface CreateResourceNodeInput {
   graphNodeId?: string;
 }
 
+interface CreatePortalNodeInput {
+  title: string;
+  targetCanvasId: string;
+  constellationKind?: "standard" | "ql-unit";
+  x?: number;
+  y?: number;
+  id?: string;
+  graphNodeId?: string;
+}
+
 interface ConnectNodesInput {
   relationKind: string;
   sourceNodeId: string;
@@ -57,6 +67,7 @@ export interface CanvasStoreState {
   connectNodes: (input: ConnectNodesInput) => CanvasEdge;
   createGroupNode: (input: CreateGroupNodeInput) => CanvasNode;
   createNoteNode: (input: CreateNoteNodeInput) => CanvasNode;
+  createPortalNode: (input: CreatePortalNodeInput) => CanvasNode;
   createResourceNode: (input: CreateResourceNodeInput) => CanvasNode;
   deleteEdge: (edgeId: string) => void;
   deleteNode: (nodeId: string) => void;
@@ -81,6 +92,11 @@ export interface CanvasStoreState {
     textColour?: string;
     thumbnail?: string;
   }) => void;
+  updateNodeTags: (nodeId: string, tags: string[]) => void;
+  updateNodeTimelineCard: (
+    nodeId: string,
+    timelineCard: { offsetY: number; width?: number; height?: number },
+  ) => void;
   updateNodeSize: (nodeId: string, size: { width: number; height: number }) => void;
   updateNodeTitle: (nodeId: string, title: string) => void;
   toggleEdgeSequencing: (edgeId: string) => void;
@@ -170,6 +186,33 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
         childNodeIds: [],
         createdAt: now(),
         updatedAt: now()
+      });
+
+      set((state) => ({ nodes: [...state.nodes, node] }));
+      return node;
+    },
+    createPortalNode: ({
+      title,
+      targetCanvasId,
+      constellationKind = "standard",
+      x,
+      y,
+      id,
+      graphNodeId,
+    }) => {
+      const node = nodeSchema.parse({
+        id: id ?? crypto.randomUUID(),
+        graphNodeId: graphNodeId ?? null,
+        canvasId,
+        type: "portal",
+        title,
+        position: x !== undefined && y !== undefined ? { x, y } : nextPosition(get().nodes.length),
+        size: { width: 300, height: 180 },
+        summary: "",
+        targetCanvasId,
+        constellationKind,
+        createdAt: now(),
+        updatedAt: now(),
       });
 
       set((state) => ({ nodes: [...state.nodes, node] }));
@@ -344,6 +387,20 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
           n.id === nodeId ? { ...n, ...style, updatedAt: now() } : n,
         ),
       })),
+    updateNodeTags: (nodeId, tags) =>
+      set((state) => ({
+        nodes: state.nodes.map((n) =>
+          n.id === nodeId && n.type === "note"
+            ? { ...n, tags, updatedAt: now() }
+            : n,
+        ),
+      })),
+    updateNodeTimelineCard: (nodeId, timelineCard) =>
+      set((state) => ({
+        nodes: state.nodes.map((n) =>
+          n.id === nodeId ? { ...n, timelineCard, updatedAt: now() } : n,
+        ),
+      })),
     updateNodeSize: (nodeId, size) =>
       set((state) => ({
         nodes: state.nodes.map((n) =>
@@ -457,6 +514,8 @@ function now() {
 
 export function entityTypeForNodeType(
   type: "note" | "group" | "resource" | "portal"
-): "Work" | "Source" {
-  return type === "resource" ? "Source" : "Work";
+): "Work" | "Source" | "Constellation" {
+  if (type === "resource") return "Source";
+  if (type === "portal") return "Constellation";
+  return "Work";
 }

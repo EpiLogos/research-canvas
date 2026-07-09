@@ -1,0 +1,18 @@
+{
+  "name": "epi-logos-dev",
+  "description": "Development marketplace for the Epi-Logos plugin",
+  "owner": {
+    "name": "Epi-Logos"
+  },
+  "plugins": [
+    {
+      "name": "epi-logos",
+      "description": "Paradox-coherent skills plugin for Epi-Logos traversal, diagnosis, application, exploration, explanation, and artifact-guided reflection",
+      "version": "0.1.0",
+      "source": "../",
+      "author": {
+        "name": "Epi-Logos"
+      }
+    }
+  ]
+}

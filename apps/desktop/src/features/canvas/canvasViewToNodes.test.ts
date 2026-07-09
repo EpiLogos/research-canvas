@@ -254,6 +254,75 @@ describe("canvasViewToCanvasNodes — Fix 1: node type round-trip via __canvasNo
     const { nodes } = canvasViewToCanvasNodes(view);
     expect(nodes[0]!.type).toBe("note");
   });
+
+  it("constellation graph nodes hydrate as nested portal nodes when a portal sidecar points to another canvas", () => {
+    const targetCanvasId = "22222222-2222-4222-8222-222222222222";
+    const view: CanvasView = {
+      canvasId: CANVAS_ID,
+      nodes: [
+        {
+          node: {
+            graphNodeId: GRAPH_NODE_ID,
+            entityType: "Constellation",
+            title: "QL Reading Unit",
+            body: "A nested interpretive surface.",
+            summary: "Nested QL constellation",
+            archetypalResonance: null,
+            coordinate: "#2:L3/P4",
+            sourceCoordinates: ["#2", "L3", "P4"],
+            evidenceTags: ["ql-unit"],
+            sourceKind: "constellation",
+            isTemporal: true,
+            validFrom: "1621-01-01",
+            validTo: null,
+            temporalPrecision: "year",
+            createdAt: NOW,
+            updatedAt: NOW,
+          },
+          layout: {
+            graphNodeId: GRAPH_NODE_ID,
+            canvasId: CANVAS_ID,
+            positionX: 96,
+            positionY: 112,
+            width: 300,
+            height: 180,
+            style: {
+              dotColour: "#8fd3ff",
+              bgColour: "#102436",
+              textColour: "#f5fbff",
+              thumbnail: "asset://localhost/ql-unit.png",
+              __timelineCard: { offsetY: 42, width: 310, height: 118 },
+              __canvasNode: {
+                type: "portal",
+                title: "QL Reading Unit",
+                targetCanvasId,
+                constellationKind: "ql-unit",
+              },
+            },
+          },
+        },
+      ],
+      edges: [],
+      relationships: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+      appState: {},
+    };
+
+    const { nodes } = canvasViewToCanvasNodes(view);
+    expect(nodes).toHaveLength(1);
+    const out = nodes[0]!;
+    expect(out.type).toBe("portal");
+    if (out.type !== "portal") throw new Error("not portal");
+    expect(out.targetCanvasId).toBe(targetCanvasId);
+    expect(out.constellationKind).toBe("ql-unit");
+    expect(out.title).toBe("QL Reading Unit");
+    expect(out.summary).toBe("Nested QL constellation");
+    expect(out.dotColour).toBe("#8fd3ff");
+    expect(out.bgColour).toBe("#102436");
+    expect(out.textColour).toBe("#f5fbff");
+    expect(out.thumbnail).toBe("asset://localhost/ql-unit.png");
+    expect(out.timelineCard).toEqual({ offsetY: 42, width: 310, height: 118 });
+  });
 });
 
 // ---- Fix 2: non-UUID graph ids are accepted without throwing ----

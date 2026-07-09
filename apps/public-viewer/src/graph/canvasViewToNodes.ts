@@ -85,6 +85,7 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
         textColour: layout.style.textColour ?? null,
         thumbnail: layout.style.thumbnail ?? null,
         targetCanvasId: sidecar.targetCanvasId,
+        constellationKind: sidecar.constellationKind ?? "standard",
         sequenceCaption: null,
         sequenceViewport: null,
         createdAt: node.createdAt,

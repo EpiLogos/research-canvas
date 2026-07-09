@@ -15,6 +15,12 @@ export const sizeSchema = z.object({
   height: z.number().positive()
 });
 
+export const timelineCardSchema = z.object({
+  offsetY: z.number().default(0),
+  width: z.number().positive().optional(),
+  height: z.number().positive().optional()
+});
+
 const baseNodeSchema = z.object({
   id: z.string().min(1),
   graphNodeId: z.string().min(1).nullable().default(null),
@@ -27,6 +33,7 @@ const baseNodeSchema = z.object({
   bgColour: nullToUndefined(z.string().optional()),
   textColour: nullToUndefined(z.string().optional()),
   thumbnail: nullToUndefined(z.string().optional()),
+  timelineCard: nullToUndefined(timelineCardSchema.optional()),
   sequenceCaption: nullToUndefined(z.string().nullable().default(null)),
   sequenceViewport: nullToUndefined(viewportSchema.nullable().default(null)),
   createdAt: z.string().datetime(),
@@ -45,7 +52,7 @@ export const resourceNodeSchema = baseNodeSchema.extend({
 
 export const noteNodeSchema = baseNodeSchema.extend({
   type: z.literal("note"),
-  content: z.string(),
+  content: nullToUndefined(z.string().default("")),
   tags: z.array(z.string()).default([])
 });
 
@@ -57,7 +64,8 @@ export const groupNodeSchema = baseNodeSchema.extend({
 
 export const portalNodeSchema = baseNodeSchema.extend({
   type: z.literal("portal"),
-  targetCanvasId: z.string().uuid()
+  targetCanvasId: z.string().uuid(),
+  constellationKind: nullToUndefined(z.enum(["standard", "ql-unit"]).default("standard"))
 });
 
 export const nodeSchema = z.discriminatedUnion("type", [

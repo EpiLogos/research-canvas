@@ -1,0 +1,210 @@
+flowchart LR
+  %% Episode 2 research map: historical events, people, places, and tangential vectors.
+  %% Prepared as a Neo4j/Graphiti seed sketch while the database is offline.
+
+  classDef era fill:#17202a,stroke:#6b7a90,color:#f4f0e8
+  classDef event fill:#263645,stroke:#9db2c7,color:#ffffff
+  classDef person fill:#4a2f43,stroke:#d7a1c4,color:#ffffff
+  classDef place fill:#254336,stroke:#92c9a8,color:#ffffff
+  classDef institution fill:#3e3926,stroke:#d9c779,color:#ffffff
+  classDef vector fill:#3a2a22,stroke:#d39b76,color:#ffffff
+  classDef caution fill:#3b2328,stroke:#e08a94,color:#ffffff
+
+  E0["Ancient psychoactive trade<br/>c. 2400 BCE-1500 CE"]:::era
+  E1["Medici template<br/>c. 1400-1600"]:::era
+  E2["Corporate sovereign body<br/>1568-1700"]:::era
+  E3["Enlightenment occultation<br/>1648-1806"]:::era
+  E4["Round Table / City bridge<br/>1877-1945"]:::era
+  E5["Nazi-OSS-CIA continuum<br/>1920-1973"]:::era
+  E6["Institutional impunity / blackmail<br/>1950s-2019"]:::era
+  E7["Techno-occult / drug corridors<br/>1972-present"]:::era
+
+  E0 --> E1 --> E2 --> E3 --> E4 --> E5 --> E6 --> E7
+
+  subgraph Ancient["Ancient and Early Trade Substrate"]
+    Ebla["Ebla poppy residues<br/>c. 2400 BCE"]:::event
+    Juglets["Cypriot Base-Ring opium juglets<br/>1600-1000 BCE"]:::event
+    Ebers["Ebers Papyrus opium medicine<br/>c. 1500 BCE"]:::event
+    Jirzankal["Jirzankal cannabis burners<br/>c. 500 BCE"]:::event
+    ArabRoutes["Arab Indian Ocean routes<br/>Basra / Aden / Maluku"]:::place
+    Ottoman1453["Ottoman control after Constantinople<br/>1453"]:::event
+    Vasco1498["Vasco da Gama reaches Calicut<br/>1498"]:::event
+  end
+  E0 --> Ebla --> Juglets --> Ebers
+  E0 --> Jirzankal
+  E0 --> ArabRoutes --> Ottoman1453 --> Vasco1498
+
+  subgraph Medici["Medici: Banking, Blood, Studiolo"]
+    Cosimo["Cosimo de' Medici"]:::person
+    Ficino["Marsilio Ficino"]:::person
+    Hermeticum["Corpus Hermeticum translation<br/>1460s"]:::event
+    MediciBank["Medici Bank / papal finance"]:::institution
+    LeoX["Pope Leo X indulgence finance"]:::person
+    Catherine1533["Catherine de' Medici marries Henry II<br/>1533"]:::event
+    Marie1600["Marie de' Medici marries Henry IV<br/>1600"]:::event
+    Studiolo["Francesco I's studiolo<br/>1570-1572"]:::place
+    Florence["Florence / Palazzo Vecchio"]:::place
+  end
+  E1 --> Cosimo --> Ficino --> Hermeticum
+  E1 --> MediciBank --> LeoX
+  MediciBank --> Catherine1533 --> Marie1600
+  Studiolo --> Florence
+  Hermeticum --> Studiolo
+
+  subgraph Corpora["Dutch Republic, VOC, EIC"]
+    DutchRevolt["Dutch Revolt<br/>1568-1648"]:::event
+    UnionUtrecht["Union of Utrecht<br/>1579"]:::event
+    VOC1602["VOC chartered<br/>1602"]:::institution
+    Wisselbank1609["Bank of Amsterdam<br/>1609"]:::institution
+    Banda1621["Banda Islands genocide<br/>1621"]:::event
+    WilliamIII1688["William III / Glorious Revolution<br/>1688"]:::event
+    BoE1694["Bank of England<br/>1694"]:::institution
+    Plassey1757["Battle of Plassey<br/>1757"]:::event
+    Hastings1773["Warren Hastings assumes Bengal opium monopoly<br/>1773"]:::person
+    OpiumWars["Opium Wars<br/>1839-1842 / 1856-1860"]:::event
+    HSBC1865["HSBC founded in Hong Kong<br/>1865"]:::institution
+  end
+  E2 --> DutchRevolt --> UnionUtrecht --> VOC1602 --> Banda1621
+  VOC1602 --> Wisselbank1609 --> WilliamIII1688 --> BoE1694
+  E2 --> Plassey1757 --> Hastings1773 --> OpiumWars --> HSBC1865
+
+  subgraph Enlightenment["Enlightenment, Revolution, National Identity"]
+    Westphalia1648["Peace of Westphalia<br/>1648"]:::event
+    NewtonAlchemy["Newton's alchemical corpus"]:::person
+    SPRSeed["Inner sciences privatized / occluded"]:::vector
+    Illuminati1776["Bavarian Illuminati founded<br/>1776"]:::institution
+    FrenchCult1793["Cult of Reason at Notre Dame<br/>1793"]:::event
+    HRE1806["Holy Roman Empire dissolved<br/>1806"]:::event
+    Volkisch["Romantic nationalism / Volkisch vector"]:::vector
+  end
+  E3 --> Westphalia1648 --> HRE1806 --> Volkisch
+  E3 --> NewtonAlchemy --> SPRSeed
+  E3 --> Illuminati1776 --> FrenchCult1793
+
+  subgraph Rhodes["Rhodes-Milner, Balfour, Invisible Empire"]
+    Rhodes1853["Cecil Rhodes<br/>1853-1902"]:::person
+    Kimberley1871["Rhodes reaches Kimberley diamond fields<br/>1871"]:::event
+    Mason1877["Apollo Lodge / Rose Croix initiation<br/>1877"]:::event
+    Confession1877["Confession of Faith + first will<br/>1877"]:::event
+    DeBeers1880["De Beers founded<br/>1880"]:::institution
+    Rothschild1887["Rothschild financing of De Beers consolidation<br/>1887"]:::institution
+    Society1891["Society of the Elect constituted per Quigley<br/>1891"]:::caution
+    Milner["Lord Alfred Milner"]:::person
+    RoundTable1909["Round Table movement<br/>1909"]:::institution
+    Balfour1917["Balfour Declaration<br/>1917"]:::event
+    Chatham1920["Chatham House<br/>1920"]:::institution
+    CFR1921["Council on Foreign Relations<br/>1921"]:::institution
+    BIS1930["Bank for International Settlements<br/>1930"]:::institution
+    Bretton1944["Bretton Woods<br/>1944"]:::event
+    UN1945["United Nations founding<br/>1945"]:::event
+    LondonCity["City of London Corporation"]:::place
+  end
+  E4 --> Rhodes1853 --> Kimberley1871 --> Mason1877 --> Confession1877
+  Confession1877 --> DeBeers1880 --> Rothschild1887
+  Confession1877 --> Society1891 --> Milner --> RoundTable1909
+  RoundTable1909 --> Balfour1917 --> Chatham1920 --> CFR1921
+  RoundTable1909 --> LondonCity
+  Chatham1920 --> BIS1930 --> Bretton1944 --> UN1945
+
+  subgraph Intel["Nazi, OSS, CIA, Mind-Control Continuum"]
+    IGFarben1925["IG Farben formed<br/>1925"]:::institution
+    Nazi1933["Hitler appointed Chancellor<br/>1933"]:::event
+    Pervitin1938["Pervitin issued to German troops<br/>1938-1940"]:::event
+    Paperclip1945["Operation Paperclip<br/>1945-1959"]:::event
+    Gehlen1946["Gehlen Organization under U.S. auspices<br/>1946"]:::institution
+    CIA1947["CIA founded<br/>1947"]:::institution
+    CampKing["Camp King interrogation facility"]:::place
+    Bluebird1950["Project Bluebird<br/>1950"]:::event
+    Artichoke1951["Project Artichoke<br/>1951"]:::event
+    MKUltra1953["MK-ULTRA<br/>1953-1973"]:::event
+    MidnightClimax["Operation Midnight Climax<br/>1954-1965"]:::event
+    Olson1953["Frank Olson death<br/>1953"]:::caution
+    Files1973["Helms/Gottlieb file destruction<br/>1973"]:::event
+    Stargate1972["Remote viewing / Stargate<br/>1972-1995"]:::event
+  end
+  E5 --> IGFarben1925 --> Nazi1933 --> Pervitin1938
+  Nazi1933 --> Paperclip1945 --> CampKing --> Bluebird1950 --> Artichoke1951 --> MKUltra1953
+  Paperclip1945 --> Gehlen1946 --> CIA1947
+  MKUltra1953 --> MidnightClimax
+  MKUltra1953 --> Olson1953
+  MKUltra1953 --> Files1973
+  E7 --> Stargate1972
+
+  subgraph AbuseBlackmail["Impunity, Abuse, Blackmail, Cover-Up"]
+    Cohn["Roy Cohn<br/>1927-1986"]:::person
+    Plaza["Suite 233 Plaza Hotel allegations"]:::caution
+    Franklin1988["Franklin Credit Union collapse<br/>1988"]:::event
+    Caradori1990["Gary Caradori death<br/>1990"]:::caution
+    Dutroux1995["Dutroux kidnappings and failures<br/>1995-1996"]:::event
+    WhiteMarch1996["Belgian White March<br/>1996"]:::event
+    Kincora["Kincora Boys' Home / MI5 obstruction"]:::event
+    Savile["Jimmy Savile abuse revealed after 2011 death"]:::event
+    Epstein["Jeffrey Epstein operation<br/>1990s-2019"]:::event
+    GMaxwell["Ghislaine Maxwell convicted<br/>2021"]:::person
+    Nygard["Peter Nygard convicted/sentenced<br/>2020s"]:::person
+  end
+  E6 --> Cohn --> Plaza
+  E6 --> Franklin1988 --> Caradori1990
+  E6 --> Dutroux1995 --> WhiteMarch1996
+  E6 --> Kincora
+  E6 --> Savile
+  Cohn --> Epstein
+  Epstein --> GMaxwell
+  Epstein -. complementarity .-> Nygard
+
+  subgraph TechDrug["Technology, Drugs, Finance, Silicon Valley"]
+    Patent1951["Inventions Secrecy Act<br/>1951"]:::institution
+    BlackBudget["Black budget / SAP architecture"]:::institution
+    InQTel1999["In-Q-Tel<br/>1999"]:::institution
+    MDDS1993["MDDS Stanford data program<br/>1993"]:::event
+    LifeLog2004["DARPA LifeLog canceled<br/>2004"]:::event
+    Facebook2004["TheFacebook launched<br/>2004"]:::institution
+    IQTGoogle["Keyhole -> Google Earth"]:::institution
+    Palantir["Palantir / Thiel vector"]:::institution
+    Purdue1996["OxyContin launched<br/>1996"]:::institution
+    HSBC2012["HSBC cartel laundering settlement<br/>2012"]:::institution
+    Fentanyl2020s["Fentanyl precursor corridor<br/>China / Mexico / U.S."]:::event
+  end
+  E7 --> Patent1951 --> BlackBudget --> InQTel1999
+  InQTel1999 --> IQTGoogle
+  MDDS1993 --> IQTGoogle
+  LifeLog2004 -. same day .-> Facebook2004
+  InQTel1999 --> Palantir
+  E7 --> Purdue1996 --> Fentanyl2020s
+  E7 --> HSBC2012
+
+  subgraph Vectors["Tangential Vectors for Neo4j Relationship Seeding"]
+    VCorp["corporate sovereignty<br/>corpus / personhood / charter"]:::vector
+    VFinance["finance as invisible governance<br/>banks / debt / clearing"]:::vector
+    VOccult["occultation of inner sciences<br/>studiolo / lodge / psyop"]:::vector
+    VDrug["drug corridor as statecraft<br/>opium / prohibition / fentanyl"]:::vector
+    VEducation["educational initiation<br/>Oxford / scholarships / elite reproduction"]:::vector
+    VMedia["media and spectacle<br/>Times / Observer / Hollywood / propaganda"]:::vector
+    VBlackmail["sexual blackmail / compromat<br/>documented, alleged, and ambiguous cases"]:::vector
+    VTech["technological occultation<br/>secrecy orders / SAPs / venture capital"]:::vector
+    VIdentity["identity fabrication<br/>nationalism / race / transhumanism"]:::vector
+  end
+
+  MediciBank --> VFinance
+  VOC1602 --> VCorp
+  Banda1621 --> VCorp
+  OpiumWars --> VDrug
+  Hermeticum --> VOccult
+  SPRSeed --> VOccult
+  Confession1877 --> VEducation
+  RoundTable1909 --> VEducation
+  Chatham1920 --> VFinance
+  CFR1921 --> VMedia
+  MKUltra1953 --> VOccult
+  MidnightClimax --> VBlackmail
+  Epstein --> VBlackmail
+  Patent1951 --> VTech
+  InQTel1999 --> VTech
+  Volkisch --> VIdentity
+  Purdue1996 --> VDrug
+  HSBC2012 --> VFinance
+
+  %% Suggested Neo4j relationship labels:
+  %% PRECEDES, ENABLES, FUNDS, CHARTERS, TRANSLATES, MARRIES_INTO, MODELS,
+  %% OCCULTS, INSTANTIATES, ECHOES, PROTECTS, SUPPRESSES, LAUNDERS,
+  %% TRAFFICS, INVESTIGATED_BY, DOCUMENTED_IN, ALLEGED_IN, CONTESTED_BY.

@@ -117,6 +117,86 @@ describe("createStaticBundleTransport", () => {
     expect(view.nodes[0].node.graphNodeId).toBe("node-banda");
   });
 
+  it("scopes layouts by canvas so reused constellation portals keep per-canvas placement", async () => {
+    const bundle = fixtureBundle();
+    bundle.nodes.push({
+      graphNodeId: "constellation-devil",
+      entityType: "Constellation",
+      title: "Devil Sixfold Spectral Lineage",
+      body: "[]",
+      summary: "Nested QL unit",
+      archetypalResonance: null,
+      coordinate: null,
+      sourceCoordinates: ["#0", "antichrist-vault/episodes/1/ql-units/unit-spectral-devils-chain.md"],
+      evidenceTags: ["ql_unit", "ql_positioned"],
+      sourceKind: "ql-unit",
+      isTemporal: false,
+      validFrom: null,
+      validTo: null,
+      temporalPrecision: null,
+      createdAt: "2026-06-28T12:00:00Z",
+      updatedAt: "2026-06-28T12:00:00Z"
+    });
+    bundle.nodeLayout.push(
+      {
+        graphNodeId: "constellation-devil",
+        canvasId: "c1",
+        positionX: 10,
+        positionY: 20,
+        width: 300,
+        height: 180,
+        style: {
+          __canvasNode: {
+            type: "portal",
+            title: "Devil Sixfold Spectral Lineage",
+            targetCanvasId: "22222222-2222-4222-8222-222222222222",
+            constellationKind: "ql-unit"
+          }
+        }
+      },
+      {
+        graphNodeId: "constellation-devil",
+        canvasId: "22222222-2222-4222-8222-222222222222",
+        positionX: 640,
+        positionY: 90,
+        width: 260,
+        height: 150,
+        style: {
+          __canvasNode: {
+            type: "portal",
+            title: "Nested Devil Lineage",
+            targetCanvasId: "33333333-3333-4333-8333-333333333333",
+            constellationKind: "ql-unit"
+          }
+        }
+      }
+    );
+
+    const transport = createStaticBundleTransport(bundle);
+    const root = await transport.loadCanvasView({ canvasId: "c1", lens: "canvas" });
+    const child = await transport.loadCanvasView({
+      canvasId: "22222222-2222-4222-8222-222222222222",
+      lens: "canvas"
+    });
+
+    const rootPortal = root.nodes.find((joined) => joined.node.graphNodeId === "constellation-devil");
+    expect(rootPortal?.layout.positionX).toBe(10);
+    expect(rootPortal?.layout.style.__canvasNode).toMatchObject({
+      title: "Devil Sixfold Spectral Lineage",
+      targetCanvasId: "22222222-2222-4222-8222-222222222222",
+      constellationKind: "ql-unit"
+    });
+
+    expect(child.nodes).toHaveLength(1);
+    expect(child.nodes[0].node.graphNodeId).toBe("constellation-devil");
+    expect(child.nodes[0].layout.positionX).toBe(640);
+    expect(child.nodes[0].layout.style.__canvasNode).toMatchObject({
+      title: "Nested Devil Lineage",
+      targetCanvasId: "33333333-3333-4333-8333-333333333333",
+      constellationKind: "ql-unit"
+    });
+  });
+
   it("archetypalLighting reads the precomputed lighting index", async () => {
     const transport = createStaticBundleTransport(fixtureBundle());
     const lighting = await transport.archetypalLighting({

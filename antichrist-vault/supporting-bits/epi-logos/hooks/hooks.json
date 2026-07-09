@@ -1,0 +1,18 @@
+{
+  "description": "Load QL/MEF cheat sheet into Claude context at every session start",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/load-cheat-sheet.sh",
+            "timeout": 10,
+            "statusMessage": "Loading Epi-Logos QL/MEF reference..."
+          }
+        ]
+      }
+    ]
+  }
+}

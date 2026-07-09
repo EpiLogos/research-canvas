@@ -28,20 +28,36 @@ fn seed_operators_is_idempotent_and_writes_operator_label() {
     assert_eq!(n2, 1);
 
     let (count, is_operator, not_theory): (i64, bool, bool) = support::block_on(async {
-        let mut rows = graph.execute_on(&database, query(
-            "MATCH (n {coordinate: $c}) \
+        let mut rows = graph
+            .execute_on(
+                &database,
+                query(
+                    "MATCH (n {coordinate: $c}) \
              RETURN count(n) AS c, any(l IN labels(n) WHERE l = 'Operator') AS isOp, \
                     none(l IN labels(n) WHERE l = 'TheoryNode') AS notTheory",
-        ).param("c", coord.clone())).await.expect("q");
+                )
+                .param("c", coord.clone()),
+            )
+            .await
+            .expect("q");
         let row = rows.next().await.expect("row").expect("some");
-        (row.get("c").unwrap(), row.get("isOp").unwrap(), row.get("notTheory").unwrap())
+        (
+            row.get("c").unwrap(),
+            row.get("isOp").unwrap(),
+            row.get("notTheory").unwrap(),
+        )
     });
     assert_eq!(count, 1, "exactly one operator node for the coordinate");
     assert!(is_operator, "carries :Operator");
     assert!(not_theory, "operators are NOT :TheoryNode");
 
     support::block_on(async {
-        graph.run_on(&database, query("MATCH (n {coordinate: $c}) DETACH DELETE n")
-            .param("c", coord)).await.expect("cleanup");
+        graph
+            .run_on(
+                &database,
+                query("MATCH (n {coordinate: $c}) DETACH DELETE n").param("c", coord),
+            )
+            .await
+            .expect("cleanup");
     });
 }

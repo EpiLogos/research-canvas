@@ -2,10 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export interface FileEntry {
+  absolutePath?: string;
   name: string;
   path: string;
   id?: string;
   kind?: string;
+  relativePath?: string;
 }
 
 interface FuzzyFilePickerProps {

@@ -104,7 +104,10 @@ impl CanvasService {
         // 2. Substance from Neo4j, batch-fetched for exactly the layout
         // rows' ids (best-effort — a lookup failure degrades to "no node
         // found", which synthesizes substance below rather than erroring).
-        let ids: Vec<String> = layout_rows.iter().map(|r| r.graph_node_id.clone()).collect();
+        let ids: Vec<String> = layout_rows
+            .iter()
+            .map(|r| r.graph_node_id.clone())
+            .collect();
         let mut nodes_by_id: std::collections::HashMap<String, GraphNode> =
             std::collections::HashMap::new();
         if let Ok(found) = self.graph.get_nodes(&ids).await {
@@ -154,7 +157,10 @@ impl CanvasService {
                 serde_json::from_str(&state.app_state_json)
                     .unwrap_or_else(|_| serde_json::json!({})),
             ),
-            None => (serde_json::json!({ "x": 0, "y": 0, "zoom": 1 }), serde_json::json!({})),
+            None => (
+                serde_json::json!({ "x": 0, "y": 0, "zoom": 1 }),
+                serde_json::json!({}),
+            ),
         };
 
         Ok(CanvasView {
@@ -188,9 +194,13 @@ struct StyleWithSidecar {
 /// Maps a `__canvasNode.type` to the Neo4j entity label a synced version of
 /// that node would carry, mirroring the frontend's `entityTypeForNodeType`
 /// (packages/canvas/src/state/canvasStore.ts): "resource" -> Source,
-/// everything else (note/group/portal) -> Work.
+/// "portal" -> Constellation, everything else (note/group) -> Work.
 fn entity_type_for_sidecar_type(node_type: &str) -> &'static str {
-    if node_type == "resource" { "Source" } else { "Work" }
+    match node_type {
+        "resource" => "Source",
+        "portal" => "Constellation",
+        _ => "Work",
+    }
 }
 
 /// Builds a GraphNode's substance from a layout row's `__canvasNode` sidecar
@@ -199,9 +209,10 @@ fn entity_type_for_sidecar_type(node_type: &str) -> &'static str {
 /// unreachable at creation time). Always `is_temporal: false` so a
 /// synthesized node is naturally excluded from the timeline lens.
 fn synthesize_node_from_layout(row: &NodeLayoutRecord) -> GraphNode {
-    let sidecar: Option<CanvasNodeSidecar> = serde_json::from_str::<StyleWithSidecar>(&row.style_json)
-        .ok()
-        .and_then(|s| s.canvas_node);
+    let sidecar: Option<CanvasNodeSidecar> =
+        serde_json::from_str::<StyleWithSidecar>(&row.style_json)
+            .ok()
+            .and_then(|s| s.canvas_node);
 
     let title = sidecar
         .as_ref()
@@ -224,6 +235,8 @@ fn synthesize_node_from_layout(row: &NodeLayoutRecord) -> GraphNode {
         archetypal_resonance: None,
         coordinate: None,
         source_coordinates: Vec::new(),
+        evidence_tags: Vec::new(),
+        source_kind: None,
         is_temporal: false,
         valid_from: None,
         valid_to: None,

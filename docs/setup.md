@@ -26,7 +26,7 @@ cp .env.example .env
 
 | Env var | Default | Used by |
 |---|---|---|
-| `NEO4J_URI` | `bolt://127.0.0.1:7687` | Rust app (`neo4rs`), Graphiti MCP |
+| `NEO4J_URI` | `bolt://127.0.0.1:17687` | Rust app (`neo4rs`), Graphiti MCP |
 | `NEO4J_USER` | `neo4j` | both |
 | `NEO4J_PASSWORD` | (required, set your own) | both |
 | `NEO4J_DATABASE` | `neo4j` | both |
@@ -45,7 +45,7 @@ The repo ships a single-service `docker-compose.yml` at its root:
 docker compose up -d neo4j
 ```
 
-This starts `neo4j:5.26-community` with APOC enabled, exposing the browser UI on `http://127.0.0.1:7474` and the bolt protocol on `127.0.0.1:7687`. Graphiti requires Neo4j 5.26+.
+This starts `neo4j:5.26-community` with APOC enabled, exposing the browser UI on `http://127.0.0.1:17474` and the bolt protocol on `127.0.0.1:17687`. Graphiti requires Neo4j 5.26+.
 
 ## 4. Run the desktop app
 

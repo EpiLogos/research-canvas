@@ -7,6 +7,17 @@ const DOT_PRESETS = ["#4a4aff","#9b59b6","#27ae60","#e67e22","#e74c3c","#1abc9c"
 const BG_PRESETS  = ["#0e0e22","#140a0a","#0a140a","#14100a","#0a0a14","#111111"];
 const TXT_PRESETS = ["#c0c0e0","#ffffff","#e74c3c","#f39c12","#7c6fff","#888888"];
 
+function parseTagInput(value: string): string[] {
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
 function ColourRow({
   label,
   presets,
@@ -105,6 +116,18 @@ export function InspectorTab() {
           }}
         />
       </div>
+      {node.type === "note" && (
+        <div className="inspector-field">
+          <label className="inspector-label" htmlFor="inspector-note-tags">Tags</label>
+          <input
+            id="inspector-note-tags"
+            className="inspector-value inspector-value--input"
+            type="text"
+            value={node.tags.join(", ")}
+            onChange={(event) => workspace.updateNodeTags(node.id, parseTagInput(event.target.value))}
+          />
+        </div>
+      )}
       {nodeInSequence && (
         <>
           <div className="inspector-section-title">Sequence</div>

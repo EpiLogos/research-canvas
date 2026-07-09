@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 const viteArgs = process.argv.slice(2);
 const TERMINAL_BRIDGE_HOST = "127.0.0.1";
@@ -6,6 +8,7 @@ const DEFAULT_TERMINAL_BRIDGE_PORT = 4789;
 const TERMINAL_BRIDGE_PORT = resolveTerminalBridgePort(process.env);
 const TERMINAL_BRIDGE_BASE_URL = `http://${TERMINAL_BRIDGE_HOST}:${TERMINAL_BRIDGE_PORT}/`;
 const sharedEnv = {
+  ...loadDotEnv(process.cwd()),
   ...process.env,
   RESEARCH_CANVAS_TERMINAL_BRIDGE_PORT: String(TERMINAL_BRIDGE_PORT),
   VITE_RESEARCH_CANVAS_TERMINAL_BRIDGE_PORT:
@@ -87,6 +90,46 @@ function resolveTerminalBridgePort(env) {
   }
 
   return port;
+}
+
+function loadDotEnv(startDir) {
+  const file = findUp(startDir, ".env");
+  if (!file) {
+    return {};
+  }
+
+  const env = {};
+  for (const rawLine of readFileSync(file, "utf8").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+    const equalsAt = line.indexOf("=");
+    if (equalsAt === -1) {
+      continue;
+    }
+    const key = line.slice(0, equalsAt).trim();
+    const value = line.slice(equalsAt + 1).trim().replace(/^['"]|['"]$/g, "");
+    if (key) {
+      env[key] = value;
+    }
+  }
+  return env;
+}
+
+function findUp(startDir, fileName) {
+  let current = startDir;
+  while (true) {
+    const candidate = join(current, fileName);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+    const parent = dirname(current);
+    if (parent === current) {
+      return null;
+    }
+    current = parent;
+  }
 }
 
 async function hasRunningTerminalBridge(baseUrl) {

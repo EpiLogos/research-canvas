@@ -20,6 +20,7 @@ export type {
   LitInstance,
   NewGraphNodeInput,
   NodeLayout,
+  TimelineNodeRecord,
 } from "./graph";
 import type {
   ArchetypalLighting,
@@ -192,6 +193,7 @@ export function nodeLayoutFromCanvasNode(node: CanvasNode): NodeLayout {
       type: "portal",
       title: node.title,
       targetCanvasId: node.targetCanvasId,
+      constellationKind: node.constellationKind,
     };
   } else {
     canvasNode = {
@@ -203,7 +205,7 @@ export function nodeLayoutFromCanvasNode(node: CanvasNode): NodeLayout {
   }
 
   return {
-    graphNodeId: node.id,
+    graphNodeId: node.graphNodeId ?? node.id,
     canvasId: node.canvasId,
     positionX: node.position.x,
     positionY: node.position.y,
@@ -214,6 +216,7 @@ export function nodeLayoutFromCanvasNode(node: CanvasNode): NodeLayout {
       bgColour: node.bgColour ?? undefined,
       textColour: node.textColour ?? undefined,
       thumbnail: node.thumbnail ?? undefined,
+      __timelineCard: node.timelineCard ?? undefined,
       __canvasNode: canvasNode,
     },
   };
@@ -1041,9 +1044,12 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
   const nodeById = new Map<string, GraphNode>(
     bundle.nodes.map((node) => [node.graphNodeId, node])
   );
-  const layoutById = new Map<string, NodeLayout>(
-    bundle.nodeLayout.map((layout) => [layout.graphNodeId, layout])
-  );
+  const layoutsByCanvas = new Map<string, NodeLayout[]>();
+  for (const layout of bundle.nodeLayout) {
+    const layouts = layoutsByCanvas.get(layout.canvasId) ?? [];
+    layouts.push(layout);
+    layoutsByCanvas.set(layout.canvasId, layouts);
+  }
 
   const readOnlyReject = () => Promise.reject(new Error(READ_ONLY_MESSAGE));
   const readOnlyThrow = (): never => {
@@ -1087,18 +1093,30 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
       return typeof limit === "number" ? hits.slice(0, limit) : hits;
     },
     async loadCanvasView({ canvasId, lens }) {
-      const visible =
+      const canvasLayouts = layoutsByCanvas.get(canvasId) ?? [];
+      const layoutById = new Map<string, NodeLayout>(
+        canvasLayouts.map((layout) => [layout.graphNodeId, layout])
+      );
+      const canvasNodeIds = new Set(canvasLayouts.map((layout) => layout.graphNodeId));
+      const visibleNodes =
         lens === "timeline"
           ? bundle.nodes.filter((node) => node.isTemporal)
           : bundle.nodes;
-      const joined: JoinedCanvasNode[] = visible.map((node) => ({
-        node,
-        layout: layoutById.get(node.graphNodeId) ?? defaultLayoutFor(node.graphNodeId, canvasId)
-      }));
+      const visible =
+        canvasId === bundle.canvasId
+          ? visibleNodes
+          : visibleNodes.filter((node) => canvasNodeIds.has(node.graphNodeId));
+      const joined: JoinedCanvasNode[] = visible.map((node) => {
+        const layout = layoutById.get(node.graphNodeId);
+        return {
+          node,
+          layout: layout ?? defaultLayoutFor(node.graphNodeId, canvasId)
+        };
+      });
       return {
         canvasId,
         nodes: joined,
-        edges: bundle.edgeLayout,
+        edges: bundle.edgeLayout.filter((edge) => edge.canvasId === canvasId),
         relationships: bundle.relationships,
         viewport: bundle.viewport,
         appState: bundle.appState

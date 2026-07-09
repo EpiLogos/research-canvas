@@ -47,6 +47,8 @@ describe("ProjectTree", () => {
     );
 
     expect(screen.getByRole("tree")).toBeVisible();
+    expect(screen.getByLabelText("Constellation tree")).toBeVisible();
+    expect(screen.getByText("Constellations")).toBeVisible();
     expect(screen.getByText("sample-project")).toBeVisible();
     expect(screen.getByText("ep-0.1")).toBeVisible();
     expect(screen.getByText("ep-0.2")).toBeVisible();

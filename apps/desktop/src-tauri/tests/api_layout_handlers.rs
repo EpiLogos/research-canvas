@@ -1,6 +1,8 @@
 // apps/desktop/src-tauri/tests/api_layout_handlers.rs
 use research_canvas_desktop_lib::api::handlers::{batch_place, upsert_node_layout};
-use research_canvas_desktop_lib::api::types::{BatchPlaceItem, BatchPlaceRequest, PlaceNodeRequest};
+use research_canvas_desktop_lib::api::types::{
+    BatchPlaceItem, BatchPlaceRequest, PlaceNodeRequest,
+};
 use research_canvas_desktop_lib::db::connection::Database;
 use research_canvas_desktop_lib::db::repositories::{
     agent_activity::AgentActivityRepository, layout::LayoutRepository, ProjectRepository,
@@ -59,7 +61,9 @@ fn placing_via_handler_persists_layout_and_records_activity() {
     let conn = db.connection();
 
     // Layout row written (WS2's behaviour, re-asserted here as a guard).
-    let rows = LayoutRepository::new(conn).list_node_layout(&canvas_id).unwrap();
+    let rows = LayoutRepository::new(conn)
+        .list_node_layout(&canvas_id)
+        .unwrap();
     let found = rows.iter().find(|r| r.graph_node_id == "gn-1").unwrap();
     assert_eq!(found.position_x, 42.0);
     assert_eq!(found.position_y, 7.0);
@@ -119,8 +123,20 @@ fn batch_place_via_handler_records_activity_per_placement() {
     let resp = batch_place(
         BatchPlaceRequest {
             placements: vec![
-                BatchPlaceItem { graph_node_id: "gn-b1".into(), x: 1.0, y: 1.0, width: None, height: None },
-                BatchPlaceItem { graph_node_id: "gn-b2".into(), x: 2.0, y: 2.0, width: None, height: None },
+                BatchPlaceItem {
+                    graph_node_id: "gn-b1".into(),
+                    x: 1.0,
+                    y: 1.0,
+                    width: None,
+                    height: None,
+                },
+                BatchPlaceItem {
+                    graph_node_id: "gn-b2".into(),
+                    x: 2.0,
+                    y: 2.0,
+                    width: None,
+                    height: None,
+                },
             ],
         },
         &state,
@@ -133,7 +149,9 @@ fn batch_place_via_handler_records_activity_per_placement() {
     let db = Database::open(&db_path).unwrap();
     let conn = db.connection();
 
-    let rows = LayoutRepository::new(conn).list_node_layout(&canvas_id).unwrap();
+    let rows = LayoutRepository::new(conn)
+        .list_node_layout(&canvas_id)
+        .unwrap();
     assert_eq!(rows.len(), 2);
 
     let activity = AgentActivityRepository::new(conn).list_recent(10).unwrap();

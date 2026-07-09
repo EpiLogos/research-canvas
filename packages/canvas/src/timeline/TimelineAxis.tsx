@@ -11,7 +11,7 @@ export function TimelineAxis({ ticks, height }: TimelineAxisProps): JSX.Element 
     <div
       className="timeline-axis"
       data-testid="timeline-axis"
-      style={{ position: "relative", height: `${height}px` }}
+      style={{ height: `${height}px` }}
     >
       {ticks.map((tick) => (
         <div

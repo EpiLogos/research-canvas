@@ -163,10 +163,13 @@ fn project_document_reports_working_root_and_attached_resource_roots() {
         .entries
         .iter()
         .any(|entry| entry.relative_path == "notes/outline.md"));
-    assert!(document
+    let pool_entry = document
         .entries
         .iter()
-        .all(|entry| !entry.absolute_path.ends_with("pool.md")));
+        .find(|entry| entry.relative_path == "resource-pool/pool.md")
+        .expect("attached resource-root file is included in project entries");
+    assert!(pool_entry.absolute_path.ends_with("pool.md"));
+    assert_eq!(pool_entry.kind, "markdown");
 }
 
 #[test]

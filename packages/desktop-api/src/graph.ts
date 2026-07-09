@@ -2,7 +2,7 @@
 
 export type EntityType =
   | "Figure" | "People" | "Event" | "Institution" | "Source"
-  | "Place" | "Work" | "Archetype" | "Dynamic" | "PsychoidOperator";
+  | "Place" | "Work" | "Archetype" | "Dynamic" | "Constellation" | "PsychoidOperator";
 
 /**
  * Entity types that can be passed to `createGraphNode`.
@@ -21,6 +21,8 @@ export interface GraphNode {
   archetypalResonance: string | null;
   coordinate: string | null;
   sourceCoordinates: string[];
+  evidenceTags?: string[];
+  sourceKind?: string | null;
   isTemporal: boolean;
   validFrom: string | null;
   validTo: string | null;
@@ -46,7 +48,13 @@ export type CanvasNodeSidecar =
   | { type: "note"; title: string; content: string; tags: string[] }
   | { type: "resource"; title: string; resourceKind: string; absolutePath: string; relativePath: string; mimeType: string; fileFingerprint: string }
   | { type: "group"; title: string; color: string; childNodeIds: string[] }
-  | { type: "portal"; title: string; targetCanvasId: string };
+  | { type: "portal"; title: string; targetCanvasId: string; constellationKind?: "standard" | "ql-unit" };
+
+export interface TimelineCardSidecar {
+  offsetY: number;
+  width?: number;
+  height?: number;
+}
 
 export interface NodeLayout {
   graphNodeId: string;
@@ -59,6 +67,8 @@ export interface NodeLayout {
     dotColour?: string; bgColour?: string; textColour?: string; thumbnail?: string;
     /** Reserved key for canvas-presentation sidecar (WS4a Fix 1). Opaque to Rust — stored in style_json TEXT. */
     __canvasNode?: CanvasNodeSidecar;
+    /** Timeline-only card presentation; does not move/resize the canvas node. */
+    __timelineCard?: TimelineCardSidecar;
   };
 }
 
@@ -74,6 +84,11 @@ export interface EdgeLayout {
 }
 
 export interface JoinedCanvasNode {
+  node: GraphNode;
+  layout: NodeLayout;
+}
+
+export interface TimelineNodeRecord {
   node: GraphNode;
   layout: NodeLayout;
 }
@@ -113,6 +128,6 @@ export interface NewGraphNodeInput {
 export type GraphNodePatch = Partial<
   Pick<GraphNode,
     "title" | "body" | "summary" | "archetypalResonance" |
-    "coordinate" | "sourceCoordinates" | "isTemporal" |
+    "coordinate" | "sourceCoordinates" | "evidenceTags" | "sourceKind" | "isTemporal" |
     "validFrom" | "validTo" | "temporalPrecision">
 >;
