@@ -25,6 +25,8 @@ fn serialized_bundle_uses_camel_case_keys() {
             "archetypalResonance": null,
             "coordinate": null,
             "sourceCoordinates": [],
+            "evidenceTags": [],
+            "sourceKind": null,
             "isTemporal": true,
             "validFrom": "1621-01-01",
             "validTo": "1621-12-31",

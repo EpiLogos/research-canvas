@@ -3,7 +3,7 @@
  *
  * Pure mapper: CanvasView (from loadCanvasView) → { nodes: CanvasNode[]; edges: CanvasEdge[] }
  * Used in CanvasWorkspaceContext to hydrate the canvas store from Neo4j-joined data
- * instead of from the legacy loadProjectDocument nodes/edges fields.
+ * instead of from the legacy loadConstellationDocument nodes/edges fields.
  */
 
 import { nodeSchema, edgeSchema } from "@research-canvas/schema";

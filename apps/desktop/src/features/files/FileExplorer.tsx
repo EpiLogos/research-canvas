@@ -5,24 +5,24 @@ import {
 
 interface FileExplorerProps {
   entries: IndexedEntry[];
-  projectName: string;
+  constellationName: string;
   selectedEntryId: string;
   onSelectEntry: (entry: IndexedEntry) => void;
 }
 
 export function FileExplorer({
   entries,
-  projectName,
+  constellationName,
   selectedEntryId,
   onSelectEntry
 }: FileExplorerProps) {
   const tree = buildIndexedEntryTree(entries);
 
   return (
-    <section className="tree-section" aria-label="Project files">
+    <section className="tree-section" aria-label="Constellation files">
       <div className="tree-section__heading">
         <p className="eyebrow">Files</p>
-        <h2>{projectName}</h2>
+        <h2>{constellationName}</h2>
       </div>
       <ul className="tree" role="tree">
         {tree.map((entry) => (

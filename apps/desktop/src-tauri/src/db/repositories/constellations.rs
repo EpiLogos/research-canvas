@@ -7,11 +7,11 @@ use super::canvas::CanvasRepository;
 use crate::db::transaction::TransactionGuard;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Project {
+pub struct Constellation {
     pub id: String,
     pub display_name: String,
     pub slug: String,
-    pub parent_project_id: Option<String>,
+    pub parent_constellation_id: Option<String>,
     pub root_path: String,
     pub primary_canvas_id: Option<String>,
     pub summary: Option<String>,
@@ -21,11 +21,11 @@ pub struct Project {
     pub updated_at: String,
 }
 
-pub struct ProjectRepository<'conn> {
+pub struct ConstellationRepository<'conn> {
     connection: &'conn Connection,
 }
 
-impl<'conn> ProjectRepository<'conn> {
+impl<'conn> ConstellationRepository<'conn> {
     pub fn new(connection: &'conn Connection) -> Self {
         Self { connection }
     }
@@ -34,14 +34,14 @@ impl<'conn> ProjectRepository<'conn> {
         &self,
         display_name: String,
         slug: String,
-        parent_project_id: Option<String>,
+        parent_constellation_id: Option<String>,
         root_path: String,
         summary: Option<String>,
         cover_asset: Option<String>,
         publish_settings: Value,
-    ) -> Result<Project> {
-        let project_id = Uuid::new_v4().to_string();
-        let project_timestamp = current_timestamp();
+    ) -> Result<Constellation> {
+        let constellation_id = Uuid::new_v4().to_string();
+        let constellation_timestamp = current_timestamp();
         let transaction = TransactionGuard::begin(self.connection)?;
 
         self.connection.execute(
@@ -59,21 +59,21 @@ impl<'conn> ProjectRepository<'conn> {
                 updated_at
             ) VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8, ?9, ?9)",
             params![
-                project_id,
+                constellation_id,
                 display_name,
                 slug,
-                parent_project_id.as_deref(),
+                parent_constellation_id.as_deref(),
                 root_path,
                 summary.as_deref(),
                 cover_asset.as_deref(),
                 publish_settings.to_string(),
-                project_timestamp,
+                constellation_timestamp,
             ],
         )?;
 
         let canvas_repository = CanvasRepository::new(self.connection);
-        let primary_canvas = canvas_repository.create_for_project(
-            &project_id,
+        let primary_canvas = canvas_repository.create_for_constellation(
+            &constellation_id,
             "Primary canvas",
             "primary",
             None,
@@ -85,16 +85,16 @@ impl<'conn> ProjectRepository<'conn> {
              SET primary_canvas_id = ?1,
                  updated_at = ?2
              WHERE id = ?3",
-            params![primary_canvas.id, current_timestamp(), project_id],
+            params![primary_canvas.id, current_timestamp(), constellation_id],
         )?;
 
         transaction.commit()?;
 
-        self.get_by_id(&project_id)?
+        self.get_by_id(&constellation_id)?
             .ok_or(rusqlite::Error::QueryReturnedNoRows)
     }
 
-    pub fn get_by_id(&self, project_id: &str) -> Result<Option<Project>> {
+    pub fn get_by_id(&self, constellation_id: &str) -> Result<Option<Constellation>> {
         self.connection
             .query_row(
                 "SELECT
@@ -111,13 +111,13 @@ impl<'conn> ProjectRepository<'conn> {
                     updated_at
                  FROM projects
                  WHERE id = ?1",
-                [project_id],
-                project_from_row,
+                [constellation_id],
+                constellation_from_row,
             )
             .optional()
     }
 
-    pub fn list_children(&self, parent_project_id: &str) -> Result<Vec<Project>> {
+    pub fn list_children(&self, parent_constellation_id: &str) -> Result<Vec<Constellation>> {
         let mut statement = self.connection.prepare(
             "SELECT
                 id,
@@ -135,11 +135,11 @@ impl<'conn> ProjectRepository<'conn> {
              WHERE parent_project_id = ?1
              ORDER BY display_name COLLATE NOCASE ASC, created_at ASC",
         )?;
-        let rows = statement.query_map([parent_project_id], project_from_row)?;
+        let rows = statement.query_map([parent_constellation_id], constellation_from_row)?;
         rows.collect()
     }
 
-    pub fn list_descendants(&self, project_id: &str) -> Result<Vec<Project>> {
+    pub fn list_descendants(&self, constellation_id: &str) -> Result<Vec<Constellation>> {
         let mut statement = self.connection.prepare(
             "WITH RECURSIVE descendants AS (
                 SELECT
@@ -187,35 +187,39 @@ impl<'conn> ProjectRepository<'conn> {
             FROM descendants
             ORDER BY display_name COLLATE NOCASE ASC, created_at ASC",
         )?;
-        let rows = statement.query_map([project_id], project_from_row)?;
+        let rows = statement.query_map([constellation_id], constellation_from_row)?;
         rows.collect()
     }
 
-    pub fn update_summary(&self, project_id: &str, summary: Option<String>) -> Result<Project> {
+    pub fn update_summary(
+        &self,
+        constellation_id: &str,
+        summary: Option<String>,
+    ) -> Result<Constellation> {
         self.connection.execute(
             "UPDATE projects
              SET summary = ?1,
                  updated_at = ?2
              WHERE id = ?3",
-            params![summary.as_deref(), current_timestamp(), project_id],
+            params![summary.as_deref(), current_timestamp(), constellation_id],
         )?;
-        self.get_by_id(project_id)?
+        self.get_by_id(constellation_id)?
             .ok_or(rusqlite::Error::QueryReturnedNoRows)
     }
 
-    pub fn delete_by_id(&self, project_id: &str) -> Result<()> {
+    pub fn delete_by_id(&self, constellation_id: &str) -> Result<()> {
         self.connection
-            .execute("DELETE FROM projects WHERE id = ?1", [project_id])?;
+            .execute("DELETE FROM projects WHERE id = ?1", [constellation_id])?;
         Ok(())
     }
 }
 
-fn project_from_row(row: &rusqlite::Row<'_>) -> Result<Project> {
-    Ok(Project {
+fn constellation_from_row(row: &rusqlite::Row<'_>) -> Result<Constellation> {
+    Ok(Constellation {
         id: row.get(0)?,
         display_name: row.get(1)?,
         slug: row.get(2)?,
-        parent_project_id: row.get(3)?,
+        parent_constellation_id: row.get(3)?,
         root_path: row.get(4)?,
         primary_canvas_id: row.get(5)?,
         summary: row.get(6)?,

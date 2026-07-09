@@ -14,7 +14,7 @@ interface IconStripProps {
 const NAV_ICONS: { id: string; label: string; svg: string }[] = [
   {
     id: "files",
-    label: "Files & Project",
+    label: "Files & Constellation",
     svg: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h5l1.5 2H14v8H2z"/></svg>`,
   },
   {

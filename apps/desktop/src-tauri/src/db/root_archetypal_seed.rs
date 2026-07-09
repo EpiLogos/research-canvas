@@ -5,13 +5,21 @@ use crate::db::repositories::{
     canvas::CanvasRepository,
     graph::{GraphRepository, SeedGraphNode},
     layout::{LayoutRepository, NodeLayoutRecord},
-    ProjectRepository,
+    ConstellationRepository,
 };
 
 #[derive(Debug, Clone)]
+pub struct RootArchetypalConstellationReport {
+    pub constellation_id: String,
+    pub constellation_slug: String,
+    pub canvas_id: String,
+    pub layouts_written: usize,
+}
+
+#[derive(Debug, Clone)]
 pub struct RootArchetypalSeedReport {
-    pub project_id: String,
-    pub project_slug: String,
+    pub constellation_id: String,
+    pub constellation_slug: String,
     pub canvas_id: String,
     pub nodes_written: usize,
     pub relationships_written: usize,
@@ -54,9 +62,9 @@ struct ConstellationSeed {
     root_y: f64,
 }
 
-const PROJECT_SLUG: &str = "root-archetypal-field";
-const PROJECT_TITLE: &str = "Root Archetypal Field";
-const PROJECT_SUMMARY: &str = "A real ontology-backed canvas for the bounded QL units, archetypal images, animal quaternity, conceptual operations, historical forms, and claim provenance extracted from the Antichrist research vault.";
+const ROOT_CONSTELLATION_SLUG: &str = "root-archetypal-field";
+const ROOT_CONSTELLATION_TITLE: &str = "Root Archetypal Field";
+const ROOT_CONSTELLATION_SUMMARY: &str = "A real ontology-backed canvas for the bounded QL units, archetypal images, animal quaternity, conceptual operations, historical forms, and claim provenance extracted from the Antichrist research vault.";
 const RESONANCE_SOURCE: &str = "antichrist-vault/episodes/episode-1-2-archetypal-resonance.md";
 const SELF_IDENTITY_SOURCE: &str = "antichrist-vault/episodes/1/ql-units/self-identity.md";
 const ONTOLOGICAL_SOURCE: &str = "antichrist-vault/episodes/1/ql-units/unit-ontological.md";
@@ -85,10 +93,11 @@ pub async fn seed_root_archetypal_field(
     root_path: &str,
     namespace: &str,
 ) -> Result<RootArchetypalSeedReport, String> {
-    let (project_id, canvas_id) = ensure_project(connection, root_path)?;
-    let constellations = constellation_seeds();
-    let constellation_canvas_ids =
-        ensure_constellation_canvases(connection, &project_id, &constellations)?;
+    let layout_report = ensure_root_archetypal_constellation_layout(
+        connection,
+        root_path,
+        LayoutWriteMode::Upsert,
+    )?;
     let nodes = node_seeds();
     for seed in &nodes {
         graph_repo
@@ -110,25 +119,25 @@ pub async fn seed_root_archetypal_field(
             .await?;
     }
 
-    let layouts = layout_records(
-        namespace,
-        &canvas_id,
-        &nodes,
-        &constellations,
-        &constellation_canvas_ids,
-    );
-    let layouts_written = LayoutRepository::new(connection)
-        .upsert_node_layouts(&layouts)
-        .map_err(|e| e.to_string())?;
-
     Ok(RootArchetypalSeedReport {
-        project_id,
-        project_slug: PROJECT_SLUG.to_string(),
-        canvas_id,
+        constellation_id: layout_report.constellation_id,
+        constellation_slug: layout_report.constellation_slug,
+        canvas_id: layout_report.canvas_id,
         nodes_written: nodes.len(),
         relationships_written: relationships.len(),
-        layouts_written,
+        layouts_written: layout_report.layouts_written,
     })
+}
+
+pub fn ensure_root_archetypal_constellation_workspace(
+    connection: &Connection,
+    root_path: &str,
+) -> Result<RootArchetypalConstellationReport, String> {
+    ensure_root_archetypal_constellation_layout(
+        connection,
+        root_path,
+        LayoutWriteMode::PreserveExisting,
+    )
 }
 
 impl NodeSeed {
@@ -156,35 +165,73 @@ impl NodeSeed {
     }
 }
 
-fn ensure_project(connection: &Connection, root_path: &str) -> Result<(String, String), String> {
-    if let Some((project_id, canvas_id)) = connection
+#[derive(Debug, Clone, Copy)]
+enum LayoutWriteMode {
+    PreserveExisting,
+    Upsert,
+}
+
+fn ensure_root_archetypal_constellation_layout(
+    connection: &Connection,
+    root_path: &str,
+    layout_mode: LayoutWriteMode,
+) -> Result<RootArchetypalConstellationReport, String> {
+    let (constellation_id, canvas_id) = ensure_root_constellation(connection, root_path)?;
+    let constellations = constellation_seeds();
+    let constellation_canvas_ids =
+        ensure_constellation_canvases(connection, &constellation_id, &constellations)?;
+    let nodes = node_seeds();
+    let layouts = layout_records(
+        ROOT_CONSTELLATION_SLUG,
+        &canvas_id,
+        &nodes,
+        &constellations,
+        &constellation_canvas_ids,
+    );
+    let layouts_written = write_layout_records(connection, &layouts, layout_mode)?;
+
+    Ok(RootArchetypalConstellationReport {
+        constellation_id,
+        constellation_slug: ROOT_CONSTELLATION_SLUG.to_string(),
+        canvas_id,
+        layouts_written,
+    })
+}
+
+fn ensure_root_constellation(
+    connection: &Connection,
+    root_path: &str,
+) -> Result<(String, String), String> {
+    if let Some((constellation_id, canvas_id)) = connection
         .query_row(
             "SELECT id, primary_canvas_id FROM projects WHERE slug = ?1",
-            [PROJECT_SLUG],
+            [ROOT_CONSTELLATION_SLUG],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
         )
         .optional()
         .map_err(|e| e.to_string())?
-        .and_then(|(project_id, canvas_id)| canvas_id.map(|canvas_id| (project_id, canvas_id)))
+        .and_then(|(constellation_id, canvas_id)| {
+            canvas_id.map(|canvas_id| (constellation_id, canvas_id))
+        })
     {
-        return Ok((project_id, canvas_id));
+        return Ok((constellation_id, canvas_id));
     }
 
-    let project = ProjectRepository::new(connection)
+    let constellation = ConstellationRepository::new(connection)
         .create(
-            PROJECT_TITLE.to_string(),
-            PROJECT_SLUG.to_string(),
+            ROOT_CONSTELLATION_TITLE.to_string(),
+            ROOT_CONSTELLATION_SLUG.to_string(),
             None,
             root_path.to_string(),
-            Some(PROJECT_SUMMARY.to_string()),
+            Some(ROOT_CONSTELLATION_SUMMARY.to_string()),
             None,
             serde_json::json!({ "includeResources": true, "theme": "dark" }),
         )
         .map_err(|e| e.to_string())?;
-    let canvas_id = project
+    let canvas_id = constellation
         .primary_canvas_id
         .clone()
-        .ok_or_else(|| "root archetypal project missing primary canvas".to_string())?;
+        .ok_or_else(|| "root archetypal constellation missing primary canvas".to_string())?;
     connection
         .execute(
             "UPDATE canvases SET name = ?1, summary = ?2 WHERE id = ?3",
@@ -195,12 +242,12 @@ fn ensure_project(connection: &Connection, root_path: &str) -> Result<(String, S
             ],
         )
         .map_err(|e| e.to_string())?;
-    Ok((project.id, canvas_id))
+    Ok((constellation.id, canvas_id))
 }
 
 fn ensure_constellation_canvases(
     connection: &Connection,
-    project_id: &str,
+    constellation_id: &str,
     constellations: &[ConstellationSeed],
 ) -> Result<HashMap<&'static str, String>, String> {
     let canvas_repo = CanvasRepository::new(connection);
@@ -210,7 +257,7 @@ fn ensure_constellation_canvases(
         let existing = connection
             .query_row(
                 "SELECT id FROM canvases WHERE project_id = ?1 AND kind = ?2",
-                params![project_id, kind],
+                params![constellation_id, kind],
                 |row| row.get::<_, String>(0),
             )
             .optional()
@@ -228,8 +275,8 @@ fn ensure_constellation_canvases(
             }
             None => {
                 canvas_repo
-                    .create_for_project(
-                        project_id,
+                    .create_for_constellation(
+                        constellation_id,
                         seed.canvas_name,
                         &kind,
                         Some(seed.canvas_summary.to_string()),
@@ -242,6 +289,50 @@ fn ensure_constellation_canvases(
         out.insert(seed.slug, canvas_id);
     }
     Ok(out)
+}
+
+fn write_layout_records(
+    connection: &Connection,
+    records: &[NodeLayoutRecord],
+    mode: LayoutWriteMode,
+) -> Result<usize, String> {
+    match mode {
+        LayoutWriteMode::Upsert => LayoutRepository::new(connection)
+            .upsert_node_layouts(records)
+            .map_err(|e| e.to_string()),
+        LayoutWriteMode::PreserveExisting => {
+            let mut written = 0;
+            for record in records {
+                written += connection
+                    .execute(
+                        "INSERT OR IGNORE INTO node_layout (
+                            graph_node_id,
+                            canvas_id,
+                            position_x,
+                            position_y,
+                            width,
+                            height,
+                            style_json,
+                            created_at,
+                            updated_at
+                         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                        params![
+                            record.graph_node_id,
+                            record.canvas_id,
+                            record.position_x,
+                            record.position_y,
+                            record.width,
+                            record.height,
+                            record.style_json,
+                            record.created_at,
+                            record.updated_at,
+                        ],
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+            Ok(written)
+        }
+    }
 }
 
 fn constellation_canvas_kind(slug: &str) -> String {
@@ -3218,10 +3309,7 @@ mod tests {
             let node = node_by_slug
                 .get(slug)
                 .unwrap_or_else(|| panic!("{slug} historical node"));
-            assert!(
-                node.is_temporal,
-                "{slug} projects through the timeline lens"
-            );
+            assert!(node.is_temporal, "{slug} appears through the timeline lens");
             assert!(node.valid_from.is_some(), "{slug} has a timeline anchor",);
             assert!(
                 node.source_coordinates

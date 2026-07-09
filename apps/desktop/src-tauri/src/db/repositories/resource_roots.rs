@@ -6,7 +6,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResourceRootRecord {
     pub id: String,
-    pub project_id: String,
+    pub constellation_id: String,
     pub root_path: String,
     pub display_name: String,
     pub created_at: String,
@@ -24,7 +24,7 @@ impl<'conn> ResourceRootRepository<'conn> {
 
     pub fn attach(
         &self,
-        project_id: &str,
+        constellation_id: &str,
         root_path: impl AsRef<Path>,
         display_name: Option<String>,
     ) -> Result<ResourceRootRecord> {
@@ -47,28 +47,31 @@ impl<'conn> ResourceRootRepository<'conn> {
                 updated_at = excluded.updated_at",
             params![
                 id,
-                project_id,
+                constellation_id,
                 root_path.to_string_lossy().to_string(),
                 display_name,
                 now,
             ],
         )?;
 
-        self.get_by_project_and_root_path(project_id, &root_path)?
+        self.get_by_constellation_and_root_path(constellation_id, &root_path)?
             .ok_or(rusqlite::Error::QueryReturnedNoRows)
     }
 
-    pub fn detach(&self, project_id: &str, root_path: impl AsRef<Path>) -> Result<()> {
+    pub fn detach(&self, constellation_id: &str, root_path: impl AsRef<Path>) -> Result<()> {
         let root_path = canonical_root_path(root_path.as_ref())?;
         self.connection.execute(
             "DELETE FROM project_resource_roots
              WHERE project_id = ?1 AND root_path = ?2",
-            params![project_id, root_path.to_string_lossy().to_string()],
+            params![constellation_id, root_path.to_string_lossy().to_string()],
         )?;
         Ok(())
     }
 
-    pub fn list_for_project(&self, project_id: &str) -> Result<Vec<ResourceRootRecord>> {
+    pub fn list_for_constellation(
+        &self,
+        constellation_id: &str,
+    ) -> Result<Vec<ResourceRootRecord>> {
         let mut statement = self.connection.prepare(
             "SELECT
                 id,
@@ -81,13 +84,13 @@ impl<'conn> ResourceRootRepository<'conn> {
              WHERE project_id = ?1
              ORDER BY created_at ASC, display_name COLLATE NOCASE ASC",
         )?;
-        let rows = statement.query_map([project_id], resource_root_from_row)?;
+        let rows = statement.query_map([constellation_id], resource_root_from_row)?;
         rows.collect()
     }
 
-    pub fn get_by_project_and_root_path(
+    pub fn get_by_constellation_and_root_path(
         &self,
-        project_id: &str,
+        constellation_id: &str,
         root_path: impl AsRef<Path>,
     ) -> Result<Option<ResourceRootRecord>> {
         let root_path = canonical_root_path(root_path.as_ref())?;
@@ -102,7 +105,7 @@ impl<'conn> ResourceRootRepository<'conn> {
                     updated_at
                  FROM project_resource_roots
                  WHERE project_id = ?1 AND root_path = ?2",
-                params![project_id, root_path.to_string_lossy().to_string()],
+                params![constellation_id, root_path.to_string_lossy().to_string()],
                 resource_root_from_row,
             )
             .optional()
@@ -126,9 +129,10 @@ fn display_name_for_root(path: &Path) -> String {
 }
 
 fn resource_root_from_row(row: &rusqlite::Row<'_>) -> Result<ResourceRootRecord> {
+    let constellation_id: String = row.get(1)?;
     Ok(ResourceRootRecord {
         id: row.get(0)?,
-        project_id: row.get(1)?,
+        constellation_id: constellation_id.clone(),
         root_path: row.get(2)?,
         display_name: row.get(3)?,
         created_at: row.get(4)?,

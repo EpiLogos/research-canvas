@@ -133,7 +133,7 @@ export function createSampleExportBundle(): ExportBundle {
       createdAt: "2026-03-30T22:00:00Z",
       displayName: "Sample Project",
       id: projectId,
-      parentProjectId: null,
+      parentConstellationId: null,
       primaryCanvasId: canvasId,
       publishSettings: {
         includeResources: true,

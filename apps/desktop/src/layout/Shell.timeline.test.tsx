@@ -2,7 +2,7 @@ import { describe, expect, test, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 // Stub the workspace context so the Shell mounts without a live backend.
-// The brief's baseline mock only supplies {selectNode, canvasId, activeProjectId};
+// The brief's baseline mock only supplies {selectNode, canvasId, activeConstellationId};
 // Shell's descendants (LeftOverlay, CanvasScreen, StatusStrip, FullScreenReader) read
 // additional workspace fields on every render, so those are filled in here with
 // empty/neutral defaults to let the Shell mount without a live backend.
@@ -16,11 +16,11 @@ vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
     updateNodeTimelineCard,
     updateNodeStyle: vi.fn(),
     canvasId: "c1",
-    activeProjectId: "p1",
-    activeProject: null,
+    activeConstellationId: "p1",
+    activeConstellation: null,
     isHydrated: false,
     errorMessage: null,
-    projects: [],
+    constellations: [],
     resourceRoots: [],
     entries: [],
     selectedEntryId: null,

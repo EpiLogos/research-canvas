@@ -8,7 +8,7 @@ use research_canvas_desktop_lib::db::{
     connection::Database,
     repositories::{
         graph::{GraphRepository, NewGraphNode},
-        ProjectRepository,
+        ConstellationRepository,
     },
 };
 use research_canvas_desktop_lib::export::graph_bundle::build_graph_bundle;
@@ -25,7 +25,7 @@ fn build_graph_bundle_populates_lighting_index_for_seeded_operator() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("t.db");
     let db = Database::open(&db_path).unwrap();
-    let project = ProjectRepository::new(db.connection())
+    let project = ConstellationRepository::new(db.connection())
         .create(
             "P".into(),
             "p".into(),

@@ -12,10 +12,11 @@ use crate::{
     db::{
         connection::Database,
         repositories::{
-            AnnotationRepository, CanvasGraphRepository, Project, ProjectRepository,
-            ResourceRootRecord, ResourceRootRepository, SavedSequenceRecord,
-            SavedSequenceRepository,
+            AnnotationRepository, CanvasGraphRepository, Constellation, ConstellationRepository,
+            EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord, ResourceRootRecord,
+            ResourceRootRepository, SavedSequenceRecord, SavedSequenceRepository,
         },
+        root_archetypal_seed::ensure_root_archetypal_constellation_workspace,
     },
     fs::indexer::{index_directory, IndexedEntry, IndexedEntryKind},
     SharedApiState,
@@ -24,21 +25,21 @@ use crate::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceBootstrap {
-    pub active_project_id: String,
+    pub active_constellation_id: String,
     pub database_path: String,
-    pub projects: Vec<ProjectTreeNodePayload>,
+    pub constellations: Vec<ConstellationTreeNodePayload>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ProjectTreeNodePayload {
+pub struct ConstellationTreeNodePayload {
     pub id: String,
     pub name: String,
     pub slug: String,
     pub root_path: String,
     pub summary: String,
     pub parent_id: Option<String>,
-    pub children: Vec<ProjectTreeNodePayload>,
+    pub children: Vec<ConstellationTreeNodePayload>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,11 +52,11 @@ pub struct PublishSettingsPayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WorkspaceProjectPayload {
+pub struct WorkspaceConstellationPayload {
     pub id: String,
     pub display_name: String,
     pub slug: String,
-    pub parent_project_id: Option<String>,
+    pub parent_constellation_id: Option<String>,
     pub root_path: String,
     pub primary_canvas_id: String,
     pub summary: String,
@@ -69,7 +70,7 @@ pub struct WorkspaceProjectPayload {
 #[serde(rename_all = "camelCase")]
 pub struct ResourceRootPayload {
     pub id: String,
-    pub project_id: String,
+    pub constellation_id: String,
     pub root_path: String,
     pub display_name: String,
     pub created_at: String,
@@ -206,13 +207,13 @@ pub struct AnnotationPayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ProjectDocumentPayload {
+pub struct ConstellationDocumentPayload {
     pub working_root: String,
     pub canvas_id: String,
     pub database_path: String,
     pub entries: Vec<IndexedEntryPayload>,
     pub resource_roots: Vec<ResourceRootPayload>,
-    pub project: WorkspaceProjectPayload,
+    pub constellation: WorkspaceConstellationPayload,
     pub annotations: Vec<AnnotationPayload>,
     pub edges: Vec<CanvasEdgePayload>,
     pub nodes: Vec<CanvasNodePayload>,
@@ -220,27 +221,27 @@ pub struct ProjectDocumentPayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ProjectDocumentRequest {
+pub struct ConstellationDocumentRequest {
     pub database_path: String,
-    pub project_id: String,
+    pub constellation_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PersistProjectDocumentRequest {
+pub struct PersistConstellationDocumentRequest {
     pub annotations: Vec<AnnotationPayload>,
     pub canvas_id: String,
     pub database_path: String,
     pub edges: Vec<CanvasEdgePayload>,
     pub nodes: Vec<CanvasNodePayload>,
-    pub project_id: String,
+    pub constellation_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceRootMutationRequest {
     pub database_path: String,
-    pub project_id: String,
+    pub constellation_id: String,
     pub root_path: String,
     pub display_name: Option<String>,
 }
@@ -249,10 +250,10 @@ pub struct ResourceRootMutationRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ResourceRootLookupRequest {
     pub database_path: String,
-    pub project_id: String,
+    pub constellation_id: String,
 }
 
-pub fn index_project_root(root: impl AsRef<Path>) -> std::io::Result<Vec<IndexedEntry>> {
+pub fn index_constellation_root(root: impl AsRef<Path>) -> std::io::Result<Vec<IndexedEntry>> {
     index_directory(root)
 }
 
@@ -265,44 +266,44 @@ pub fn bootstrap_workspace_command(
     {
         let mut api = api_state.lock().unwrap();
         api.db_path = Some(database_path.to_string_lossy().to_string());
-        api.active_project_id = Some(result.active_project_id.clone());
+        api.active_constellation_id = Some(result.active_constellation_id.clone());
     }
     Ok(result)
 }
 
 #[tauri::command]
-pub fn load_project_document_command(
-    request: ProjectDocumentRequest,
-) -> Result<ProjectDocumentPayload, String> {
-    load_project_document_at(&request.database_path, &request.project_id)
+pub fn load_constellation_document_command(
+    request: ConstellationDocumentRequest,
+) -> Result<ConstellationDocumentPayload, String> {
+    load_constellation_document_at(&request.database_path, &request.constellation_id)
 }
 
 #[tauri::command]
-pub fn persist_project_document_command(
-    request: PersistProjectDocumentRequest,
-) -> Result<ProjectDocumentPayload, String> {
-    persist_project_document_at(request)
+pub fn persist_constellation_document_command(
+    request: PersistConstellationDocumentRequest,
+) -> Result<ConstellationDocumentPayload, String> {
+    persist_constellation_document_at(request)
 }
 
 #[tauri::command]
-pub fn attach_project_resource_root_command(
+pub fn attach_constellation_resource_root_command(
     request: ResourceRootMutationRequest,
 ) -> Result<ResourceRootPayload, String> {
-    attach_project_resource_root_at(request)
+    attach_constellation_resource_root_at(request)
 }
 
 #[tauri::command]
-pub fn detach_project_resource_root_command(
+pub fn detach_constellation_resource_root_command(
     request: ResourceRootMutationRequest,
 ) -> Result<(), String> {
-    detach_project_resource_root_at(request)
+    detach_constellation_resource_root_at(request)
 }
 
 #[tauri::command]
-pub fn list_project_resource_roots_command(
+pub fn list_constellation_resource_roots_command(
     request: ResourceRootLookupRequest,
 ) -> Result<Vec<ResourceRootPayload>, String> {
-    list_project_resource_roots_at(request)
+    list_constellation_resource_roots_at(request)
 }
 
 pub fn bootstrap_workspace_at(
@@ -310,51 +311,82 @@ pub fn bootstrap_workspace_at(
 ) -> Result<WorkspaceBootstrap, String> {
     let database_path = database_path.as_ref().to_path_buf();
     let database = Database::open(&database_path).map_err(|error| error.to_string())?;
-    ensure_seeded_workspace(database.connection(), &workspace_root())?;
+    ensure_workspace_constellations(database.connection(), &workspace_root())?;
 
-    let projects = list_projects_flat(database.connection())?;
-    let active_project_id = projects
+    let constellations = list_constellations_flat(database.connection())?;
+    let active_constellation_id = constellations
         .iter()
-        .find(|project| project.parent_project_id.is_none())
-        .or_else(|| projects.first())
-        .map(|project| project.id.clone())
-        .ok_or_else(|| "workspace bootstrap found no projects".to_string())?;
+        .find(|constellation| constellation.slug == "root-archetypal-field")
+        .or_else(|| {
+            constellations
+                .iter()
+                .find(|constellation| constellation.parent_constellation_id.is_none())
+        })
+        .or_else(|| constellations.first())
+        .map(|constellation| constellation.id.clone())
+        .ok_or_else(|| "workspace bootstrap found no constellations".to_string())?;
 
     Ok(WorkspaceBootstrap {
-        active_project_id,
+        active_constellation_id,
         database_path: database_path.to_string_lossy().to_string(),
-        projects: projects.into_iter().map(project_tree_payload).collect(),
+        constellations: constellations
+            .into_iter()
+            .map(constellation_tree_payload)
+            .collect(),
     })
 }
 
-pub fn load_project_document_at(
+pub fn load_constellation_document_at(
     database_path: impl AsRef<Path>,
-    project_id: &str,
-) -> Result<ProjectDocumentPayload, String> {
+    constellation_id: &str,
+) -> Result<ConstellationDocumentPayload, String> {
     let database_path = database_path.as_ref().to_path_buf();
     let database = Database::open(&database_path).map_err(|error| error.to_string())?;
-    ensure_seeded_workspace(database.connection(), &workspace_root())?;
+    ensure_workspace_constellations(database.connection(), &workspace_root())?;
 
-    let project = load_project(database.connection(), project_id)?;
-    let canvas_id = project
-        .primary_canvas_id
-        .clone()
-        .ok_or_else(|| format!("project {} is missing a primary canvas", project.id))?;
+    let constellation = load_constellation(database.connection(), constellation_id)?;
+    let canvas_id = constellation.primary_canvas_id.clone().ok_or_else(|| {
+        format!(
+            "constellation {} is missing a primary canvas",
+            constellation.id
+        )
+    })?;
 
-    let resource_roots = list_project_resource_roots(database.connection(), &project.id)?;
-    let entries = index_project_entries(&project.root_path, &resource_roots)
+    let resource_roots =
+        list_constellation_resource_roots(database.connection(), &constellation.id)?;
+    let entries = index_constellation_entries(&constellation.root_path, &resource_roots)
         .map_err(|error| error.to_string())?;
     let graph = CanvasGraphRepository::new(database.connection());
     let snapshot = graph
         .load_canvas_snapshot(&canvas_id)
         .map_err(|error| error.to_string())?;
+    let layout_nodes = layout_node_payloads(database.connection(), &canvas_id)?;
+    let layout_edges = layout_edge_payloads(database.connection(), &canvas_id)?;
 
     let annotations = AnnotationRepository::new(database.connection())
         .list_for_canvas(&canvas_id)
         .map_err(|error| error.to_string())?;
+    let nodes = if snapshot.nodes.is_empty() {
+        layout_nodes
+    } else {
+        snapshot
+            .nodes
+            .into_iter()
+            .map(node_payload)
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    let edges = if snapshot.edges.is_empty() {
+        layout_edges
+    } else {
+        snapshot
+            .edges
+            .into_iter()
+            .map(edge_payload)
+            .collect::<Result<Vec<_>, _>>()?
+    };
 
-    Ok(ProjectDocumentPayload {
-        working_root: project.root_path.clone(),
+    Ok(ConstellationDocumentPayload {
+        working_root: constellation.root_path.clone(),
         canvas_id,
         database_path: database_path.to_string_lossy().to_string(),
         entries: entries.into_iter().map(indexed_entry_payload).collect(),
@@ -362,41 +394,33 @@ pub fn load_project_document_at(
             .into_iter()
             .map(resource_root_payload)
             .collect(),
-        project: project_payload(project)?,
+        constellation: constellation_payload(constellation)?,
         annotations: annotations
             .into_iter()
             .map(annotation_payload)
             .collect::<Result<Vec<_>, _>>()?,
-        edges: snapshot
-            .edges
-            .into_iter()
-            .map(edge_payload)
-            .collect::<Result<Vec<_>, _>>()?,
-        nodes: snapshot
-            .nodes
-            .into_iter()
-            .map(node_payload)
-            .collect::<Result<Vec<_>, _>>()?,
+        edges,
+        nodes,
     })
 }
 
-pub fn persist_project_document_at(
-    request: PersistProjectDocumentRequest,
-) -> Result<ProjectDocumentPayload, String> {
+pub fn persist_constellation_document_at(
+    request: PersistConstellationDocumentRequest,
+) -> Result<ConstellationDocumentPayload, String> {
     let database_path = PathBuf::from(&request.database_path);
     let mut database = Database::open(&database_path).map_err(|error| error.to_string())?;
-    ensure_seeded_workspace(database.connection(), &workspace_root())?;
+    ensure_workspace_constellations(database.connection(), &workspace_root())?;
 
     {
         let transaction = database
             .connection_mut()
             .transaction()
             .map_err(|error| error.to_string())?;
-        replace_project_document(&transaction, &request)?;
+        replace_constellation_document(&transaction, &request)?;
         transaction.commit().map_err(|error| error.to_string())?;
     }
 
-    load_project_document_at(database_path, &request.project_id)
+    load_constellation_document_at(database_path, &request.constellation_id)
 }
 
 fn workspace_root() -> PathBuf {
@@ -415,69 +439,25 @@ pub fn default_database_path(session_id: Option<&str>) -> PathBuf {
     env::temp_dir().join("research-canvas-authoring.sqlite")
 }
 
-fn ensure_seeded_workspace(connection: &Connection, root: &Path) -> Result<(), String> {
-    let project_count: i64 = connection
-        .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
-        .map_err(|error| error.to_string())?;
-    if project_count > 0 {
-        return Ok(());
-    }
-
-    let projects = ProjectRepository::new(connection);
-    let sample_project = projects
-        .create(
-            "sample-project".to_string(),
-            "sample-project".to_string(),
-            None,
-            root.join("tests/fixtures/sample-project")
-                .to_string_lossy()
-                .to_string(),
-            Some("Seed workspace for explorer and export flows.".to_string()),
-            None,
-            json!({
-                "includeResources": true,
-                "mobileSequenceFirst": true,
-                "theme": "paper"
-            }),
-        )
-        .map_err(|error| error.to_string())?;
-
-    projects
-        .create(
-            "ep-0.1".to_string(),
-            "ep-0-1".to_string(),
-            Some(sample_project.id.clone()),
-            root.join("episodes/ep-0.1").to_string_lossy().to_string(),
-            Some("Markdown-heavy nested project.".to_string()),
-            None,
-            json!({
-                "includeResources": true,
-                "mobileSequenceFirst": true,
-                "theme": "paper"
-            }),
-        )
-        .map_err(|error| error.to_string())?;
-
-    projects
-        .create(
-            "ep-0.2".to_string(),
-            "ep-0-2".to_string(),
-            Some(sample_project.id),
-            root.join("episodes/ep-0.2").to_string_lossy().to_string(),
-            Some("Research reports and media assets.".to_string()),
-            None,
-            json!({
-                "includeResources": true,
-                "mobileSequenceFirst": true,
-                "theme": "paper"
-            }),
-        )
-        .map_err(|error| error.to_string())?;
-
+fn ensure_workspace_constellations(connection: &Connection, root: &Path) -> Result<(), String> {
+    let constellation_root = root_constellation_source_path(root);
+    ensure_root_archetypal_constellation_workspace(
+        connection,
+        &constellation_root.to_string_lossy(),
+    )?;
     Ok(())
 }
 
-fn list_projects_flat(connection: &Connection) -> Result<Vec<Project>, String> {
+fn root_constellation_source_path(root: &Path) -> PathBuf {
+    let vault = root.join("antichrist-vault");
+    if vault.is_dir() {
+        vault
+    } else {
+        root.to_path_buf()
+    }
+}
+
+fn list_constellations_flat(connection: &Connection) -> Result<Vec<Constellation>, String> {
     let mut statement = connection
         .prepare(
             "SELECT
@@ -501,11 +481,11 @@ fn list_projects_flat(connection: &Connection) -> Result<Vec<Project>, String> {
         .map_err(|error| error.to_string())?;
     let rows = statement
         .query_map([], |row| {
-            Ok(Project {
+            Ok(Constellation {
                 id: row.get(0)?,
                 display_name: row.get(1)?,
                 slug: row.get(2)?,
-                parent_project_id: row.get(3)?,
+                parent_constellation_id: row.get(3)?,
                 root_path: row.get(4)?,
                 primary_canvas_id: row.get(5)?,
                 summary: row.get(6)?,
@@ -520,16 +500,19 @@ fn list_projects_flat(connection: &Connection) -> Result<Vec<Project>, String> {
         .map_err(|error| error.to_string())
 }
 
-fn load_project(connection: &Connection, project_id: &str) -> Result<Project, String> {
-    ProjectRepository::new(connection)
-        .get_by_id(project_id)
+fn load_constellation(
+    connection: &Connection,
+    constellation_id: &str,
+) -> Result<Constellation, String> {
+    ConstellationRepository::new(connection)
+        .get_by_id(constellation_id)
         .map_err(|error| error.to_string())?
-        .ok_or_else(|| format!("project {project_id} was not found"))
+        .ok_or_else(|| format!("constellation {constellation_id} was not found"))
 }
 
-fn replace_project_document(
+fn replace_constellation_document(
     connection: &Connection,
-    request: &PersistProjectDocumentRequest,
+    request: &PersistConstellationDocumentRequest,
 ) -> Result<(), String> {
     connection
         .execute(
@@ -719,26 +702,26 @@ fn replace_project_document(
     connection
         .execute(
             "UPDATE projects SET updated_at = ?1 WHERE id = ?2",
-            params![current_timestamp(), request.project_id],
+            params![current_timestamp(), request.constellation_id],
         )
         .map_err(|error| error.to_string())?;
 
     Ok(())
 }
 
-pub fn attach_project_resource_root_at(
+pub fn attach_constellation_resource_root_at(
     request: ResourceRootMutationRequest,
 ) -> Result<ResourceRootPayload, String> {
     let database =
         Database::open(PathBuf::from(&request.database_path)).map_err(|error| error.to_string())?;
-    ensure_seeded_workspace(database.connection(), &workspace_root())?;
+    ensure_workspace_constellations(database.connection(), &workspace_root())?;
 
-    let project = load_project(database.connection(), &request.project_id)?;
-    validate_resource_root_attachment(&project, &request.root_path)?;
+    let constellation = load_constellation(database.connection(), &request.constellation_id)?;
+    validate_resource_root_attachment(&constellation, &request.root_path)?;
 
     ResourceRootRepository::new(database.connection())
         .attach(
-            &project.id,
+            &constellation.id,
             PathBuf::from(&request.root_path),
             request.display_name,
         )
@@ -746,72 +729,76 @@ pub fn attach_project_resource_root_at(
         .map_err(|error| error.to_string())
 }
 
-pub fn detach_project_resource_root_at(request: ResourceRootMutationRequest) -> Result<(), String> {
+pub fn detach_constellation_resource_root_at(
+    request: ResourceRootMutationRequest,
+) -> Result<(), String> {
     let database =
         Database::open(PathBuf::from(&request.database_path)).map_err(|error| error.to_string())?;
-    ensure_seeded_workspace(database.connection(), &workspace_root())?;
+    ensure_workspace_constellations(database.connection(), &workspace_root())?;
 
-    let project = load_project(database.connection(), &request.project_id)?;
+    let constellation = load_constellation(database.connection(), &request.constellation_id)?;
     ResourceRootRepository::new(database.connection())
-        .detach(&project.id, PathBuf::from(&request.root_path))
+        .detach(&constellation.id, PathBuf::from(&request.root_path))
         .map_err(|error| error.to_string())
 }
 
-pub fn list_project_resource_roots_at(
+pub fn list_constellation_resource_roots_at(
     request: ResourceRootLookupRequest,
 ) -> Result<Vec<ResourceRootPayload>, String> {
     let database =
         Database::open(PathBuf::from(&request.database_path)).map_err(|error| error.to_string())?;
-    ensure_seeded_workspace(database.connection(), &workspace_root())?;
+    ensure_workspace_constellations(database.connection(), &workspace_root())?;
 
-    list_project_resource_roots(database.connection(), &request.project_id)
+    list_constellation_resource_roots(database.connection(), &request.constellation_id)
         .map(|roots| roots.into_iter().map(resource_root_payload).collect())
 }
 
-fn project_tree_payload(project: Project) -> ProjectTreeNodePayload {
-    ProjectTreeNodePayload {
-        id: project.id,
-        name: project.display_name,
-        slug: project.slug,
-        root_path: project.root_path,
-        summary: project.summary.unwrap_or_default(),
-        parent_id: project.parent_project_id,
+fn constellation_tree_payload(constellation: Constellation) -> ConstellationTreeNodePayload {
+    ConstellationTreeNodePayload {
+        id: constellation.id,
+        name: constellation.display_name,
+        slug: constellation.slug,
+        root_path: constellation.root_path,
+        summary: constellation.summary.unwrap_or_default(),
+        parent_id: constellation.parent_constellation_id,
         children: Vec::new(),
     }
 }
 
-fn project_payload(project: Project) -> Result<WorkspaceProjectPayload, String> {
-    Ok(WorkspaceProjectPayload {
-        id: project.id,
-        display_name: project.display_name,
-        slug: project.slug,
-        parent_project_id: project.parent_project_id,
-        root_path: project.root_path,
-        primary_canvas_id: project
+fn constellation_payload(
+    constellation: Constellation,
+) -> Result<WorkspaceConstellationPayload, String> {
+    Ok(WorkspaceConstellationPayload {
+        id: constellation.id,
+        display_name: constellation.display_name,
+        slug: constellation.slug,
+        parent_constellation_id: constellation.parent_constellation_id,
+        root_path: constellation.root_path,
+        primary_canvas_id: constellation
             .primary_canvas_id
-            .ok_or_else(|| "project missing primary canvas".to_string())?,
-        summary: project.summary.unwrap_or_default(),
-        cover_asset_path: project.cover_asset,
-        publish_settings: parse_publish_settings(&project.publish_settings),
-        created_at: project.created_at,
-        updated_at: project.updated_at,
+            .ok_or_else(|| "constellation missing primary canvas".to_string())?,
+        summary: constellation.summary.unwrap_or_default(),
+        cover_asset_path: constellation.cover_asset,
+        publish_settings: parse_publish_settings(&constellation.publish_settings),
+        created_at: constellation.created_at,
+        updated_at: constellation.updated_at,
     })
 }
 
-fn list_project_resource_roots(
+fn list_constellation_resource_roots(
     connection: &Connection,
-    project_id: &str,
+    constellation_id: &str,
 ) -> Result<Vec<ResourceRootRecord>, String> {
     ResourceRootRepository::new(connection)
-        .list_for_project(project_id)
+        .list_for_constellation(constellation_id)
         .map_err(|error| error.to_string())
 }
 
-fn index_project_entries(
-    project_root: &str,
+fn index_constellation_entries(
+    constellation_root: &str,
     resource_roots: &[ResourceRootRecord],
 ) -> std::io::Result<Vec<IndexedEntry>> {
-    let mut entries = index_project_root(project_root)?;
+    let mut entries = index_constellation_root(constellation_root)?;
 
     for root in resource_roots {
         let root_path = PathBuf::from(&root.root_path);
@@ -835,7 +822,7 @@ fn index_project_entries(
             size_bytes: 0,
         });
 
-        let mut nested = index_project_root(&root_path)?;
+        let mut nested = index_constellation_root(&root_path)?;
         for entry in &mut nested {
             entry.relative_path = format!("{root_name}/{}", entry.relative_path);
             entry.depth += 1;
@@ -847,15 +834,19 @@ fn index_project_entries(
     Ok(entries)
 }
 
-fn validate_resource_root_attachment(project: &Project, root_path: &str) -> Result<(), String> {
-    let project_root = Path::new(&project.root_path);
+fn validate_resource_root_attachment(
+    constellation: &Constellation,
+    root_path: &str,
+) -> Result<(), String> {
+    let constellation_root = Path::new(&constellation.root_path);
     let attachment_root = Path::new(root_path);
 
-    let project_root = fs::canonicalize(project_root).map_err(|error| error.to_string())?;
+    let constellation_root =
+        fs::canonicalize(constellation_root).map_err(|error| error.to_string())?;
     let attachment_root = fs::canonicalize(attachment_root).map_err(|error| error.to_string())?;
 
-    if project_root == attachment_root {
-        return Err("resource root must differ from the project working root".to_string());
+    if constellation_root == attachment_root {
+        return Err("resource root must differ from the constellation working root".to_string());
     }
 
     Ok(())
@@ -864,7 +855,7 @@ fn validate_resource_root_attachment(project: &Project, root_path: &str) -> Resu
 fn resource_root_payload(record: ResourceRootRecord) -> ResourceRootPayload {
     ResourceRootPayload {
         id: record.id,
-        project_id: record.project_id,
+        constellation_id: record.constellation_id,
         root_path: record.root_path,
         display_name: record.display_name,
         created_at: record.created_at,
@@ -922,6 +913,130 @@ fn indexed_entry_kind(entry: &IndexedEntry) -> String {
             _ => "binary".to_string(),
         },
     }
+}
+
+fn layout_node_payloads(
+    connection: &Connection,
+    canvas_id: &str,
+) -> Result<Vec<CanvasNodePayload>, String> {
+    LayoutRepository::new(connection)
+        .list_node_layout(canvas_id)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(layout_node_payload)
+        .collect()
+}
+
+fn layout_edge_payloads(
+    connection: &Connection,
+    canvas_id: &str,
+) -> Result<Vec<CanvasEdgePayload>, String> {
+    LayoutRepository::new(connection)
+        .list_edge_layout(canvas_id)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(layout_edge_payload)
+        .collect()
+}
+
+fn layout_node_payload(record: NodeLayoutRecord) -> Result<CanvasNodePayload, String> {
+    let style: Value = serde_json::from_str(&record.style_json).unwrap_or_else(|_| json!({}));
+    let sidecar = style.get("__canvasNode").unwrap_or(&Value::Null);
+    let node_type = sidecar_string(sidecar, "type").unwrap_or_else(|| "note".to_string());
+    let title = sidecar_string(sidecar, "title").unwrap_or_else(|| "Untitled".to_string());
+    let summary = sidecar_string(sidecar, "summary")
+        .or_else(|| sidecar_string(sidecar, "content"))
+        .unwrap_or_default();
+    let content = if node_type == "note" {
+        sidecar_string(sidecar, "content").or_else(|| Some(summary.clone()))
+    } else {
+        None
+    };
+
+    Ok(CanvasNodePayload {
+        id: record.graph_node_id,
+        canvas_id: record.canvas_id,
+        node_type: node_type.clone(),
+        title,
+        position: PositionPayload {
+            x: record.position_x,
+            y: record.position_y,
+        },
+        size: SizePayload {
+            width: record.width,
+            height: record.height,
+        },
+        summary,
+        content,
+        tags: sidecar_string_array(sidecar, "tags"),
+        resource_kind: sidecar_string(sidecar, "resourceKind"),
+        absolute_path: sidecar_string(sidecar, "absolutePath"),
+        relative_path: sidecar_string(sidecar, "relativePath"),
+        mime_type: sidecar_string(sidecar, "mimeType"),
+        file_fingerprint: sidecar_string(sidecar, "fileFingerprint"),
+        url: sidecar_string(sidecar, "url"),
+        color: sidecar_string(sidecar, "color"),
+        child_node_ids: sidecar_string_array(sidecar, "childNodeIds"),
+        target_canvas_id: sidecar_string(sidecar, "targetCanvasId"),
+        dot_colour: sidecar_string(&style, "dotColour"),
+        bg_colour: sidecar_string(&style, "bgColour"),
+        text_colour: sidecar_string(&style, "textColour"),
+        thumbnail: sidecar_string(&style, "thumbnail"),
+        sequence_caption: None,
+        sequence_viewport: None,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
+    })
+}
+
+fn layout_edge_payload(record: EdgeLayoutRecord) -> Result<CanvasEdgePayload, String> {
+    let style: Value = serde_json::from_str(&record.style_json).unwrap_or_else(|_| json!({}));
+    Ok(CanvasEdgePayload {
+        id: record.id,
+        canvas_id: record.canvas_id,
+        source_node_id: record.source_graph_node_id,
+        target_node_id: record.target_graph_node_id,
+        source_handle_id: record.source_handle_id,
+        target_handle_id: record.target_handle_id,
+        relation_kind: record.relation_kind.clone(),
+        directionality: "forward".to_string(),
+        label: record.relation_kind,
+        note: String::new(),
+        style: EdgeStylePayload {
+            stroke: sidecar_string(&style, "stroke").unwrap_or_else(|| "#888888".to_string()),
+            width: style.get("width").and_then(Value::as_f64).unwrap_or(1.0),
+            dashed: style
+                .get("dashed")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        },
+        sequencing: false,
+        sequence_priority: 0,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
+    })
+}
+
+fn sidecar_string(value: &Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .filter(|text| !text.is_empty())
+}
+
+fn sidecar_string_array(value: &Value, key: &str) -> Vec<String> {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn node_payload(
@@ -1112,7 +1227,7 @@ pub fn read_workspace_text_file_command(path: String) -> Result<String, String> 
 #[serde(rename_all = "camelCase")]
 pub struct SavedSequencePayload {
     pub id: String,
-    pub project_id: String,
+    pub constellation_id: String,
     pub canvas_id: String,
     pub name: String,
     pub root_node_id: Option<String>,
@@ -1125,7 +1240,7 @@ pub struct SavedSequencePayload {
 #[serde(rename_all = "camelCase")]
 pub struct CreateSavedSequenceRequest {
     pub database_path: String,
-    pub project_id: String,
+    pub constellation_id: String,
     pub canvas_id: String,
     pub name: String,
 }
@@ -1171,7 +1286,7 @@ pub fn create_saved_sequence_command(
 ) -> Result<SavedSequencePayload, String> {
     let db = Database::open(PathBuf::from(&request.database_path)).map_err(|e| e.to_string())?;
     let repo = SavedSequenceRepository::new(db.connection());
-    repo.create(&request.project_id, &request.canvas_id, &request.name)
+    repo.create(&request.constellation_id, &request.canvas_id, &request.name)
         .map(saved_sequence_payload)
         .map_err(|e| e.to_string())
 }
@@ -1202,7 +1317,7 @@ pub fn delete_saved_sequence_command(request: DeleteSavedSequenceRequest) -> Res
 fn saved_sequence_payload(record: SavedSequenceRecord) -> SavedSequencePayload {
     SavedSequencePayload {
         id: record.id,
-        project_id: record.project_id,
+        constellation_id: record.constellation_id,
         canvas_id: record.canvas_id,
         name: record.name,
         root_node_id: record.root_node_id,

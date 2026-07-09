@@ -44,7 +44,7 @@ function fixtureBundle(): GraphExportBundle {
       createdAt: "2026-06-28T12:00:00Z",
       displayName: "Antichrist",
       id: "11111111-1111-4111-8111-111111111111",
-      parentProjectId: null,
+      parentConstellationId: null,
       primaryCanvasId: "c1",
       publishSettings: {
         includeResources: true,

@@ -10,7 +10,7 @@ export const projectSchema = z.object({
   id: z.string().uuid(),
   displayName: z.string().min(1),
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/),
-  parentProjectId: z.string().uuid().nullable(),
+  parentConstellationId: z.string().uuid().nullable(),
   rootPath: z.string().min(1),
   primaryCanvasId: z.string().uuid(),
   summary: z.string().default(""),
@@ -22,4 +22,3 @@ export const projectSchema = z.object({
 
 export type PublishSettings = z.infer<typeof publishSettingsSchema>;
 export type Project = z.infer<typeof projectSchema>;
-

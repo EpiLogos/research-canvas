@@ -209,7 +209,7 @@ fn layout_record(payload: &LayoutPayload) -> NodeLayoutRecord {
 /// Resolve the SQLite database path: prefer an explicit `databasePath` from the
 /// request, otherwise fall back to the bootstrapped `SharedApiState.db_path`.
 /// This lets WS3/WS4/WS5/WS6 callers omit `databasePath` (the `#[serde(default)]`
-/// Option keeps deserialize from failing) and still hit the active project DB.
+/// Option keeps deserialize from failing) and still hit the active constellation DB.
 pub(crate) fn resolve_db_path(
     explicit: &Option<String>,
     api_state: &tauri::State<SharedApiState>,

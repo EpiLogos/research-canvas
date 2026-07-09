@@ -1,6 +1,6 @@
 use research_canvas_desktop_lib::db::{
     connection::Database,
-    repositories::{AnnotationRepository, ProjectRepository},
+    repositories::{AnnotationRepository, ConstellationRepository},
 };
 use tempfile::{tempdir, TempDir};
 
@@ -14,7 +14,7 @@ fn open_temp_database() -> (TempDir, Database) {
 #[test]
 fn persists_freehand_annotations_for_a_canvas() {
     let (_dir, database) = open_temp_database();
-    let projects = ProjectRepository::new(database.connection());
+    let projects = ConstellationRepository::new(database.connection());
     let project = projects
         .create(
             "Episode 0.2".to_string(),

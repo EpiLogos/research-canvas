@@ -1,6 +1,6 @@
 use research_canvas_desktop_lib::db::{
     connection::Database,
-    repositories::{CanvasRepository, ProjectRepository},
+    repositories::{CanvasRepository, ConstellationRepository},
 };
 use tempfile::{tempdir, TempDir};
 
@@ -12,12 +12,12 @@ fn open_temp_database() -> (TempDir, Database) {
 }
 
 #[test]
-fn project_repository_creates_projects_with_primary_canvases_and_reloads_them() {
+fn constellation_repository_creates_constellations_with_primary_canvases_and_reloads_them() {
     let (_dir, database) = open_temp_database();
-    let projects = ProjectRepository::new(database.connection());
+    let constellations = ConstellationRepository::new(database.connection());
     let canvases = CanvasRepository::new(database.connection());
 
-    let project = projects
+    let constellation = constellations
         .create(
             "Episode 0.2".to_string(),
             "episode-0-2".to_string(),
@@ -27,46 +27,49 @@ fn project_repository_creates_projects_with_primary_canvases_and_reloads_them() 
             None,
             serde_json::json!({"published": false}),
         )
-        .expect("create project");
+        .expect("create constellation");
 
-    assert!(!project.id.is_empty());
-    assert_eq!(project.display_name, "Episode 0.2");
-    assert_eq!(project.slug, "episode-0-2");
-    assert!(project.primary_canvas_id.is_some());
+    assert!(!constellation.id.is_empty());
+    assert_eq!(constellation.display_name, "Episode 0.2");
+    assert_eq!(constellation.slug, "episode-0-2");
+    assert!(constellation.primary_canvas_id.is_some());
 
-    let reloaded = projects
-        .get_by_id(&project.id)
-        .expect("project reload")
-        .expect("reloaded project");
-    assert_eq!(reloaded.id, project.id);
-    assert_eq!(reloaded.parent_project_id, None);
+    let reloaded = constellations
+        .get_by_id(&constellation.id)
+        .expect("constellation reload")
+        .expect("reloaded constellation");
+    assert_eq!(reloaded.id, constellation.id);
+    assert_eq!(reloaded.parent_constellation_id, None);
     assert_eq!(
         reloaded.summary.as_deref(),
         Some("A research-heavy episode")
     );
 
-    let primary_canvas_id = project.primary_canvas_id.as_ref().expect("primary canvas");
+    let primary_canvas_id = constellation
+        .primary_canvas_id
+        .as_ref()
+        .expect("primary canvas");
     let canvas = canvases
         .get_by_id(primary_canvas_id)
         .expect("canvas reload")
         .expect("reloaded canvas");
-    assert_eq!(canvas.project_id, project.id);
+    assert_eq!(canvas.constellation_id, constellation.id);
     assert!(canvas.is_primary);
     assert_eq!(canvas.name, "Primary canvas");
 
-    let canvases_for_project = canvases
-        .list_for_project(&project.id)
+    let canvases_for_constellation = canvases
+        .list_for_constellation(&constellation.id)
         .expect("list canvases");
-    assert_eq!(canvases_for_project.len(), 1);
-    assert_eq!(canvases_for_project[0].id, *primary_canvas_id);
+    assert_eq!(canvases_for_constellation.len(), 1);
+    assert_eq!(canvases_for_constellation[0].id, *primary_canvas_id);
 }
 
 #[test]
-fn project_repository_supports_nested_projects_with_recursive_lookup() {
+fn constellation_repository_supports_nested_constellations_with_recursive_lookup() {
     let (_dir, database) = open_temp_database();
-    let projects = ProjectRepository::new(database.connection());
+    let constellations = ConstellationRepository::new(database.connection());
 
-    let parent = projects
+    let parent = constellations
         .create(
             "Series".to_string(),
             "series".to_string(),
@@ -77,7 +80,7 @@ fn project_repository_supports_nested_projects_with_recursive_lookup() {
             serde_json::json!({}),
         )
         .expect("create parent");
-    let child = projects
+    let child = constellations
         .create(
             "Episode".to_string(),
             "episode".to_string(),
@@ -89,11 +92,13 @@ fn project_repository_supports_nested_projects_with_recursive_lookup() {
         )
         .expect("create child");
 
-    let children = projects.list_children(&parent.id).expect("list children");
+    let children = constellations
+        .list_children(&parent.id)
+        .expect("list children");
     assert_eq!(children.len(), 1);
     assert_eq!(children[0].id, child.id);
 
-    let descendants = projects
+    let descendants = constellations
         .list_descendants(&parent.id)
         .expect("list descendants");
     assert_eq!(descendants.len(), 1);
@@ -101,12 +106,12 @@ fn project_repository_supports_nested_projects_with_recursive_lookup() {
 }
 
 #[test]
-fn project_repository_updates_and_deletes_projects_and_canvases() {
+fn constellation_repository_updates_and_deletes_constellations_and_canvases() {
     let (_dir, database) = open_temp_database();
-    let projects = ProjectRepository::new(database.connection());
+    let constellations = ConstellationRepository::new(database.connection());
     let canvases = CanvasRepository::new(database.connection());
 
-    let project = projects
+    let constellation = constellations
         .create(
             "Field Notes".to_string(),
             "field-notes".to_string(),
@@ -116,16 +121,19 @@ fn project_repository_updates_and_deletes_projects_and_canvases() {
             None,
             serde_json::json!({}),
         )
-        .expect("create project");
+        .expect("create constellation");
 
-    let updated_project = projects
-        .update_summary(&project.id, Some("Updated summary".to_string()))
-        .expect("update project summary");
-    assert_eq!(updated_project.summary.as_deref(), Some("Updated summary"));
+    let updated_constellation = constellations
+        .update_summary(&constellation.id, Some("Updated summary".to_string()))
+        .expect("update constellation summary");
+    assert_eq!(
+        updated_constellation.summary.as_deref(),
+        Some("Updated summary")
+    );
 
     let extra_canvas = canvases
-        .create_for_project(
-            &project.id,
+        .create_for_constellation(
+            &constellation.id,
             "Appendix canvas",
             "focus",
             Some("Side research".to_string()),
@@ -133,10 +141,10 @@ fn project_repository_updates_and_deletes_projects_and_canvases() {
         )
         .expect("create extra canvas");
 
-    let canvases_for_project = canvases
-        .list_for_project(&project.id)
+    let canvases_for_constellation = canvases
+        .list_for_constellation(&constellation.id)
         .expect("list canvases");
-    assert_eq!(canvases_for_project.len(), 2);
+    assert_eq!(canvases_for_constellation.len(), 2);
 
     let updated_canvas = canvases
         .update_summary(&extra_canvas.id, Some("Updated canvas summary".to_string()))
@@ -154,13 +162,15 @@ fn project_repository_updates_and_deletes_projects_and_canvases() {
         .expect("reload canvas")
         .is_none());
 
-    projects.delete_by_id(&project.id).expect("delete project");
-    assert!(projects
-        .get_by_id(&project.id)
-        .expect("reload project")
+    constellations
+        .delete_by_id(&constellation.id)
+        .expect("delete constellation");
+    assert!(constellations
+        .get_by_id(&constellation.id)
+        .expect("reload constellation")
         .is_none());
     assert!(canvases
-        .list_for_project(&project.id)
-        .expect("list canvases after project delete")
+        .list_for_constellation(&constellation.id)
+        .expect("list canvases after constellation delete")
         .is_empty());
 }

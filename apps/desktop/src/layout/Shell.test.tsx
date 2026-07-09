@@ -145,7 +145,7 @@ function seededPortalNode(id: string, title: string, targetCanvasId: string): Ca
 // nodes/edges/annotations are reactive via useStore, exactly as in
 // production) and real selection state, wired through selectNode exactly
 // like CanvasWorkspaceProvider does. Only the transport-backed bootstrap
-// side (projects/files/resources) is stubbed, since it depends on Tauri
+// side (constellations/files/resources) is stubbed, since it depends on Tauri
 // IPC that isn't present in jsdom. This lets Shell-level tests exercise the
 // real node-selection path (CanvasView's onNodeClick -> workspace.selectNode)
 // without needing the full bootstrapping provider to hydrate over IPC.
@@ -185,11 +185,11 @@ function FakeWorkspaceProvider({
       isHydrated: true,
       errorMessage: null,
       canvasId: CANVAS_ID,
-      projectId: "11111111-1111-4111-8111-111111111111",
+      constellationId: "11111111-1111-4111-8111-111111111111",
       databasePath: null,
-      activeProject: null,
-      activeProjectId: null,
-      projects: [],
+      activeConstellation: null,
+      activeConstellationId: null,
+      constellations: [],
       entries: [],
       resourceRoots: [],
       workingRoot: null,
@@ -199,7 +199,7 @@ function FakeWorkspaceProvider({
       selectNode,
       selectEdge: setSelectedEdgeId,
       selectEntry: setSelectedEntryId,
-      selectProject: vi.fn(),
+      selectConstellation: vi.fn(),
       openCanvas,
       addEdge: vi.fn(),
       createNoteNode: vi.fn().mockResolvedValue(undefined),
@@ -212,7 +212,7 @@ function FakeWorkspaceProvider({
       attachResourceRoot: vi.fn().mockResolvedValue(undefined),
       detachResourceRoot: vi.fn().mockResolvedValue(undefined),
       listDirectories: vi.fn().mockResolvedValue([]),
-      searchProject: vi.fn().mockResolvedValue([]),
+      searchConstellation: vi.fn().mockResolvedValue([]),
       listSavedSequences: vi.fn().mockResolvedValue([]),
       createSavedSequence: vi.fn(),
       updateSavedSequence: vi.fn(),
@@ -396,7 +396,7 @@ describe("Shell frame", () => {
 
     // Clicking the Files rail verb must always show the Files view — never
     // leave the browser stranded on the Annotations panel.
-    fireEvent.click(screen.getByRole("button", { name: "Files & Project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Files & Constellation" }));
     expect(screen.getByTestId("left-overlay")).toBeVisible();
     expect(screen.getByTestId("browser-files")).toBeInTheDocument();
   });
@@ -419,21 +419,21 @@ describe("Shell frame", () => {
 
   it("re-clicking the active rail verb toggles the browser closed", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Files & Project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Files & Constellation" }));
     expect(screen.getByTestId("left-overlay")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Files & Project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Files & Constellation" }));
     expect(screen.getByTestId("left-overlay")).toHaveAttribute("data-open", "false");
   });
 
   it("collapses the sidebar without losing its local browser filter", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Files & Project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Files & Constellation" }));
     fireEvent.change(screen.getByTestId("browser-filter"), { target: { value: "prometheus" } });
     fireEvent.click(screen.getByRole("button", { name: "Close panel" }));
 
     expect(screen.getByTestId("left-overlay")).toHaveAttribute("data-open", "false");
 
-    fireEvent.click(screen.getByRole("button", { name: "Files & Project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Files & Constellation" }));
     expect(screen.getByTestId("browser-filter")).toHaveValue("prometheus");
   });
 

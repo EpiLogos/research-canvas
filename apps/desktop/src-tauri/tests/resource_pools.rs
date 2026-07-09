@@ -2,19 +2,19 @@ use std::{fs, path::PathBuf};
 
 use research_canvas_desktop_lib::{
     commands::{
-        projects::{
-            attach_project_resource_root_at, detach_project_resource_root_at,
-            list_project_resource_roots_at, load_project_document_at, ResourceRootLookupRequest,
-            ResourceRootMutationRequest,
+        constellations::{
+            attach_constellation_resource_root_at, detach_constellation_resource_root_at,
+            list_constellation_resource_roots_at, load_constellation_document_at,
+            ResourceRootLookupRequest, ResourceRootMutationRequest,
         },
         search::{
-            rebuild_project_search_index_command, search_project_command,
-            RebuildProjectSearchIndexRequest, SearchProjectRequest,
+            rebuild_constellation_search_index_command, search_constellation_command,
+            RebuildConstellationSearchIndexRequest, SearchConstellationRequest,
         },
     },
     db::{
         connection::Database,
-        repositories::{ProjectRepository, ResourceRootRepository},
+        repositories::{ConstellationRepository, ResourceRootRepository},
     },
 };
 use tempfile::{tempdir, TempDir};
@@ -26,14 +26,14 @@ fn open_temp_database() -> (TempDir, String) {
     (dir, path.to_string_lossy().to_string())
 }
 
-fn create_project_with_roots(
+fn create_constellation_with_roots(
     database_path: &str,
     project_name: &str,
     working_root: &PathBuf,
     resource_root: &PathBuf,
 ) -> String {
     let database = Database::open(database_path).expect("re-open database");
-    let projects = ProjectRepository::new(database.connection());
+    let projects = ConstellationRepository::new(database.connection());
     let project = projects
         .create(
             project_name.to_string(),
@@ -49,7 +49,7 @@ fn create_project_with_roots(
     let attached = ResourceRootRepository::new(database.connection())
         .attach(&project.id, resource_root, None)
         .expect("attach resource root");
-    assert_eq!(attached.project_id, project.id);
+    assert_eq!(attached.constellation_id, project.id);
 
     project.id
 }
@@ -63,7 +63,7 @@ fn resource_root_repository_attaches_lists_and_detaches_real_folders() {
     fs::create_dir_all(&resource_root).expect("create resource root");
 
     let database = Database::open(&database_path).expect("re-open database");
-    let projects = ProjectRepository::new(database.connection());
+    let projects = ConstellationRepository::new(database.connection());
     let project = projects
         .create(
             "Research Root".to_string(),
@@ -76,9 +76,9 @@ fn resource_root_repository_attaches_lists_and_detaches_real_folders() {
         )
         .expect("create project");
 
-    let attached = attach_project_resource_root_at(ResourceRootMutationRequest {
+    let attached = attach_constellation_resource_root_at(ResourceRootMutationRequest {
         database_path: database_path.clone(),
-        project_id: project.id.clone(),
+        constellation_id: project.id.clone(),
         root_path: resource_root.to_string_lossy().to_string(),
         display_name: None,
     })
@@ -91,41 +91,43 @@ fn resource_root_repository_attaches_lists_and_detaches_real_folders() {
             .to_string_lossy()
     );
 
-    let updated = attach_project_resource_root_at(ResourceRootMutationRequest {
+    let updated = attach_constellation_resource_root_at(ResourceRootMutationRequest {
         database_path: database_path.clone(),
-        project_id: project.id.clone(),
+        constellation_id: project.id.clone(),
         root_path: resource_root.to_string_lossy().to_string(),
         display_name: Some("Alias Pool".to_string()),
     })
     .expect("reattach resource root");
     assert_eq!(updated.display_name, "Alias Pool");
 
-    let roots = list_project_resource_roots_at(ResourceRootLookupRequest {
+    let roots = list_constellation_resource_roots_at(ResourceRootLookupRequest {
         database_path: database_path.clone(),
-        project_id: project.id.clone(),
+        constellation_id: project.id.clone(),
     })
     .expect("list resource roots");
     assert_eq!(roots.len(), 1);
     assert_eq!(roots[0].display_name, "Alias Pool");
 
     let database_path_for_assert = database_path.clone();
-    detach_project_resource_root_at(ResourceRootMutationRequest {
+    detach_constellation_resource_root_at(ResourceRootMutationRequest {
         database_path,
-        project_id: project.id,
+        constellation_id: project.id,
         root_path: resource_root.to_string_lossy().to_string(),
         display_name: None,
     })
     .expect("detach resource root");
-    assert!(list_project_resource_roots_at(ResourceRootLookupRequest {
-        database_path: database_path_for_assert,
-        project_id: attached.project_id.clone(),
-    })
-    .expect("list after detach")
-    .is_empty());
+    assert!(
+        list_constellation_resource_roots_at(ResourceRootLookupRequest {
+            database_path: database_path_for_assert,
+            constellation_id: attached.constellation_id.clone(),
+        })
+        .expect("list after detach")
+        .is_empty()
+    );
 }
 
 #[test]
-fn project_document_reports_working_root_and_attached_resource_roots() {
+fn constellation_document_reports_working_root_and_attached_resource_roots() {
     let (temp_dir, database_path) = open_temp_database();
     let working_root = temp_dir.path().join("working-root");
     let resource_root = temp_dir.path().join("resource-pool");
@@ -138,25 +140,28 @@ fn project_document_reports_working_root_and_attached_resource_roots() {
     .expect("write working note");
     fs::write(resource_root.join("pool.md"), "Attached pool evidence").expect("write pool file");
 
-    let project_id = create_project_with_roots(
+    let constellation_id = create_constellation_with_roots(
         &database_path,
-        "Resource Pool Project",
+        "Resource Pool Constellation",
         &working_root,
         &resource_root,
     );
 
-    let roots = list_project_resource_roots_at(ResourceRootLookupRequest {
+    let roots = list_constellation_resource_roots_at(ResourceRootLookupRequest {
         database_path: database_path.clone(),
-        project_id: project_id.clone(),
+        constellation_id: constellation_id.clone(),
     })
     .expect("list attached roots");
     assert_eq!(roots.len(), 1);
     assert_eq!(roots[0].display_name, "resource-pool");
 
-    let document =
-        load_project_document_at(&database_path, &project_id).expect("load project document");
+    let document = load_constellation_document_at(&database_path, &constellation_id)
+        .expect("load project document");
     assert_eq!(document.working_root, working_root.to_string_lossy());
-    assert_eq!(document.project.root_path, working_root.to_string_lossy());
+    assert_eq!(
+        document.constellation.root_path,
+        working_root.to_string_lossy()
+    );
     assert_eq!(document.resource_roots.len(), 1);
     assert_eq!(document.resource_roots[0].display_name, "resource-pool");
     assert!(document
@@ -190,25 +195,26 @@ fn search_index_includes_attached_resource_roots() {
     )
     .expect("write resource pool file");
 
-    let project_id = create_project_with_roots(
+    let constellation_id = create_constellation_with_roots(
         &database_path,
-        "Search Pool Project",
+        "Search Pool Constellation",
         &working_root,
         &resource_root,
     );
 
-    let summary = rebuild_project_search_index_command(RebuildProjectSearchIndexRequest {
-        database_path: database_path.clone(),
-        project_id: project_id.clone(),
-    })
-    .expect("rebuild search index");
+    let summary =
+        rebuild_constellation_search_index_command(RebuildConstellationSearchIndexRequest {
+            database_path: database_path.clone(),
+            constellation_id: constellation_id.clone(),
+        })
+        .expect("rebuild search index");
 
     assert!(summary.file_entries_indexed >= 2);
     assert!(summary.documents_indexed > 0);
 
-    let hits = search_project_command(SearchProjectRequest {
+    let hits = search_constellation_command(SearchConstellationRequest {
         database_path,
-        project_id,
+        constellation_id,
         query: "chromium keyword".to_string(),
         limit: Some(10),
     })

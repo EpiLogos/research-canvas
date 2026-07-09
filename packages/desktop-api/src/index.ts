@@ -55,21 +55,21 @@ export interface IndexedEntry {
   sizeBytes: number;
 }
 
-export interface ProjectTreeNode {
+export interface ConstellationTreeNode {
   id: string;
   name: string;
   slug: string;
   rootPath: string;
   summary: string;
   parentId: string | null;
-  children: ProjectTreeNode[];
+  children: ConstellationTreeNode[];
 }
 
-export interface WorkspaceProject {
+export interface WorkspaceConstellation {
   id: string;
   displayName: string;
   slug: string;
-  parentProjectId: string | null;
+  parentConstellationId: string | null;
   rootPath: string;
   primaryCanvasId: string;
   summary: string;
@@ -81,7 +81,7 @@ export interface WorkspaceProject {
 
 export interface ResourceRoot {
   id: string;
-  projectId: string;
+  constellationId: string;
   rootPath: string;
   displayName: string;
   createdAt: string;
@@ -89,16 +89,16 @@ export interface ResourceRoot {
 }
 
 export interface WorkspaceBootstrap {
-  activeProjectId: string;
+  activeConstellationId: string;
   databasePath: string;
-  projects: ProjectTreeNode[];
+  constellations: ConstellationTreeNode[];
 }
 
-export interface ProjectDocument {
+export interface ConstellationDocument {
   canvasId: string;
   databasePath: string;
   entries: IndexedEntry[];
-  project: WorkspaceProject;
+  constellation: WorkspaceConstellation;
   resourceRoots: ResourceRoot[];
   workingRoot: string;
   annotations: Annotation[];
@@ -106,21 +106,21 @@ export interface ProjectDocument {
   nodes: CanvasNode[];
 }
 
-export interface PersistProjectDocumentRequest {
+export interface PersistConstellationDocumentRequest {
   annotations: Annotation[];
   canvasId: string;
   databasePath: string;
   edges: CanvasEdge[];
   nodes: CanvasNode[];
-  projectId: string;
+  constellationId: string;
 }
 
 export interface SearchHit {
   documentKey: string;
-  scopeProjectId: string;
-  projectId: string;
-  projectDisplayName: string;
-  projectSlug: string;
+  scopeConstellationId: string;
+  constellationId: string;
+  constellationDisplayName: string;
+  constellationSlug: string;
   canvasId: string | null;
   entityType: string;
   entityId: string;
@@ -134,17 +134,17 @@ export interface SearchHit {
   score: number;
 }
 
-export interface SearchProjectRequest {
+export interface SearchConstellationRequest {
   databasePath: string;
   limit?: number;
-  projectId: string;
+  constellationId: string;
   query: string;
 }
 
 export interface ResourceRootMutationRequest {
   databasePath: string;
   displayName?: string;
-  projectId: string;
+  constellationId: string;
   rootPath: string;
 }
 
@@ -156,7 +156,7 @@ export interface DirectoryEntry {
 
 export interface SavedSequence {
   id: string;
-  projectId: string;
+  constellationId: string;
   canvasId: string;
   name: string;
   rootNodeId: string | null;
@@ -353,24 +353,24 @@ export function mapAgentActivityRow(row: RawAgentActivityRow): AgentActivity {
 }
 
 export interface WorkspaceTransport {
-  attachProjectResourceRoot(
+  attachConstellationResourceRoot(
     request: ResourceRootMutationRequest
   ): Promise<ResourceRoot>;
   bootstrapWorkspace(): Promise<WorkspaceBootstrap>;
-  detachProjectResourceRoot(request: {
+  detachConstellationResourceRoot(request: {
     databasePath: string;
-    projectId: string;
+    constellationId: string;
     rootPath: string;
   }): Promise<void>;
-  listProjectResourceRoots(input: {
+  listConstellationResourceRoots(input: {
     databasePath: string;
-    projectId: string;
+    constellationId: string;
   }): Promise<ResourceRoot[]>;
-  loadProjectDocument(input: {
+  loadConstellationDocument(input: {
     databasePath: string;
-    projectId: string;
-  }): Promise<ProjectDocument>;
-  flushProjectDocument(request: PersistProjectDocumentRequest): boolean | Promise<boolean>;
+    constellationId: string;
+  }): Promise<ConstellationDocument>;
+  flushConstellationDocument(request: PersistConstellationDocumentRequest): boolean | Promise<boolean>;
   flushCanvasLayout(input: {
     databasePath?: string;
     canvasId: string;
@@ -379,13 +379,13 @@ export interface WorkspaceTransport {
     viewport: { x: number; y: number; zoom: number };
     appState: Record<string, unknown>;
   }): boolean | Promise<boolean>;
-  persistProjectDocument(
-    request: PersistProjectDocumentRequest
-  ): Promise<ProjectDocument>;
-  searchProject(request: SearchProjectRequest): Promise<SearchHit[]>;
+  persistConstellationDocument(
+    request: PersistConstellationDocumentRequest
+  ): Promise<ConstellationDocument>;
+  searchConstellation(request: SearchConstellationRequest): Promise<SearchHit[]>;
   listDirectories(): Promise<DirectoryEntry[]>;
-  listSavedSequences(input: { databasePath: string; projectId: string; canvasId: string }): Promise<SavedSequence[]>;
-  createSavedSequence(input: { databasePath: string; projectId: string; canvasId: string; name: string }): Promise<SavedSequence>;
+  listSavedSequences(input: { databasePath: string; constellationId: string; canvasId: string }): Promise<SavedSequence[]>;
+  createSavedSequence(input: { databasePath: string; constellationId: string; canvasId: string; name: string }): Promise<SavedSequence>;
   updateSavedSequence(input: { databasePath: string; id: string; name: string; rootNodeId: string | null; edgeIds: string[] }): Promise<SavedSequence>;
   deleteSavedSequence(input: { databasePath: string; id: string }): Promise<void>;
 
@@ -487,8 +487,8 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
   let activeDatabasePath: string | undefined;
 
   return {
-    async attachProjectResourceRoot(request) {
-      return invokeTauri<ResourceRoot>("attach_project_resource_root_command", {
+    async attachConstellationResourceRoot(request) {
+      return invokeTauri<ResourceRoot>("attach_constellation_resource_root_command", {
         request
       });
     },
@@ -497,27 +497,27 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
       activeDatabasePath = result.databasePath;
       return result;
     },
-    async detachProjectResourceRoot(request) {
-      await invokeTauri<void>("detach_project_resource_root_command", {
+    async detachConstellationResourceRoot(request) {
+      await invokeTauri<void>("detach_constellation_resource_root_command", {
         request
       });
     },
-    async listProjectResourceRoots(request) {
+    async listConstellationResourceRoots(request) {
       return invokeTauri<ResourceRoot[]>(
-        "list_project_resource_roots_command",
+        "list_constellation_resource_roots_command",
         {
           request
         }
       );
     },
-    async loadProjectDocument({ databasePath, projectId }) {
-      return invokeTauri<ProjectDocument>("load_project_document_command", {
-        request: { databasePath, projectId }
+    async loadConstellationDocument({ databasePath, constellationId }) {
+      return invokeTauri<ConstellationDocument>("load_constellation_document_command", {
+        request: { databasePath, constellationId }
       });
     },
-    async flushProjectDocument(request) {
+    async flushConstellationDocument(request) {
       try {
-        await invokeTauri<ProjectDocument>("persist_project_document_command", {
+        await invokeTauri<ConstellationDocument>("persist_constellation_document_command", {
           request
         });
         return true;
@@ -545,13 +545,13 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
       );
       return true;
     },
-    async persistProjectDocument(request) {
-      return invokeTauri<ProjectDocument>("persist_project_document_command", {
+    async persistConstellationDocument(request) {
+      return invokeTauri<ConstellationDocument>("persist_constellation_document_command", {
         request
       });
     },
-    async searchProject(request) {
-      return invokeTauri<SearchHit[]>("search_project_command", {
+    async searchConstellation(request) {
+      return invokeTauri<SearchHit[]>("search_constellation_command", {
         request
       });
     },
@@ -641,9 +641,9 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
 
 export function createBrowserBridgeTransport(): WorkspaceTransport {
   return {
-    async attachProjectResourceRoot(request) {
+    async attachConstellationResourceRoot(request) {
       return requestJsonWithRetry<ResourceRoot>(
-        `/workspace/project/${request.projectId}/resource-roots`,
+        `/workspace/constellation/${request.constellationId}/resource-roots`,
         {
           body: {
             displayName: request.displayName ?? null,
@@ -656,46 +656,46 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     async bootstrapWorkspace() {
       return requestJsonWithRetry<WorkspaceBootstrap>("/workspace/bootstrap");
     },
-    async detachProjectResourceRoot({ projectId, rootPath }) {
+    async detachConstellationResourceRoot({ constellationId, rootPath }) {
       await requestJsonWithRetry<void>(
-        `/workspace/project/${projectId}/resource-roots`,
+        `/workspace/constellation/${constellationId}/resource-roots`,
         {
           body: { rootPath },
           method: "DELETE"
         }
       );
     },
-    async listProjectResourceRoots({ projectId }) {
+    async listConstellationResourceRoots({ constellationId }) {
       return requestJsonWithRetry<ResourceRoot[]>(
-        `/workspace/project/${projectId}/resource-roots`
+        `/workspace/constellation/${constellationId}/resource-roots`
       );
     },
-    async loadProjectDocument({ projectId }) {
-      return requestJsonWithRetry<ProjectDocument>(`/workspace/project/${projectId}`);
+    async loadConstellationDocument({ constellationId }) {
+      return requestJsonWithRetry<ConstellationDocument>(`/workspace/constellation/${constellationId}`);
     },
-    flushProjectDocument(request) {
+    flushConstellationDocument(request) {
       if (typeof navigator === "undefined" || typeof navigator.sendBeacon !== "function") {
         return false;
       }
 
-      const beaconPath = `${BRIDGE_BASE_URL}/workspace/project/${request.projectId}/persist?sessionId=${encodeURIComponent(browserSessionId())}`;
+      const beaconPath = `${BRIDGE_BASE_URL}/workspace/constellation/${request.constellationId}/persist?sessionId=${encodeURIComponent(browserSessionId())}`;
       return navigator.sendBeacon(beaconPath, JSON.stringify(request));
     },
     flushCanvasLayout() {
       throw new Error("read-only web build");
     },
-    async persistProjectDocument(request) {
-      return requestJsonWithRetry<ProjectDocument>(
-        `/workspace/project/${request.projectId}/persist`,
+    async persistConstellationDocument(request) {
+      return requestJsonWithRetry<ConstellationDocument>(
+        `/workspace/constellation/${request.constellationId}/persist`,
         {
           method: "POST",
           body: request
         }
       );
     },
-    async searchProject({ limit, projectId, query }) {
+    async searchConstellation({ limit, constellationId, query }) {
       const params = new URLSearchParams({
-        projectId,
+        constellationId,
         q: query
       });
 
@@ -710,14 +710,14 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     async listDirectories() {
       return requestJsonWithRetry<DirectoryEntry[]>("/workspace/directories");
     },
-    async listSavedSequences({ databasePath: _, projectId, canvasId }) {
+    async listSavedSequences({ databasePath: _, constellationId, canvasId }) {
       return requestJsonWithRetry<SavedSequence[]>(
-        `/workspace/project/${projectId}/sequences?canvasId=${encodeURIComponent(canvasId)}`
+        `/workspace/constellation/${constellationId}/sequences?canvasId=${encodeURIComponent(canvasId)}`
       );
     },
-    async createSavedSequence({ databasePath: _, projectId, canvasId, name }) {
+    async createSavedSequence({ databasePath: _, constellationId, canvasId, name }) {
       return requestJsonWithRetry<SavedSequence>(
-        `/workspace/project/${projectId}/sequences`,
+        `/workspace/constellation/${constellationId}/sequences`,
         {
           method: "POST",
           body: { canvasId, name }
@@ -726,7 +726,7 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     },
     async updateSavedSequence({ databasePath: _, id, name, rootNodeId, edgeIds }) {
       return requestJsonWithRetry<SavedSequence>(
-        `/workspace/project/sequences/${id}`,
+        `/workspace/constellation/sequences/${id}`,
         {
           method: "PUT",
           body: { id, name, rootNodeId, edgeIds }
@@ -735,7 +735,7 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     },
     async deleteSavedSequence({ databasePath: _, id }) {
       await requestJsonWithRetry<void>(
-        `/workspace/project/sequences/${id}`,
+        `/workspace/constellation/sequences/${id}`,
         { method: "DELETE" }
       );
     },
@@ -914,26 +914,26 @@ interface TreeRecord<T> {
   children: TreeRecord<T>[];
 }
 
-export function buildProjectTree(projects: ProjectTreeNode[]): ProjectTreeNode[] {
-  const records = new Map<string, TreeRecord<ProjectTreeNode>>();
+export function buildConstellationTree(constellations: ConstellationTreeNode[]): ConstellationTreeNode[] {
+  const records = new Map<string, TreeRecord<ConstellationTreeNode>>();
 
-  for (const project of projects) {
-    records.set(project.id, {
-      item: { ...project, children: [] },
+  for (const constellation of constellations) {
+    records.set(constellation.id, {
+      item: { ...constellation, children: [] },
       children: []
     });
   }
 
-  const roots: TreeRecord<ProjectTreeNode>[] = [];
+  const roots: TreeRecord<ConstellationTreeNode>[] = [];
 
-  for (const project of projects) {
-    const record = records.get(project.id);
+  for (const constellation of constellations) {
+    const record = records.get(constellation.id);
     if (!record) {
       continue;
     }
 
-    if (project.parentId) {
-      const parent = records.get(project.parentId);
+    if (constellation.parentId) {
+      const parent = records.get(constellation.parentId);
       if (parent) {
         parent.children.push(record);
       }
@@ -943,7 +943,7 @@ export function buildProjectTree(projects: ProjectTreeNode[]): ProjectTreeNode[]
     roots.push(record);
   }
 
-  const toNode = (record: TreeRecord<ProjectTreeNode>): ProjectTreeNode => ({
+  const toNode = (record: TreeRecord<ConstellationTreeNode>): ConstellationTreeNode => ({
     ...record.item,
     children: record.children
       .slice()
@@ -1057,15 +1057,15 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
   };
 
   return {
-    // ---- existing project/file/annotation methods: not served by the static bundle ----
-    attachProjectResourceRoot: readOnlyReject,
+    // ---- existing constellation/file/annotation methods: not served by the static bundle ----
+    attachConstellationResourceRoot: readOnlyReject,
     bootstrapWorkspace: readOnlyReject,
-    detachProjectResourceRoot: readOnlyReject,
-    listProjectResourceRoots: readOnlyReject,
-    loadProjectDocument: readOnlyReject,
-    flushProjectDocument: readOnlyThrow,
-    persistProjectDocument: readOnlyReject,
-    searchProject: readOnlyReject,
+    detachConstellationResourceRoot: readOnlyReject,
+    listConstellationResourceRoots: readOnlyReject,
+    loadConstellationDocument: readOnlyReject,
+    flushConstellationDocument: readOnlyThrow,
+    persistConstellationDocument: readOnlyReject,
+    searchConstellation: readOnlyReject,
     listDirectories: readOnlyReject,
     listSavedSequences: readOnlyReject,
     createSavedSequence: readOnlyReject,

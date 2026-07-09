@@ -4,20 +4,20 @@ import { describe, expect, it, vi } from "vitest";
 import { TransportBar } from "./TransportBar";
 
 describe("TransportBar", () => {
-  it("renders the three lens options with the active one marked", () => {
+  it("renders the canvas and timeline lens options with the active one marked", () => {
     render(
       <TransportBar lens="timeline" onSetLens={() => {}} onOpenPalette={() => {}} />,
     );
     expect(screen.getByTestId("lens-canvas")).toHaveAttribute("data-active", "false");
     expect(screen.getByTestId("lens-timeline")).toHaveAttribute("data-active", "true");
-    expect(screen.getByTestId("lens-reading")).toHaveAttribute("data-active", "false");
+    expect(screen.queryByTestId("lens-reading")).not.toBeInTheDocument();
   });
 
   it("calls onSetLens when a lens is clicked", () => {
     const onSetLens = vi.fn();
     render(<TransportBar lens="canvas" onSetLens={onSetLens} onOpenPalette={() => {}} />);
-    fireEvent.click(screen.getByTestId("lens-reading"));
-    expect(onSetLens).toHaveBeenCalledWith("reading");
+    fireEvent.click(screen.getByTestId("lens-timeline"));
+    expect(onSetLens).toHaveBeenCalledWith("timeline");
   });
 
   it("calls onOpenPalette from the palette affordance", () => {

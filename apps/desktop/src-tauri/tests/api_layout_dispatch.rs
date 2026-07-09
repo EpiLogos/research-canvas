@@ -3,7 +3,7 @@ use research_canvas_desktop_lib::api::handlers::{remove_node_layout, upsert_node
 use research_canvas_desktop_lib::api::types::{PlaceNodeRequest, RemoveNodeResponse};
 use research_canvas_desktop_lib::db::{
     connection::Database,
-    repositories::{layout::LayoutRepository, ProjectRepository},
+    repositories::{layout::LayoutRepository, ConstellationRepository},
 };
 use research_canvas_desktop_lib::{ApiState, SharedApiState};
 use std::sync::{Arc, Mutex};
@@ -13,7 +13,7 @@ fn state_with_canvas() -> (tempfile::TempDir, SharedApiState, String) {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("t.db");
     let db = Database::open(&db_path).unwrap();
-    let project = ProjectRepository::new(db.connection())
+    let project = ConstellationRepository::new(db.connection())
         .create(
             "P".into(),
             "p".into(),
@@ -27,7 +27,7 @@ fn state_with_canvas() -> (tempfile::TempDir, SharedApiState, String) {
     let canvas_id = project.primary_canvas_id.unwrap();
     let state: SharedApiState = Arc::new(Mutex::new(ApiState {
         db_path: Some(db_path.to_string_lossy().to_string()),
-        active_project_id: Some(project.id),
+        active_constellation_id: Some(project.id),
         active_canvas_id: Some(canvas_id.clone()),
     }));
     (dir, state, canvas_id)

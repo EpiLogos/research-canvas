@@ -58,24 +58,24 @@ export function LeftOverlay({ open, mode, onResizeStart, onClose, drawingMode, o
               <div className="lo-section__header">
                 <span className="lo-label">Constellations</span>
               </div>
-              <div className="lo-project-list" data-testid="lo-constellations">
-                {workspace.projects.map((project) => (
+              <div className="lo-constellation-list" data-testid="lo-constellations">
+                {workspace.constellations.map((constellation) => (
                   <button
-                    key={project.id}
-                    className="lo-project-item"
-                    data-active={workspace.activeProjectId === project.id ? "true" : "false"}
-                    onClick={() => workspace.selectProject(project.id)}
-                    title={project.summary || project.rootPath}
+                    key={constellation.id}
+                    className="lo-constellation-item"
+                    data-active={workspace.activeConstellationId === constellation.id ? "true" : "false"}
+                    onClick={() => workspace.selectConstellation(constellation.id)}
+                    title={constellation.summary || constellation.rootPath}
                   >
-                    <span className="lo-project-item__name">
-                      {project.parentId === null ? "Single historical timeline" : project.name}
+                    <span className="lo-constellation-item__name">
+                      {constellation.name}
                     </span>
-                    {project.summary && (
-                      <span className="lo-project-item__summary">{project.summary}</span>
+                    {constellation.summary && (
+                      <span className="lo-constellation-item__summary">{constellation.summary}</span>
                     )}
                   </button>
                 ))}
-                {workspace.projects.length === 0 && (
+                {workspace.constellations.length === 0 && (
                   <div className="lo-empty">No constellations</div>
                 )}
               </div>

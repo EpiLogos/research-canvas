@@ -15,16 +15,16 @@ use crate::{
 
 use super::{
     canvas::{Canvas, CanvasGraphRepository, CanvasNodeRecord, CanvasRepository},
-    projects::{Project, ProjectRepository},
+    constellations::{Constellation, ConstellationRepository},
     resource_roots::ResourceRootRepository,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchIndexSummary {
-    pub scope_project_id: String,
+    pub scope_constellation_id: String,
     pub indexed_at: String,
-    pub projects_indexed: u64,
+    pub constellations_indexed: u64,
     pub canvases_indexed: u64,
     pub nodes_indexed: u64,
     pub file_entries_indexed: u64,
@@ -35,10 +35,10 @@ pub struct SearchIndexSummary {
 #[serde(rename_all = "camelCase")]
 pub struct SearchHit {
     pub document_key: String,
-    pub scope_project_id: String,
-    pub project_id: String,
-    pub project_display_name: String,
-    pub project_slug: String,
+    pub scope_constellation_id: String,
+    pub constellation_id: String,
+    pub constellation_display_name: String,
+    pub constellation_slug: String,
     pub canvas_id: Option<String>,
     pub entity_type: String,
     pub entity_id: String,
@@ -55,10 +55,10 @@ pub struct SearchHit {
 #[derive(Debug, Clone)]
 struct SearchDocument {
     document_key: String,
-    scope_project_id: String,
-    project_id: String,
-    project_display_name: String,
-    project_slug: String,
+    scope_constellation_id: String,
+    constellation_id: String,
+    constellation_display_name: String,
+    constellation_slug: String,
     canvas_id: String,
     entity_type: String,
     entity_id: String,
@@ -80,18 +80,21 @@ impl<'conn> SearchRepository<'conn> {
         Self { connection }
     }
 
-    pub fn rebuild_project_index(&self, scope_project_id: &str) -> Result<SearchIndexSummary> {
-        let projects = self.scope_projects(scope_project_id)?;
+    pub fn rebuild_constellation_index(
+        &self,
+        scope_constellation_id: &str,
+    ) -> Result<SearchIndexSummary> {
+        let constellations = self.scope_constellations(scope_constellation_id)?;
         let indexed_at = current_timestamp();
         let transaction = TransactionGuard::begin(self.connection)?;
 
-        self.clear_scope(scope_project_id)?;
+        self.clear_scope(scope_constellation_id)?;
 
         let mut seen_file_paths = HashSet::new();
         let mut summary = SearchIndexSummary {
-            scope_project_id: scope_project_id.to_string(),
+            scope_constellation_id: scope_constellation_id.to_string(),
             indexed_at: indexed_at.clone(),
-            projects_indexed: 0,
+            constellations_indexed: 0,
             canvases_indexed: 0,
             nodes_indexed: 0,
             file_entries_indexed: 0,
@@ -102,30 +105,35 @@ impl<'conn> SearchRepository<'conn> {
         let graph = CanvasGraphRepository::new(self.connection);
         let resource_roots = ResourceRootRepository::new(self.connection);
 
-        for project in projects {
-            self.insert_document(project_document(scope_project_id, &project, &indexed_at))?;
-            summary.projects_indexed += 1;
+        for constellation in constellations {
+            self.insert_document(constellation_document(
+                scope_constellation_id,
+                &constellation,
+                &indexed_at,
+            ))?;
+            summary.constellations_indexed += 1;
             summary.documents_indexed += 1;
 
-            let project_resource_roots = resource_roots.list_for_project(&project.id)?;
-            for document in self.file_documents_for_project(
-                scope_project_id,
-                &project,
+            let constellation_resource_roots =
+                resource_roots.list_for_constellation(&constellation.id)?;
+            for document in self.file_documents_for_constellation(
+                scope_constellation_id,
+                &constellation,
                 &indexed_at,
                 &mut seen_file_paths,
-                &project_resource_roots,
+                &constellation_resource_roots,
             ) {
                 self.insert_document(document)?;
                 summary.file_entries_indexed += 1;
                 summary.documents_indexed += 1;
             }
 
-            let project_canvases = canvases.list_for_project(&project.id)?;
-            summary.canvases_indexed += project_canvases.len() as u64;
-            for canvas in project_canvases {
+            let constellation_canvases = canvases.list_for_constellation(&constellation.id)?;
+            summary.canvases_indexed += constellation_canvases.len() as u64;
+            for canvas in constellation_canvases {
                 self.insert_document(canvas_document(
-                    scope_project_id,
-                    &project,
+                    scope_constellation_id,
+                    &constellation,
                     &canvas,
                     &indexed_at,
                 ))?;
@@ -135,8 +143,8 @@ impl<'conn> SearchRepository<'conn> {
                 summary.nodes_indexed += snapshot.nodes.len() as u64;
                 for node in snapshot.nodes {
                     self.insert_document(node_document(
-                        scope_project_id,
-                        &project,
+                        scope_constellation_id,
+                        &constellation,
                         &canvas.id,
                         &node,
                         &indexed_at,
@@ -150,9 +158,9 @@ impl<'conn> SearchRepository<'conn> {
         Ok(summary)
     }
 
-    pub fn search_project(
+    pub fn search_constellation(
         &self,
-        scope_project_id: &str,
+        scope_constellation_id: &str,
         query: &str,
         limit: usize,
     ) -> Result<Vec<SearchHit>> {
@@ -189,27 +197,27 @@ impl<'conn> SearchRepository<'conn> {
              LIMIT ?3",
         )?;
         let rows = statement.query_map(
-            params![scope_project_id, match_query, limit as i64],
+            params![scope_constellation_id, match_query, limit as i64],
             search_hit_from_row,
         )?;
         rows.collect()
     }
 
-    fn scope_projects(&self, scope_project_id: &str) -> Result<Vec<Project>> {
-        let projects = ProjectRepository::new(self.connection);
-        let root = projects
-            .get_by_id(scope_project_id)?
+    fn scope_constellations(&self, scope_constellation_id: &str) -> Result<Vec<Constellation>> {
+        let constellations = ConstellationRepository::new(self.connection);
+        let root = constellations
+            .get_by_id(scope_constellation_id)?
             .ok_or(rusqlite::Error::QueryReturnedNoRows)?;
 
-        let mut all_projects = vec![root];
-        all_projects.extend(projects.list_descendants(scope_project_id)?);
-        Ok(all_projects)
+        let mut scoped_constellations = vec![root];
+        scoped_constellations.extend(constellations.list_descendants(scope_constellation_id)?);
+        Ok(scoped_constellations)
     }
 
-    fn clear_scope(&self, scope_project_id: &str) -> Result<()> {
+    fn clear_scope(&self, scope_constellation_id: &str) -> Result<()> {
         self.connection.execute(
             "DELETE FROM search_documents WHERE scope_project_id = ?1",
-            [scope_project_id],
+            [scope_constellation_id],
         )?;
         Ok(())
     }
@@ -235,10 +243,10 @@ impl<'conn> SearchRepository<'conn> {
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 document.document_key,
-                document.scope_project_id,
-                document.project_id,
-                document.project_display_name,
-                document.project_slug,
+                document.scope_constellation_id,
+                document.constellation_id,
+                document.constellation_display_name,
+                document.constellation_slug,
                 document.canvas_id,
                 document.entity_type,
                 document.entity_id,
@@ -254,10 +262,10 @@ impl<'conn> SearchRepository<'conn> {
         Ok(())
     }
 
-    fn file_documents_for_project(
+    fn file_documents_for_constellation(
         &self,
-        scope_project_id: &str,
-        project: &Project,
+        scope_constellation_id: &str,
+        constellation: &Constellation,
         indexed_at: &str,
         seen_file_paths: &mut HashSet<String>,
         resource_roots: &[super::resource_roots::ResourceRootRecord],
@@ -265,7 +273,7 @@ impl<'conn> SearchRepository<'conn> {
         let mut documents = Vec::new();
 
         let mut roots = Vec::with_capacity(resource_roots.len() + 1);
-        roots.push(PathBuf::from(&project.root_path));
+        roots.push(PathBuf::from(&constellation.root_path));
         roots.extend(
             resource_roots
                 .iter()
@@ -284,8 +292,8 @@ impl<'conn> SearchRepository<'conn> {
                 }
 
                 documents.push(file_document(
-                    scope_project_id,
-                    project,
+                    scope_constellation_id,
+                    constellation,
                     &entry,
                     absolute_path,
                     indexed_at,
@@ -297,45 +305,49 @@ impl<'conn> SearchRepository<'conn> {
     }
 }
 
-fn project_document(scope_project_id: &str, project: &Project, indexed_at: &str) -> SearchDocument {
-    let summary = project.summary.clone().unwrap_or_default();
+fn constellation_document(
+    scope_constellation_id: &str,
+    constellation: &Constellation,
+    indexed_at: &str,
+) -> SearchDocument {
+    let summary = constellation.summary.clone().unwrap_or_default();
     let body = format!(
         "{}\n{}\n{}",
-        project.display_name, summary, project.root_path
+        constellation.display_name, summary, constellation.root_path
     );
 
     SearchDocument {
-        document_key: format!("project:{}", project.id),
-        scope_project_id: scope_project_id.to_string(),
-        project_id: project.id.clone(),
-        project_display_name: project.display_name.clone(),
-        project_slug: project.slug.clone(),
+        document_key: format!("constellation:{}", constellation.id),
+        scope_constellation_id: scope_constellation_id.to_string(),
+        constellation_id: constellation.id.clone(),
+        constellation_display_name: constellation.display_name.clone(),
+        constellation_slug: constellation.slug.clone(),
         canvas_id: String::new(),
-        entity_type: "project".to_string(),
-        entity_id: project.id.clone(),
-        title: project.display_name.clone(),
+        entity_type: "constellation".to_string(),
+        entity_id: constellation.id.clone(),
+        title: constellation.display_name.clone(),
         summary,
         body,
-        source_path: project.root_path.clone(),
+        source_path: constellation.root_path.clone(),
         relative_path: String::new(),
-        content_kind: "project".to_string(),
+        content_kind: "constellation".to_string(),
         indexed_at: indexed_at.to_string(),
     }
 }
 
 fn canvas_document(
-    scope_project_id: &str,
-    project: &Project,
+    scope_constellation_id: &str,
+    constellation: &Constellation,
     canvas: &Canvas,
     indexed_at: &str,
 ) -> SearchDocument {
     let summary = canvas.summary.clone().unwrap_or_default();
     SearchDocument {
         document_key: format!("canvas:{}", canvas.id),
-        scope_project_id: scope_project_id.to_string(),
-        project_id: project.id.clone(),
-        project_display_name: project.display_name.clone(),
-        project_slug: project.slug.clone(),
+        scope_constellation_id: scope_constellation_id.to_string(),
+        constellation_id: constellation.id.clone(),
+        constellation_display_name: constellation.display_name.clone(),
+        constellation_slug: constellation.slug.clone(),
         canvas_id: canvas.id.clone(),
         entity_type: "canvas".to_string(),
         entity_id: canvas.id.clone(),
@@ -350,8 +362,8 @@ fn canvas_document(
 }
 
 fn node_document(
-    scope_project_id: &str,
-    project: &Project,
+    scope_constellation_id: &str,
+    constellation: &Constellation,
     canvas_id: &str,
     node: &CanvasNodeRecord,
     indexed_at: &str,
@@ -406,10 +418,10 @@ fn node_document(
 
     SearchDocument {
         document_key: format!("node:{}", node.id),
-        scope_project_id: scope_project_id.to_string(),
-        project_id: project.id.clone(),
-        project_display_name: project.display_name.clone(),
-        project_slug: project.slug.clone(),
+        scope_constellation_id: scope_constellation_id.to_string(),
+        constellation_id: constellation.id.clone(),
+        constellation_display_name: constellation.display_name.clone(),
+        constellation_slug: constellation.slug.clone(),
         canvas_id: canvas_id.to_string(),
         entity_type: "node".to_string(),
         entity_id: node.id.clone(),
@@ -424,8 +436,8 @@ fn node_document(
 }
 
 fn file_document(
-    scope_project_id: &str,
-    project: &Project,
+    scope_constellation_id: &str,
+    constellation: &Constellation,
     entry: &IndexedEntry,
     absolute_path: String,
     indexed_at: &str,
@@ -439,11 +451,11 @@ fn file_document(
     };
 
     SearchDocument {
-        document_key: format!("file:{}:{}", project.id, entry.relative_path),
-        scope_project_id: scope_project_id.to_string(),
-        project_id: project.id.clone(),
-        project_display_name: project.display_name.clone(),
-        project_slug: project.slug.clone(),
+        document_key: format!("file:{}:{}", constellation.id, entry.relative_path),
+        scope_constellation_id: scope_constellation_id.to_string(),
+        constellation_id: constellation.id.clone(),
+        constellation_display_name: constellation.display_name.clone(),
+        constellation_slug: constellation.slug.clone(),
         canvas_id: String::new(),
         entity_type: "file".to_string(),
         entity_id: entry.relative_path.clone(),
@@ -498,10 +510,10 @@ fn search_hit_from_row(row: &rusqlite::Row<'_>) -> Result<SearchHit> {
 
     Ok(SearchHit {
         document_key: row.get(0)?,
-        scope_project_id: row.get(1)?,
-        project_id: row.get(2)?,
-        project_display_name: row.get(3)?,
-        project_slug: row.get(4)?,
+        scope_constellation_id: row.get(1)?,
+        constellation_id: row.get(2)?,
+        constellation_display_name: row.get(3)?,
+        constellation_slug: row.get(4)?,
         canvas_id: optional_text(canvas_id),
         entity_type: row.get(6)?,
         entity_id: row.get(7)?,

@@ -11,7 +11,7 @@ use research_canvas_desktop_lib::db::{
     repositories::{
         graph::{GraphNodePatch, GraphRepository, NewGraphNode},
         layout::{LayoutRepository, NodeLayoutRecord},
-        ProjectRepository,
+        ConstellationRepository,
     },
 };
 use tempfile::tempdir;
@@ -31,7 +31,7 @@ fn created_node_roundtrips_body_through_neo4j() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("roundtrip.db");
     let db = Database::open(&db_path).unwrap();
-    let project = ProjectRepository::new(db.connection())
+    let project = ConstellationRepository::new(db.connection())
         .create(
             "RoundtripProject".into(),
             "roundtrip-project".into(),

@@ -1,7 +1,9 @@
 use research_canvas_desktop_lib::commands::layout::{
     flush_canvas_layout_at, FlushCanvasLayoutRequest, FlushCanvasLayoutResponse,
 };
-use research_canvas_desktop_lib::db::{connection::Database, repositories::ProjectRepository};
+use research_canvas_desktop_lib::db::{
+    connection::Database, repositories::ConstellationRepository,
+};
 use tempfile::tempdir;
 
 #[test]
@@ -10,7 +12,7 @@ fn flush_canvas_layout_at_is_callable_and_returns_a_typed_response() {
     let db_path = dir.path().join("reg.sqlite");
     let canvas_id = {
         let database = Database::open(&db_path).expect("open");
-        let projects = ProjectRepository::new(database.connection());
+        let projects = ConstellationRepository::new(database.connection());
         let project = projects
             .create(
                 "WS1".to_string(),

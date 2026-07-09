@@ -1,14 +1,14 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { ProjectTreeNode } from "@research-canvas/desktop-api";
+import type { ConstellationTreeNode } from "@research-canvas/desktop-api";
 
-import { ProjectTree } from "./ProjectTree";
+import { ConstellationTree } from "./ConstellationTree";
 
-describe("ProjectTree", () => {
-  it("renders a nested project hierarchy and calls back on selection", async () => {
-    const onSelectProject = vi.fn();
-    const projects: ProjectTreeNode[] = [
+describe("ConstellationTree", () => {
+  it("renders a nested constellation hierarchy and calls back on selection", async () => {
+    const onSelectConstellation = vi.fn();
+    const constellations: ConstellationTreeNode[] = [
       {
         id: "sample-project",
         name: "sample-project",
@@ -39,10 +39,10 @@ describe("ProjectTree", () => {
     ];
 
     render(
-      <ProjectTree
-        projects={projects}
-        selectedProjectId="sample-project"
-        onSelectProject={onSelectProject}
+      <ConstellationTree
+        constellations={constellations}
+        selectedConstellationId="sample-project"
+        onSelectConstellation={onSelectConstellation}
       />,
     );
 
@@ -54,7 +54,7 @@ describe("ProjectTree", () => {
     expect(screen.getByText("ep-0.2")).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: /ep-0\.1/ }));
-    expect(onSelectProject).toHaveBeenCalledWith(
+    expect(onSelectConstellation).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "ep-0.1",
         rootPath: expect.stringContaining("episodes/ep-0.1")

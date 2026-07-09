@@ -7,7 +7,7 @@ use research_canvas_desktop_lib::db::{
     repositories::{
         graph::{GraphRepository, NewGraphNode},
         layout::{LayoutRepository, NodeLayoutRecord},
-        ProjectRepository,
+        ConstellationRepository,
     },
 };
 use tempfile::tempdir;
@@ -32,7 +32,7 @@ fn load_canvas_view_is_layout_authoritative() {
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("t.db");
     let db = Database::open(&db_path).unwrap();
-    let project = ProjectRepository::new(db.connection())
+    let project = ConstellationRepository::new(db.connection())
         .create(
             "P".into(),
             "p".into(),

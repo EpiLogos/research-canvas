@@ -12,7 +12,7 @@ function bundle(): GraphExportBundle {
       createdAt: "t",
       displayName: "Antichrist",
       id: "11111111-1111-4111-8111-111111111111",
-      parentProjectId: null,
+      parentConstellationId: null,
       primaryCanvasId: "c1",
       publishSettings: { includeResources: true, mobileSequenceFirst: true, theme: "paper" },
       rootPath: "/tmp/antichrist",

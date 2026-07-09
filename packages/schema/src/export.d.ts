@@ -12,7 +12,7 @@ export declare const exportBundleSchema: z.ZodObject<{
         id: z.ZodString;
         displayName: z.ZodString;
         slug: z.ZodString;
-        parentProjectId: z.ZodNullable<z.ZodString>;
+        parentConstellationId: z.ZodNullable<z.ZodString>;
         rootPath: z.ZodString;
         primaryCanvasId: z.ZodString;
         summary: z.ZodDefault<z.ZodString>;

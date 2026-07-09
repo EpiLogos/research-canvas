@@ -64,7 +64,7 @@ describe("FileExplorer", () => {
     render(
       <FileExplorer
         entries={entries}
-        projectName="sample-project"
+        constellationName="sample-project"
         selectedEntryId="outline"
         onSelectEntry={onSelect}
       />,

@@ -1,6 +1,6 @@
 use research_canvas_desktop_lib::db::{
     connection::Database,
-    repositories::{EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord, ProjectRepository},
+    repositories::{ConstellationRepository, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord},
 };
 use tempfile::{tempdir, TempDir};
 
@@ -12,7 +12,7 @@ fn open_temp_database() -> (TempDir, Database) {
 }
 
 fn make_canvas(database: &Database) -> String {
-    let projects = ProjectRepository::new(database.connection());
+    let projects = ConstellationRepository::new(database.connection());
     let project = projects
         .create(
             "WS1".to_string(),

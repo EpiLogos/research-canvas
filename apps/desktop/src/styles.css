@@ -1190,7 +1190,7 @@ body[data-shell-dragging="true"] {
   margin-top: 0.1rem;
 }
 
-.tree--projects {
+.tree--constellations {
   gap: 0.5rem;
 }
 
@@ -2011,16 +2011,6 @@ body[data-shell-dragging="true"] {
 
 .lo-icon-btn:hover {
   color: #7c6fff;
-}
-
-.lo-project-name {
-  padding: 2px 10px 4px;
-  font-size: 11px;
-  color: #9090c0;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .lo-canvas-item {
@@ -3250,14 +3240,14 @@ body[data-shell-dragging="true"] {
 
 /* ── Left overlay sidebar ── */
 
-.lo-project-list {
+.lo-constellation-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 4px 0;
 }
 
-.lo-project-item {
+.lo-constellation-item {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -3273,11 +3263,11 @@ body[data-shell-dragging="true"] {
   width: 100%;
 }
 
-.lo-project-item__name {
+.lo-constellation-item__name {
   font-weight: 600;
 }
 
-.lo-project-item__summary {
+.lo-constellation-item__summary {
   overflow: hidden;
   color: rgba(200, 190, 175, 0.52);
   font-size: 10px;
@@ -3286,12 +3276,12 @@ body[data-shell-dragging="true"] {
   white-space: nowrap;
 }
 
-.lo-project-item:hover {
+.lo-constellation-item:hover {
   background: rgba(255, 255, 255, 0.06);
   color: rgba(220, 210, 195, 0.9);
 }
 
-.lo-project-item[data-active="true"] {
+.lo-constellation-item[data-active="true"] {
   background: rgba(74, 74, 255, 0.15);
   color: #7c7cff;
 }

@@ -7,7 +7,7 @@ vi.mock("../canvas/CanvasWorkspaceContext", () => ({
   useCanvasWorkspace: () => ({
     databasePath: null,
     canvasId: "canvas-1",
-    activeProject: null,
+    activeConstellation: null,
     nodes: [],
     edges: [],
     listSavedSequences: vi.fn().mockResolvedValue([]),

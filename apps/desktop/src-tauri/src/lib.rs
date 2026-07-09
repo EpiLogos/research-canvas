@@ -2,12 +2,12 @@ pub mod api;
 pub mod commands {
     pub mod agent_activity;
     pub mod assets;
+    pub mod constellations;
     pub mod export;
     pub mod export_graph_bundle;
     pub mod graph;
     pub mod layout;
     pub mod node_document;
-    pub mod projects;
     pub mod search;
     pub mod terminal;
 }
@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex};
 #[derive(Debug, Default, Clone)]
 pub struct ApiState {
     pub db_path: Option<String>,
-    pub active_project_id: Option<String>,
+    pub active_constellation_id: Option<String>,
     pub active_canvas_id: Option<String>,
 }
 
@@ -88,29 +88,29 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::projects::bootstrap_workspace_command,
-            commands::projects::attach_project_resource_root_command,
-            commands::projects::detach_project_resource_root_command,
-            commands::export::export_project_bundle_command,
+            commands::constellations::bootstrap_workspace_command,
+            commands::constellations::attach_constellation_resource_root_command,
+            commands::constellations::detach_constellation_resource_root_command,
+            commands::export::export_constellation_bundle_command,
             commands::export::resolve_publish_profile_command,
             commands::export_graph_bundle::export_graph_bundle_command,
-            commands::projects::load_project_document_command,
-            commands::projects::list_project_resource_roots_command,
-            commands::projects::persist_project_document_command,
-            commands::search::rebuild_project_search_index_command,
-            commands::search::search_project_command,
+            commands::constellations::load_constellation_document_command,
+            commands::constellations::list_constellation_resource_roots_command,
+            commands::constellations::persist_constellation_document_command,
+            commands::search::rebuild_constellation_search_index_command,
+            commands::search::search_constellation_command,
             commands::terminal::close_terminal_session,
             commands::terminal::create_terminal_session,
             commands::terminal::resize_terminal_session,
             commands::terminal::send_terminal_input,
-            commands::projects::activate_canvas_command,
-            commands::projects::read_workspace_text_file_command,
+            commands::constellations::activate_canvas_command,
+            commands::constellations::read_workspace_text_file_command,
             commands::assets::import_node_image_command,
-            commands::projects::list_directories_command,
-            commands::projects::list_saved_sequences_command,
-            commands::projects::create_saved_sequence_command,
-            commands::projects::update_saved_sequence_command,
-            commands::projects::delete_saved_sequence_command,
+            commands::constellations::list_directories_command,
+            commands::constellations::list_saved_sequences_command,
+            commands::constellations::create_saved_sequence_command,
+            commands::constellations::update_saved_sequence_command,
+            commands::constellations::delete_saved_sequence_command,
             commands::layout::flush_canvas_layout_command,
             commands::graph::read_graph_node_command,
             commands::graph::create_graph_node_command,

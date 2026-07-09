@@ -3,9 +3,9 @@ use std::{fs, path::PathBuf};
 use research_canvas_desktop_lib::{
     db::{
         connection::Database,
-        repositories::{CanvasGraphRepository, ProjectRepository},
+        repositories::{CanvasGraphRepository, ConstellationRepository},
     },
-    export::export_project_bundle,
+    export::export_constellation_bundle,
 };
 use tempfile::{tempdir, TempDir};
 
@@ -19,10 +19,10 @@ fn open_temp_database() -> (TempDir, Database) {
 #[test]
 fn exports_a_static_bundle_with_pages_assets_and_bundle_json() {
     let (_dir, database) = open_temp_database();
-    let projects = ProjectRepository::new(database.connection());
-    let project = projects
+    let constellations = ConstellationRepository::new(database.connection());
+    let constellation = constellations
         .create(
-            "Sample Project".to_string(),
+            "Sample Constellation".to_string(),
             "sample-project".to_string(),
             None,
             PathBuf::from("tests/fixtures/sample-project")
@@ -36,9 +36,12 @@ fn exports_a_static_bundle_with_pages_assets_and_bundle_json() {
                 "theme": "paper"
             }),
         )
-        .expect("create project");
+        .expect("create constellation");
     let graph = CanvasGraphRepository::new(database.connection());
-    let canvas_id = project.primary_canvas_id.clone().expect("primary canvas");
+    let canvas_id = constellation
+        .primary_canvas_id
+        .clone()
+        .expect("primary canvas");
     let note = graph
         .create_note_node(
             &canvas_id,
@@ -51,7 +54,7 @@ fn exports_a_static_bundle_with_pages_assets_and_bundle_json() {
     let resource = graph
         .create_resource_node(
             &canvas_id,
-            "Project README",
+            "Constellation README",
             "tests/fixtures/sample-project/README.md",
             "README.md",
             "markdown",
@@ -66,8 +69,9 @@ fn exports_a_static_bundle_with_pages_assets_and_bundle_json() {
         .expect("connect nodes");
 
     let output = tempdir().expect("export temp dir");
-    let result = export_project_bundle(database.connection(), &project.id, output.path())
-        .expect("export bundle");
+    let result =
+        export_constellation_bundle(database.connection(), &constellation.id, output.path())
+            .expect("export bundle");
 
     assert!(output.path().join("index.html").exists());
     assert!(output.path().join("bundle.json").exists());
@@ -78,9 +82,9 @@ fn exports_a_static_bundle_with_pages_assets_and_bundle_json() {
         .exists());
     assert!(output.path().join("assets").join("README.md").exists());
     assert!(output.path().join("assets").join("example.png").exists());
-    assert_eq!(result.project_id, project.id);
+    assert_eq!(result.constellation_id, constellation.id);
 
     let bundle_json = fs::read_to_string(output.path().join("bundle.json")).expect("read bundle");
-    assert!(bundle_json.contains("Sample Project"));
+    assert!(bundle_json.contains("Sample Constellation"));
     assert!(bundle_json.contains("Opening note"));
 }

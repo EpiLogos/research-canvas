@@ -3,15 +3,19 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use research_canvas_desktop_lib::commands::projects::{
-    bootstrap_workspace_at, load_project_document_at, persist_project_document_at,
+use research_canvas_desktop_lib::commands::constellations::{
+    bootstrap_workspace_at, load_constellation_document_at, persist_constellation_document_at,
     AnnotationBoundsPayload, AnnotationPayload, AnnotationPointPayload, AnnotationStylePayload,
-    CanvasEdgePayload, CanvasNodePayload, EdgeStylePayload, PersistProjectDocumentRequest,
-    PositionPayload, ProjectDocumentPayload, SizePayload,
+    CanvasEdgePayload, CanvasNodePayload, ConstellationDocumentPayload, EdgeStylePayload,
+    PersistConstellationDocumentRequest, PositionPayload, SizePayload,
 };
 use research_canvas_desktop_lib::commands::search::{
-    rebuild_project_search_index_command, search_project_command, RebuildProjectSearchIndexRequest,
-    SearchProjectRequest,
+    rebuild_constellation_search_index_command, search_constellation_command,
+    RebuildConstellationSearchIndexRequest, SearchConstellationRequest,
+};
+use research_canvas_desktop_lib::db::{
+    connection::Database,
+    repositories::{layout::LayoutRepository, ConstellationRepository},
 };
 use serde_json::json;
 
@@ -178,31 +182,120 @@ fn ink_annotation(canvas_id: &str, id: &str) -> AnnotationPayload {
 
 fn persist_document(
     database_path: &Path,
-    document: &ProjectDocumentPayload,
+    document: &ConstellationDocumentPayload,
     nodes: Vec<CanvasNodePayload>,
     edges: Vec<CanvasEdgePayload>,
     annotations: Vec<AnnotationPayload>,
-) -> ProjectDocumentPayload {
-    persist_project_document_at(PersistProjectDocumentRequest {
+) -> ConstellationDocumentPayload {
+    persist_constellation_document_at(PersistConstellationDocumentRequest {
         annotations,
         canvas_id: document.canvas_id.clone(),
         database_path: database_path.to_string_lossy().to_string(),
         edges,
         nodes,
-        project_id: document.project.id.clone(),
+        constellation_id: document.constellation.id.clone(),
     })
     .expect("persist project document")
 }
 
 #[test]
-fn project_document_persistence_survives_reload_and_replaces_previous_canvas_state() {
+fn bootstrap_workspace_surfaces_root_constellation_portals_and_preserves_layout_positions() {
+    let database_path = session_database_path(&format!(
+        "workspace-root-constellations-{}",
+        std::process::id()
+    ));
+    cleanup_database(&database_path);
+
+    let bootstrap = bootstrap_workspace_at(&database_path).expect("bootstrap workspace");
+    let root = bootstrap
+        .constellations
+        .iter()
+        .find(|constellation| constellation.slug == "root-archetypal-field")
+        .expect("root archetypal constellation in bootstrap");
+    assert_eq!(bootstrap.active_constellation_id, root.id);
+    assert_eq!(root.name, "Root Archetypal Field");
+    assert!(
+        bootstrap
+            .constellations
+            .iter()
+            .all(|constellation| constellation.slug != "sample-project"),
+        "bootstrap must not fall back to the old sample project scaffold"
+    );
+
+    let document =
+        load_constellation_document_at(&database_path, &bootstrap.active_constellation_id)
+            .expect("load root constellation document");
+    assert!(
+        document.nodes.iter().any(|node| node.node_type == "portal"
+            && node.title == "Root Ecology"
+            && node.target_canvas_id.is_some()),
+        "document fallback exposes first-class constellation portal nodes"
+    );
+    assert!(
+        document.nodes.iter().any(|node| node.node_type == "portal"
+            && node.title == "Ontological Unit"
+            && node.target_canvas_id.is_some()),
+        "QL units appear as portal constellations, not as a monolithic timeline"
+    );
+    assert!(
+        document
+            .nodes
+            .iter()
+            .all(|node| node.title != "Single historical timeline"),
+        "timeline remains a lens, not a synthetic root constellation"
+    );
+
+    let db = Database::open(&database_path).expect("sqlite");
+    let constellation = ConstellationRepository::new(db.connection())
+        .get_by_id(&bootstrap.active_constellation_id)
+        .expect("constellation lookup")
+        .expect("root constellation exists");
+    let root_canvas_id = constellation
+        .primary_canvas_id
+        .expect("root primary canvas id");
+    let portal = LayoutRepository::new(db.connection())
+        .list_node_layout(&root_canvas_id)
+        .expect("root layouts")
+        .into_iter()
+        .find(|layout| layout.graph_node_id.ends_with(":root-ecology"))
+        .expect("root ecology portal layout");
+
+    db.connection()
+        .execute(
+            "UPDATE node_layout SET position_x = ?1 WHERE canvas_id = ?2 AND graph_node_id = ?3",
+            rusqlite::params![1234.0_f64, root_canvas_id, portal.graph_node_id],
+        )
+        .expect("move portal layout");
+
+    let second_bootstrap = bootstrap_workspace_at(&database_path).expect("bootstrap again");
+    assert_eq!(
+        second_bootstrap.active_constellation_id,
+        bootstrap.active_constellation_id
+    );
+    let preserved_x: f64 = db
+        .connection()
+        .query_row(
+            "SELECT position_x FROM node_layout WHERE canvas_id = ?1 AND graph_node_id = ?2",
+            rusqlite::params![root_canvas_id, portal.graph_node_id],
+            |row| row.get(0),
+        )
+        .expect("read moved portal layout");
+    assert_eq!(
+        preserved_x, 1234.0,
+        "workspace bootstrap inserts missing constellation portals without reseeding over user layout"
+    );
+}
+
+#[test]
+fn constellation_document_persistence_survives_reload_and_replaces_previous_canvas_state() {
     let database_path =
         session_database_path(&format!("workspace-persistence-{}", std::process::id()));
     cleanup_database(&database_path);
 
     let bootstrap = bootstrap_workspace_at(&database_path).expect("bootstrap workspace");
-    let document = load_project_document_at(&database_path, &bootstrap.active_project_id)
-        .expect("load project document");
+    let document =
+        load_constellation_document_at(&database_path, &bootstrap.active_constellation_id)
+            .expect("load project document");
 
     let note = node_with_note_text(
         &document.canvas_id,
@@ -227,7 +320,7 @@ fn project_document_persistence_survives_reload_and_replaces_previous_canvas_sta
         vec![annotation.clone()],
     );
 
-    assert_eq!(persisted.project.id, document.project.id);
+    assert_eq!(persisted.constellation.id, document.constellation.id);
     assert_eq!(persisted.canvas_id, document.canvas_id);
     assert_eq!(persisted.nodes.len(), 2);
     assert_eq!(persisted.edges.len(), 1);
@@ -246,8 +339,9 @@ fn project_document_persistence_survives_reload_and_replaces_previous_canvas_sta
         .any(|node| node.title == "Session note"
             && node.content.as_deref() == Some("This thesis survives a reopen.")));
 
-    let reopened = load_project_document_at(&database_path, &bootstrap.active_project_id)
-        .expect("reload persisted project document");
+    let reopened =
+        load_constellation_document_at(&database_path, &bootstrap.active_constellation_id)
+            .expect("reload persisted project document");
     assert_eq!(reopened.nodes.len(), 2);
     assert_eq!(reopened.edges.len(), 1);
     assert_eq!(reopened.annotations.len(), 1);
@@ -283,7 +377,7 @@ fn project_document_persistence_survives_reload_and_replaces_previous_canvas_sta
     assert!(replaced.annotations.is_empty());
 
     let reopened_after_replace =
-        load_project_document_at(&database_path, &bootstrap.active_project_id)
+        load_constellation_document_at(&database_path, &bootstrap.active_constellation_id)
             .expect("reload replaced project document");
     assert_eq!(reopened_after_replace.nodes.len(), 1);
     assert_eq!(reopened_after_replace.nodes[0].title, "Replacement note");
@@ -300,8 +394,9 @@ fn empty_persist_payload_preserves_non_empty_canvas_state() {
     cleanup_database(&database_path);
 
     let bootstrap = bootstrap_workspace_at(&database_path).expect("bootstrap workspace");
-    let document = load_project_document_at(&database_path, &bootstrap.active_project_id)
-        .expect("load project document");
+    let document =
+        load_constellation_document_at(&database_path, &bootstrap.active_constellation_id)
+            .expect("load project document");
 
     let note = node_with_note_text(
         &document.canvas_id,
@@ -318,20 +413,21 @@ fn empty_persist_payload_preserves_non_empty_canvas_state() {
     );
     assert_eq!(persisted.nodes.len(), 1);
 
-    let preserved = persist_project_document_at(PersistProjectDocumentRequest {
+    let preserved = persist_constellation_document_at(PersistConstellationDocumentRequest {
         annotations: Vec::new(),
         canvas_id: persisted.canvas_id.clone(),
         database_path: database_path.to_string_lossy().to_string(),
         edges: Vec::new(),
         nodes: Vec::new(),
-        project_id: persisted.project.id.clone(),
+        constellation_id: persisted.constellation.id.clone(),
     })
     .expect("empty persist preserves existing canvas substance");
     assert_eq!(preserved.nodes.len(), 1);
     assert_eq!(preserved.nodes[0].title, "Guarded note");
 
-    let reopened = load_project_document_at(&database_path, &bootstrap.active_project_id)
-        .expect("reload guarded project document");
+    let reopened =
+        load_constellation_document_at(&database_path, &bootstrap.active_constellation_id)
+            .expect("reload guarded project document");
     assert_eq!(reopened.nodes.len(), 1);
     assert_eq!(reopened.nodes[0].title, "Guarded note");
 
@@ -345,8 +441,9 @@ fn browser_persist_payload_allows_resource_nodes_without_tags() {
     cleanup_database(&database_path);
 
     let bootstrap = bootstrap_workspace_at(&database_path).expect("bootstrap workspace");
-    let document = load_project_document_at(&database_path, &bootstrap.active_project_id)
-        .expect("load project document");
+    let document =
+        load_constellation_document_at(&database_path, &bootstrap.active_constellation_id)
+            .expect("load project document");
 
     let payload = json!({
         "annotations": [],
@@ -384,13 +481,13 @@ fn browser_persist_payload_allows_resource_nodes_without_tags() {
                 "updatedAt": session_timestamp(),
             }
         ],
-        "projectId": document.project.id,
+        "constellationId": document.constellation.id,
     });
 
-    let request: PersistProjectDocumentRequest =
+    let request: PersistConstellationDocumentRequest =
         serde_json::from_value(payload).expect("deserialize browser persist payload");
 
-    let persisted = persist_project_document_at(request).expect("persist browser payload");
+    let persisted = persist_constellation_document_at(request).expect("persist browser payload");
 
     assert_eq!(persisted.nodes.len(), 2);
     assert!(persisted
@@ -412,8 +509,9 @@ fn search_index_stays_isolated_between_session_database_paths() {
     let bootstrap_a = bootstrap_workspace_at(&session_a).expect("bootstrap session a");
     let bootstrap_b = bootstrap_workspace_at(&session_b).expect("bootstrap session b");
 
-    let mut document_a = load_project_document_at(&session_a, &bootstrap_a.active_project_id)
-        .expect("load session a document");
+    let mut document_a =
+        load_constellation_document_at(&session_a, &bootstrap_a.active_constellation_id)
+            .expect("load session a document");
     document_a.nodes.push(node_with_note_text(
         &document_a.canvas_id,
         "session-a-search-anchor",
@@ -421,25 +519,25 @@ fn search_index_stays_isolated_between_session_database_paths() {
         "lattice ember 9182",
     ));
 
-    let _persisted_a = persist_project_document_at(PersistProjectDocumentRequest {
+    let _persisted_a = persist_constellation_document_at(PersistConstellationDocumentRequest {
         annotations: document_a.annotations.clone(),
         canvas_id: document_a.canvas_id.clone(),
         database_path: session_a.to_string_lossy().to_string(),
         edges: document_a.edges.clone(),
         nodes: document_a.nodes.clone(),
-        project_id: document_a.project.id.clone(),
+        constellation_id: document_a.constellation.id.clone(),
     })
     .expect("persist session a document");
 
-    rebuild_project_search_index_command(RebuildProjectSearchIndexRequest {
+    rebuild_constellation_search_index_command(RebuildConstellationSearchIndexRequest {
         database_path: session_a.to_string_lossy().to_string(),
-        project_id: bootstrap_a.active_project_id.clone(),
+        constellation_id: bootstrap_a.active_constellation_id.clone(),
     })
     .expect("rebuild session a search index");
 
-    let session_a_hits = search_project_command(SearchProjectRequest {
+    let session_a_hits = search_constellation_command(SearchConstellationRequest {
         database_path: session_a.to_string_lossy().to_string(),
-        project_id: bootstrap_a.active_project_id.clone(),
+        constellation_id: bootstrap_a.active_constellation_id.clone(),
         query: "lattice ember 9182".to_string(),
         limit: Some(10),
     })
@@ -448,15 +546,15 @@ fn search_index_stays_isolated_between_session_database_paths() {
         .iter()
         .any(|hit| hit.entity_type == "node" && hit.title == "Session search anchor"));
 
-    rebuild_project_search_index_command(RebuildProjectSearchIndexRequest {
+    rebuild_constellation_search_index_command(RebuildConstellationSearchIndexRequest {
         database_path: session_b.to_string_lossy().to_string(),
-        project_id: bootstrap_b.active_project_id.clone(),
+        constellation_id: bootstrap_b.active_constellation_id.clone(),
     })
     .expect("rebuild session b search index");
 
-    let session_b_hits = search_project_command(SearchProjectRequest {
+    let session_b_hits = search_constellation_command(SearchConstellationRequest {
         database_path: session_b.to_string_lossy().to_string(),
-        project_id: bootstrap_b.active_project_id.clone(),
+        constellation_id: bootstrap_b.active_constellation_id.clone(),
         query: "lattice ember 9182".to_string(),
         limit: Some(10),
     })

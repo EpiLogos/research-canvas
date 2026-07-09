@@ -4,17 +4,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LeftOverlay } from "./LeftOverlay";
 
 const selectNode = vi.fn();
-const selectProject = vi.fn();
+const selectConstellation = vi.fn();
 
 vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
   useCanvasWorkspace: () => ({
-    projects: [
+    constellations: [
       {
         id: "main",
-        name: "Main timeline",
-        slug: "main-timeline",
+        name: "Root Ecology",
+        slug: "root-ecology",
         rootPath: "/workspace",
-        summary: "Single historical timeline surface.",
+        summary: "Completed constellations nested as portal cards.",
         parentId: null,
         children: [],
       },
@@ -28,8 +28,8 @@ vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
         children: [],
       },
     ],
-    activeProjectId: "main",
-    selectProject,
+    activeConstellationId: "main",
+    selectConstellation,
     resourceRoots: [],
     listDirectories: vi.fn().mockResolvedValue([]),
     attachResourceRoot: vi.fn(),
@@ -55,7 +55,7 @@ function renderFiles(onClose = vi.fn()) {
 describe("LeftOverlay browser", () => {
   beforeEach(() => {
     selectNode.mockClear();
-    selectProject.mockClear();
+    selectConstellation.mockClear();
   });
 
   it("defaults to the Graph view and groups nodes by type", () => {
@@ -102,13 +102,14 @@ describe("LeftOverlay browser", () => {
     expect(screen.getByTestId("browser-graph")).toHaveAttribute("data-active", "true");
     // Constellations must be visible regardless — assert via the real selector marker.
     expect(screen.getByTestId("lo-constellations")).toBeInTheDocument();
-    expect(screen.getByText("Single historical timeline")).toBeInTheDocument();
+    expect(screen.getByText("Root Ecology")).toBeInTheDocument();
+    expect(screen.queryByText("Single historical timeline")).not.toBeInTheDocument();
     expect(screen.getByText("Prometheus fire")).toBeInTheDocument();
   });
 
-  it("selects a constellation through the existing project selection path", () => {
+  it("selects a constellation through the constellation selection path", () => {
     renderFiles();
     fireEvent.click(screen.getByRole("button", { name: /Prometheus fire/ }));
-    expect(selectProject).toHaveBeenCalledWith("constellation-a");
+    expect(selectConstellation).toHaveBeenCalledWith("constellation-a");
   });
 });

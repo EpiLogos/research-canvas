@@ -6,7 +6,7 @@ use research_canvas_desktop_lib::db::{
     connection::Database,
     repositories::{
         canvas::CanvasRepository, graph::GraphRepository, layout::LayoutRepository,
-        ProjectRepository,
+        ConstellationRepository,
     },
     root_archetypal_seed::seed_root_archetypal_field,
 };
@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use tempfile::tempdir;
 
 #[test]
-fn root_archetypal_field_seed_writes_real_graph_project_layout_and_timeline() {
+fn root_archetypal_field_seed_writes_real_graph_constellation_layout_and_timeline() {
     let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
         eprintln!("skipping: NEO4J_TEST_URI unset");
         return;
@@ -43,10 +43,10 @@ fn root_archetypal_field_seed_writes_real_graph_project_layout_and_timeline() {
     ))
     .expect("seed second");
 
-    assert_eq!(first.project_slug, "root-archetypal-field");
+    assert_eq!(first.constellation_slug, "root-archetypal-field");
     assert_eq!(
-        first.project_id, second.project_id,
-        "project seeding is idempotent"
+        first.constellation_id, second.constellation_id,
+        "constellation seeding is idempotent"
     );
     assert_eq!(
         first.canvas_id, second.canvas_id,
@@ -65,12 +65,12 @@ fn root_archetypal_field_seed_writes_real_graph_project_layout_and_timeline() {
         "root portals plus child constellation layouts are persisted"
     );
 
-    let project = ProjectRepository::new(db.connection())
-        .get_by_id(&first.project_id)
-        .expect("project query")
-        .expect("root project exists");
-    assert_eq!(project.display_name, "Root Archetypal Field");
-    assert_eq!(project.slug, "root-archetypal-field");
+    let constellation = ConstellationRepository::new(db.connection())
+        .get_by_id(&first.constellation_id)
+        .expect("constellation query")
+        .expect("root constellation exists");
+    assert_eq!(constellation.display_name, "Root Archetypal Field");
+    assert_eq!(constellation.slug, "root-archetypal-field");
 
     let layouts = LayoutRepository::new(db.connection())
         .list_node_layout(&first.canvas_id)
@@ -90,7 +90,7 @@ fn root_archetypal_field_seed_writes_real_graph_project_layout_and_timeline() {
         .to_string();
 
     let child_canvases = CanvasRepository::new(db.connection())
-        .list_for_project(&first.project_id)
+        .list_for_constellation(&first.constellation_id)
         .expect("child canvases");
     assert!(
         child_canvases
