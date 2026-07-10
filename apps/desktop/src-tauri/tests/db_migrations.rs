@@ -76,44 +76,15 @@ fn db_migrations_upgrade_0010_without_touching_documents_or_canvas_layouts() {
     let dir = tempdir().expect("temp dir");
     let path = dir.path().join("upgrade.sqlite");
     let connection = Connection::open(&path).expect("fixture database");
+    MigrationRunner::migrate_through(&connection, "0010_node_document")
+        .expect("apply the real migrations through 0010");
     connection.execute_batch(
-        "PRAGMA foreign_keys = ON;
-         CREATE TABLE schema_migrations (version TEXT PRIMARY KEY NOT NULL, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-         CREATE TABLE canvases (id TEXT PRIMARY KEY NOT NULL);
-         CREATE TABLE node_document (
-            graph_node_id TEXT PRIMARY KEY NOT NULL, body TEXT NOT NULL DEFAULT '',
-            summary TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL, neo4j_synced INTEGER NOT NULL DEFAULT 0
-         );
-         CREATE TABLE node_layout (
-            graph_node_id TEXT NOT NULL, canvas_id TEXT NOT NULL REFERENCES canvases(id) ON DELETE CASCADE,
-            position_x REAL NOT NULL, position_y REAL NOT NULL, width REAL NOT NULL, height REAL NOT NULL,
-            style_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (canvas_id, graph_node_id)
-         );
-         INSERT INTO canvases(id) VALUES ('canvas-a');
+        "INSERT INTO projects(id, display_name, slug, root_path) VALUES ('project-a', 'Project A', 'project-a', '/project-a');
+         INSERT INTO canvases(id, project_id, name) VALUES ('canvas-a', 'project-a', 'Canvas A');
          INSERT INTO node_document VALUES ('node-a', 'irreplaceable body', 'face copy', '2025-01-02T03:04:05Z', 0);
          INSERT INTO node_layout(graph_node_id, canvas_id, position_x, position_y, width, height, style_json)
             VALUES ('node-a', 'canvas-a', 11.25, 22.5, 333, 144, '{\"color\":\"ochre\"}');",
     ).expect("0010 schema fixture");
-    for version in [
-        "0001_initial",
-        "0002_search_index",
-        "0003_project_resource_roots",
-        "0004_node_style_fields",
-        "0005_edge_anchor_fields",
-        "0006_sequence_redesign",
-        "0007_saved_sequences",
-        "0008_layout_store",
-        "0009_agent_activity",
-        "0010_node_document",
-    ] {
-        connection
-            .execute(
-                "INSERT INTO schema_migrations(version) VALUES (?1)",
-                [version],
-            )
-            .unwrap();
-    }
 
     let document_before = connection
         .query_row(

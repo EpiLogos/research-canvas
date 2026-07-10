@@ -119,14 +119,40 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
         incoming: &GraphNodeMetadataRecord,
         expected_revision: Option<i64>,
     ) -> Result<GraphMetadataMutation> {
+        self.save_with_interlock(incoming, expected_revision, || {})
+    }
+
+    /// Deterministic concurrency seam used by file-backed integration tests.
+    /// The callback runs after the repository read and immediately before the
+    /// conditional write; production callers should use [`Self::save`].
+    #[doc(hidden)]
+    pub fn save_with_interlock<F>(
+        &self,
+        incoming: &GraphNodeMetadataRecord,
+        expected_revision: Option<i64>,
+        before_write: F,
+    ) -> Result<GraphMetadataMutation>
+    where
+        F: FnOnce(),
+    {
         validate_record_versions(incoming)?;
         if let Some(expected_revision) = expected_revision {
             validate_contract_revision("expectedRevision", expected_revision)
                 .map_err(invalid_parameter)?;
         }
         let Some(current) = self.get(&incoming.graph_node_id)? else {
-            insert_record(self.connection, incoming)?;
-            return Ok(GraphMetadataMutation::Created);
+            before_write();
+            if insert_record(self.connection, incoming)? {
+                return Ok(GraphMetadataMutation::Created);
+            }
+            let current_revision = self
+                .get(&incoming.graph_node_id)?
+                .map(|record| record.content_revision)
+                .unwrap_or(incoming.content_revision);
+            return Ok(GraphMetadataMutation::Conflict {
+                current_revision,
+                reason: "graph node id was concurrently created".into(),
+            });
         };
         if current == *incoming {
             return Ok(GraphMetadataMutation::Preserved);
@@ -151,8 +177,18 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
                 reason: "expected revision does not match persisted revision".into(),
             });
         }
-        update_record(self.connection, incoming, current.content_revision)?;
-        Ok(GraphMetadataMutation::Updated)
+        before_write();
+        if update_record(self.connection, incoming, current.content_revision)? {
+            return Ok(GraphMetadataMutation::Updated);
+        }
+        let current_revision = self
+            .get(&incoming.graph_node_id)?
+            .map(|record| record.content_revision)
+            .unwrap_or(current.content_revision);
+        Ok(GraphMetadataMutation::Conflict {
+            current_revision,
+            reason: "graph metadata changed during optimistic update".into(),
+        })
     }
 }
 
@@ -216,9 +252,9 @@ fn mutation_params(record: &GraphNodeMetadataRecord) -> Result<Vec<Box<dyn rusql
     ])
 }
 
-fn insert_record(connection: &Connection, record: &GraphNodeMetadataRecord) -> Result<()> {
+fn insert_record(connection: &Connection, record: &GraphNodeMetadataRecord) -> Result<bool> {
     let values = mutation_params(record)?;
-    connection.execute(
+    let affected = connection.execute(
         "INSERT INTO graph_node_metadata (
          graph_node_id, entity_type, title, archetypal_resonance, coordinate,
          source_coordinates_json, evidence_tags_json, source_kind, content_origin, content_revision,
@@ -226,17 +262,18 @@ fn insert_record(connection: &Connection, record: &GraphNodeMetadataRecord) -> R
          temporal_role, place_coverage, ql_form, ql_unit_id, ql_arc, ql_topology, ql_schema_version,
          ql_source_coordinates_json, ql_completeness_status, is_temporal, valid_from, valid_to,
          temporal_precision, schema_version, sync_state, remote_revision)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31)",
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31)
+         ON CONFLICT(graph_node_id) DO NOTHING",
         rusqlite::params_from_iter(values.iter()),
     )?;
-    Ok(())
+    Ok(affected == 1)
 }
 
 fn update_record(
     connection: &Connection,
     record: &GraphNodeMetadataRecord,
     current_revision: i64,
-) -> Result<()> {
+) -> Result<bool> {
     let values = mutation_params(record)?;
     let affected = connection.execute(
         "UPDATE graph_node_metadata SET entity_type=?2, title=?3, archetypal_resonance=?4, coordinate=?5,
@@ -250,12 +287,7 @@ fn update_record(
          WHERE graph_node_id=?1 AND content_revision=?32",
         rusqlite::params_from_iter(values.iter().map(|v| v.as_ref()).chain(std::iter::once(&current_revision as &dyn rusqlite::ToSql))),
     )?;
-    if affected != 1 {
-        return Err(invalid_parameter(
-            "metadata changed during optimistic update",
-        ));
-    }
-    Ok(())
+    Ok(affected == 1)
 }
 
 fn decode_error(index: usize, error: impl Error + Send + Sync + 'static) -> rusqlite::Error {

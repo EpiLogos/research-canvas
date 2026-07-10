@@ -50,14 +50,42 @@ impl<'conn> TimelineLayoutRepository<'conn> {
         incoming: &TimelineLayoutRecord,
         expected_token: Option<&str>,
     ) -> Result<TimelineLayoutMutation> {
+        self.save_with_interlock(incoming, expected_token, || {})
+    }
+
+    /// Deterministic concurrency seam used by file-backed integration tests.
+    /// The callback runs after the repository read and immediately before the
+    /// conditional write; production callers should use [`Self::save`].
+    #[doc(hidden)]
+    pub fn save_with_interlock<F>(
+        &self,
+        incoming: &TimelineLayoutRecord,
+        expected_token: Option<&str>,
+        before_write: F,
+    ) -> Result<TimelineLayoutMutation>
+    where
+        F: FnOnce(),
+    {
         validate_layout(incoming)?;
         let style = serde_json::to_string(&incoming.style_json)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         let Some(current) = self.get(&incoming.graph_node_id)? else {
-            self.connection.execute(
-                "INSERT INTO timeline_layout(graph_node_id,lane,offset_y,width,height,style_json) VALUES (?1,?2,?3,?4,?5,?6)",
+            before_write();
+            let affected = self.connection.execute(
+                "INSERT INTO timeline_layout(graph_node_id,lane,offset_y,width,height,style_json) VALUES (?1,?2,?3,?4,?5,?6)
+                 ON CONFLICT(graph_node_id) DO NOTHING",
                 params![incoming.graph_node_id, incoming.lane, incoming.offset_y, incoming.width, incoming.height, style])?;
-            return Ok(TimelineLayoutMutation::Created);
+            if affected == 1 {
+                return Ok(TimelineLayoutMutation::Created);
+            }
+            let current_token = self
+                .get(&incoming.graph_node_id)?
+                .and_then(|record| record.updated_at)
+                .unwrap_or_default();
+            return Ok(TimelineLayoutMutation::Conflict {
+                current_token,
+                reason: "timeline layout was concurrently created".into(),
+            });
         };
         let same_presentation = current.lane == incoming.lane
             && current.offset_y == incoming.offset_y
@@ -74,6 +102,7 @@ impl<'conn> TimelineLayoutRepository<'conn> {
                 reason: "expected layout token does not match persisted layout".into(),
             });
         }
+        before_write();
         let next_token = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Nanos, true);
         let affected = self.connection.execute(
             "UPDATE timeline_layout SET lane=?2,offset_y=?3,width=?4,height=?5,style_json=?6,
@@ -90,8 +119,12 @@ impl<'conn> TimelineLayoutRepository<'conn> {
             ],
         )?;
         if affected != 1 {
+            let latest_token = self
+                .get(&incoming.graph_node_id)?
+                .and_then(|record| record.updated_at)
+                .unwrap_or(current_token);
             return Ok(TimelineLayoutMutation::Conflict {
-                current_token,
+                current_token: latest_token,
                 reason: "layout changed during optimistic update".into(),
             });
         }

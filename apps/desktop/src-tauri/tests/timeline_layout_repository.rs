@@ -7,6 +7,7 @@ use research_canvas_desktop_lib::db::{
         TimelineLayoutRepository,
     },
 };
+use std::sync::{Arc, Barrier};
 use tempfile::tempdir;
 
 fn metadata() -> GraphNodeMetadataRecord {
@@ -123,4 +124,117 @@ fn timeline_layout_rejects_non_finite_or_non_positive_geometry() {
     invalid.offset_y = 0.0;
     invalid.width = 0.0;
     assert!(repo.save(&invalid, None).is_err());
+}
+
+#[test]
+fn concurrent_timeline_creates_return_domain_results_without_overwriting() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("timeline-race.sqlite");
+    {
+        let db = Database::open(&path).unwrap();
+        db.connection()
+            .execute_batch("PRAGMA journal_mode=WAL;")
+            .unwrap();
+        GraphNodeMetadataRepository::new(db.connection())
+            .save(&metadata(), None)
+            .unwrap();
+    }
+    let barrier = Arc::new(Barrier::new(2));
+    let handles = ["events", "politics"].map(|lane| {
+        let path = path.clone();
+        let barrier = barrier.clone();
+        std::thread::spawn(move || {
+            let db = Database::open(path).unwrap();
+            let candidate = layout(lane);
+            TimelineLayoutRepository::new(db.connection()).save_with_interlock(
+                &candidate,
+                None,
+                || {
+                    barrier.wait();
+                },
+            )
+        })
+    });
+    let results = handles.map(|h| {
+        h.join()
+            .unwrap()
+            .expect("domain result, never SQLite uniqueness error")
+    });
+    assert_eq!(
+        results
+            .iter()
+            .filter(|r| matches!(r, TimelineLayoutMutation::Created))
+            .count(),
+        1
+    );
+    assert_eq!(
+        results
+            .iter()
+            .filter(|r| matches!(r, TimelineLayoutMutation::Conflict { .. }))
+            .count(),
+        1
+    );
+    let db = Database::open(&path).unwrap();
+    let stored = TimelineLayoutRepository::new(db.connection())
+        .get("event-1")
+        .unwrap()
+        .unwrap();
+    assert!(stored.lane == "events" || stored.lane == "politics");
+}
+
+#[test]
+fn concurrent_timeline_updates_return_one_update_and_one_conflict() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("timeline-update-race.sqlite");
+    let token = {
+        let db = Database::open(&path).unwrap();
+        db.connection()
+            .execute_batch("PRAGMA journal_mode=WAL;")
+            .unwrap();
+        GraphNodeMetadataRepository::new(db.connection())
+            .save(&metadata(), None)
+            .unwrap();
+        let repo = TimelineLayoutRepository::new(db.connection());
+        repo.save(&layout("events"), None).unwrap();
+        repo.get("event-1").unwrap().unwrap().updated_at.unwrap()
+    };
+    let barrier = Arc::new(Barrier::new(2));
+    let handles = ["politics", "religion"].map(|lane| {
+        let path = path.clone();
+        let token = token.clone();
+        let barrier = barrier.clone();
+        std::thread::spawn(move || {
+            let db = Database::open(path).unwrap();
+            let candidate = layout(lane);
+            TimelineLayoutRepository::new(db.connection()).save_with_interlock(
+                &candidate,
+                Some(&token),
+                || {
+                    barrier.wait();
+                },
+            )
+        })
+    });
+    let results =
+        handles.map(|handle| handle.join().unwrap().expect("CAS loss is a domain result"));
+    assert_eq!(
+        results
+            .iter()
+            .filter(|result| matches!(result, TimelineLayoutMutation::Updated))
+            .count(),
+        1
+    );
+    assert_eq!(
+        results
+            .iter()
+            .filter(|result| matches!(result, TimelineLayoutMutation::Conflict { .. }))
+            .count(),
+        1
+    );
+    let db = Database::open(&path).unwrap();
+    let stored = TimelineLayoutRepository::new(db.connection())
+        .get("event-1")
+        .unwrap()
+        .unwrap();
+    assert!(stored.lane == "politics" || stored.lane == "religion");
 }

@@ -8,6 +8,7 @@ use research_canvas_desktop_lib::db::{
         GraphMetadataMutation, GraphNodeMetadataRecord, GraphNodeMetadataRepository, SyncState,
     },
 };
+use std::sync::{Arc, Barrier};
 use tempfile::tempdir;
 
 fn record(revision: i64, origin: ContentOrigin) -> GraphNodeMetadataRecord {
@@ -128,4 +129,94 @@ fn metadata_rejects_versions_outside_the_javascript_safe_integer_range() {
     assert!(repo
         .save(&record(1, ContentOrigin::Seed), Some(-1))
         .is_err());
+}
+
+#[test]
+fn concurrent_metadata_creates_and_updates_return_domain_conflicts_without_overwriting() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("metadata-race.sqlite");
+    {
+        let db = Database::open(&path).unwrap();
+        db.connection()
+            .execute_batch("PRAGMA journal_mode=WAL;")
+            .unwrap();
+    }
+    let barrier = Arc::new(Barrier::new(2));
+    let handles = ["First", "Second"].map(|title| {
+        let path = path.clone();
+        let barrier = barrier.clone();
+        std::thread::spawn(move || {
+            let db = Database::open(path).unwrap();
+            let mut candidate = record(1, ContentOrigin::CorpusCompiled);
+            candidate.title = title.into();
+            GraphNodeMetadataRepository::new(db.connection()).save_with_interlock(
+                &candidate,
+                None,
+                || {
+                    barrier.wait();
+                },
+            )
+        })
+    });
+    let results = handles.map(|handle| {
+        handle
+            .join()
+            .unwrap()
+            .expect("domain result, never SQLite race error")
+    });
+    assert_eq!(
+        results
+            .iter()
+            .filter(|r| matches!(r, GraphMetadataMutation::Created))
+            .count(),
+        1
+    );
+    assert_eq!(
+        results
+            .iter()
+            .filter(|r| matches!(r, GraphMetadataMutation::Conflict { .. }))
+            .count(),
+        1
+    );
+
+    let barrier = Arc::new(Barrier::new(2));
+    let handles = ["Update A", "Update B"].map(|title| {
+        let path = path.clone();
+        let barrier = barrier.clone();
+        std::thread::spawn(move || {
+            let db = Database::open(path).unwrap();
+            let mut candidate = record(2, ContentOrigin::CorpusCompiled);
+            candidate.title = title.into();
+            GraphNodeMetadataRepository::new(db.connection()).save_with_interlock(
+                &candidate,
+                Some(1),
+                || {
+                    barrier.wait();
+                },
+            )
+        })
+    });
+    let results =
+        handles.map(|handle| handle.join().unwrap().expect("CAS loss is a domain result"));
+    assert_eq!(
+        results
+            .iter()
+            .filter(|r| matches!(r, GraphMetadataMutation::Updated))
+            .count(),
+        1
+    );
+    assert_eq!(
+        results
+            .iter()
+            .filter(|r| matches!(r, GraphMetadataMutation::Conflict { .. }))
+            .count(),
+        1
+    );
+    let db = Database::open(&path).unwrap();
+    let stored = GraphNodeMetadataRepository::new(db.connection())
+        .get("event-1")
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.content_revision, 2);
+    assert!(stored.title == "Update A" || stored.title == "Update B");
 }
