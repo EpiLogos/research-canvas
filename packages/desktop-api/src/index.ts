@@ -58,6 +58,11 @@ export interface LocalNodeDocumentInput {
   expectedRevision?: number;
   bodySourceCoordinates?: string[];
   dryRun?: boolean;
+  metadataProjection?: {
+    entityType: EntityType;
+    title: string;
+    schemaVersion: number;
+  };
 }
 
 export interface GraphContentCasInput {
@@ -87,6 +92,7 @@ import type {
   CanvasNodeSidecar,
   CanvasView,
   ContentOrigin,
+  EntityType,
   GraphNode,
   GraphNodePatch,
   GraphRelationship,

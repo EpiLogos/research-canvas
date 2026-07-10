@@ -1,8 +1,8 @@
 // apps/desktop/src-tauri/tests/graph_node_update_delete.rs
 mod support;
 use research_canvas_desktop_lib::db::repositories::graph::{
-    ClaimKind, ContentOrigin, EvidenceStatus, GraphNodePatch, GraphRepository, Historicity,
-    NewGraphNode, PlaceCoverage, QlArc, QlCompletenessStatus, QlForm, QlTopology, TemporalRole,
+    ClaimKind, EvidenceStatus, GraphNodePatch, GraphRepository, Historicity, NewGraphNode,
+    PlaceCoverage, QlArc, QlCompletenessStatus, QlForm, QlTopology, TemporalRole,
 };
 
 #[test]
@@ -29,14 +29,10 @@ fn update_node_applies_patch_and_clears_with_some_none() {
         &created.graph_node_id,
         GraphNodePatch {
             title: Some(format!("Mono-poly {run_id}")),
-            summary: Some("the spread of the one over the many".into()),
             coordinate: Some(None), // clear
             evidence_tags: Some(vec!["interpretive".into()]),
             source_kind: Some(Some("theoretical-dynamic".into())),
-            content_origin: Some(Some(ContentOrigin::UserAuthored)),
-            content_revision: Some(Some(9)),
             seed_schema_version: Some(None),
-            body_source_coordinates: Some(vec!["Canon/monopoly.md#reading".into()]),
             historicity: Some(Some(Historicity::Theoretical)),
             claim_kind: Some(Some(ClaimKind::Interpretation)),
             evidence_status: Some(Some(EvidenceStatus::Interpretive)),
@@ -54,9 +50,7 @@ fn update_node_applies_patch_and_clears_with_some_none() {
     ))
     .expect("update");
     assert_eq!(patched.title, format!("Mono-poly {run_id}"));
-    assert_eq!(patched.summary, "the spread of the one over the many");
     assert_eq!(patched.coordinate, None);
-    assert_eq!(patched.content_origin, Some(ContentOrigin::UserAuthored));
     assert_eq!(patched.historicity, Some(Historicity::Theoretical));
     assert_eq!(patched.ql_form, Some(QlForm::CompleteSixfold));
 
@@ -64,7 +58,6 @@ fn update_node_applies_patch_and_clears_with_some_none() {
         &created.graph_node_id,
         GraphNodePatch {
             source_kind: Some(None),
-            content_origin: Some(None),
             ql_form: Some(None),
             ql_unit_id: Some(None),
             ..Default::default()
@@ -72,7 +65,6 @@ fn update_node_applies_patch_and_clears_with_some_none() {
     ))
     .expect("clear nullable metadata");
     assert_eq!(cleared.source_kind, None);
-    assert_eq!(cleared.content_origin, None);
     assert_eq!(cleared.ql_form, None);
     assert_eq!(cleared.ql_unit_id, None);
 

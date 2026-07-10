@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { GraphNode, GraphNodePatch } from "@research-canvas/desktop-api";
+import type { GraphNode } from "@research-canvas/desktop-api";
 import { NodeDocumentPane } from "./NodeDocumentPane";
 import { NodeContentDropSurface } from "../canvas/NodeContentDropSurface";
 import { LinkFilePicker } from "../canvas/LinkFilePicker";
@@ -10,10 +10,6 @@ import { pickAndInsertImage, pickAndAttachFile } from "../canvas/insertMedia";
 
 interface GraphDocumentTransport {
   readGraphNode(input: { graphNodeId: string }): Promise<GraphNode>;
-  updateGraphNode(input: {
-    graphNodeId: string;
-    patch: GraphNodePatch;
-  }): Promise<GraphNode>;
   readLocalNodeDocument(input: {
     databasePath: string;
     graphNodeId: string;

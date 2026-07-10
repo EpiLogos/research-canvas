@@ -49,6 +49,7 @@ export async function seedNoteNodeEffects(args: {
     contentOrigin: "user_authored";
     contentRevision: number;
     bodySourceCoordinates: string[];
+    metadataProjection: { entityType: "Work"; title: string; schemaVersion: number };
   }) => Promise<unknown>;
   createGraphNode: (
     input: NewGraphNodeInput & { graphNodeId: string }
@@ -56,21 +57,19 @@ export async function seedNoteNodeEffects(args: {
 }): Promise<void> {
   const { graphNodeId, title, databasePath, upsertLocalNodeDocument, createGraphNode } = args;
 
-  if (databasePath) {
-    try {
-      await upsertLocalNodeDocument({
-        databasePath,
-        graphNodeId,
-        body: "",
-        summary: "",
-        contentOrigin: "user_authored",
-        contentRevision: 0,
-        bodySourceCoordinates: [],
-      });
-    } catch (error) {
-      console.warn("upsertLocalNodeDocument failed; note kept locally without a seeded doc row", error);
-    }
+  if (!databasePath) {
+    throw new Error("note creation requires the authoritative local document store");
   }
+  await upsertLocalNodeDocument({
+    databasePath,
+    graphNodeId,
+    body: "",
+    summary: "",
+    contentOrigin: "user_authored",
+    contentRevision: 0,
+    bodySourceCoordinates: [],
+    metadataProjection: { entityType: "Work", title, schemaVersion: 1 },
+  });
 
   const input = {
     ...buildNewGraphNodeInput({ nodeType: "note", title }),

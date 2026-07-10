@@ -170,16 +170,31 @@ fn controlled_values_reject_unknown_tokens() {
 
 #[test]
 fn patch_json_distinguishes_omitted_fields_from_explicit_null() {
-    let patch: GraphNodePatch = serde_json::from_str(
-        r#"{"coordinate":null,"sourceKind":null,"qlForm":null,"contentRevision":null}"#,
-    )
-    .expect("deserialize patch");
+    let patch: GraphNodePatch =
+        serde_json::from_str(r#"{"coordinate":null,"sourceKind":null,"qlForm":null}"#)
+            .expect("deserialize patch");
 
     assert_eq!(patch.coordinate, Some(None));
     assert_eq!(patch.source_kind, Some(None));
     assert_eq!(patch.ql_form, Some(None));
-    assert_eq!(patch.content_revision, Some(None));
     assert_eq!(patch.valid_from, None, "omitted fields remain unchanged");
+}
+
+#[test]
+fn generic_metadata_patch_rejects_all_content_owned_fields() {
+    for field in [
+        "body",
+        "summary",
+        "contentOrigin",
+        "contentRevision",
+        "bodySourceCoordinates",
+    ] {
+        let json = format!(r#"{{"{field}":null}}"#);
+        assert!(
+            serde_json::from_str::<GraphNodePatch>(&json).is_err(),
+            "{field} must use content CAS"
+        );
+    }
 }
 
 #[test]

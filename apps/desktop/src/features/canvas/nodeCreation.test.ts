@@ -76,6 +76,7 @@ describe("seedNoteNodeEffects", () => {
       contentOrigin: "user_authored",
       contentRevision: 0,
       bodySourceCoordinates: [],
+      metadataProjection: { entityType: "Work", title: "Untitled note", schemaVersion: 1 },
     });
 
     expect(createGraphNode).toHaveBeenCalledWith(expect.objectContaining({
@@ -86,7 +87,7 @@ describe("seedNoteNodeEffects", () => {
     }));
   });
 
-  it("skips seeding the local document gracefully when databasePath is null", async () => {
+  it("fails closed before remote creation when databasePath is null", async () => {
     const upsertLocalNodeDocument = vi.fn().mockResolvedValue(undefined);
     const createGraphNode = vi.fn().mockResolvedValue({});
 
@@ -98,13 +99,13 @@ describe("seedNoteNodeEffects", () => {
         upsertLocalNodeDocument,
         createGraphNode,
       })
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow(/authoritative local document store/);
 
     expect(upsertLocalNodeDocument).not.toHaveBeenCalled();
-    expect(createGraphNode).toHaveBeenCalled();
+    expect(createGraphNode).not.toHaveBeenCalled();
   });
 
-  it("still creates the graph node even if upsertLocalNodeDocument fails", async () => {
+  it("fails closed before remote creation if authoritative local creation fails", async () => {
     const upsertLocalNodeDocument = vi.fn().mockRejectedValue(new Error("sqlite busy"));
     const createGraphNode = vi.fn().mockResolvedValue({});
 
@@ -116,9 +117,9 @@ describe("seedNoteNodeEffects", () => {
         upsertLocalNodeDocument,
         createGraphNode,
       })
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow("sqlite busy");
 
-    expect(createGraphNode).toHaveBeenCalled();
+    expect(createGraphNode).not.toHaveBeenCalled();
   });
 
   it("records the node as pending sync when createGraphNode fails, and never throws", async () => {

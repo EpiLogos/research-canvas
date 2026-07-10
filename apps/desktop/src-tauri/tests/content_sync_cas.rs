@@ -8,7 +8,8 @@ use research_canvas_desktop_lib::db::{
             ContentOrigin, GraphContentCasInput, GraphContentCasMutation, GraphRepository,
             NewGraphNode, NewGraphNodeMetadata,
         },
-        DocumentContentInput, NodeDocumentRepository, SyncAcknowledgementMutation,
+        DocumentContentInput, DocumentMetadataProjection, NodeDocumentRepository,
+        SyncAcknowledgementMutation,
     },
 };
 
@@ -24,12 +25,17 @@ fn local_input(id: &str, body: &str, revision: i64) -> DocumentContentInput {
     }
 }
 
-fn insert_metadata(db: &Database, id: &str, revision: i64) {
-    db.connection().execute(
-        "INSERT INTO graph_node_metadata(graph_node_id,entity_type,title,content_origin,content_revision,is_temporal,schema_version,sync_state)
-         VALUES (?1,'Work','Node','user_authored',?2,0,1,'pending')",
-        rusqlite::params![id, revision],
-    ).unwrap();
+fn create_local_note(repo: &NodeDocumentRepository<'_>, id: &str, body: &str, revision: i64) {
+    repo.apply_reconciliation_with_projection(
+        &local_input(id, body, revision),
+        None,
+        Some(&DocumentMetadataProjection {
+            entity_type: "Work".into(),
+            title: "Node".into(),
+            schema_version: 1,
+        }),
+    )
+    .unwrap();
 }
 
 fn create_remote(
@@ -100,10 +106,7 @@ fn content_sync_cas_coordinates_remote_and_local_revisions_without_blind_overwri
         7,
         ContentOrigin::UserAuthored,
     );
-    local
-        .apply_reconciliation(&local_input(&happy, "remote7", 7), None)
-        .unwrap();
-    insert_metadata(&db, &happy, 7);
+    create_local_note(&local, &happy, "remote7", 7);
     local
         .apply_user_edit(&happy, "local8", "local8 face", 7)
         .unwrap();
@@ -144,10 +147,7 @@ fn content_sync_cas_coordinates_remote_and_local_revisions_without_blind_overwri
         7,
         ContentOrigin::UserAuthored,
     );
-    local
-        .apply_reconciliation(&local_input(&concurrent, "remote7", 7), None)
-        .unwrap();
-    insert_metadata(&db, &concurrent, 7);
+    create_local_note(&local, &concurrent, "remote7", 7);
     local
         .apply_user_edit(&concurrent, "local8", "face8", 7)
         .unwrap();

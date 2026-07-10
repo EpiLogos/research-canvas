@@ -1,7 +1,7 @@
 /**
  * WS4a Task 6 cutover invariant.
  *
- * Node and edge substance is owned by Neo4j (createGraphNode / updateGraphNode).
+ * Node and edge substance uses explicit graph creation and revision-aware content CAS.
  * The legacy persistConstellationDocument substance double-write (nodes + edges) is
  * permanently retired after the WS4a cutover. This helper encodes that decision
  * as a compile-time-stable constant so that a future re-introduction of the

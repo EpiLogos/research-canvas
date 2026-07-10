@@ -263,10 +263,9 @@ where
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct GraphNodePatch {
     pub title: Option<String>,
-    pub body: Option<String>,
-    pub summary: Option<String>,
     #[serde(default, deserialize_with = "deserialize_present_nullable")]
     pub archetypal_resonance: Option<Option<String>>,
     #[serde(default, deserialize_with = "deserialize_present_nullable")]
@@ -276,12 +275,7 @@ pub struct GraphNodePatch {
     #[serde(default, deserialize_with = "deserialize_present_nullable")]
     pub source_kind: Option<Option<String>>,
     #[serde(default, deserialize_with = "deserialize_present_nullable")]
-    pub content_origin: Option<Option<ContentOrigin>>,
-    #[serde(default, deserialize_with = "deserialize_present_nullable")]
-    pub content_revision: Option<Option<i64>>,
-    #[serde(default, deserialize_with = "deserialize_present_nullable")]
     pub seed_schema_version: Option<Option<i64>>,
-    pub body_source_coordinates: Option<Vec<String>>,
     #[serde(default, deserialize_with = "deserialize_present_nullable")]
     pub historicity: Option<Option<Historicity>>,
     #[serde(default, deserialize_with = "deserialize_present_nullable")]
@@ -808,7 +802,6 @@ impl GraphRepository {
         patch: GraphNodePatch,
     ) -> Result<GraphNode, String> {
         for (property, value) in [
-            ("contentRevision", patch.content_revision.flatten()),
             ("seedSchemaVersion", patch.seed_schema_version.flatten()),
             ("qlSchemaVersion", patch.ql_schema_version.flatten()),
         ] {
@@ -819,12 +812,6 @@ impl GraphRepository {
         let mut sets: Vec<String> = vec!["n.updated_at = $now".to_string()];
         if patch.title.is_some() {
             sets.push("n.title = $title".into());
-        }
-        if patch.body.is_some() {
-            sets.push("n.body = $body".into());
-        }
-        if patch.summary.is_some() {
-            sets.push("n.summary = $summary".into());
         }
         if patch.archetypal_resonance.is_some() {
             sets.push("n.archetypal_resonance = $archetypal_resonance".into());
@@ -841,17 +828,8 @@ impl GraphRepository {
         if patch.source_kind.is_some() {
             sets.push("n.source_kind = $source_kind".into());
         }
-        if patch.content_origin.is_some() {
-            sets.push("n.content_origin = $content_origin".into());
-        }
-        if patch.content_revision.is_some() {
-            sets.push("n.content_revision = $content_revision".into());
-        }
         if patch.seed_schema_version.is_some() {
             sets.push("n.seed_schema_version = $seed_schema_version".into());
-        }
-        if patch.body_source_coordinates.is_some() {
-            sets.push("n.body_source_coordinates = $body_source_coordinates".into());
         }
         if patch.historicity.is_some() {
             sets.push("n.historicity = $historicity".into());
@@ -920,12 +898,6 @@ impl GraphRepository {
         if let Some(v) = patch.title {
             q = q.param("title", v);
         }
-        if let Some(v) = patch.body {
-            q = q.param("body", v);
-        }
-        if let Some(v) = patch.summary {
-            q = q.param("summary", v);
-        }
         if let Some(v) = patch.archetypal_resonance {
             q = q.param("archetypal_resonance", v);
         }
@@ -941,17 +913,8 @@ impl GraphRepository {
         if let Some(v) = patch.source_kind {
             q = q.param("source_kind", v);
         }
-        if let Some(v) = patch.content_origin {
-            q = q.param("content_origin", v.map(|value| value.as_str().to_string()));
-        }
-        if let Some(v) = patch.content_revision {
-            q = q.param("content_revision", v.map(|value| value.to_string()));
-        }
         if let Some(v) = patch.seed_schema_version {
             q = q.param("seed_schema_version", v.map(|value| value.to_string()));
-        }
-        if let Some(v) = patch.body_source_coordinates {
-            q = q.param("body_source_coordinates", v);
         }
         if let Some(v) = patch.historicity {
             q = q.param("historicity", v.map(|value| value.as_str().to_string()));

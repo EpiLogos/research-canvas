@@ -154,9 +154,9 @@ export interface NewGraphNodeInput {
 
 export type GraphNodePatch = Partial<
   Pick<GraphNode,
-    "title" | "body" | "summary" | "archetypalResonance" |
+    "title" | "archetypalResonance" |
     "coordinate" | "sourceCoordinates" | "evidenceTags" | "sourceKind" |
-    "contentOrigin" | "contentRevision" | "seedSchemaVersion" | "bodySourceCoordinates" |
+    "seedSchemaVersion" |
     "historicity" | "claimKind" | "evidenceStatus" | "temporalRole" | "placeCoverage" |
     "qlForm" | "qlUnitId" | "qlArc" | "qlTopology" | "qlSchemaVersion" |
     "qlSourceCoordinates" | "qlCompletenessStatus" | "isTemporal" |

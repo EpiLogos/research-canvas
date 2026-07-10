@@ -1,8 +1,8 @@
 use research_canvas_desktop_lib::db::connection::Database;
 use research_canvas_desktop_lib::db::repositories::graph::ContentOrigin;
 use research_canvas_desktop_lib::db::repositories::node_document::{
-    DocumentContentInput, DocumentReconciliationItem, NodeDocumentMutation, NodeDocumentRepository,
-    SyncAcknowledgementMutation,
+    DocumentContentInput, DocumentMetadataProjection, DocumentReconciliationItem,
+    NodeDocumentMutation, NodeDocumentRepository, SyncAcknowledgementMutation,
 };
 
 fn temp_db() -> (tempfile::TempDir, Database) {
@@ -114,6 +114,40 @@ fn reconciliation_creates_then_exact_retry_is_a_noop() {
     let stored = repo.get_node_document("seeded").unwrap().unwrap();
     assert_eq!(stored.content_origin, ContentOrigin::Seed);
     assert_eq!(stored.content_revision, 1);
+}
+
+#[test]
+fn production_document_creation_atomically_creates_matching_metadata_projection() {
+    let (_dir, db) = temp_db();
+    let repo = NodeDocumentRepository::new(db.connection());
+    let document = input("created", "", ContentOrigin::UserAuthored, 0);
+    assert_eq!(
+        repo.apply_reconciliation_with_projection(
+            &document,
+            None,
+            Some(&DocumentMetadataProjection {
+                entity_type: "Work".into(),
+                title: "Untitled note".into(),
+                schema_version: 1,
+            })
+        )
+        .unwrap(),
+        NodeDocumentMutation::Created
+    );
+    let projection = db.connection().query_row(
+        "SELECT entity_type,title,content_origin,content_revision,sync_state FROM graph_node_metadata WHERE graph_node_id='created'",
+        [], |row| Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?,row.get::<_,String>(2)?,row.get::<_,i64>(3)?,row.get::<_,String>(4)?))
+    ).unwrap();
+    assert_eq!(
+        projection,
+        (
+            "Work".into(),
+            "Untitled note".into(),
+            "user_authored".into(),
+            0,
+            "pending".into()
+        )
+    );
 }
 
 #[test]

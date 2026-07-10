@@ -35,6 +35,14 @@ pub struct DocumentContentInput {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DocumentMetadataProjection {
+    pub entity_type: String,
+    pub title: String,
+    pub schema_version: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DocumentReconciliationItem {
     pub document: DocumentContentInput,
     #[serde(default)]
@@ -197,19 +205,81 @@ impl<'conn> NodeDocumentRepository<'conn> {
         incoming: &DocumentContentInput,
         expected_revision: Option<i64>,
     ) -> RepositoryResult<NodeDocumentMutation> {
+        self.apply_reconciliation_with_projection(incoming, expected_revision, None)
+    }
+
+    pub fn apply_reconciliation_with_projection(
+        &self,
+        incoming: &DocumentContentInput,
+        expected_revision: Option<i64>,
+        projection: Option<&DocumentMetadataProjection>,
+    ) -> RepositoryResult<NodeDocumentMutation> {
         let decision = self.plan_reconciliation(incoming, expected_revision)?;
-        if !matches!(
-            decision,
-            NodeDocumentMutation::Created | NodeDocumentMutation::Updated
-        ) {
+        if matches!(decision, NodeDocumentMutation::Conflict { .. }) {
+            return Ok(decision);
+        }
+        if projection.is_none() && matches!(decision, NodeDocumentMutation::Preserved) {
             return Ok(decision);
         }
         let transaction = TransactionGuard::begin(self.connection)?;
         let fresh = self.get_node_document(&incoming.graph_node_id)?;
         let fresh_decision = plan(fresh.as_ref(), incoming, expected_revision);
         self.apply_planned_without_transaction(incoming, expected_revision, &fresh_decision)?;
+        if let Some(projection) = projection {
+            self.ensure_metadata_projection(incoming, projection)?;
+        }
         transaction.commit()?;
         Ok(fresh_decision)
+    }
+
+    fn ensure_metadata_projection(
+        &self,
+        document: &DocumentContentInput,
+        projection: &DocumentMetadataProjection,
+    ) -> RepositoryResult<()> {
+        super::graph::EntityType::try_from(projection.entity_type.clone())
+            .map_err(RepositoryError::Validation)?;
+        validate_contract_revision("schemaVersion", projection.schema_version)
+            .map_err(RepositoryError::Validation)?;
+        self.connection.execute(
+            "INSERT INTO graph_node_metadata(
+              graph_node_id,entity_type,title,content_origin,content_revision,
+              body_source_coordinates_json,is_temporal,schema_version,sync_state)
+             VALUES (?1,?2,?3,?4,?5,?6,0,?7,?8)
+             ON CONFLICT(graph_node_id) DO NOTHING",
+            params![
+                document.graph_node_id,
+                projection.entity_type,
+                projection.title,
+                document.content_origin.as_str(),
+                document.content_revision,
+                json(&document.body_source_coordinates)?,
+                projection.schema_version,
+                if document.neo4j_synced {
+                    "synced"
+                } else {
+                    "pending"
+                }
+            ],
+        )?;
+        let stored: (String, String, String, i64) = self.connection.query_row(
+            "SELECT entity_type,title,content_origin,content_revision FROM graph_node_metadata WHERE graph_node_id=?1",
+            [&document.graph_node_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+        if stored
+            != (
+                projection.entity_type.clone(),
+                projection.title.clone(),
+                document.content_origin.as_str().to_string(),
+                document.content_revision,
+            )
+        {
+            return Err(RepositoryError::Validation(
+                "existing graph metadata projection conflicts with local document creation".into(),
+            ));
+        }
+        Ok(())
     }
 
     fn apply_planned_without_transaction(

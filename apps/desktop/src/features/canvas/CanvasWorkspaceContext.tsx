@@ -151,8 +151,12 @@ export function CanvasWorkspaceProvider({
   const contentLinkingActions = useMemo<ContentLinkingActions>(
     () =>
       createContentLinkingActions({
+        databasePath: databasePath ?? "",
         readGraphNode: (input) => transport.readGraphNode(input),
-        updateGraphNode: (input) => transport.updateGraphNode(input),
+        readLocalNodeDocument: (input) => transport.readLocalNodeDocument(input),
+        upsertLocalNodeDocument: (input) => transport.upsertLocalNodeDocument(input),
+        compareAndSwapGraphNodeContent: (input) => transport.compareAndSwapGraphNodeContent(input),
+        acknowledgeLocalNodeDocumentSync: (input) => transport.acknowledgeLocalNodeDocumentSync(input),
         connectGraphNodes: (input) => transport.connectGraphNodes(input),
         createGraphNode: (input) => transport.createGraphNode(input),
         importNodeImage: (input) =>
@@ -162,7 +166,7 @@ export function CanvasWorkspaceProvider({
             sourceAbsolutePath: input.sourceAbsolutePath,
           }),
       }),
-    [transport, workingRoot],
+    [transport, workingRoot, databasePath],
   );
   const selectedEntryIdRef = useRef<string | null>(null);
   const selectedNodeIdRef = useRef<string | null>(null);

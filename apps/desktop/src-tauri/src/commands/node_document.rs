@@ -6,8 +6,9 @@ use crate::db::repositories::graph::ContentOrigin;
 use crate::db::{
     connection::Database,
     repositories::{
-        DocumentContentInput, DocumentReconciliationItem, LocalNodeDocument, NodeDocumentMutation,
-        NodeDocumentRepository, ReconciliationDecision, SyncAcknowledgementMutation,
+        DocumentContentInput, DocumentMetadataProjection, DocumentReconciliationItem,
+        LocalNodeDocument, NodeDocumentMutation, NodeDocumentRepository, ReconciliationDecision,
+        SyncAcknowledgementMutation,
     },
 };
 use crate::SharedApiState;
@@ -42,6 +43,8 @@ pub struct UpsertLocalNodeDocumentRequest {
     pub body_source_coordinates: Vec<String>,
     #[serde(default)]
     pub dry_run: bool,
+    #[serde(default)]
+    pub metadata_projection: Option<DocumentMetadataProjection>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -107,7 +110,11 @@ pub async fn upsert_local_node_document_command(
         if request.dry_run {
             repo.plan_reconciliation(&input, request.expected_revision)
         } else {
-            repo.apply_reconciliation(&input, request.expected_revision)
+            repo.apply_reconciliation_with_projection(
+                &input,
+                request.expected_revision,
+                request.metadata_projection.as_ref(),
+            )
         }
     } else if request.dry_run {
         Err(crate::db::repositories::RepositoryError::Validation(

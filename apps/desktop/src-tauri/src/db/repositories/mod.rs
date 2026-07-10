@@ -29,8 +29,9 @@ pub use graph_metadata::{
 };
 pub use layout::{CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord};
 pub use node_document::{
-    DocumentContentInput, DocumentReconciliationItem, LocalNodeDocument, NodeDocumentMutation,
-    NodeDocumentRepository, ReconciliationDecision, SyncAcknowledgementMutation,
+    DocumentContentInput, DocumentMetadataProjection, DocumentReconciliationItem,
+    LocalNodeDocument, NodeDocumentMutation, NodeDocumentRepository, ReconciliationDecision,
+    SyncAcknowledgementMutation,
 };
 pub use resource_roots::{ResourceRootRecord, ResourceRootRepository};
 pub use saved_sequences::{SavedSequenceRecord, SavedSequenceRepository};
