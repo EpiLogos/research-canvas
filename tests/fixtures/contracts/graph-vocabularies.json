@@ -1,0 +1,14 @@
+{
+  "entityType": ["Figure", "People", "Event", "Institution", "Source", "Claim", "Myth", "Interpretation", "Place", "Work", "Archetype", "Dynamic", "Constellation", "PsychoidOperator"],
+  "temporalPrecision": ["millennium", "century", "decade", "year", "month", "day"],
+  "contentOrigin": ["seed", "corpus_compiled", "user_authored", "imported"],
+  "historicity": ["historical", "mythic", "literary", "theoretical", "mixed"],
+  "claimKind": ["fact", "inference", "interpretation", "allegation", "hypothesis", "symbolic_parallel"],
+  "evidenceStatus": ["documented", "well_evidenced_inference", "interpretive", "contested", "alleged", "unverified", "disproven"],
+  "temporalRole": ["occurred_at", "active_during", "source_published_at", "claim_about_time", "myth_located_at"],
+  "placeCoverage": ["resolved", "unknown", "not_applicable"],
+  "qlForm": ["complete_sixfold", "partial_positional_map", "quaternity", "position_wheel", "double_helix", "other_explicit"],
+  "qlArc": ["day", "night", "braided", "not_applicable"],
+  "qlTopology": ["torus", "klein", "lemniscatic", "composite", "unspecified"],
+  "qlCompletenessStatus": ["complete", "partial", "incomplete", "not_applicable"]
+}

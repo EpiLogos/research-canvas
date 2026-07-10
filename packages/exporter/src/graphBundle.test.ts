@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 
-import { graphExportBundleSchema, parseGraphExportBundle } from "./graphBundle";
+import { graphExportBundleSchema, parseGraphExportBundle, parseLegacyGraphExportBundle } from "./graphBundle";
 import type { GraphExportBundle } from "./graphBundle";
 
 function makeBundle(): GraphExportBundle {
@@ -114,6 +114,20 @@ function makeBundle(): GraphExportBundle {
 }
 
 describe("graphExportBundle", () => {
+  it("round-trips timeline card presentation exactly", () => {
+    const bundle = makeBundle();
+    bundle.nodeLayout[0].style.__timelineCard = { offsetY: 37, width: 311, height: 177 };
+    expect(parseGraphExportBundle(bundle).nodeLayout[0].style.__timelineCard).toEqual({
+      offsetY: 37, width: 311, height: 177,
+    });
+  });
+
+  it("separates strict current bundles from explicit legacy normalization", () => {
+    const legacy = makeBundle();
+    delete (legacy.nodes[0] as Partial<(typeof legacy.nodes)[number]>).contentOrigin;
+    expect(graphExportBundleSchema.safeParse(legacy).success).toBe(false);
+    expect(parseLegacyGraphExportBundle(legacy).nodes[0].contentOrigin).toBeNull();
+  });
   it("accepts a well-formed bundle and round-trips through parse", () => {
     const bundle = makeBundle();
     const parsed = parseGraphExportBundle(bundle);

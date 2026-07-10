@@ -4,8 +4,43 @@ use neo4rs::query;
 use research_canvas_desktop_lib::db::repositories::graph::{
     ClaimKind, ContentOrigin, EntityType, EvidenceStatus, GraphRepository, Historicity,
     NewGraphNode, NewGraphNodeMetadata, PlaceCoverage, QlArc, QlCompletenessStatus, QlForm,
-    QlTopology, TemporalRole,
+    QlTopology, SeedGraphNode, TemporalRole,
 };
+
+fn seed_input(id: &str, revision: i64, body: &str) -> SeedGraphNode {
+    SeedGraphNode {
+        graph_node_id: id.into(),
+        entity_type: "Claim".into(),
+        title: "Seed title".into(),
+        body: body.into(),
+        summary: format!("summary-{revision}"),
+        archetypal_resonance: None,
+        coordinate: None,
+        source_coordinates: vec!["Canon/seed.md".into()],
+        evidence_tags: vec!["contested".into()],
+        source_kind: Some("claim".into()),
+        content_origin: ContentOrigin::Seed,
+        content_revision: revision,
+        seed_schema_version: 1,
+        body_source_coordinates: vec!["Canon/seed.md#body".into()],
+        historicity: Some(Historicity::Mixed),
+        claim_kind: Some(ClaimKind::Allegation),
+        evidence_status: Some(EvidenceStatus::Contested),
+        temporal_role: Some(TemporalRole::ClaimAboutTime),
+        place_coverage: Some(PlaceCoverage::Unknown),
+        ql_form: None,
+        ql_unit_id: None,
+        ql_arc: None,
+        ql_topology: None,
+        ql_schema_version: None,
+        ql_source_coordinates: vec![],
+        ql_completeness_status: None,
+        is_temporal: true,
+        valid_from: Some("2000".into()),
+        valid_to: None,
+        temporal_precision: Some("year".into()),
+    }
+}
 
 #[test]
 fn create_then_get_node_round_trips_substance_and_labels() {
@@ -263,5 +298,71 @@ fn create_claim_myth_and_interpretation_nodes_preserves_distinct_labels() {
     assert_eq!(
         support::cleanup_run_namespace(&graph, &database, &run_id),
         3
+    );
+}
+
+#[test]
+fn malformed_present_metadata_and_revision_ranges_fail_reads() {
+    let (graph, run_id, database) = support::neo4j_test_graph();
+    let repo = GraphRepository::new(graph.clone(), database.clone());
+    for (suffix, property) in [
+        ("controlled", "historicity: 42"),
+        ("list", "ql_source_coordinates: 'not-a-list'"),
+        ("negative", "content_revision: -1"),
+        ("unsafe", "ql_schema_version: 9007199254740992"),
+    ] {
+        let id = format!("{run_id}:malformed-{suffix}");
+        let cypher = format!("CREATE (:TheoryNode:Event {{graph_node_id: $id, title: 'bad', body: '[]', summary: '', source_coordinates: [], evidence_tags: [], is_temporal: true, {property}}})");
+        support::block_on(graph.run_on(&database, query(&cypher).param("id", id.clone())))
+            .expect("malformed fixture");
+        let result = support::block_on(repo.get_node(&id));
+        assert!(result.is_err(), "{suffix} rejected, got {result:?}");
+    }
+    assert_eq!(
+        support::cleanup_run_namespace(&graph, &database, &run_id),
+        4
+    );
+}
+
+#[test]
+fn reseed_preserves_authored_content_and_requires_a_newer_seed_revision() {
+    let (graph, run_id, database) = support::neo4j_test_graph();
+    let repo = GraphRepository::new(graph.clone(), database.clone());
+    let seed_id = format!("{run_id}:seed-owned");
+    let first = support::block_on(repo.upsert_seed_node(&seed_input(&seed_id, 2, "seed-v2")))
+        .expect("seed create");
+    assert_eq!(first.body, "seed-v2");
+    let same =
+        support::block_on(repo.upsert_seed_node(&seed_input(&seed_id, 2, "same-revision-change")))
+            .expect("same revision");
+    assert_eq!(same.body, "seed-v2");
+    let older = support::block_on(repo.upsert_seed_node(&seed_input(&seed_id, 1, "older")))
+        .expect("older revision");
+    assert_eq!(older.body, "seed-v2");
+    let newer = support::block_on(repo.upsert_seed_node(&seed_input(&seed_id, 3, "seed-v3")))
+        .expect("newer revision");
+    assert_eq!(newer.body, "seed-v3");
+    assert_eq!(newer.summary, "summary-3");
+
+    let authored_id = format!("{run_id}:authored");
+    support::block_on(graph.run_on(
+        &database,
+        query("CREATE (:TheoryNode:Source {graph_node_id: $id, title: 'Editorial', body: 'user body', summary: 'user summary', content_origin: 'user_authored', content_revision: '9', ql_form: 'complete_sixfold', ql_unit_id: 'editorial-ql', ql_source_coordinates: ['Editorial/ql.md'], source_coordinates: [], evidence_tags: [], is_temporal: true})")
+            .param("id", authored_id.clone()),
+    ))
+    .expect("authored fixture");
+    let authored =
+        support::block_on(repo.upsert_seed_node(&seed_input(&authored_id, 99, "seed overwrite")))
+            .expect("reseed authored node");
+    assert_eq!(authored.entity_type, EntityType::Claim, "label corrected");
+    assert_eq!(authored.body, "user body");
+    assert_eq!(authored.summary, "user summary");
+    assert_eq!(authored.content_origin, Some(ContentOrigin::UserAuthored));
+    assert_eq!(authored.ql_form, Some(QlForm::CompleteSixfold));
+    assert_eq!(authored.ql_unit_id.as_deref(), Some("editorial-ql"));
+    assert_eq!(authored.ql_source_coordinates, vec!["Editorial/ql.md"]);
+    assert_eq!(
+        support::cleanup_run_namespace(&graph, &database, &run_id),
+        2
     );
 }

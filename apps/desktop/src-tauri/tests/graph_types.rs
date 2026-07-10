@@ -1,8 +1,9 @@
 // apps/desktop/src-tauri/tests/graph_types.rs
 use research_canvas_desktop_lib::db::repositories::graph::{
-    resolve_entity_type_from_labels, ClaimKind, ContentOrigin, EntityType, EvidenceStatus,
-    GraphNode, GraphNodePatch, Historicity, NewGraphNode, PlaceCoverage, QlArc,
-    QlCompletenessStatus, QlForm, QlTopology, TemporalPrecision, TemporalRole,
+    resolve_entity_type_from_labels, semantic_relabel_entity_types, validate_contract_revision,
+    ClaimKind, ContentOrigin, EntityType, EvidenceStatus, GraphNode, GraphNodePatch, Historicity,
+    NewGraphNode, PlaceCoverage, QlArc, QlCompletenessStatus, QlForm, QlTopology,
+    TemporalPrecision, TemporalRole,
 };
 
 #[test]
@@ -79,6 +80,50 @@ fn semantic_label_resolution_is_deterministic_and_rejects_legacy_conflicts() {
     let unknown = resolve_entity_type_from_labels(&["TheoryNode".into(), "LegacyThing".into()])
         .expect_err("unknown-only label rejected");
     assert_eq!(unknown.unknown, vec!["LegacyThing"]);
+}
+
+#[test]
+fn revision_range_matches_javascript_safe_integers() {
+    assert!(validate_contract_revision("contentRevision", 0).is_ok());
+    assert!(validate_contract_revision("contentRevision", 9_007_199_254_740_991).is_ok());
+    assert!(validate_contract_revision("contentRevision", -1).is_err());
+    assert!(validate_contract_revision("contentRevision", 9_007_199_254_740_992).is_err());
+}
+
+#[test]
+fn rust_vocabularies_and_relabel_set_match_the_shared_manifest() {
+    let manifest: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../tests/fixtures/contracts/graph-vocabularies.json"
+    ))
+    .expect("vocabulary manifest");
+    macro_rules! assert_vocab {
+        ($key:literal, $enum:ty) => {{
+            let actual = <$enum>::ALL
+                .iter()
+                .map(|value| value.as_str())
+                .collect::<Vec<_>>();
+            let expected = manifest[$key]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(actual, expected, "{} vocabulary", $key);
+        }};
+    }
+    assert_vocab!("entityType", EntityType);
+    assert_vocab!("temporalPrecision", TemporalPrecision);
+    assert_vocab!("contentOrigin", ContentOrigin);
+    assert_vocab!("historicity", Historicity);
+    assert_vocab!("claimKind", ClaimKind);
+    assert_vocab!("evidenceStatus", EvidenceStatus);
+    assert_vocab!("temporalRole", TemporalRole);
+    assert_vocab!("placeCoverage", PlaceCoverage);
+    assert_vocab!("qlForm", QlForm);
+    assert_vocab!("qlArc", QlArc);
+    assert_vocab!("qlTopology", QlTopology);
+    assert_vocab!("qlCompletenessStatus", QlCompletenessStatus);
+    assert_eq!(semantic_relabel_entity_types(), EntityType::ALL);
 }
 
 #[test]

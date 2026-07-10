@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import vocabularyManifest from "../../../tests/fixtures/contracts/graph-vocabularies.json";
 
 import {
   annotationSchema,
@@ -10,11 +11,35 @@ import {
   portalNodeSchema,
   projectSchema,
   resourceNodeSchema,
+  ENTITY_TYPES, TEMPORAL_PRECISIONS, CONTENT_ORIGINS, HISTORICITIES, CLAIM_KINDS,
+  EVIDENCE_STATUSES, TEMPORAL_ROLES, PLACE_COVERAGES, QL_FORMS, QL_ARCS,
+  QL_TOPOLOGIES, QL_COMPLETENESS_STATUSES,
 } from "./index";
 
 const now = "2026-03-30T20:00:00.000Z";
 
 describe("schema package", () => {
+  it("matches every controlled value in the shared vocabulary manifest", () => {
+    expect({
+      entityType: ENTITY_TYPES, temporalPrecision: TEMPORAL_PRECISIONS,
+      contentOrigin: CONTENT_ORIGINS, historicity: HISTORICITIES,
+      claimKind: CLAIM_KINDS, evidenceStatus: EVIDENCE_STATUSES,
+      temporalRole: TEMPORAL_ROLES, placeCoverage: PLACE_COVERAGES,
+      qlForm: QL_FORMS, qlArc: QL_ARCS, qlTopology: QL_TOPOLOGIES,
+      qlCompletenessStatus: QL_COMPLETENESS_STATUSES,
+    }).toEqual(vocabularyManifest);
+  });
+
+  it("rejects negative and non-JavaScript-safe revisions", () => {
+    const canonical = normalizeLegacyGraphNode({
+      graphNodeId: "revision-node", entityType: "Event", title: "Revision", body: "[]",
+      summary: "", archetypalResonance: null, coordinate: null, sourceCoordinates: [],
+      isTemporal: false, validFrom: null, validTo: null, temporalPrecision: null,
+      createdAt: now, updatedAt: now,
+    });
+    expect(graphNodeSchema.safeParse({ ...canonical, contentRevision: -1 }).success).toBe(false);
+    expect(graphNodeSchema.safeParse({ ...canonical, qlSchemaVersion: Number.MAX_SAFE_INTEGER + 1 }).success).toBe(false);
+  });
   it("keeps legacy omission handling outside the canonical graph-node schema", () => {
     const legacy = {
       graphNodeId: "legacy-node",

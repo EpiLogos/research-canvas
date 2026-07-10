@@ -11,8 +11,8 @@ import type {
   QlCompletenessStatus,
   QlForm,
   QlTopology,
-  TemporalPrecision,
   TemporalRole,
+  GraphNodeContract,
 } from "@research-canvas/schema";
 
 export type {
@@ -38,40 +38,7 @@ export type {
  */
 export type CreatableEntityType = Exclude<EntityType, "PsychoidOperator">;
 
-export interface GraphNode {
-  graphNodeId: string;
-  entityType: EntityType;
-  title: string;
-  body: string;
-  summary: string;
-  archetypalResonance: string | null;
-  coordinate: string | null;
-  sourceCoordinates: string[];
-  evidenceTags: string[];
-  sourceKind: string | null;
-  contentOrigin: ContentOrigin | null;
-  contentRevision: number | null;
-  seedSchemaVersion: number | null;
-  bodySourceCoordinates: string[];
-  historicity: Historicity | null;
-  claimKind: ClaimKind | null;
-  evidenceStatus: EvidenceStatus | null;
-  temporalRole: TemporalRole | null;
-  placeCoverage: PlaceCoverage | null;
-  qlForm: QlForm | null;
-  qlUnitId: string | null;
-  qlArc: QlArc | null;
-  qlTopology: QlTopology | null;
-  qlSchemaVersion: number | null;
-  qlSourceCoordinates: string[];
-  qlCompletenessStatus: QlCompletenessStatus | null;
-  isTemporal: boolean;
-  validFrom: string | null;
-  validTo: string | null;
-  temporalPrecision: TemporalPrecision | null;
-  createdAt: string;
-  updatedAt: string;
-}
+export type GraphNode = GraphNodeContract;
 
 export interface GraphRelationship {
   id: string;

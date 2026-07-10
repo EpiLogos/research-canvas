@@ -9,6 +9,7 @@ macro_rules! controlled_string_enum {
         }
 
         impl $name {
+            pub const ALL: &'static [Self] = &[$(Self::$variant),+];
             pub const fn as_str(self) -> &'static str {
                 match self {
                     $(Self::$variant => $value),+
@@ -374,16 +375,70 @@ fn now_rfc3339() -> String {
 /// Neo4j stores controlled values as strings. This is the sole compatibility
 /// boundary: absent properties become `None`, while present unknown values are
 /// rejected with their property name instead of leaking into the typed API.
+const JS_MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
+
+fn has_neo_property(node: &neo4rs::Node, property: &str) -> bool {
+    node.keys().contains(&property)
+}
+
 fn controlled_from_neo<T>(node: &neo4rs::Node, property: &str) -> Result<Option<T>, String>
 where
     T: TryFrom<String, Error = String>,
 {
-    match node.get::<String>(property) {
-        Ok(value) => T::try_from(value)
-            .map(Some)
-            .map_err(|error| format!("invalid Neo4j property `{property}`: {error}")),
-        Err(_) => Ok(None),
+    if !has_neo_property(node, property) {
+        return Ok(None);
     }
+    let value = node
+        .get::<String>(property)
+        .map_err(|error| format!("Neo4j property `{property}` has wrong type: {error}"))?;
+    T::try_from(value)
+        .map(Some)
+        .map_err(|error| format!("invalid Neo4j property `{property}`: {error}"))
+}
+
+fn string_list_from_neo(node: &neo4rs::Node, property: &str) -> Result<Vec<String>, String> {
+    if !has_neo_property(node, property) {
+        return Ok(Vec::new());
+    }
+    node.get::<Vec<String>>(property)
+        .map_err(|error| format!("Neo4j property `{property}` has wrong type: {error}"))
+}
+
+fn optional_string_from_neo(node: &neo4rs::Node, property: &str) -> Result<Option<String>, String> {
+    if !has_neo_property(node, property) {
+        return Ok(None);
+    }
+    node.get::<String>(property)
+        .map(Some)
+        .map_err(|error| format!("Neo4j property `{property}` has wrong type: {error}"))
+}
+
+fn revision_from_neo(node: &neo4rs::Node, property: &str) -> Result<Option<i64>, String> {
+    if !has_neo_property(node, property) {
+        return Ok(None);
+    }
+    // neo4rs 0.8 decodes tiny negative integers as unsigned bytes (-1 => 255),
+    // so numeric storage cannot enforce the shared signed range losslessly.
+    // Decimal strings preserve the exact token; legacy numerics fail closed.
+    let raw = node.get::<String>(property).map_err(|_| {
+        format!(
+            "Neo4j property `{property}` must use canonical decimal-string storage; legacy numeric values require migration"
+        )
+    })?;
+    let value = raw
+        .parse::<i64>()
+        .map_err(|error| format!("Neo4j property `{property}` is not a valid integer: {error}"))?;
+    validate_contract_revision(property, value)?;
+    Ok(Some(value))
+}
+
+pub fn validate_contract_revision(property: &str, value: i64) -> Result<(), String> {
+    if !(0..=JS_MAX_SAFE_INTEGER).contains(&value) {
+        return Err(format!(
+            "{property} must be a nonnegative JavaScript-safe integer (0..={JS_MAX_SAFE_INTEGER}), got {value}"
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -436,7 +491,7 @@ fn node_from_neo(node: neo4rs::Node) -> Result<GraphNode, String> {
     let labels: Vec<String> = node.labels().iter().map(|s| s.to_string()).collect();
     let entity_type =
         resolve_entity_type_from_labels(&labels).map_err(|error| error.to_string())?;
-    let source_coordinates: Vec<String> = node.get("source_coordinates").unwrap_or_default();
+    let source_coordinates = string_list_from_neo(&node, "source_coordinates")?;
     Ok(GraphNode {
         graph_node_id: node.get("graph_node_id").map_err(|e| e.to_string())?,
         entity_type,
@@ -446,23 +501,23 @@ fn node_from_neo(node: neo4rs::Node) -> Result<GraphNode, String> {
         archetypal_resonance: node.get("archetypal_resonance").ok(),
         coordinate: node.get("coordinate").ok(),
         source_coordinates,
-        evidence_tags: node.get("evidence_tags").unwrap_or_default(),
-        source_kind: node.get("source_kind").ok(),
+        evidence_tags: string_list_from_neo(&node, "evidence_tags")?,
+        source_kind: optional_string_from_neo(&node, "source_kind")?,
         content_origin: controlled_from_neo(&node, "content_origin")?,
-        content_revision: node.get("content_revision").ok(),
-        seed_schema_version: node.get("seed_schema_version").ok(),
-        body_source_coordinates: node.get("body_source_coordinates").unwrap_or_default(),
+        content_revision: revision_from_neo(&node, "content_revision")?,
+        seed_schema_version: revision_from_neo(&node, "seed_schema_version")?,
+        body_source_coordinates: string_list_from_neo(&node, "body_source_coordinates")?,
         historicity: controlled_from_neo(&node, "historicity")?,
         claim_kind: controlled_from_neo(&node, "claim_kind")?,
         evidence_status: controlled_from_neo(&node, "evidence_status")?,
         temporal_role: controlled_from_neo(&node, "temporal_role")?,
         place_coverage: controlled_from_neo(&node, "place_coverage")?,
         ql_form: controlled_from_neo(&node, "ql_form")?,
-        ql_unit_id: node.get("ql_unit_id").ok(),
+        ql_unit_id: optional_string_from_neo(&node, "ql_unit_id")?,
         ql_arc: controlled_from_neo(&node, "ql_arc")?,
         ql_topology: controlled_from_neo(&node, "ql_topology")?,
-        ql_schema_version: node.get("ql_schema_version").ok(),
-        ql_source_coordinates: node.get("ql_source_coordinates").unwrap_or_default(),
+        ql_schema_version: revision_from_neo(&node, "ql_schema_version")?,
+        ql_source_coordinates: string_list_from_neo(&node, "ql_source_coordinates")?,
         ql_completeness_status: controlled_from_neo(&node, "ql_completeness_status")?,
         is_temporal: node.get("is_temporal").unwrap_or(false),
         valid_from: node.get("valid_from").ok(),
@@ -479,6 +534,10 @@ fn validate_entity_label(entity_type: &str) -> Result<EntityType, String> {
         return Err("PsychoidOperator is reserved for the operator seeding path".to_string());
     }
     Ok(entity_type)
+}
+
+pub fn semantic_relabel_entity_types() -> &'static [EntityType] {
+    EntityType::ALL
 }
 
 const REL_TYPES: &[&str] = &[
@@ -540,6 +599,15 @@ impl GraphRepository {
         input: NewGraphNode,
         metadata: NewGraphNodeMetadata,
     ) -> Result<GraphNode, String> {
+        for (property, value) in [
+            ("contentRevision", metadata.content_revision),
+            ("seedSchemaVersion", metadata.seed_schema_version),
+            ("qlSchemaVersion", metadata.ql_schema_version),
+        ] {
+            if let Some(value) = value {
+                validate_contract_revision(property, value)?;
+            }
+        }
         if let Some(value) = input.temporal_precision.as_ref() {
             TemporalPrecision::try_from(value.clone())?;
         }
@@ -585,8 +653,14 @@ impl GraphRepository {
                     .content_origin
                     .map(|value| value.as_str().to_string()),
             )
-            .param("content_revision", metadata.content_revision)
-            .param("seed_schema_version", metadata.seed_schema_version)
+            .param(
+                "content_revision",
+                metadata.content_revision.map(|v| v.to_string()),
+            )
+            .param(
+                "seed_schema_version",
+                metadata.seed_schema_version.map(|v| v.to_string()),
+            )
             .param("body_source_coordinates", metadata.body_source_coordinates)
             .param(
                 "historicity",
@@ -627,7 +701,10 @@ impl GraphRepository {
                 "ql_topology",
                 metadata.ql_topology.map(|value| value.as_str().to_string()),
             )
-            .param("ql_schema_version", metadata.ql_schema_version)
+            .param(
+                "ql_schema_version",
+                metadata.ql_schema_version.map(|v| v.to_string()),
+            )
             .param("ql_source_coordinates", metadata.ql_source_coordinates)
             .param(
                 "ql_completeness_status",
@@ -676,6 +753,15 @@ impl GraphRepository {
         graph_node_id: &str,
         patch: GraphNodePatch,
     ) -> Result<GraphNode, String> {
+        for (property, value) in [
+            ("contentRevision", patch.content_revision.flatten()),
+            ("seedSchemaVersion", patch.seed_schema_version.flatten()),
+            ("qlSchemaVersion", patch.ql_schema_version.flatten()),
+        ] {
+            if let Some(value) = value {
+                validate_contract_revision(property, value)?;
+            }
+        }
         let mut sets: Vec<String> = vec!["n.updated_at = $now".to_string()];
         if patch.title.is_some() {
             sets.push("n.title = $title".into());
@@ -805,10 +891,10 @@ impl GraphRepository {
             q = q.param("content_origin", v.map(|value| value.as_str().to_string()));
         }
         if let Some(v) = patch.content_revision {
-            q = q.param("content_revision", v);
+            q = q.param("content_revision", v.map(|value| value.to_string()));
         }
         if let Some(v) = patch.seed_schema_version {
-            q = q.param("seed_schema_version", v);
+            q = q.param("seed_schema_version", v.map(|value| value.to_string()));
         }
         if let Some(v) = patch.body_source_coordinates {
             q = q.param("body_source_coordinates", v);
@@ -841,7 +927,7 @@ impl GraphRepository {
             q = q.param("ql_topology", v.map(|value| value.as_str().to_string()));
         }
         if let Some(v) = patch.ql_schema_version {
-            q = q.param("ql_schema_version", v);
+            q = q.param("ql_schema_version", v.map(|value| value.to_string()));
         }
         if let Some(v) = patch.ql_source_coordinates {
             q = q.param("ql_source_coordinates", v);
@@ -893,17 +979,23 @@ impl GraphRepository {
     }
 
     pub async fn upsert_seed_node(&self, input: &SeedGraphNode) -> Result<GraphNode, String> {
+        validate_contract_revision("contentRevision", input.content_revision)?;
+        validate_contract_revision("seedSchemaVersion", input.seed_schema_version)?;
+        if let Some(value) = input.ql_schema_version {
+            validate_contract_revision("qlSchemaVersion", value)?;
+        }
         if let Some(value) = input.temporal_precision.as_ref() {
             TemporalPrecision::try_from(value.clone())?;
         }
         let label = validate_entity_label(&input.entity_type)?.as_str();
+        let remove_labels = semantic_relabel_entity_types()
+            .iter()
+            .map(|entity_type| entity_type.as_str())
+            .collect::<Vec<_>>()
+            .join(":");
         let cypher = format!(
             "MERGE (n:TheoryNode {{graph_node_id: $id}}) \
-             REMOVE n:Figure:People:Event:Institution:Source:Claim:Myth:Interpretation:Place:Work:Archetype:Dynamic:Constellation:PsychoidOperator \
-             SET n:{label}, \
-                 n.title = $title, \
-                 n.body = $body, \
-                 n.summary = $summary, \
+             ON CREATE SET n.title = $title, n.body = $body, n.summary = $summary, \
                  n.archetypal_resonance = $archetypal_resonance, \
                  n.coordinate = $coordinate, \
                  n.source_coordinates = $source_coordinates, \
@@ -927,9 +1019,46 @@ impl GraphRepository {
                  n.valid_from = $valid_from, \
                  n.valid_to = $valid_to, \
                  n.temporal_precision = $temporal_precision, \
-                 n.created_at = coalesce(n.created_at, $now), \
-                 n.updated_at = $now \
+                 n.created_at = $now, n.updated_at = $now \
+             ON MATCH SET \
+                 n.title = CASE WHEN n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) THEN $title ELSE n.title END, \
+                 n.body = CASE WHEN n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) THEN $body ELSE n.body END, \
+                 n.summary = CASE WHEN n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) THEN $summary ELSE n.summary END, \
+                 n.archetypal_resonance = CASE WHEN n.archetypal_resonance IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $archetypal_resonance IS NOT NULL) THEN coalesce($archetypal_resonance, n.archetypal_resonance) ELSE n.archetypal_resonance END, \
+                 n.coordinate = CASE WHEN n.coordinate IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $coordinate IS NOT NULL) THEN coalesce($coordinate, n.coordinate) ELSE n.coordinate END, \
+                 n.source_coordinates = CASE WHEN (size(coalesce(n.source_coordinates, [])) = 0 OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1))) AND size($source_coordinates) > 0 THEN $source_coordinates ELSE n.source_coordinates END, \
+                 n.evidence_tags = CASE WHEN (size(coalesce(n.evidence_tags, [])) = 0 OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1))) AND size($evidence_tags) > 0 THEN $evidence_tags ELSE n.evidence_tags END, \
+                 n.source_kind = CASE WHEN n.source_kind IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $source_kind IS NOT NULL) THEN coalesce($source_kind, n.source_kind) ELSE n.source_kind END, \
+                 n.body_source_coordinates = CASE WHEN (size(coalesce(n.body_source_coordinates, [])) = 0 OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1))) AND size($body_source_coordinates) > 0 THEN $body_source_coordinates ELSE n.body_source_coordinates END, \
+                 n.historicity = CASE WHEN n.historicity IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $historicity IS NOT NULL) THEN coalesce($historicity, n.historicity) ELSE n.historicity END, \
+                 n.claim_kind = CASE WHEN n.claim_kind IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $claim_kind IS NOT NULL) THEN coalesce($claim_kind, n.claim_kind) ELSE n.claim_kind END, \
+                 n.evidence_status = CASE WHEN n.evidence_status IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $evidence_status IS NOT NULL) THEN coalesce($evidence_status, n.evidence_status) ELSE n.evidence_status END, \
+                 n.temporal_role = CASE WHEN n.temporal_role IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $temporal_role IS NOT NULL) THEN coalesce($temporal_role, n.temporal_role) ELSE n.temporal_role END, \
+                 n.place_coverage = CASE WHEN n.place_coverage IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $place_coverage IS NOT NULL) THEN coalesce($place_coverage, n.place_coverage) ELSE n.place_coverage END, \
+                 n.ql_form = CASE WHEN n.ql_form IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $ql_form IS NOT NULL) THEN coalesce($ql_form, n.ql_form) ELSE n.ql_form END, \
+                 n.ql_unit_id = CASE WHEN n.ql_unit_id IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $ql_unit_id IS NOT NULL) THEN coalesce($ql_unit_id, n.ql_unit_id) ELSE n.ql_unit_id END, \
+                 n.ql_arc = CASE WHEN n.ql_arc IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $ql_arc IS NOT NULL) THEN coalesce($ql_arc, n.ql_arc) ELSE n.ql_arc END, \
+                 n.ql_topology = CASE WHEN n.ql_topology IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $ql_topology IS NOT NULL) THEN coalesce($ql_topology, n.ql_topology) ELSE n.ql_topology END, \
+                 n.ql_schema_version = CASE WHEN n.ql_schema_version IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $ql_schema_version IS NOT NULL) THEN coalesce($ql_schema_version, n.ql_schema_version) ELSE n.ql_schema_version END, \
+                 n.ql_source_coordinates = CASE WHEN (size(coalesce(n.ql_source_coordinates, [])) = 0 OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1))) AND size($ql_source_coordinates) > 0 THEN $ql_source_coordinates ELSE n.ql_source_coordinates END, \
+                 n.ql_completeness_status = CASE WHEN n.ql_completeness_status IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $ql_completeness_status IS NOT NULL) THEN coalesce($ql_completeness_status, n.ql_completeness_status) ELSE n.ql_completeness_status END, \
+                 n.is_temporal = coalesce(n.is_temporal, $is_temporal), \
+                 n.valid_from = coalesce(n.valid_from, $valid_from), n.valid_to = coalesce(n.valid_to, $valid_to), \
+                 n.temporal_precision = coalesce(n.temporal_precision, $temporal_precision), \
+                 n.seed_schema_version = CASE WHEN n.seed_schema_version IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1)) THEN $seed_schema_version ELSE n.seed_schema_version END, \
+                 n.content_revision = CASE WHEN n.content_revision IS NULL OR (n.content_origin = 'seed' AND $content_revision > n.content_revision) THEN $content_revision ELSE n.content_revision END, \
+                 n.content_origin = CASE WHEN n.content_origin IS NULL AND (n.body IS NULL OR n.body = '') THEN $content_origin ELSE n.content_origin END, n.updated_at = $now \
+             REMOVE n:{remove_labels} \
+             SET n:{label} \
              RETURN n"
+        )
+        .replace(
+            "$content_revision > coalesce(n.content_revision, -1)",
+            "toInteger($content_revision) > coalesce(toInteger(n.content_revision), -1)",
+        )
+        .replace(
+            "$content_revision > n.content_revision",
+            "toInteger($content_revision) > toInteger(n.content_revision)",
         );
         let q = query(&cypher)
             .param("id", input.graph_node_id.clone())
@@ -942,8 +1071,8 @@ impl GraphRepository {
             .param("evidence_tags", input.evidence_tags.clone())
             .param("source_kind", input.source_kind.clone())
             .param("content_origin", input.content_origin.as_str())
-            .param("content_revision", input.content_revision)
-            .param("seed_schema_version", input.seed_schema_version)
+            .param("content_revision", input.content_revision.to_string())
+            .param("seed_schema_version", input.seed_schema_version.to_string())
             .param(
                 "body_source_coordinates",
                 input.body_source_coordinates.clone(),
@@ -957,7 +1086,10 @@ impl GraphRepository {
             .param("ql_unit_id", input.ql_unit_id.clone())
             .param("ql_arc", input.ql_arc.map(|v| v.as_str()))
             .param("ql_topology", input.ql_topology.map(|v| v.as_str()))
-            .param("ql_schema_version", input.ql_schema_version)
+            .param(
+                "ql_schema_version",
+                input.ql_schema_version.map(|v| v.to_string()),
+            )
             .param("ql_source_coordinates", input.ql_source_coordinates.clone())
             .param(
                 "ql_completeness_status",

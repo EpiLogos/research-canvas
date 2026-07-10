@@ -1,13 +1,12 @@
 import { z } from "zod";
 
-import { legacyGraphNodeInputSchema, projectSchema } from "@research-canvas/schema";
+import { graphNodeSchema, legacyGraphNodeInputSchema, projectSchema } from "@research-canvas/schema";
 import type { ExportAsset } from "@research-canvas/schema";
 import type {
   CanvasNodeSidecar,
   EdgeLayout,
   GraphExportBundle,
   GraphRelationship,
-  LitInstance,
   NodeLayout
 } from "@research-canvas/desktop-api";
 
@@ -63,7 +62,12 @@ const nodeLayoutSchema: z.ZodType<NodeLayout> = z.object({
     bgColour: z.string().optional(),
     textColour: z.string().optional(),
     thumbnail: z.string().optional(),
-    __canvasNode: canvasNodeSidecarSchema.optional()
+    __canvasNode: canvasNodeSidecarSchema.optional(),
+    __timelineCard: z.object({
+      offsetY: z.number(),
+      width: z.number().positive().optional(),
+      height: z.number().positive().optional()
+    }).optional()
   })
 });
 
@@ -82,8 +86,8 @@ const edgeLayoutSchema: z.ZodType<EdgeLayout> = z.object({
   })
 });
 
-const litInstanceSchema: z.ZodType<LitInstance> = z.object({
-  node: legacyGraphNodeInputSchema,
+const litInstanceSchema = z.object({
+  node: graphNodeSchema,
   relType: z.enum(["INSTANTIATES", "ECHOES", "RESONATES_WITH"]),
   dominance: z.enum(["dominant", "secondary"]).nullable()
 });
@@ -96,11 +100,11 @@ const exportAssetSchema: z.ZodType<ExportAsset> = z.object({
   mimeType: z.string().min(1)
 });
 
-export const graphExportBundleSchema: z.ZodType<GraphExportBundle> = z.object({
+export const graphExportBundleSchema = z.object({
   generatedAt: z.string(),
   project: projectSchema,
   canvasId: z.string().min(1),
-  nodes: z.array(legacyGraphNodeInputSchema),
+  nodes: z.array(graphNodeSchema),
   relationships: z.array(graphRelationshipSchema),
   nodeLayout: z.array(nodeLayoutSchema),
   edgeLayout: z.array(edgeLayoutSchema),
@@ -110,6 +114,16 @@ export const graphExportBundleSchema: z.ZodType<GraphExportBundle> = z.object({
   assets: z.array(exportAssetSchema)
 });
 
+const legacyLitInstanceSchema = litInstanceSchema.extend({ node: legacyGraphNodeInputSchema });
+export const legacyGraphExportBundleInputSchema = graphExportBundleSchema.extend({
+  nodes: z.array(legacyGraphNodeInputSchema),
+  lightingIndex: z.record(z.string(), z.array(legacyLitInstanceSchema)),
+});
+
 export function parseGraphExportBundle(value: unknown): GraphExportBundle {
-  return graphExportBundleSchema.parse(value);
+  return graphExportBundleSchema.parse(value) as GraphExportBundle;
+}
+
+export function parseLegacyGraphExportBundle(value: unknown): GraphExportBundle {
+  return legacyGraphExportBundleInputSchema.parse(value) as GraphExportBundle;
 }
