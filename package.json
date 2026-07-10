@@ -12,8 +12,10 @@
     "public-viewer:dev": "pnpm --filter @research-canvas/public-viewer dev",
     "typecheck": "tsc -b tsconfig.json",
     "test:workspace-declarations": "node scripts/verify-workspace-declarations.mjs",
+    "test:vite-workspace-resolution": "node scripts/verify-vite-workspace-resolution.mjs",
     "test": "pnpm vitest run",
     "test:e2e": "playwright test",
+    "prebuild": "pnpm test:workspace-declarations && pnpm test:vite-workspace-resolution",
     "build": "pnpm -r --if-present build"
   },
   "devDependencies": {
