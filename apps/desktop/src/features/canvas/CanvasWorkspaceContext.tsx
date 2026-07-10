@@ -22,7 +22,7 @@ import {
   serializeLayoutSnapshot,
   type ContentLinkingActions,
 } from "@research-canvas/canvas";
-import { buildNewGraphNodeInput, seedNoteNodeEffects } from "./nodeCreation";
+import { buildNewGraphNodeInput, createPreparedNoteNode } from "./nodeCreation";
 import { retryPendingGraphNodeSyncs } from "./pendingGraphNodeSync";
 import { canvasViewToCanvasNodes } from "./canvasViewToNodes";
 import { selectLegacyNodesNeedingImport, importLegacyCanvasNodes } from "./legacyNodeImport";
@@ -656,27 +656,19 @@ export function CanvasWorkspaceProvider({
       },
       async createNoteNode(position) {
         const graphNodeId = crypto.randomUUID();
-        // Local-first: add the node immediately so it always appears and
-        // persists (SQLite layout), regardless of Neo4j availability.
-        const node = stores.store.getState().createNoteNode({
-          title: "Untitled note",
-          content: "",
-          id: graphNodeId,
-          graphNodeId,
-        });
-        if (position) {
-          stores.store.getState().updateNodePosition(node.id, position);
-        }
-        // Seed a local node document immediately (so the editor can open the
-        // note right away, even fully offline), then best-effort sync theory
-        // substance to Neo4j — a failure here never discards the local node;
-        // it's recorded as pending and retried later (see
-        // pendingGraphNodeSync.ts / the retry effect below).
-        void seedNoteNodeEffects({
+        await createPreparedNoteNode({
           graphNodeId,
           title: "Untitled note",
           databasePath,
           upsertLocalNodeDocument: (input) => transport.upsertLocalNodeDocument(input),
+          publishCanvasNode: () => {
+            const node = stores.store.getState().createNoteNode({
+              title: "Untitled note", content: "", id: graphNodeId, graphNodeId,
+            });
+            if (position) {
+              stores.store.getState().updateNodePosition(node.id, position);
+            }
+          },
           createGraphNode: (input) =>
             transport.createGraphNode(
               input as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string }

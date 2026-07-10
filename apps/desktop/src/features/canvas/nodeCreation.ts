@@ -1,5 +1,5 @@
 import { entityTypeForNodeType } from "@research-canvas/canvas";
-import type { NewGraphNodeInput } from "@research-canvas/desktop-api";
+import type { LocalNodeDocumentWriteResult, NewGraphNodeInput } from "@research-canvas/desktop-api";
 import { markGraphNodeSyncPending } from "./pendingGraphNodeSync";
 
 /**
@@ -37,7 +37,7 @@ export function buildNewGraphNodeInput(args: {
  * "pending sync" (see `pendingGraphNodeSync.ts`) so a later retry pass can
  * pick it up once Neo4j is reachable again.
  */
-export async function seedNoteNodeEffects(args: {
+interface NoteAuthorityArgs {
   graphNodeId: string;
   title: string;
   databasePath: string | null;
@@ -50,17 +50,24 @@ export async function seedNoteNodeEffects(args: {
     contentRevision: number;
     bodySourceCoordinates: string[];
     metadataProjection: { entityType: "Work"; title: string; schemaVersion: number };
-  }) => Promise<unknown>;
+  }) => Promise<LocalNodeDocumentWriteResult>;
+}
+
+interface NoteRemoteArgs {
+  graphNodeId: string;
+  title: string;
   createGraphNode: (
     input: NewGraphNodeInput & { graphNodeId: string }
   ) => Promise<unknown>;
-}): Promise<void> {
-  const { graphNodeId, title, databasePath, upsertLocalNodeDocument, createGraphNode } = args;
+}
+
+export async function prepareNoteNodeAuthority(args: NoteAuthorityArgs): Promise<void> {
+  const { graphNodeId, title, databasePath, upsertLocalNodeDocument } = args;
 
   if (!databasePath) {
     throw new Error("note creation requires the authoritative local document store");
   }
-  await upsertLocalNodeDocument({
+  const result = await upsertLocalNodeDocument({
     databasePath,
     graphNodeId,
     body: "",
@@ -70,7 +77,18 @@ export async function seedNoteNodeEffects(args: {
     bodySourceCoordinates: [],
     metadataProjection: { entityType: "Work", title, schemaVersion: 1 },
   });
+  if (result.mutation.kind !== "created") {
+    const detail = result.mutation.kind === "conflict" ? `: ${result.mutation.reason}` : "";
+    throw new Error(`new note local authority was not created (${result.mutation.kind})${detail}`);
+  }
+  if (!result.document || result.document.graphNodeId !== graphNodeId
+      || result.document.contentOrigin !== "user_authored" || result.document.contentRevision !== 0) {
+    throw new Error("new note local authority returned an incoherent document");
+  }
+}
 
+export async function syncNoteNodeRemote(args: NoteRemoteArgs): Promise<void> {
+  const { graphNodeId, title, createGraphNode } = args;
   const input = {
     ...buildNewGraphNodeInput({ nodeType: "note", title }),
     graphNodeId,
@@ -81,4 +99,22 @@ export async function seedNoteNodeEffects(args: {
     markGraphNodeSyncPending(input);
     console.warn("createGraphNode sync failed; node kept locally", error);
   }
+}
+
+/** Testable sequential composition; production canvas publication uses
+ * `createPreparedNoteNode` so remote latency never gates visibility. */
+export async function seedNoteNodeEffects(args: NoteAuthorityArgs & NoteRemoteArgs): Promise<void> {
+  await prepareNoteNodeAuthority(args);
+  await syncNoteNodeRemote(args);
+}
+
+export async function createPreparedNoteNode(args: NoteAuthorityArgs & NoteRemoteArgs & {
+  publishCanvasNode: () => void;
+}): Promise<void> {
+  await prepareNoteNodeAuthority(args);
+  args.publishCanvasNode();
+  void syncNoteNodeRemote(args).catch((error) => {
+    markGraphNodeSyncPending({ ...buildNewGraphNodeInput({ nodeType: "note", title: args.title }), graphNodeId: args.graphNodeId });
+    console.warn("unexpected remote note sync failure; node kept locally", error);
+  });
 }

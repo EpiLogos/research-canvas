@@ -1,11 +1,20 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { buildNewGraphNodeInput, seedNoteNodeEffects } from "./nodeCreation";
+import { buildNewGraphNodeInput, createPreparedNoteNode, seedNoteNodeEffects } from "./nodeCreation";
 import {
   isGraphNodeSyncPending,
   pendingGraphNodeSyncCount,
   resetPendingGraphNodeSync,
   retryPendingGraphNodeSyncs,
 } from "./pendingGraphNodeSync";
+
+const createdLocal = (graphNodeId: string) => ({
+  mutation: { kind: "created" as const },
+  document: {
+    graphNodeId, body: "", summary: "", neo4jSynced: false,
+    contentOrigin: "user_authored" as const, contentRevision: 0,
+    bodySourceCoordinates: [],
+  },
+});
 
 describe("buildNewGraphNodeInput", () => {
   it("maps a note to a Work entity type with empty body", () => {
@@ -57,7 +66,7 @@ describe("seedNoteNodeEffects", () => {
   });
 
   it("seeds a local node document with the node's graphNodeId and empty body/summary", async () => {
-    const upsertLocalNodeDocument = vi.fn().mockResolvedValue(undefined);
+    const upsertLocalNodeDocument = vi.fn().mockResolvedValue(createdLocal("node-1"));
     const createGraphNode = vi.fn().mockResolvedValue({});
 
     await seedNoteNodeEffects({
@@ -88,7 +97,7 @@ describe("seedNoteNodeEffects", () => {
   });
 
   it("fails closed before remote creation when databasePath is null", async () => {
-    const upsertLocalNodeDocument = vi.fn().mockResolvedValue(undefined);
+    const upsertLocalNodeDocument = vi.fn().mockResolvedValue(createdLocal("node-1"));
     const createGraphNode = vi.fn().mockResolvedValue({});
 
     await expect(
@@ -123,7 +132,7 @@ describe("seedNoteNodeEffects", () => {
   });
 
   it("records the node as pending sync when createGraphNode fails, and never throws", async () => {
-    const upsertLocalNodeDocument = vi.fn().mockResolvedValue(undefined);
+    const upsertLocalNodeDocument = vi.fn().mockResolvedValue(createdLocal("node-2"));
     const createGraphNode = vi.fn().mockRejectedValue(new Error("neo4j down"));
 
     await expect(
@@ -140,7 +149,7 @@ describe("seedNoteNodeEffects", () => {
   });
 
   it("does not record the node as pending when createGraphNode succeeds", async () => {
-    const upsertLocalNodeDocument = vi.fn().mockResolvedValue(undefined);
+    const upsertLocalNodeDocument = vi.fn().mockResolvedValue(createdLocal("node-3"));
     const createGraphNode = vi.fn().mockResolvedValue({});
 
     await seedNoteNodeEffects({
@@ -152,6 +161,47 @@ describe("seedNoteNodeEffects", () => {
     });
 
     expect(isGraphNodeSyncPending("node-3")).toBe(false);
+  });
+});
+
+describe("createPreparedNoteNode production orchestration", () => {
+  it("publishes only after typed local Created and does not await slow remote sync", async () => {
+    const publishCanvasNode = vi.fn();
+    const createGraphNode = vi.fn(() => new Promise(() => {}));
+    await createPreparedNoteNode({
+      graphNodeId: "new-id", title: "Untitled note", databasePath: "/db.sqlite",
+      upsertLocalNodeDocument: vi.fn().mockResolvedValue(createdLocal("new-id")),
+      publishCanvasNode, createGraphNode,
+    });
+    expect(publishCanvasNode).toHaveBeenCalledTimes(1);
+    expect(createGraphNode).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not publish or create remotely when local reconciliation is rejected", async () => {
+    const publishCanvasNode = vi.fn();
+    const createGraphNode = vi.fn();
+    await expect(createPreparedNoteNode({
+      graphNodeId: "new-id", title: "Untitled note", databasePath: "/db.sqlite",
+      upsertLocalNodeDocument: vi.fn().mockResolvedValue({
+        mutation: { kind: "conflict", current_revision: 1, reason: "already exists" },
+        document: createdLocal("new-id").document,
+      }),
+      publishCanvasNode, createGraphNode,
+    })).rejects.toThrow(/not created.*already exists/);
+    expect(publishCanvasNode).not.toHaveBeenCalled();
+    expect(createGraphNode).not.toHaveBeenCalled();
+  });
+
+  it("rejects Preserved for a newly minted id rather than publishing a replay", async () => {
+    const publishCanvasNode = vi.fn();
+    const createGraphNode = vi.fn();
+    await expect(createPreparedNoteNode({
+      graphNodeId: "new-id", title: "Untitled note", databasePath: "/db.sqlite",
+      upsertLocalNodeDocument: vi.fn().mockResolvedValue({ mutation: { kind: "preserved" }, document: createdLocal("new-id").document }),
+      publishCanvasNode, createGraphNode,
+    })).rejects.toThrow(/not created \(preserved\)/);
+    expect(publishCanvasNode).not.toHaveBeenCalled();
+    expect(createGraphNode).not.toHaveBeenCalled();
   });
 });
 
@@ -170,7 +220,7 @@ describe("retryPendingGraphNodeSyncs", () => {
       graphNodeId: "node-4",
       title: "Untitled note",
       databasePath: "/db/path.sqlite",
-      upsertLocalNodeDocument: vi.fn().mockResolvedValue(undefined),
+      upsertLocalNodeDocument: vi.fn().mockResolvedValue(createdLocal("node-4")),
       createGraphNode,
     });
     expect(isGraphNodeSyncPending("node-4")).toBe(true);
@@ -188,7 +238,7 @@ describe("retryPendingGraphNodeSyncs", () => {
       graphNodeId: "node-5",
       title: "Untitled note",
       databasePath: "/db/path.sqlite",
-      upsertLocalNodeDocument: vi.fn().mockResolvedValue(undefined),
+      upsertLocalNodeDocument: vi.fn().mockResolvedValue(createdLocal("node-5")),
       createGraphNode,
     });
     expect(pendingGraphNodeSyncCount()).toBe(1);
