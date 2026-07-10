@@ -2471,7 +2471,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-society-of-elect-quigley-1891",
-            "Source",
+            "Claim",
             "Society of the Elect constituted per Quigley",
             "Contested claim preserved as provenance rather than factual graph edge.",
             None,
@@ -2485,7 +2485,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-balfour-hidden-hand",
-            "Source",
+            "Claim",
             "Balfour hidden-hand interpretations",
             "Contested drafting-emphasis or hidden-hand interpretations preserved as provenance beyond the documented declaration.",
             None,
@@ -2499,7 +2499,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-olson-death-contested-causality",
-            "Source",
+            "Claim",
             "Frank Olson death causality remains contested",
             "Contested causality claim preserved as a claim source.",
             None,
@@ -2513,7 +2513,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-aquino-wewelsburg-self-report",
-            "Source",
+            "Claim",
             "Aquino Wewelsburg self-report",
             "Self-reported occult ritual material preserved as source provenance rather than objective historical causation.",
             None,
@@ -2527,7 +2527,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-franklin-abuse-network",
-            "Source",
+            "Claim",
             "Franklin abuse network allegations",
             "Contested allegations preserved as claim provenance.",
             None,
@@ -2541,7 +2541,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-caradori-suspicious-death",
-            "Source",
+            "Claim",
             "Gary Caradori death suspicious timing",
             "Suspicious-timing claim preserved without factual flattening.",
             None,
@@ -2555,7 +2555,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-dutroux-extended-network",
-            "Source",
+            "Claim",
             "Dutroux extended-network allegations",
             "Extended-network and suspicious-death claims separated from documented abuse and institutional failure.",
             None,
@@ -2569,7 +2569,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-epstein-intelligence-role",
-            "Source",
+            "Claim",
             "Epstein intelligence role",
             "Contested intelligence-role claim preserved as claim provenance.",
             None,
@@ -2583,7 +2583,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-epstein-blackmail-network-extent",
-            "Source",
+            "Claim",
             "Epstein blackmail-network extent",
             "Blackmail-network claims beyond documented trafficking are preserved as contested provenance.",
             None,
@@ -2597,7 +2597,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-nygard-symbolic-complement",
-            "Source",
+            "Claim",
             "Nygard symbolic complement",
             "Symbolic-complement reading of Nygard material preserved as interpretive claim, separate from documented legal events.",
             None,
@@ -2611,7 +2611,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-lifelog-facebook-direct-link",
-            "Source",
+            "Claim",
             "LifeLog and Facebook direct linkage not established",
             "Do-not-seed-as-fact claim for the LifeLog/Facebook linkage.",
             None,
@@ -2625,7 +2625,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-google-mdds-cia-origin",
-            "Source",
+            "Claim",
             "Google / MDDS / CIA direct-origin claim",
             "Documented research funding history must stay separate from direct-control or origin claims.",
             None,
@@ -2639,7 +2639,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-ben-rich-suppressed-technology",
-            "Source",
+            "Claim",
             "Ben Rich suppressed-technology quotation",
             "Suppressed-technology quotation material requires source-specific evidence before factual seeding.",
             None,
@@ -2653,7 +2653,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-inventor-suppression",
-            "Source",
+            "Claim",
             "Inventor suppression stories",
             "Ogle, Meyer, and similar inventor-suppression stories require individual source discipline before factual graph edges.",
             None,
@@ -2667,7 +2667,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-occult-exoteric-parallels",
-            "Source",
+            "Claim",
             "Occult / exoteric symbolic parallels",
             "Symbolic or typological parallels preserved as interpretive vectors rather than documented historical causation.",
             None,
@@ -3335,7 +3335,7 @@ mod tests {
         );
 
         for seed in claims {
-            assert_eq!(seed.entity_type, "Source");
+            assert_eq!(seed.entity_type, "Claim");
             assert_eq!(seed.source_kind, Some("claim"));
             assert!(
                 seed.evidence_tags

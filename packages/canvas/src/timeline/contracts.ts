@@ -4,7 +4,7 @@
 // real package. Keep this file byte-identical in shape to WS0 §5.1.
 
 export type EntityType =
-  | "Figure" | "People" | "Event" | "Institution" | "Source"
+  | "Figure" | "People" | "Event" | "Institution" | "Source" | "Claim" | "Myth" | "Interpretation"
   | "Place" | "Work" | "Archetype" | "Dynamic" | "Constellation" | "PsychoidOperator";
 
 export type TemporalPrecision =

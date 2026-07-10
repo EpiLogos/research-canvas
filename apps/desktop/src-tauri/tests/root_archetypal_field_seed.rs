@@ -153,7 +153,7 @@ fn root_archetypal_field_seed_writes_real_graph_constellation_layout_and_timelin
         support::block_on(repo.get_node(&format!("{namespace}:claim-epstein-intelligence-role")))
             .expect("claim query")
             .expect("claim node");
-    assert_eq!(claim.entity_type, "Source");
+    assert_eq!(claim.entity_type, "Claim");
     assert_eq!(claim.source_kind.as_deref(), Some("claim"));
     assert!(claim.evidence_tags.contains(&"contested".to_string()));
 
@@ -163,7 +163,10 @@ fn root_archetypal_field_seed_writes_real_graph_constellation_layout_and_timelin
             .expect("temporal node");
     assert!(temporal.is_temporal);
     assert_eq!(temporal.valid_from.as_deref(), Some("1953-01-01"));
-    assert_eq!(temporal.temporal_precision.as_deref(), Some("year"));
+    assert_eq!(
+        temporal.temporal_precision.map(|value| value.as_str()),
+        Some("year")
+    );
     assert!(temporal.evidence_tags.contains(&"documented".to_string()));
     assert!(temporal
         .source_coordinates

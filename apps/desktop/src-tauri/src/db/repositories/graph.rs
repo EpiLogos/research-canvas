@@ -1,6 +1,112 @@
 // apps/desktop/src-tauri/src/db/repositories/graph.rs
 use serde::{Deserialize, Serialize};
 
+macro_rules! controlled_string_enum {
+    ($name:ident { $($variant:ident => $value:literal),+ $(,)? }) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+        pub enum $name {
+            $(#[serde(rename = $value)] $variant),+
+        }
+
+        impl $name {
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $value),+
+                }
+            }
+        }
+
+        impl TryFrom<String> for $name {
+            type Error = String;
+
+            fn try_from(value: String) -> Result<Self, Self::Error> {
+                match value.as_str() {
+                    $($value => Ok(Self::$variant),)+
+                    _ => Err(format!("unknown {} value: {value}", stringify!($name))),
+                }
+            }
+        }
+    };
+}
+
+controlled_string_enum!(ContentOrigin {
+    Seed => "seed",
+    CorpusCompiled => "corpus_compiled",
+    UserAuthored => "user_authored",
+    Imported => "imported",
+});
+controlled_string_enum!(Historicity {
+    Historical => "historical",
+    Mythic => "mythic",
+    Literary => "literary",
+    Theoretical => "theoretical",
+    Mixed => "mixed",
+});
+controlled_string_enum!(ClaimKind {
+    Fact => "fact",
+    Inference => "inference",
+    Interpretation => "interpretation",
+    Allegation => "allegation",
+    Hypothesis => "hypothesis",
+    SymbolicParallel => "symbolic_parallel",
+});
+controlled_string_enum!(EvidenceStatus {
+    Documented => "documented",
+    WellEvidencedInference => "well_evidenced_inference",
+    Interpretive => "interpretive",
+    Contested => "contested",
+    Alleged => "alleged",
+    Unverified => "unverified",
+    Disproven => "disproven",
+});
+controlled_string_enum!(TemporalRole {
+    OccurredAt => "occurred_at",
+    ActiveDuring => "active_during",
+    SourcePublishedAt => "source_published_at",
+    ClaimAboutTime => "claim_about_time",
+    MythLocatedAt => "myth_located_at",
+});
+controlled_string_enum!(PlaceCoverage {
+    Resolved => "resolved",
+    Unknown => "unknown",
+    NotApplicable => "not_applicable",
+});
+controlled_string_enum!(QlForm {
+    CompleteSixfold => "complete_sixfold",
+    PartialPositionalMap => "partial_positional_map",
+    Quaternity => "quaternity",
+    PositionWheel => "position_wheel",
+    DoubleHelix => "double_helix",
+    OtherExplicit => "other_explicit",
+});
+controlled_string_enum!(QlArc {
+    Day => "day",
+    Night => "night",
+    Braided => "braided",
+    NotApplicable => "not_applicable",
+});
+controlled_string_enum!(QlTopology {
+    Torus => "torus",
+    Klein => "klein",
+    Lemniscatic => "lemniscatic",
+    Composite => "composite",
+    Unspecified => "unspecified",
+});
+controlled_string_enum!(QlCompletenessStatus {
+    Complete => "complete",
+    Partial => "partial",
+    Incomplete => "incomplete",
+    NotApplicable => "not_applicable",
+});
+controlled_string_enum!(TemporalPrecision {
+    Millennium => "millennium",
+    Century => "century",
+    Decade => "decade",
+    Year => "year",
+    Month => "month",
+    Day => "day",
+});
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphNode {
@@ -14,10 +120,26 @@ pub struct GraphNode {
     pub source_coordinates: Vec<String>,
     pub evidence_tags: Vec<String>,
     pub source_kind: Option<String>,
+    pub content_origin: Option<ContentOrigin>,
+    pub content_revision: Option<i64>,
+    pub seed_schema_version: Option<i64>,
+    pub body_source_coordinates: Vec<String>,
+    pub historicity: Option<Historicity>,
+    pub claim_kind: Option<ClaimKind>,
+    pub evidence_status: Option<EvidenceStatus>,
+    pub temporal_role: Option<TemporalRole>,
+    pub place_coverage: Option<PlaceCoverage>,
+    pub ql_form: Option<QlForm>,
+    pub ql_unit_id: Option<String>,
+    pub ql_arc: Option<QlArc>,
+    pub ql_topology: Option<QlTopology>,
+    pub ql_schema_version: Option<i64>,
+    pub ql_source_coordinates: Vec<String>,
+    pub ql_completeness_status: Option<QlCompletenessStatus>,
     pub is_temporal: bool,
     pub valid_from: Option<String>,
     pub valid_to: Option<String>,
-    pub temporal_precision: Option<String>,
+    pub temporal_precision: Option<TemporalPrecision>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -52,19 +174,109 @@ pub struct NewGraphNode {
     pub temporal_precision: Option<String>,
 }
 
+/// Typed metadata supplied by modern creation boundaries. Keeping it separate
+/// preserves the small internal `NewGraphNode` API used by existing callers,
+/// while commands and importers can write the complete contract atomically.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewGraphNodeMetadata {
+    #[serde(default)]
+    pub evidence_tags: Vec<String>,
+    #[serde(default)]
+    pub source_kind: Option<String>,
+    #[serde(default)]
+    pub content_origin: Option<ContentOrigin>,
+    #[serde(default)]
+    pub content_revision: Option<i64>,
+    #[serde(default)]
+    pub seed_schema_version: Option<i64>,
+    #[serde(default)]
+    pub body_source_coordinates: Vec<String>,
+    #[serde(default)]
+    pub historicity: Option<Historicity>,
+    #[serde(default)]
+    pub claim_kind: Option<ClaimKind>,
+    #[serde(default)]
+    pub evidence_status: Option<EvidenceStatus>,
+    #[serde(default)]
+    pub temporal_role: Option<TemporalRole>,
+    #[serde(default)]
+    pub place_coverage: Option<PlaceCoverage>,
+    #[serde(default)]
+    pub ql_form: Option<QlForm>,
+    #[serde(default)]
+    pub ql_unit_id: Option<String>,
+    #[serde(default)]
+    pub ql_arc: Option<QlArc>,
+    #[serde(default)]
+    pub ql_topology: Option<QlTopology>,
+    #[serde(default)]
+    pub ql_schema_version: Option<i64>,
+    #[serde(default)]
+    pub ql_source_coordinates: Vec<String>,
+    #[serde(default)]
+    pub ql_completeness_status: Option<QlCompletenessStatus>,
+}
+
+fn deserialize_present_nullable<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphNodePatch {
     pub title: Option<String>,
     pub body: Option<String>,
     pub summary: Option<String>,
-    pub archetypal_resonance: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub archetypal_resonance: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
     pub coordinate: Option<Option<String>>,
     pub source_coordinates: Option<Vec<String>>,
+    pub evidence_tags: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub source_kind: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub content_origin: Option<Option<ContentOrigin>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub content_revision: Option<Option<i64>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub seed_schema_version: Option<Option<i64>>,
+    pub body_source_coordinates: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub historicity: Option<Option<Historicity>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub claim_kind: Option<Option<ClaimKind>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub evidence_status: Option<Option<EvidenceStatus>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub temporal_role: Option<Option<TemporalRole>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub place_coverage: Option<Option<PlaceCoverage>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub ql_form: Option<Option<QlForm>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub ql_unit_id: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub ql_arc: Option<Option<QlArc>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub ql_topology: Option<Option<QlTopology>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub ql_schema_version: Option<Option<i64>>,
+    pub ql_source_coordinates: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub ql_completeness_status: Option<Option<QlCompletenessStatus>>,
     pub is_temporal: Option<bool>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
     pub valid_from: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
     pub valid_to: Option<Option<String>>,
-    pub temporal_precision: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub temporal_precision: Option<Option<TemporalPrecision>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,6 +349,21 @@ fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
+/// Neo4j stores controlled values as strings. This is the sole compatibility
+/// boundary: absent properties become `None`, while present unknown values are
+/// rejected with their property name instead of leaking into the typed API.
+fn controlled_from_neo<T>(node: &neo4rs::Node, property: &str) -> Result<Option<T>, String>
+where
+    T: TryFrom<String, Error = String>,
+{
+    match node.get::<String>(property) {
+        Ok(value) => T::try_from(value)
+            .map(Some)
+            .map_err(|error| format!("invalid Neo4j property `{property}`: {error}")),
+        Err(_) => Ok(None),
+    }
+}
+
 /// Build a GraphNode from a returned `n` node value plus its entity-type label.
 fn node_from_neo(node: neo4rs::Node) -> Result<GraphNode, String> {
     let labels: Vec<String> = node.labels().iter().map(|s| s.to_string()).collect();
@@ -157,10 +384,26 @@ fn node_from_neo(node: neo4rs::Node) -> Result<GraphNode, String> {
         source_coordinates,
         evidence_tags: node.get("evidence_tags").unwrap_or_default(),
         source_kind: node.get("source_kind").ok(),
+        content_origin: controlled_from_neo(&node, "content_origin")?,
+        content_revision: node.get("content_revision").ok(),
+        seed_schema_version: node.get("seed_schema_version").ok(),
+        body_source_coordinates: node.get("body_source_coordinates").unwrap_or_default(),
+        historicity: controlled_from_neo(&node, "historicity")?,
+        claim_kind: controlled_from_neo(&node, "claim_kind")?,
+        evidence_status: controlled_from_neo(&node, "evidence_status")?,
+        temporal_role: controlled_from_neo(&node, "temporal_role")?,
+        place_coverage: controlled_from_neo(&node, "place_coverage")?,
+        ql_form: controlled_from_neo(&node, "ql_form")?,
+        ql_unit_id: node.get("ql_unit_id").ok(),
+        ql_arc: controlled_from_neo(&node, "ql_arc")?,
+        ql_topology: controlled_from_neo(&node, "ql_topology")?,
+        ql_schema_version: node.get("ql_schema_version").ok(),
+        ql_source_coordinates: node.get("ql_source_coordinates").unwrap_or_default(),
+        ql_completeness_status: controlled_from_neo(&node, "ql_completeness_status")?,
         is_temporal: node.get("is_temporal").unwrap_or(false),
         valid_from: node.get("valid_from").ok(),
         valid_to: node.get("valid_to").ok(),
-        temporal_precision: node.get("temporal_precision").ok(),
+        temporal_precision: controlled_from_neo(&node, "temporal_precision")?,
         created_at: node.get("created_at").unwrap_or_default(),
         updated_at: node.get("updated_at").unwrap_or_default(),
     })
@@ -172,6 +415,9 @@ const ENTITY_LABELS: &[&str] = &[
     "Event",
     "Institution",
     "Source",
+    "Claim",
+    "Myth",
+    "Interpretation",
     "Place",
     "Work",
     "Archetype",
@@ -237,6 +483,18 @@ impl GraphRepository {
     }
 
     pub async fn create_node(&self, input: NewGraphNode) -> Result<GraphNode, String> {
+        self.create_node_with_metadata(input, NewGraphNodeMetadata::default())
+            .await
+    }
+
+    pub async fn create_node_with_metadata(
+        &self,
+        input: NewGraphNode,
+        metadata: NewGraphNodeMetadata,
+    ) -> Result<GraphNode, String> {
+        if let Some(value) = input.temporal_precision.as_ref() {
+            TemporalPrecision::try_from(value.clone())?;
+        }
         let id = input
             .graph_node_id
             .clone()
@@ -249,7 +507,17 @@ impl GraphRepository {
             "CREATE (n:TheoryNode:{label} {{
                 graph_node_id: $id, title: $title, body: $body, summary: '',
                 coordinate: $coordinate, source_coordinates: $source_coordinates,
-                evidence_tags: [], source_kind: null,
+                evidence_tags: $evidence_tags, source_kind: $source_kind,
+                content_origin: $content_origin, content_revision: $content_revision,
+                seed_schema_version: $seed_schema_version,
+                body_source_coordinates: $body_source_coordinates,
+                historicity: $historicity, claim_kind: $claim_kind,
+                evidence_status: $evidence_status, temporal_role: $temporal_role,
+                place_coverage: $place_coverage, ql_form: $ql_form,
+                ql_unit_id: $ql_unit_id, ql_arc: $ql_arc, ql_topology: $ql_topology,
+                ql_schema_version: $ql_schema_version,
+                ql_source_coordinates: $ql_source_coordinates,
+                ql_completeness_status: $ql_completeness_status,
                 is_temporal: $is_temporal, valid_from: $valid_from, valid_to: $valid_to,
                 temporal_precision: $temporal_precision,
                 created_at: $now, updated_at: $now
@@ -261,6 +529,64 @@ impl GraphRepository {
             .param("body", input.body)
             .param("coordinate", input.coordinate)
             .param("source_coordinates", input.source_coordinates)
+            .param("evidence_tags", metadata.evidence_tags)
+            .param("source_kind", metadata.source_kind)
+            .param(
+                "content_origin",
+                metadata
+                    .content_origin
+                    .map(|value| value.as_str().to_string()),
+            )
+            .param("content_revision", metadata.content_revision)
+            .param("seed_schema_version", metadata.seed_schema_version)
+            .param("body_source_coordinates", metadata.body_source_coordinates)
+            .param(
+                "historicity",
+                metadata.historicity.map(|value| value.as_str().to_string()),
+            )
+            .param(
+                "claim_kind",
+                metadata.claim_kind.map(|value| value.as_str().to_string()),
+            )
+            .param(
+                "evidence_status",
+                metadata
+                    .evidence_status
+                    .map(|value| value.as_str().to_string()),
+            )
+            .param(
+                "temporal_role",
+                metadata
+                    .temporal_role
+                    .map(|value| value.as_str().to_string()),
+            )
+            .param(
+                "place_coverage",
+                metadata
+                    .place_coverage
+                    .map(|value| value.as_str().to_string()),
+            )
+            .param(
+                "ql_form",
+                metadata.ql_form.map(|value| value.as_str().to_string()),
+            )
+            .param("ql_unit_id", metadata.ql_unit_id)
+            .param(
+                "ql_arc",
+                metadata.ql_arc.map(|value| value.as_str().to_string()),
+            )
+            .param(
+                "ql_topology",
+                metadata.ql_topology.map(|value| value.as_str().to_string()),
+            )
+            .param("ql_schema_version", metadata.ql_schema_version)
+            .param("ql_source_coordinates", metadata.ql_source_coordinates)
+            .param(
+                "ql_completeness_status",
+                metadata
+                    .ql_completeness_status
+                    .map(|value| value.as_str().to_string()),
+            )
             .param("is_temporal", input.is_temporal)
             .param("valid_from", input.valid_from)
             .param("valid_to", input.valid_to)
@@ -321,6 +647,60 @@ impl GraphRepository {
         if patch.source_coordinates.is_some() {
             sets.push("n.source_coordinates = $source_coordinates".into());
         }
+        if patch.evidence_tags.is_some() {
+            sets.push("n.evidence_tags = $evidence_tags".into());
+        }
+        if patch.source_kind.is_some() {
+            sets.push("n.source_kind = $source_kind".into());
+        }
+        if patch.content_origin.is_some() {
+            sets.push("n.content_origin = $content_origin".into());
+        }
+        if patch.content_revision.is_some() {
+            sets.push("n.content_revision = $content_revision".into());
+        }
+        if patch.seed_schema_version.is_some() {
+            sets.push("n.seed_schema_version = $seed_schema_version".into());
+        }
+        if patch.body_source_coordinates.is_some() {
+            sets.push("n.body_source_coordinates = $body_source_coordinates".into());
+        }
+        if patch.historicity.is_some() {
+            sets.push("n.historicity = $historicity".into());
+        }
+        if patch.claim_kind.is_some() {
+            sets.push("n.claim_kind = $claim_kind".into());
+        }
+        if patch.evidence_status.is_some() {
+            sets.push("n.evidence_status = $evidence_status".into());
+        }
+        if patch.temporal_role.is_some() {
+            sets.push("n.temporal_role = $temporal_role".into());
+        }
+        if patch.place_coverage.is_some() {
+            sets.push("n.place_coverage = $place_coverage".into());
+        }
+        if patch.ql_form.is_some() {
+            sets.push("n.ql_form = $ql_form".into());
+        }
+        if patch.ql_unit_id.is_some() {
+            sets.push("n.ql_unit_id = $ql_unit_id".into());
+        }
+        if patch.ql_arc.is_some() {
+            sets.push("n.ql_arc = $ql_arc".into());
+        }
+        if patch.ql_topology.is_some() {
+            sets.push("n.ql_topology = $ql_topology".into());
+        }
+        if patch.ql_schema_version.is_some() {
+            sets.push("n.ql_schema_version = $ql_schema_version".into());
+        }
+        if patch.ql_source_coordinates.is_some() {
+            sets.push("n.ql_source_coordinates = $ql_source_coordinates".into());
+        }
+        if patch.ql_completeness_status.is_some() {
+            sets.push("n.ql_completeness_status = $ql_completeness_status".into());
+        }
         if patch.is_temporal.is_some() {
             sets.push("n.is_temporal = $is_temporal".into());
         }
@@ -367,6 +747,63 @@ impl GraphRepository {
         if let Some(v) = patch.source_coordinates {
             q = q.param("source_coordinates", v);
         }
+        if let Some(v) = patch.evidence_tags {
+            q = q.param("evidence_tags", v);
+        }
+        if let Some(v) = patch.source_kind {
+            q = q.param("source_kind", v);
+        }
+        if let Some(v) = patch.content_origin {
+            q = q.param("content_origin", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.content_revision {
+            q = q.param("content_revision", v);
+        }
+        if let Some(v) = patch.seed_schema_version {
+            q = q.param("seed_schema_version", v);
+        }
+        if let Some(v) = patch.body_source_coordinates {
+            q = q.param("body_source_coordinates", v);
+        }
+        if let Some(v) = patch.historicity {
+            q = q.param("historicity", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.claim_kind {
+            q = q.param("claim_kind", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.evidence_status {
+            q = q.param("evidence_status", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.temporal_role {
+            q = q.param("temporal_role", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.place_coverage {
+            q = q.param("place_coverage", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.ql_form {
+            q = q.param("ql_form", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.ql_unit_id {
+            q = q.param("ql_unit_id", v);
+        }
+        if let Some(v) = patch.ql_arc {
+            q = q.param("ql_arc", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.ql_topology {
+            q = q.param("ql_topology", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.ql_schema_version {
+            q = q.param("ql_schema_version", v);
+        }
+        if let Some(v) = patch.ql_source_coordinates {
+            q = q.param("ql_source_coordinates", v);
+        }
+        if let Some(v) = patch.ql_completeness_status {
+            q = q.param(
+                "ql_completeness_status",
+                v.map(|value| value.as_str().to_string()),
+            );
+        }
         if let Some(v) = patch.is_temporal {
             q = q.param("is_temporal", v);
         }
@@ -377,7 +814,10 @@ impl GraphRepository {
             q = q.param("valid_to", v);
         }
         if let Some(v) = patch.temporal_precision {
-            q = q.param("temporal_precision", v);
+            q = q.param(
+                "temporal_precision",
+                v.map(|value| value.as_str().to_string()),
+            );
         }
 
         let mut rows = self
@@ -405,6 +845,9 @@ impl GraphRepository {
     }
 
     pub async fn upsert_seed_node(&self, input: &SeedGraphNode) -> Result<GraphNode, String> {
+        if let Some(value) = input.temporal_precision.as_ref() {
+            TemporalPrecision::try_from(value.clone())?;
+        }
         let label = validate_entity_label(&input.entity_type)?;
         let cypher = format!(
             "MERGE (n:TheoryNode {{graph_node_id: $id}}) \

@@ -4,6 +4,7 @@ import {
   annotationSchema,
   edgeSchema,
   exportBundleSchema,
+  graphNodeSchema,
   noteNodeSchema,
   portalNodeSchema,
   projectSchema,
@@ -13,6 +14,44 @@ import {
 const now = "2026-03-30T20:00:00.000Z";
 
 describe("schema package", () => {
+  it("rejects uncontrolled historical and QL metadata values", () => {
+    const result = graphNodeSchema.safeParse({
+      graphNodeId: "contract-invalid",
+      entityType: "Event",
+      title: "Invalid controlled value",
+      body: "[]",
+      summary: "",
+      archetypalResonance: null,
+      coordinate: null,
+      sourceCoordinates: [],
+      evidenceTags: [],
+      sourceKind: null,
+      contentOrigin: null,
+      contentRevision: null,
+      seedSchemaVersion: null,
+      bodySourceCoordinates: [],
+      historicity: "legendary-ish",
+      claimKind: null,
+      evidenceStatus: null,
+      temporalRole: null,
+      placeCoverage: "somewhere",
+      qlForm: null,
+      qlUnitId: null,
+      qlArc: null,
+      qlTopology: "mobius",
+      qlSchemaVersion: null,
+      qlSourceCoordinates: [],
+      qlCompletenessStatus: null,
+      isTemporal: false,
+      validFrom: null,
+      validTo: null,
+      temporalPrecision: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    expect(result.success).toBe(false);
+  });
   it("validates a project with publish settings", () => {
     const parsed = projectSchema.parse({
       id: "2a2edca9-e4af-4b2d-b1aa-7353f2bb20f4",

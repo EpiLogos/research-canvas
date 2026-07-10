@@ -1,8 +1,34 @@
 // packages/desktop-api/src/graph.ts
 
-export type EntityType =
-  | "Figure" | "People" | "Event" | "Institution" | "Source"
-  | "Place" | "Work" | "Archetype" | "Dynamic" | "Constellation" | "PsychoidOperator";
+import type {
+  ClaimKind,
+  ContentOrigin,
+  EntityType,
+  EvidenceStatus,
+  Historicity,
+  PlaceCoverage,
+  QlArc,
+  QlCompletenessStatus,
+  QlForm,
+  QlTopology,
+  TemporalPrecision,
+  TemporalRole,
+} from "@research-canvas/schema";
+
+export type {
+  ClaimKind,
+  ContentOrigin,
+  EntityType,
+  EvidenceStatus,
+  Historicity,
+  PlaceCoverage,
+  QlArc,
+  QlCompletenessStatus,
+  QlForm,
+  QlTopology,
+  TemporalPrecision,
+  TemporalRole,
+} from "@research-canvas/schema";
 
 /**
  * Entity types that can be passed to `createGraphNode`.
@@ -21,13 +47,30 @@ export interface GraphNode {
   archetypalResonance: string | null;
   coordinate: string | null;
   sourceCoordinates: string[];
+  /** Legacy payloads may omit migration-era metadata. The canonical transport
+   * schema normalizes current responses to explicit null/[] keys. */
   evidenceTags?: string[];
   sourceKind?: string | null;
+  contentOrigin?: ContentOrigin | null;
+  contentRevision?: number | null;
+  seedSchemaVersion?: number | null;
+  bodySourceCoordinates?: string[];
+  historicity?: Historicity | null;
+  claimKind?: ClaimKind | null;
+  evidenceStatus?: EvidenceStatus | null;
+  temporalRole?: TemporalRole | null;
+  placeCoverage?: PlaceCoverage | null;
+  qlForm?: QlForm | null;
+  qlUnitId?: string | null;
+  qlArc?: QlArc | null;
+  qlTopology?: QlTopology | null;
+  qlSchemaVersion?: number | null;
+  qlSourceCoordinates?: string[];
+  qlCompletenessStatus?: QlCompletenessStatus | null;
   isTemporal: boolean;
   validFrom: string | null;
   validTo: string | null;
-  temporalPrecision:
-    | "year" | "month" | "day" | "decade" | "century" | "millennium" | null;
+  temporalPrecision: TemporalPrecision | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -114,11 +157,30 @@ export interface ArchetypalLighting {
 }
 
 export interface NewGraphNodeInput {
+  graphNodeId?: string;
   entityType: CreatableEntityType;
   title: string;
   body: string;
   coordinate?: string | null;
   sourceCoordinates?: string[];
+  evidenceTags?: string[];
+  sourceKind?: string | null;
+  contentOrigin?: ContentOrigin | null;
+  contentRevision?: number | null;
+  seedSchemaVersion?: number | null;
+  bodySourceCoordinates?: string[];
+  historicity?: Historicity | null;
+  claimKind?: ClaimKind | null;
+  evidenceStatus?: EvidenceStatus | null;
+  temporalRole?: TemporalRole | null;
+  placeCoverage?: PlaceCoverage | null;
+  qlForm?: QlForm | null;
+  qlUnitId?: string | null;
+  qlArc?: QlArc | null;
+  qlTopology?: QlTopology | null;
+  qlSchemaVersion?: number | null;
+  qlSourceCoordinates?: string[];
+  qlCompletenessStatus?: QlCompletenessStatus | null;
   isTemporal: boolean;
   validFrom?: string | null;
   validTo?: string | null;
@@ -128,6 +190,10 @@ export interface NewGraphNodeInput {
 export type GraphNodePatch = Partial<
   Pick<GraphNode,
     "title" | "body" | "summary" | "archetypalResonance" |
-    "coordinate" | "sourceCoordinates" | "evidenceTags" | "sourceKind" | "isTemporal" |
+    "coordinate" | "sourceCoordinates" | "evidenceTags" | "sourceKind" |
+    "contentOrigin" | "contentRevision" | "seedSchemaVersion" | "bodySourceCoordinates" |
+    "historicity" | "claimKind" | "evidenceStatus" | "temporalRole" | "placeCoverage" |
+    "qlForm" | "qlUnitId" | "qlArc" | "qlTopology" | "qlSchemaVersion" |
+    "qlSourceCoordinates" | "qlCompletenessStatus" | "isTemporal" |
     "validFrom" | "validTo" | "temporalPrecision">
 >;

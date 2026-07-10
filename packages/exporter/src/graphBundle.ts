@@ -1,55 +1,17 @@
 import { z } from "zod";
 
-import { projectSchema } from "@research-canvas/schema";
+import { graphNodeSchema, projectSchema } from "@research-canvas/schema";
 import type { ExportAsset } from "@research-canvas/schema";
 import type {
   CanvasNodeSidecar,
   EdgeLayout,
   GraphExportBundle,
-  GraphNode,
   GraphRelationship,
   LitInstance,
   NodeLayout
 } from "@research-canvas/desktop-api";
 
 export type { GraphExportBundle } from "@research-canvas/desktop-api";
-
-const entityTypeSchema = z.enum([
-  "Figure",
-  "People",
-  "Event",
-  "Institution",
-  "Source",
-  "Place",
-  "Work",
-  "Archetype",
-  "Dynamic",
-  "Constellation",
-  "PsychoidOperator"
-]);
-
-const temporalPrecisionSchema = z
-  .enum(["year", "month", "day", "decade", "century", "millennium"])
-  .nullable();
-
-const graphNodeSchema: z.ZodType<GraphNode> = z.object({
-  graphNodeId: z.string().min(1),
-  entityType: entityTypeSchema,
-  title: z.string(),
-  body: z.string(),
-  summary: z.string(),
-  archetypalResonance: z.string().nullable(),
-  coordinate: z.string().nullable(),
-  sourceCoordinates: z.array(z.string()),
-  evidenceTags: z.array(z.string()).optional(),
-  sourceKind: z.string().nullable().optional(),
-  isTemporal: z.boolean(),
-  validFrom: z.string().nullable(),
-  validTo: z.string().nullable(),
-  temporalPrecision: temporalPrecisionSchema,
-  createdAt: z.string(),
-  updatedAt: z.string()
-});
 
 const graphRelationshipSchema: z.ZodType<GraphRelationship> = z.object({
   id: z.string().min(1),

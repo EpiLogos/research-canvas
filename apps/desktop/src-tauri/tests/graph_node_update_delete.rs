@@ -1,7 +1,8 @@
 // apps/desktop/src-tauri/tests/graph_node_update_delete.rs
 mod support;
 use research_canvas_desktop_lib::db::repositories::graph::{
-    GraphNodePatch, GraphRepository, NewGraphNode,
+    ClaimKind, ContentOrigin, EvidenceStatus, GraphNodePatch, GraphRepository, Historicity,
+    NewGraphNode, PlaceCoverage, QlArc, QlCompletenessStatus, QlForm, QlTopology, TemporalRole,
 };
 
 #[test]
@@ -30,6 +31,24 @@ fn update_node_applies_patch_and_clears_with_some_none() {
             title: Some(format!("Mono-poly {run_id}")),
             summary: Some("the spread of the one over the many".into()),
             coordinate: Some(None), // clear
+            evidence_tags: Some(vec!["interpretive".into()]),
+            source_kind: Some(Some("theoretical-dynamic".into())),
+            content_origin: Some(Some(ContentOrigin::UserAuthored)),
+            content_revision: Some(Some(9)),
+            seed_schema_version: Some(None),
+            body_source_coordinates: Some(vec!["Canon/monopoly.md#reading".into()]),
+            historicity: Some(Some(Historicity::Theoretical)),
+            claim_kind: Some(Some(ClaimKind::Interpretation)),
+            evidence_status: Some(Some(EvidenceStatus::Interpretive)),
+            temporal_role: Some(Some(TemporalRole::ClaimAboutTime)),
+            place_coverage: Some(Some(PlaceCoverage::NotApplicable)),
+            ql_form: Some(Some(QlForm::CompleteSixfold)),
+            ql_unit_id: Some(Some("ql-monopoly".into())),
+            ql_arc: Some(Some(QlArc::Day)),
+            ql_topology: Some(Some(QlTopology::Torus)),
+            ql_schema_version: Some(Some(3)),
+            ql_source_coordinates: Some(vec!["Canon/ql/monopoly.md#unit".into()]),
+            ql_completeness_status: Some(Some(QlCompletenessStatus::Complete)),
             ..Default::default()
         },
     ))
@@ -37,6 +56,25 @@ fn update_node_applies_patch_and_clears_with_some_none() {
     assert_eq!(patched.title, format!("Mono-poly {run_id}"));
     assert_eq!(patched.summary, "the spread of the one over the many");
     assert_eq!(patched.coordinate, None);
+    assert_eq!(patched.content_origin, Some(ContentOrigin::UserAuthored));
+    assert_eq!(patched.historicity, Some(Historicity::Theoretical));
+    assert_eq!(patched.ql_form, Some(QlForm::CompleteSixfold));
+
+    let cleared = support::block_on(repo.update_node(
+        &created.graph_node_id,
+        GraphNodePatch {
+            source_kind: Some(None),
+            content_origin: Some(None),
+            ql_form: Some(None),
+            ql_unit_id: Some(None),
+            ..Default::default()
+        },
+    ))
+    .expect("clear nullable metadata");
+    assert_eq!(cleared.source_kind, None);
+    assert_eq!(cleared.content_origin, None);
+    assert_eq!(cleared.ql_form, None);
+    assert_eq!(cleared.ql_unit_id, None);
 
     support::block_on(repo.delete_node(&created.graph_node_id)).expect("delete");
     let after = support::block_on(repo.get_node(&created.graph_node_id)).expect("get");
