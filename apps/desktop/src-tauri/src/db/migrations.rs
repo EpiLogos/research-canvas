@@ -52,6 +52,14 @@ const MIGRATIONS: &[Migration] = &[
         version: "0010_node_document",
         sql: include_str!("../../migrations/0010_node_document.sql"),
     },
+    Migration {
+        version: "0011_graph_node_metadata",
+        sql: include_str!("../../migrations/0011_graph_node_metadata.sql"),
+    },
+    Migration {
+        version: "0012_timeline_layout",
+        sql: include_str!("../../migrations/0012_timeline_layout.sql"),
+    },
 ];
 
 impl MigrationRunner {

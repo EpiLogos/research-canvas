@@ -1,0 +1,131 @@
+use research_canvas_desktop_lib::db::{
+    connection::Database,
+    repositories::graph::{
+        ClaimKind, ContentOrigin, EntityType, EvidenceStatus, Historicity, PlaceCoverage, QlArc,
+        QlCompletenessStatus, QlForm, QlTopology, TemporalPrecision, TemporalRole,
+    },
+    repositories::{
+        GraphMetadataMutation, GraphNodeMetadataRecord, GraphNodeMetadataRepository, SyncState,
+    },
+};
+use tempfile::tempdir;
+
+fn record(revision: i64, origin: ContentOrigin) -> GraphNodeMetadataRecord {
+    GraphNodeMetadataRecord {
+        graph_node_id: "event-1".into(),
+        entity_type: EntityType::Event,
+        title: "Council convenes".into(),
+        archetypal_resonance: None,
+        coordinate: Some("#3".into()),
+        source_coordinates: vec!["Episode 2/research.md#council".into()],
+        evidence_tags: vec!["primary-source".into()],
+        source_kind: Some("chronicle".into()),
+        content_origin: origin,
+        content_revision: revision,
+        seed_schema_version: Some(2),
+        body_source_coordinates: vec!["Episode 2/research.md#council".into()],
+        historicity: Some(Historicity::Historical),
+        claim_kind: Some(ClaimKind::Fact),
+        evidence_status: Some(EvidenceStatus::Documented),
+        temporal_role: Some(TemporalRole::OccurredAt),
+        place_coverage: Some(PlaceCoverage::Resolved),
+        ql_form: Some(QlForm::PartialPositionalMap),
+        ql_unit_id: Some("ql-council".into()),
+        ql_arc: Some(QlArc::Day),
+        ql_topology: Some(QlTopology::Composite),
+        ql_schema_version: Some(1),
+        ql_source_coordinates: vec!["Canon/ql.md#3".into()],
+        ql_completeness_status: Some(QlCompletenessStatus::Partial),
+        is_temporal: true,
+        valid_from: Some("1439".into()),
+        valid_to: None,
+        temporal_precision: Some(TemporalPrecision::Year),
+        schema_version: 1,
+        sync_state: SyncState::Pending,
+        remote_revision: None,
+    }
+}
+
+#[test]
+fn metadata_round_trips_after_reopen_and_uses_explicit_revision_results() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("metadata.sqlite");
+    {
+        let db = Database::open(&path).unwrap();
+        let repo = GraphNodeMetadataRepository::new(db.connection());
+        assert_eq!(
+            repo.save(&record(1, ContentOrigin::CorpusCompiled), None)
+                .unwrap(),
+            GraphMetadataMutation::Created
+        );
+        assert_eq!(
+            repo.save(&record(1, ContentOrigin::CorpusCompiled), None)
+                .unwrap(),
+            GraphMetadataMutation::Preserved
+        );
+        let mut changed_same_revision = record(1, ContentOrigin::CorpusCompiled);
+        changed_same_revision.title = "Unreviewed rewrite".into();
+        assert!(matches!(
+            repo.save(&changed_same_revision, None).unwrap(),
+            GraphMetadataMutation::Conflict {
+                current_revision: 1,
+                ..
+            }
+        ));
+        assert!(matches!(
+            repo.save(&record(2, ContentOrigin::CorpusCompiled), Some(0))
+                .unwrap(),
+            GraphMetadataMutation::Conflict {
+                current_revision: 1,
+                ..
+            }
+        ));
+        assert_eq!(
+            repo.save(&record(2, ContentOrigin::CorpusCompiled), Some(1))
+                .unwrap(),
+            GraphMetadataMutation::Updated
+        );
+    }
+    {
+        let db = Database::open(&path).unwrap();
+        let fetched = GraphNodeMetadataRepository::new(db.connection())
+            .get("event-1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(fetched, record(2, ContentOrigin::CorpusCompiled));
+    }
+}
+
+#[test]
+fn metadata_preserves_user_authored_content_from_automated_origins() {
+    let dir = tempdir().unwrap();
+    let db = Database::open(dir.path().join("ownership.sqlite")).unwrap();
+    let repo = GraphNodeMetadataRepository::new(db.connection());
+    assert_eq!(
+        repo.save(&record(7, ContentOrigin::UserAuthored), None)
+            .unwrap(),
+        GraphMetadataMutation::Created
+    );
+    assert_eq!(
+        repo.save(&record(8, ContentOrigin::Seed), Some(7)).unwrap(),
+        GraphMetadataMutation::Preserved
+    );
+    assert_eq!(
+        repo.get("event-1").unwrap().unwrap().content_origin,
+        ContentOrigin::UserAuthored
+    );
+}
+
+#[test]
+fn metadata_rejects_versions_outside_the_javascript_safe_integer_range() {
+    let dir = tempdir().unwrap();
+    let db = Database::open(dir.path().join("versions.sqlite")).unwrap();
+    let repo = GraphNodeMetadataRepository::new(db.connection());
+    assert!(repo.save(&record(-1, ContentOrigin::Seed), None).is_err());
+    assert!(repo
+        .save(&record(9_007_199_254_740_992, ContentOrigin::Seed), None)
+        .is_err());
+    assert!(repo
+        .save(&record(1, ContentOrigin::Seed), Some(-1))
+        .is_err());
+}
