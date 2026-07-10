@@ -5,6 +5,7 @@ import {
   edgeSchema,
   exportBundleSchema,
   graphNodeSchema,
+  normalizeLegacyGraphNode,
   noteNodeSchema,
   portalNodeSchema,
   projectSchema,
@@ -14,6 +15,32 @@ import {
 const now = "2026-03-30T20:00:00.000Z";
 
 describe("schema package", () => {
+  it("keeps legacy omission handling outside the canonical graph-node schema", () => {
+    const legacy = {
+      graphNodeId: "legacy-node",
+      entityType: "Event",
+      title: "Legacy event",
+      body: "[]",
+      summary: "",
+      archetypalResonance: null,
+      coordinate: null,
+      sourceCoordinates: [],
+      isTemporal: true,
+      validFrom: "1621",
+      validTo: null,
+      temporalPrecision: "year",
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    expect(graphNodeSchema.safeParse(legacy).success).toBe(false);
+    expect(normalizeLegacyGraphNode(legacy)).toMatchObject({
+      contentOrigin: null,
+      bodySourceCoordinates: [],
+      historicity: null,
+      qlSourceCoordinates: [],
+    });
+  });
   it("rejects uncontrolled historical and QL metadata values", () => {
     const result = graphNodeSchema.safeParse({
       graphNodeId: "contract-invalid",

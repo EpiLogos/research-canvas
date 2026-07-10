@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createStaticBundleTransport, type GraphExportBundle } from "./index";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 
 function fixtureBundle(): GraphExportBundle {
   const monopoly: GraphExportBundle["nodes"][number] = {
@@ -12,6 +13,7 @@ function fixtureBundle(): GraphExportBundle {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: false,
     validFrom: null,
     validTo: null,
@@ -28,6 +30,7 @@ function fixtureBundle(): GraphExportBundle {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: true,
     validFrom: "1621-01-01",
     validTo: "1621-12-31",
@@ -126,6 +129,7 @@ describe("createStaticBundleTransport", () => {
       archetypalResonance: null,
       coordinate: null,
       sourceCoordinates: ["#0", "antichrist-vault/episodes/1/ql-units/unit-spectral-devils-chain.md"],
+      ...EMPTY_GRAPH_NODE_METADATA,
       evidenceTags: ["ql_unit", "ql_positioned"],
       sourceKind: "ql-unit",
       isTemporal: false,

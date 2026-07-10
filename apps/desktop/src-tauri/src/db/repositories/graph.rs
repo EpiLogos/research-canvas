@@ -106,12 +106,18 @@ controlled_string_enum!(TemporalPrecision {
     Month => "month",
     Day => "day",
 });
+controlled_string_enum!(EntityType {
+    Figure => "Figure", People => "People", Event => "Event", Institution => "Institution",
+    Source => "Source", Claim => "Claim", Myth => "Myth", Interpretation => "Interpretation",
+    Place => "Place", Work => "Work", Archetype => "Archetype", Dynamic => "Dynamic",
+    Constellation => "Constellation", PsychoidOperator => "PsychoidOperator",
+});
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphNode {
     pub graph_node_id: String,
-    pub entity_type: String,
+    pub entity_type: EntityType,
     pub title: String,
     pub body: String,
     pub summary: String,
@@ -317,6 +323,22 @@ pub struct SeedGraphNode {
     pub source_coordinates: Vec<String>,
     pub evidence_tags: Vec<String>,
     pub source_kind: Option<String>,
+    pub content_origin: ContentOrigin,
+    pub content_revision: i64,
+    pub seed_schema_version: i64,
+    pub body_source_coordinates: Vec<String>,
+    pub historicity: Option<Historicity>,
+    pub claim_kind: Option<ClaimKind>,
+    pub evidence_status: Option<EvidenceStatus>,
+    pub temporal_role: Option<TemporalRole>,
+    pub place_coverage: Option<PlaceCoverage>,
+    pub ql_form: Option<QlForm>,
+    pub ql_unit_id: Option<String>,
+    pub ql_arc: Option<QlArc>,
+    pub ql_topology: Option<QlTopology>,
+    pub ql_schema_version: Option<i64>,
+    pub ql_source_coordinates: Vec<String>,
+    pub ql_completeness_status: Option<QlCompletenessStatus>,
     pub is_temporal: bool,
     pub valid_from: Option<String>,
     pub valid_to: Option<String>,
@@ -364,14 +386,56 @@ where
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntityLabelResolutionError {
+    pub labels: Vec<String>,
+    pub recognized: Vec<EntityType>,
+    pub unknown: Vec<String>,
+}
+
+impl std::fmt::Display for EntityLabelResolutionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "entity labels must contain exactly one recognized semantic label; labels={:?}, recognized={:?}, unknown={:?}",
+            self.labels, self.recognized, self.unknown
+        )
+    }
+}
+
+pub fn resolve_entity_type_from_labels(
+    labels: &[String],
+) -> Result<EntityType, EntityLabelResolutionError> {
+    let mut recognized = Vec::new();
+    let mut unknown = Vec::new();
+    for label in labels {
+        if matches!(label.as_str(), "TheoryNode" | "Operator") {
+            continue;
+        }
+        match EntityType::try_from(label.clone()) {
+            Ok(entity_type) => recognized.push(entity_type),
+            Err(_) => unknown.push(label.clone()),
+        }
+    }
+    recognized.sort_by_key(|entity_type| entity_type.as_str());
+    recognized.dedup();
+    unknown.sort();
+    unknown.dedup();
+    if recognized.len() == 1 && unknown.is_empty() {
+        return Ok(recognized[0]);
+    }
+    Err(EntityLabelResolutionError {
+        labels: labels.to_vec(),
+        recognized,
+        unknown,
+    })
+}
+
 /// Build a GraphNode from a returned `n` node value plus its entity-type label.
 fn node_from_neo(node: neo4rs::Node) -> Result<GraphNode, String> {
     let labels: Vec<String> = node.labels().iter().map(|s| s.to_string()).collect();
-    let entity_type = labels
-        .iter()
-        .find(|l| l.as_str() != "TheoryNode" && l.as_str() != "Operator")
-        .cloned()
-        .unwrap_or_default();
+    let entity_type =
+        resolve_entity_type_from_labels(&labels).map_err(|error| error.to_string())?;
     let source_coordinates: Vec<String> = node.get("source_coordinates").unwrap_or_default();
     Ok(GraphNode {
         graph_node_id: node.get("graph_node_id").map_err(|e| e.to_string())?,
@@ -409,28 +473,12 @@ fn node_from_neo(node: neo4rs::Node) -> Result<GraphNode, String> {
     })
 }
 
-const ENTITY_LABELS: &[&str] = &[
-    "Figure",
-    "People",
-    "Event",
-    "Institution",
-    "Source",
-    "Claim",
-    "Myth",
-    "Interpretation",
-    "Place",
-    "Work",
-    "Archetype",
-    "Dynamic",
-    "Constellation",
-];
-
-fn validate_entity_label(entity_type: &str) -> Result<&str, String> {
-    ENTITY_LABELS
-        .iter()
-        .find(|l| **l == entity_type)
-        .copied()
-        .ok_or_else(|| format!("unknown entity_type: {entity_type}"))
+fn validate_entity_label(entity_type: &str) -> Result<EntityType, String> {
+    let entity_type = EntityType::try_from(entity_type.to_string())?;
+    if entity_type == EntityType::PsychoidOperator {
+        return Err("PsychoidOperator is reserved for the operator seeding path".to_string());
+    }
+    Ok(entity_type)
 }
 
 const REL_TYPES: &[&str] = &[
@@ -502,7 +550,7 @@ impl GraphRepository {
         let now = now_rfc3339();
         // Entity-type label is interpolated (validated against a known set) because
         // Cypher labels cannot be parameterized.
-        let label = validate_entity_label(&input.entity_type)?;
+        let label = validate_entity_label(&input.entity_type)?.as_str();
         let cypher = format!(
             "CREATE (n:TheoryNode:{label} {{
                 graph_node_id: $id, title: $title, body: $body, summary: '',
@@ -848,9 +896,10 @@ impl GraphRepository {
         if let Some(value) = input.temporal_precision.as_ref() {
             TemporalPrecision::try_from(value.clone())?;
         }
-        let label = validate_entity_label(&input.entity_type)?;
+        let label = validate_entity_label(&input.entity_type)?.as_str();
         let cypher = format!(
             "MERGE (n:TheoryNode {{graph_node_id: $id}}) \
+             REMOVE n:Figure:People:Event:Institution:Source:Claim:Myth:Interpretation:Place:Work:Archetype:Dynamic:Constellation:PsychoidOperator \
              SET n:{label}, \
                  n.title = $title, \
                  n.body = $body, \
@@ -860,6 +909,20 @@ impl GraphRepository {
                  n.source_coordinates = $source_coordinates, \
                  n.evidence_tags = $evidence_tags, \
                  n.source_kind = $source_kind, \
+                 n.content_origin = $content_origin, \
+                 n.content_revision = $content_revision, \
+                 n.seed_schema_version = $seed_schema_version, \
+                 n.body_source_coordinates = $body_source_coordinates, \
+                 n.historicity = $historicity, \
+                 n.claim_kind = $claim_kind, \
+                 n.evidence_status = $evidence_status, \
+                 n.temporal_role = $temporal_role, \
+                 n.place_coverage = $place_coverage, \
+                 n.ql_form = $ql_form, n.ql_unit_id = $ql_unit_id, \
+                 n.ql_arc = $ql_arc, n.ql_topology = $ql_topology, \
+                 n.ql_schema_version = $ql_schema_version, \
+                 n.ql_source_coordinates = $ql_source_coordinates, \
+                 n.ql_completeness_status = $ql_completeness_status, \
                  n.is_temporal = $is_temporal, \
                  n.valid_from = $valid_from, \
                  n.valid_to = $valid_to, \
@@ -878,6 +941,28 @@ impl GraphRepository {
             .param("source_coordinates", input.source_coordinates.clone())
             .param("evidence_tags", input.evidence_tags.clone())
             .param("source_kind", input.source_kind.clone())
+            .param("content_origin", input.content_origin.as_str())
+            .param("content_revision", input.content_revision)
+            .param("seed_schema_version", input.seed_schema_version)
+            .param(
+                "body_source_coordinates",
+                input.body_source_coordinates.clone(),
+            )
+            .param("historicity", input.historicity.map(|v| v.as_str()))
+            .param("claim_kind", input.claim_kind.map(|v| v.as_str()))
+            .param("evidence_status", input.evidence_status.map(|v| v.as_str()))
+            .param("temporal_role", input.temporal_role.map(|v| v.as_str()))
+            .param("place_coverage", input.place_coverage.map(|v| v.as_str()))
+            .param("ql_form", input.ql_form.map(|v| v.as_str()))
+            .param("ql_unit_id", input.ql_unit_id.clone())
+            .param("ql_arc", input.ql_arc.map(|v| v.as_str()))
+            .param("ql_topology", input.ql_topology.map(|v| v.as_str()))
+            .param("ql_schema_version", input.ql_schema_version)
+            .param("ql_source_coordinates", input.ql_source_coordinates.clone())
+            .param(
+                "ql_completeness_status",
+                input.ql_completeness_status.map(|v| v.as_str()),
+            )
             .param("is_temporal", input.is_temporal)
             .param("valid_from", input.valid_from.clone())
             .param("valid_to", input.valid_to.clone())

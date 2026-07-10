@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 import { computeCardViewportFade, placeItems, projectNodes } from "./projection";
 import type { GraphNode, TimelineNodeRecord } from "./contracts";
 import type { TimelineViewport } from "./viewport";
@@ -13,6 +14,7 @@ function node(over: Partial<GraphNode>): GraphNode {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: over.isTemporal ?? true,
     validFrom: over.validFrom ?? null,
     validTo: over.validTo ?? null,

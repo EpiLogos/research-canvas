@@ -135,7 +135,7 @@ fn load_canvas_view_is_layout_authoritative() {
         .find(|j| j.node.graph_node_id == synced.graph_node_id)
         .unwrap();
     assert_eq!(synced_join.node.title, format!("Synced {run_id}"));
-    assert_eq!(synced_join.node.entity_type, "Event");
+    assert_eq!(synced_join.node.entity_type.as_str(), "Event");
     assert_eq!(synced_join.layout.position_x, 50.0);
 
     let unsynced_join = view
@@ -149,7 +149,8 @@ fn load_canvas_view_is_layout_authoritative() {
         "title synthesized from sidecar"
     );
     assert_eq!(
-        unsynced_join.node.entity_type, "Work",
+        unsynced_join.node.entity_type.as_str(),
+        "Work",
         "note sidecar maps to Work, matching entityTypeForNodeType"
     );
     assert!(
@@ -168,7 +169,8 @@ fn load_canvas_view_is_layout_authoritative() {
         format!("Unsynced Resource {run_id}")
     );
     assert_eq!(
-        unsynced_resource_join.node.entity_type, "Source",
+        unsynced_resource_join.node.entity_type.as_str(),
+        "Source",
         "resource sidecar maps to Source, matching entityTypeForNodeType"
     );
 

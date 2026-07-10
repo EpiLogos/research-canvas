@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::db::{
     connection::Database,
     repositories::{
-        graph::{GraphNode, GraphRelationship, GraphRepository},
+        graph::{EntityType, GraphNode, GraphRelationship, GraphRepository},
         layout::{EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord},
     },
 };
@@ -195,11 +195,11 @@ struct StyleWithSidecar {
 /// that node would carry, mirroring the frontend's `entityTypeForNodeType`
 /// (packages/canvas/src/state/canvasStore.ts): "resource" -> Source,
 /// "portal" -> Constellation, everything else (note/group) -> Work.
-fn entity_type_for_sidecar_type(node_type: &str) -> &'static str {
+fn entity_type_for_sidecar_type(node_type: &str) -> EntityType {
     match node_type {
-        "resource" => "Source",
-        "portal" => "Constellation",
-        _ => "Work",
+        "resource" => EntityType::Source,
+        "portal" => EntityType::Constellation,
+        _ => EntityType::Work,
     }
 }
 
@@ -223,8 +223,7 @@ fn synthesize_node_from_layout(row: &NodeLayoutRecord) -> GraphNode {
         .as_ref()
         .and_then(|s| s.node_type.as_deref())
         .map(entity_type_for_sidecar_type)
-        .unwrap_or("Work")
-        .to_string();
+        .unwrap_or(EntityType::Work);
 
     GraphNode {
         graph_node_id: row.graph_node_id.clone(),

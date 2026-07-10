@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { TimelineLens, type TimelineDataSource } from "./TimelineLens";
 import type { ArchetypalLighting, GraphNode, LitInstance, NodeLayout } from "./contracts";
@@ -13,6 +14,7 @@ function event(id: string, title: string, validFrom: string): GraphNode {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: true,
     validFrom,
     validTo: null,

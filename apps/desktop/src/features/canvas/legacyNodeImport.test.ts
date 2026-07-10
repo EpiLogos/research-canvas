@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 import type { CanvasNode } from "@research-canvas/schema";
 import type { CanvasView } from "@research-canvas/desktop-api";
 import {
@@ -41,6 +42,7 @@ function buildView(nodeIds: string[]): CanvasView {
         archetypalResonance: null,
         coordinate: null,
         sourceCoordinates: [],
+        ...EMPTY_GRAPH_NODE_METADATA,
         isTemporal: false,
         validFrom: null,
         validTo: null,

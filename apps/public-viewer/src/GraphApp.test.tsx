@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 
 import type { GraphExportBundle } from "@research-canvas/exporter";
 
@@ -19,6 +20,7 @@ function bundle(): GraphExportBundle {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: true,
     validFrom: "1621-01-01",
     validTo: "1621-12-31",
@@ -35,6 +37,7 @@ function bundle(): GraphExportBundle {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: false,
     validFrom: null,
     validTo: null,

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 
 import type { GraphNode } from "@research-canvas/desktop-api";
 
@@ -14,6 +15,7 @@ function makeNode(overrides: Partial<GraphNode> = {}): GraphNode {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: false,
     validFrom: null,
     validTo: null,

@@ -35,7 +35,7 @@ fn create_graph_node_request_deserializes_camel_case() {
         "qlCompletenessStatus": "partial"
     }"##;
     let req: CreateGraphNodeRequest = serde_json::from_str(raw).expect("deserialize");
-    assert_eq!(req.entity_type, "Event");
+    assert_eq!(req.entity_type.as_str(), "Event");
     assert_eq!(req.is_temporal, true);
     assert_eq!(req.source_coordinates, vec!["#2".to_string()]);
     assert_eq!(

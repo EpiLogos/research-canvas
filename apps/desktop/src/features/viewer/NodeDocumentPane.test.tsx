@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 import type { GraphNode } from "@research-canvas/desktop-api";
 
 import { NodeDocumentPane } from "./NodeDocumentPane";
@@ -37,6 +38,7 @@ function makeNode(body: string): GraphNode {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: true,
     validFrom: null,
     validTo: null,

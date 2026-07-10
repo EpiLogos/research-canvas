@@ -2,9 +2,9 @@
 mod support;
 use neo4rs::query;
 use research_canvas_desktop_lib::db::repositories::graph::{
-    ClaimKind, ContentOrigin, EvidenceStatus, GraphRepository, Historicity, NewGraphNode,
-    NewGraphNodeMetadata, PlaceCoverage, QlArc, QlCompletenessStatus, QlForm, QlTopology,
-    TemporalRole,
+    ClaimKind, ContentOrigin, EntityType, EvidenceStatus, GraphRepository, Historicity,
+    NewGraphNode, NewGraphNodeMetadata, PlaceCoverage, QlArc, QlCompletenessStatus, QlForm,
+    QlTopology, TemporalRole,
 };
 
 #[test]
@@ -50,7 +50,7 @@ fn create_then_get_node_round_trips_substance_and_labels() {
     .expect("create_node");
 
     assert!(!created.graph_node_id.is_empty());
-    assert_eq!(created.entity_type, "Figure");
+    assert_eq!(created.entity_type, EntityType::Figure);
     assert_eq!(
         created.source_coordinates,
         vec!["#2".to_string(), "L2".to_string()]
@@ -58,9 +58,37 @@ fn create_then_get_node_round_trips_substance_and_labels() {
     assert_eq!(created.body, "[]");
     assert_eq!(created.content_origin, Some(ContentOrigin::CorpusCompiled));
     assert_eq!(created.content_revision, Some(4));
+    assert_eq!(created.seed_schema_version, Some(2));
+    assert_eq!(
+        created.body_source_coordinates,
+        vec!["Canon/cosimo.md#reading"]
+    );
     assert_eq!(created.historicity, Some(Historicity::Historical));
+    assert_eq!(created.claim_kind, Some(ClaimKind::Fact));
+    assert_eq!(created.evidence_status, Some(EvidenceStatus::Documented));
+    assert_eq!(created.temporal_role, Some(TemporalRole::ActiveDuring));
+    assert_eq!(created.place_coverage, Some(PlaceCoverage::Resolved));
     assert_eq!(created.ql_form, Some(QlForm::PartialPositionalMap));
     assert_eq!(created.ql_unit_id.as_deref(), Some("ql-cosimo"));
+    assert_eq!(created.ql_arc, Some(QlArc::Braided));
+    assert_eq!(created.ql_topology, Some(QlTopology::Composite));
+    assert_eq!(created.ql_schema_version, Some(2));
+    assert_eq!(
+        created.ql_source_coordinates,
+        vec!["Canon/ql/cosimo.md#unit"]
+    );
+    assert_eq!(
+        created.ql_completeness_status,
+        Some(QlCompletenessStatus::Partial)
+    );
+    assert_eq!(created.source_kind.as_deref(), Some("historical-figure"));
+    assert_eq!(created.evidence_tags, vec!["archival"]);
+    assert_eq!(created.valid_from.as_deref(), Some("1389"));
+    assert_eq!(created.valid_to.as_deref(), Some("1464"));
+    assert_eq!(
+        created.temporal_precision.map(|value| value.as_str()),
+        Some("year")
+    );
 
     let fetched = support::block_on(repo.get_node(&created.graph_node_id))
         .expect("get_node")
@@ -75,6 +103,10 @@ fn create_then_get_node_round_trips_substance_and_labels() {
     assert_eq!(
         fetched.ql_source_coordinates,
         vec!["Canon/ql/cosimo.md#unit"]
+    );
+    assert_eq!(
+        serde_json::to_value(&fetched).unwrap(),
+        serde_json::to_value(&created).unwrap()
     );
 
     // The node must carry BOTH :TheoryNode and the entity-type label.
@@ -132,7 +164,7 @@ fn create_constellation_node_carries_constellation_label() {
     }))
     .expect("create constellation node");
 
-    assert_eq!(created.entity_type, "Constellation");
+    assert_eq!(created.entity_type, EntityType::Constellation);
     assert_eq!(created.coordinate, Some("#2:L3/P4".to_string()));
 
     let label_count: i64 = support::block_on(async {
@@ -206,7 +238,7 @@ fn create_claim_myth_and_interpretation_nodes_preserves_distinct_labels() {
         ))
         .expect("create distinct semantic entity");
 
-        assert_eq!(created.entity_type, entity_type);
+        assert_eq!(created.entity_type.as_str(), entity_type);
         let label_count: i64 = support::block_on(async {
             let cypher = format!(
                 "MATCH (n:TheoryNode:{entity_type} {{graph_node_id: $id}}) RETURN count(n) AS c"

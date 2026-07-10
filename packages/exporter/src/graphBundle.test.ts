@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 
 import { graphExportBundleSchema, parseGraphExportBundle } from "./graphBundle";
 import type { GraphExportBundle } from "./graphBundle";
@@ -34,6 +35,7 @@ function makeBundle(): GraphExportBundle {
         archetypalResonance: null,
         coordinate: null,
         sourceCoordinates: [],
+        ...EMPTY_GRAPH_NODE_METADATA,
         isTemporal: false,
         validFrom: null,
         validTo: null,
@@ -50,6 +52,7 @@ function makeBundle(): GraphExportBundle {
         archetypalResonance: null,
         coordinate: null,
         sourceCoordinates: [],
+        ...EMPTY_GRAPH_NODE_METADATA,
         isTemporal: true,
         validFrom: "1621-01-01",
         validTo: "1621-12-31",
@@ -93,6 +96,7 @@ function makeBundle(): GraphExportBundle {
             archetypalResonance: null,
             coordinate: null,
             sourceCoordinates: [],
+            ...EMPTY_GRAPH_NODE_METADATA,
             isTemporal: true,
             validFrom: "1621-01-01",
             validTo: "1621-12-31",
@@ -129,6 +133,7 @@ describe("graphExportBundle", () => {
       archetypalResonance: null,
       coordinate: "#2:L3/P4",
       sourceCoordinates: ["#2", "L3", "P4"],
+      ...EMPTY_GRAPH_NODE_METADATA,
       evidenceTags: ["ql-unit"],
       sourceKind: "constellation",
       isTemporal: true,

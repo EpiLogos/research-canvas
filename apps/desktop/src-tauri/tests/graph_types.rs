@@ -1,8 +1,8 @@
 // apps/desktop/src-tauri/tests/graph_types.rs
 use research_canvas_desktop_lib::db::repositories::graph::{
-    ClaimKind, ContentOrigin, EvidenceStatus, GraphNode, GraphNodePatch, Historicity, NewGraphNode,
-    PlaceCoverage, QlArc, QlCompletenessStatus, QlForm, QlTopology, TemporalPrecision,
-    TemporalRole,
+    resolve_entity_type_from_labels, ClaimKind, ContentOrigin, EntityType, EvidenceStatus,
+    GraphNode, GraphNodePatch, Historicity, NewGraphNode, PlaceCoverage, QlArc,
+    QlCompletenessStatus, QlForm, QlTopology, TemporalPrecision, TemporalRole,
 };
 
 #[test]
@@ -21,7 +21,7 @@ fn graph_node_matches_the_canonical_contract_fixture() {
 fn graph_node_serializes_camel_case() {
     let node = GraphNode {
         graph_node_id: "id-1".into(),
-        entity_type: "Figure".into(),
+        entity_type: EntityType::Figure,
         title: "Cosimo".into(),
         body: "[]".into(),
         summary: "".into(),
@@ -60,6 +60,25 @@ fn graph_node_serializes_camel_case() {
     assert_eq!(json["isTemporal"], true);
     let back: GraphNode = serde_json::from_value(json).expect("deserialize");
     assert_eq!(back.graph_node_id, "id-1");
+}
+
+#[test]
+fn semantic_label_resolution_is_deterministic_and_rejects_legacy_conflicts() {
+    assert_eq!(
+        resolve_entity_type_from_labels(&["Operator".into(), "PsychoidOperator".into()]),
+        Ok(EntityType::PsychoidOperator)
+    );
+    let conflict =
+        resolve_entity_type_from_labels(&["TheoryNode".into(), "Source".into(), "Claim".into()])
+            .expect_err("multiple semantic labels rejected");
+    assert_eq!(
+        conflict.recognized,
+        vec![EntityType::Claim, EntityType::Source]
+    );
+
+    let unknown = resolve_entity_type_from_labels(&["TheoryNode".into(), "LegacyThing".into()])
+        .expect_err("unknown-only label rejected");
+    assert_eq!(unknown.unknown, vec!["LegacyThing"]);
 }
 
 #[test]

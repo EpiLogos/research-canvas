@@ -1,4 +1,5 @@
 import { describe, expect, it, test } from "vitest";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 import { createTimelineStore } from "./timelineStore";
 import type { ArchetypalLighting, GraphNode, TimelineNodeRecord } from "./contracts";
 import { pixelToYear } from "./viewport";
@@ -13,6 +14,7 @@ function node(over: Partial<GraphNode>): GraphNode {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: over.isTemporal ?? true,
     validFrom: over.validFrom ?? "1600-01-01",
     validTo: over.validTo ?? null,

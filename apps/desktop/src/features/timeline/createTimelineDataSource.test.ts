@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 import { createTimelineDataSource } from "./createTimelineDataSource";
 import type {
   ArchetypalLighting,
@@ -17,6 +18,7 @@ function gnode(id: string, isTemporal: boolean): GraphNode {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal,
     validFrom: isTemporal ? "1621-01-01" : null,
     validTo: null,

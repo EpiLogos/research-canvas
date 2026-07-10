@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import graphNodeFixture from "../../../tests/fixtures/contracts/graph-node.json";
-import { graphNodeSchema } from "@research-canvas/schema";
+import { EMPTY_GRAPH_NODE_METADATA, graphNodeSchema } from "@research-canvas/schema";
 
 import type {
   ArchetypalLighting,
@@ -35,6 +35,7 @@ describe("graph shared types", () => {
       archetypalResonance: null,
       coordinate: null,
       sourceCoordinates: [],
+      ...EMPTY_GRAPH_NODE_METADATA,
       isTemporal: true,
       validFrom: "1621-01-01",
       validTo: "1621-12-31",
@@ -82,6 +83,7 @@ describe("graph shared types", () => {
         archetypalResonance: null,
         coordinate: null,
         sourceCoordinates: [],
+        ...EMPTY_GRAPH_NODE_METADATA,
         isTemporal: true,
         validFrom: null,
         validTo: null,

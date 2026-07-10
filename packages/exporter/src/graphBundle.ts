@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { graphNodeSchema, projectSchema } from "@research-canvas/schema";
+import { legacyGraphNodeInputSchema, projectSchema } from "@research-canvas/schema";
 import type { ExportAsset } from "@research-canvas/schema";
 import type {
   CanvasNodeSidecar,
@@ -83,7 +83,7 @@ const edgeLayoutSchema: z.ZodType<EdgeLayout> = z.object({
 });
 
 const litInstanceSchema: z.ZodType<LitInstance> = z.object({
-  node: graphNodeSchema,
+  node: legacyGraphNodeInputSchema,
   relType: z.enum(["INSTANTIATES", "ECHOES", "RESONATES_WITH"]),
   dominance: z.enum(["dominant", "secondary"]).nullable()
 });
@@ -100,7 +100,7 @@ export const graphExportBundleSchema: z.ZodType<GraphExportBundle> = z.object({
   generatedAt: z.string(),
   project: projectSchema,
   canvasId: z.string().min(1),
-  nodes: z.array(graphNodeSchema),
+  nodes: z.array(legacyGraphNodeInputSchema),
   relationships: z.array(graphRelationshipSchema),
   nodeLayout: z.array(nodeLayoutSchema),
   edgeLayout: z.array(edgeLayoutSchema),

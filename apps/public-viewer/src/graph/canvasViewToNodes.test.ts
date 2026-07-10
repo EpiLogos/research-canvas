@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 
 import type { CanvasView } from "@research-canvas/desktop-api";
 
@@ -23,6 +24,7 @@ describe("public viewer canvasViewToCanvasNodes", () => {
               "#0",
               "antichrist-vault/episodes/1/ql-units/unit-spectral-devils-chain.md",
             ],
+            ...EMPTY_GRAPH_NODE_METADATA,
             evidenceTags: ["ql_unit", "ql_positioned"],
             sourceKind: "ql-unit",
             isTemporal: false,

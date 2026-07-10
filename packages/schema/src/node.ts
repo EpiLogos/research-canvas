@@ -131,6 +131,15 @@ export const QL_COMPLETENESS_STATUSES = [
 ] as const;
 export const qlCompletenessStatusSchema = z.enum(QL_COMPLETENESS_STATUSES);
 
+export const EMPTY_GRAPH_NODE_METADATA = {
+  evidenceTags: [] as string[], sourceKind: null, contentOrigin: null,
+  contentRevision: null, seedSchemaVersion: null, bodySourceCoordinates: [] as string[],
+  historicity: null, claimKind: null, evidenceStatus: null, temporalRole: null,
+  placeCoverage: null, qlForm: null, qlUnitId: null, qlArc: null,
+  qlTopology: null, qlSchemaVersion: null, qlSourceCoordinates: [] as string[],
+  qlCompletenessStatus: null,
+} as const;
+
 /**
  * Canonical graph-substance transport contract. Migration-era metadata is
  * represented by explicit nullable keys; coordinate collections are always
@@ -147,24 +156,24 @@ export const graphNodeSchema = z.strictObject({
   archetypalResonance: z.string().nullable(),
   coordinate: z.string().nullable(),
   sourceCoordinates: z.array(z.string()),
-  evidenceTags: z.array(z.string()).default([]),
-  sourceKind: z.string().nullable().default(null),
-  contentOrigin: contentOriginSchema.nullable().default(null),
-  contentRevision: z.number().int().nonnegative().nullable().default(null),
-  seedSchemaVersion: z.number().int().nonnegative().nullable().default(null),
-  bodySourceCoordinates: z.array(z.string()).default([]),
-  historicity: historicitySchema.nullable().default(null),
-  claimKind: claimKindSchema.nullable().default(null),
-  evidenceStatus: evidenceStatusSchema.nullable().default(null),
-  temporalRole: temporalRoleSchema.nullable().default(null),
-  placeCoverage: placeCoverageSchema.nullable().default(null),
-  qlForm: qlFormSchema.nullable().default(null),
-  qlUnitId: z.string().nullable().default(null),
-  qlArc: qlArcSchema.nullable().default(null),
-  qlTopology: qlTopologySchema.nullable().default(null),
-  qlSchemaVersion: z.number().int().nonnegative().nullable().default(null),
-  qlSourceCoordinates: z.array(z.string()).default([]),
-  qlCompletenessStatus: qlCompletenessStatusSchema.nullable().default(null),
+  evidenceTags: z.array(z.string()),
+  sourceKind: z.string().nullable(),
+  contentOrigin: contentOriginSchema.nullable(),
+  contentRevision: z.number().int().nonnegative().nullable(),
+  seedSchemaVersion: z.number().int().nonnegative().nullable(),
+  bodySourceCoordinates: z.array(z.string()),
+  historicity: historicitySchema.nullable(),
+  claimKind: claimKindSchema.nullable(),
+  evidenceStatus: evidenceStatusSchema.nullable(),
+  temporalRole: temporalRoleSchema.nullable(),
+  placeCoverage: placeCoverageSchema.nullable(),
+  qlForm: qlFormSchema.nullable(),
+  qlUnitId: z.string().nullable(),
+  qlArc: qlArcSchema.nullable(),
+  qlTopology: qlTopologySchema.nullable(),
+  qlSchemaVersion: z.number().int().nonnegative().nullable(),
+  qlSourceCoordinates: z.array(z.string()),
+  qlCompletenessStatus: qlCompletenessStatusSchema.nullable(),
   isTemporal: z.boolean(),
   validFrom: z.string().nullable(),
   validTo: z.string().nullable(),
@@ -172,6 +181,22 @@ export const graphNodeSchema = z.strictObject({
   createdAt: z.string(),
   updatedAt: z.string(),
 });
+
+/** Explicit compatibility boundary for graph payloads written before the
+ * canonical metadata contract. Its output is always a canonical GraphNode. */
+export const legacyGraphNodeInputSchema = graphNodeSchema
+  .partial({
+    evidenceTags: true, sourceKind: true, contentOrigin: true, contentRevision: true,
+    seedSchemaVersion: true, bodySourceCoordinates: true, historicity: true,
+    claimKind: true, evidenceStatus: true, temporalRole: true, placeCoverage: true,
+    qlForm: true, qlUnitId: true, qlArc: true, qlTopology: true,
+    qlSchemaVersion: true, qlSourceCoordinates: true, qlCompletenessStatus: true,
+  })
+  .transform((input) => graphNodeSchema.parse({ ...EMPTY_GRAPH_NODE_METADATA, ...input }));
+
+export function normalizeLegacyGraphNode(input: unknown): GraphNodeContract {
+  return legacyGraphNodeInputSchema.parse(input);
+}
 
 const baseNodeSchema = z.object({
   id: z.string().min(1),

@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { TimelineNode } from "./TimelineNode";
 import type { PlacedItem } from "./projection";
@@ -24,6 +25,7 @@ function placed(
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: true,
     validFrom: "1621-01-01",
     validTo: null,

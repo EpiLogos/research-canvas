@@ -22,6 +22,7 @@ export type {
   NewGraphNodeInput,
   NodeLayout,
   TimelineNodeRecord,
+  TemporalPrecision,
 } from "./graph";
 import type {
   ArchetypalLighting,

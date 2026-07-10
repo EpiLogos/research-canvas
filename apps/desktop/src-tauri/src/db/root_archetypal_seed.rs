@@ -142,6 +142,13 @@ pub fn ensure_root_archetypal_constellation_workspace(
 
 impl NodeSeed {
     fn to_graph_node(&self, namespace: &str) -> SeedGraphNode {
+        let source_coordinates = self
+            .source_coordinates
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>();
+        let is_claim = self.entity_type == "Claim";
+        let is_interpretive = self.evidence_tags.contains(&"interpretive_vector");
         SeedGraphNode {
             graph_node_id: graph_id(namespace, self.slug),
             entity_type: self.entity_type.to_string(),
@@ -150,13 +157,63 @@ impl NodeSeed {
             summary: self.summary.to_string(),
             archetypal_resonance: Some(self.summary.to_string()),
             coordinate: self.coordinate.map(str::to_string),
-            source_coordinates: self
-                .source_coordinates
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
+            source_coordinates: source_coordinates.clone(),
             evidence_tags: self.evidence_tags.iter().map(|s| s.to_string()).collect(),
             source_kind: self.source_kind.map(str::to_string),
+            content_origin: crate::db::repositories::graph::ContentOrigin::Seed,
+            content_revision: 1,
+            seed_schema_version: 1,
+            body_source_coordinates: source_coordinates,
+            historicity: match self.entity_type {
+                "Event" | "Figure" | "People" | "Institution" | "Place" => {
+                    Some(crate::db::repositories::graph::Historicity::Historical)
+                }
+                "Claim" => Some(crate::db::repositories::graph::Historicity::Mixed),
+                "Myth" => Some(crate::db::repositories::graph::Historicity::Mythic),
+                "Interpretation" | "Archetype" | "Dynamic" | "Constellation" => {
+                    Some(crate::db::repositories::graph::Historicity::Theoretical)
+                }
+                _ => None,
+            },
+            claim_kind: if is_claim {
+                Some(if is_interpretive {
+                    crate::db::repositories::graph::ClaimKind::Interpretation
+                } else {
+                    crate::db::repositories::graph::ClaimKind::Allegation
+                })
+            } else {
+                None
+            },
+            evidence_status: if self.evidence_tags.contains(&"documented") {
+                Some(crate::db::repositories::graph::EvidenceStatus::Documented)
+            } else if self.evidence_tags.contains(&"contested") {
+                Some(crate::db::repositories::graph::EvidenceStatus::Contested)
+            } else if is_interpretive {
+                Some(crate::db::repositories::graph::EvidenceStatus::Interpretive)
+            } else {
+                None
+            },
+            temporal_role: if self.is_temporal {
+                Some(if is_claim {
+                    crate::db::repositories::graph::TemporalRole::ClaimAboutTime
+                } else {
+                    crate::db::repositories::graph::TemporalRole::OccurredAt
+                })
+            } else {
+                None
+            },
+            place_coverage: Some(if self.is_temporal {
+                crate::db::repositories::graph::PlaceCoverage::Unknown
+            } else {
+                crate::db::repositories::graph::PlaceCoverage::NotApplicable
+            }),
+            ql_form: None,
+            ql_unit_id: None,
+            ql_arc: None,
+            ql_topology: None,
+            ql_schema_version: None,
+            ql_source_coordinates: Vec::new(),
+            ql_completeness_status: None,
             is_temporal: self.is_temporal,
             valid_from: self.valid_from.map(str::to_string),
             valid_to: self.valid_to.map(str::to_string),

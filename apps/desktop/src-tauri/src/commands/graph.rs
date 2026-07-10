@@ -7,10 +7,10 @@ use crate::db::{
     neo4j::SharedGraph,
     repositories::{
         graph::{
-            ArchetypalLightingResult, ClaimKind, ContentOrigin, EvidenceStatus, GraphNode,
-            GraphNodePatch, GraphRelationship, GraphRepository, Historicity, LitInstance,
-            NewGraphNode, NewGraphNodeMetadata, PlaceCoverage, QlArc, QlCompletenessStatus, QlForm,
-            QlTopology, TemporalPrecision, TemporalRole,
+            ArchetypalLightingResult, ClaimKind, ContentOrigin, EntityType, EvidenceStatus,
+            GraphNode, GraphNodePatch, GraphRelationship, GraphRepository, Historicity,
+            LitInstance, NewGraphNode, NewGraphNodeMetadata, PlaceCoverage, QlArc,
+            QlCompletenessStatus, QlForm, QlTopology, TemporalPrecision, TemporalRole,
         },
         layout::{CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord},
     },
@@ -51,7 +51,7 @@ pub struct CreateGraphNodeRequest {
     /// the repository mints a fresh UUIDv4 (existing callers unaffected).
     #[serde(default)]
     pub graph_node_id: Option<String>,
-    pub entity_type: String,
+    pub entity_type: EntityType,
     pub title: String,
     pub body: String,
     #[serde(default)]
@@ -285,7 +285,7 @@ pub async fn create_graph_node_command(
         .create_node_with_metadata(
             NewGraphNode {
                 graph_node_id: request.graph_node_id,
-                entity_type: request.entity_type,
+                entity_type: request.entity_type.as_str().to_string(),
                 title: request.title,
                 body: request.body,
                 coordinate: request.coordinate,
