@@ -1,30 +1,18 @@
 import { z } from "zod";
 
-import type { ExportAsset, ExportBundle } from "@research-canvas/schema";
 import { projectSchema } from "@research-canvas/schema";
+import type { ExportAsset } from "@research-canvas/schema";
 import type {
   CanvasNodeSidecar,
   EdgeLayout,
+  GraphExportBundle,
   GraphNode,
   GraphRelationship,
   LitInstance,
   NodeLayout
 } from "@research-canvas/desktop-api";
 
-export interface GraphExportBundle {
-  generatedAt: string;
-  project: ExportBundle["project"];
-  canvasId: string;
-  nodes: GraphNode[];
-  relationships: GraphRelationship[];
-  nodeLayout: NodeLayout[];
-  edgeLayout: EdgeLayout[];
-  viewport: { x: number; y: number; zoom: number };
-  appState: Record<string, unknown>;
-  /** operatorGraphNodeId -> lit datable instances (precomputed for the backend-less viewer). */
-  lightingIndex: Record<string, LitInstance[]>;
-  assets: ExportAsset[];
-}
+export type { GraphExportBundle } from "@research-canvas/desktop-api";
 
 const entityTypeSchema = z.enum([
   "Figure",

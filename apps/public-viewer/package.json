@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@research-canvas/canvas": "workspace:*",
     "@research-canvas/desktop-api": "workspace:*",
     "@research-canvas/exporter": "workspace:*",
     "@research-canvas/schema": "workspace:*",

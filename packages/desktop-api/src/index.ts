@@ -1,8 +1,9 @@
-import type { GraphExportBundle } from "@research-canvas/exporter";
 import type {
   Annotation,
   CanvasEdge,
   CanvasNode,
+  ExportAsset,
+  ExportBundle,
   PublishSettings,
 } from "@research-canvas/schema";
 
@@ -104,6 +105,28 @@ export interface ConstellationDocument {
   annotations: Annotation[];
   edges: CanvasEdge[];
   nodes: CanvasNode[];
+}
+
+/**
+ * The portable graph snapshot consumed by read-only transports.
+ *
+ * This contract belongs to the transport layer: the exporter produces it,
+ * while desktop and public-viewer transports consume it. Keeping the type
+ * here prevents a circular desktop-api -> exporter -> desktop-api dependency.
+ */
+export interface GraphExportBundle {
+  generatedAt: string;
+  project: ExportBundle["project"];
+  canvasId: string;
+  nodes: GraphNode[];
+  relationships: GraphRelationship[];
+  nodeLayout: NodeLayout[];
+  edgeLayout: EdgeLayout[];
+  viewport: { x: number; y: number; zoom: number };
+  appState: Record<string, unknown>;
+  /** operatorGraphNodeId -> lit datable instances for a backend-less viewer. */
+  lightingIndex: Record<string, LitInstance[]>;
+  assets: ExportAsset[];
 }
 
 export interface PersistConstellationDocumentRequest {

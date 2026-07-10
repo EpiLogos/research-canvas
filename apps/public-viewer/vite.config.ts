@@ -7,6 +7,12 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
+      "@research-canvas/canvas": fileURLToPath(
+        new URL("../../packages/canvas/src/index.ts", import.meta.url)
+      ),
+      "@research-canvas/desktop-api": fileURLToPath(
+        new URL("../../packages/desktop-api/src/index.ts", import.meta.url)
+      ),
       "@research-canvas/exporter": fileURLToPath(
         new URL("../../packages/exporter/src/index.ts", import.meta.url)
       ),

@@ -11,6 +11,7 @@
     "tauri:dev": "pnpm --filter @research-canvas/desktop tauri:dev",
     "public-viewer:dev": "pnpm --filter @research-canvas/public-viewer dev",
     "typecheck": "tsc -b tsconfig.json",
+    "test:workspace-declarations": "node scripts/verify-workspace-declarations.mjs",
     "test": "pnpm vitest run",
     "test:e2e": "playwright test",
     "build": "pnpm -r --if-present build"

@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { GraphExportBundle } from "@research-canvas/exporter";
-
-import { createReadLayerTransport } from "./index";
+import { createReadLayerTransport, type GraphExportBundle } from "./index";
 
 function bundle(): GraphExportBundle {
   return {

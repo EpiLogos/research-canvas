@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { GraphExportBundle } from "@research-canvas/exporter";
-
-import { createStaticBundleTransport } from "./index";
+import { createStaticBundleTransport, type GraphExportBundle } from "./index";
 
 function fixtureBundle(): GraphExportBundle {
   const monopoly: GraphExportBundle["nodes"][number] = {
