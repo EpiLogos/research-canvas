@@ -1,10 +1,11 @@
 // apps/desktop/src-tauri/tests/graph_types.rs
 use research_canvas_desktop_lib::db::repositories::graph::{
     resolve_entity_type_from_labels, semantic_relabel_entity_types, validate_contract_revision,
-    ClaimKind, ContentOrigin, EntityType, EvidenceStatus, GraphNode, GraphNodePatch, Historicity,
-    NewGraphNode, PlaceCoverage, QlArc, QlCompletenessStatus, QlForm, QlTopology,
-    TemporalPrecision, TemporalRole,
+    ClaimKind, ContentOrigin, EntityType, EvidenceStatus, GraphContentCasMutation, GraphNode,
+    GraphNodePatch, Historicity, NewGraphNode, PlaceCoverage, QlArc, QlCompletenessStatus, QlForm,
+    QlTopology, TemporalPrecision, TemporalRole,
 };
+use research_canvas_desktop_lib::db::repositories::SyncAcknowledgementMutation;
 
 #[test]
 fn graph_node_matches_the_canonical_contract_fixture() {
@@ -179,4 +180,38 @@ fn patch_json_distinguishes_omitted_fields_from_explicit_null() {
     assert_eq!(patch.ql_form, Some(None));
     assert_eq!(patch.content_revision, Some(None));
     assert_eq!(patch.valid_from, None, "omitted fields remain unchanged");
+}
+
+#[test]
+fn content_cas_conflict_wire_payload_keeps_explicit_snake_case_fields() {
+    let value = serde_json::to_value(GraphContentCasMutation::Conflict {
+        current_remote_revision: Some(9),
+        current_remote_origin: Some(ContentOrigin::CorpusCompiled),
+        reason: "remote changed".into(),
+    })
+    .unwrap();
+    assert_eq!(
+        value,
+        serde_json::json!({
+            "kind": "conflict",
+            "current_remote_revision": 9,
+            "current_remote_origin": "corpus_compiled",
+            "reason": "remote changed"
+        })
+    );
+    let acknowledgement = serde_json::to_value(SyncAcknowledgementMutation::Conflict {
+        current_revision: 10,
+        current_origin: ContentOrigin::UserAuthored,
+        reason: "local changed".into(),
+    })
+    .unwrap();
+    assert_eq!(
+        acknowledgement,
+        serde_json::json!({
+            "kind": "conflict",
+            "current_revision": 10,
+            "current_origin": "user_authored",
+            "reason": "local changed"
+        })
+    );
 }

@@ -115,6 +115,7 @@ pub fn run() {
             commands::graph::read_graph_node_command,
             commands::graph::create_graph_node_command,
             commands::graph::update_graph_node_command,
+            commands::graph::compare_and_swap_graph_node_content_command,
             commands::graph::delete_graph_node_command,
             commands::graph::connect_graph_nodes_command,
             commands::graph::disconnect_graph_nodes_command,
@@ -130,6 +131,7 @@ pub fn run() {
             commands::node_document::read_local_node_document_command,
             commands::node_document::upsert_local_node_document_command,
             commands::node_document::reconcile_local_node_documents_command,
+            commands::node_document::acknowledge_local_node_document_sync_command,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Research Canvas");

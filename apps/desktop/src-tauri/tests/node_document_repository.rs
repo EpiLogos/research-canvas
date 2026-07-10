@@ -1,7 +1,8 @@
 use research_canvas_desktop_lib::db::connection::Database;
 use research_canvas_desktop_lib::db::repositories::graph::ContentOrigin;
 use research_canvas_desktop_lib::db::repositories::node_document::{
-    DocumentContentInput, NodeDocumentMutation, NodeDocumentRepository,
+    DocumentContentInput, DocumentReconciliationItem, NodeDocumentMutation, NodeDocumentRepository,
+    SyncAcknowledgementMutation,
 };
 
 fn temp_db() -> (tempfile::TempDir, Database) {
@@ -201,8 +202,14 @@ fn bulk_dry_run_is_stable_and_writes_nothing() {
     let (_dir, db) = temp_db();
     let repo = NodeDocumentRepository::new(db.connection());
     let inputs = vec![
-        input("b", "B", ContentOrigin::Seed, 1),
-        input("a", "A", ContentOrigin::Seed, 1),
+        DocumentReconciliationItem {
+            document: input("b", "B", ContentOrigin::Seed, 1),
+            expected_revision: None,
+        },
+        DocumentReconciliationItem {
+            document: input("a", "A", ContentOrigin::Seed, 1),
+            expected_revision: None,
+        },
     ];
     let decisions = repo.plan_bulk(&inputs).unwrap();
     assert_eq!(
@@ -217,6 +224,71 @@ fn bulk_dry_run_is_stable_and_writes_nothing() {
         .all(|d| d.mutation == NodeDocumentMutation::Created));
     assert!(repo.get_node_document("a").unwrap().is_none());
     assert!(repo.get_node_document("b").unwrap().is_none());
+}
+
+#[test]
+fn bulk_dry_run_and_atomic_apply_use_per_item_expected_revisions_for_seed_and_corpus_updates() {
+    let (_dir, db) = temp_db();
+    let repo = NodeDocumentRepository::new(db.connection());
+    repo.apply_reconciliation(&input("seed", "s1", ContentOrigin::Seed, 1), None)
+        .unwrap();
+    repo.apply_reconciliation(
+        &input("corpus", "c1", ContentOrigin::CorpusCompiled, 3),
+        None,
+    )
+    .unwrap();
+    let items = vec![
+        DocumentReconciliationItem {
+            document: input("seed", "s2", ContentOrigin::Seed, 2),
+            expected_revision: Some(1),
+        },
+        DocumentReconciliationItem {
+            document: input("corpus", "c2", ContentOrigin::CorpusCompiled, 4),
+            expected_revision: Some(3),
+        },
+    ];
+    assert!(repo
+        .plan_bulk(&items)
+        .unwrap()
+        .iter()
+        .all(|decision| decision.mutation == NodeDocumentMutation::Updated));
+    assert_eq!(repo.get_node_document("seed").unwrap().unwrap().body, "s1");
+    let applied = repo.apply_bulk(&items).unwrap();
+    assert!(applied
+        .iter()
+        .all(|decision| decision.mutation == NodeDocumentMutation::Updated));
+    assert_eq!(repo.get_node_document("seed").unwrap().unwrap().body, "s2");
+    assert_eq!(
+        repo.get_node_document("corpus").unwrap().unwrap().body,
+        "c2"
+    );
+}
+
+#[test]
+fn bulk_apply_is_all_or_nothing_when_any_item_conflicts() {
+    let (_dir, db) = temp_db();
+    let repo = NodeDocumentRepository::new(db.connection());
+    repo.apply_reconciliation(&input("a", "a1", ContentOrigin::Seed, 1), None)
+        .unwrap();
+    repo.apply_reconciliation(&input("b", "b1", ContentOrigin::Seed, 1), None)
+        .unwrap();
+    let items = vec![
+        DocumentReconciliationItem {
+            document: input("a", "a2", ContentOrigin::Seed, 2),
+            expected_revision: Some(1),
+        },
+        DocumentReconciliationItem {
+            document: input("b", "b2", ContentOrigin::Seed, 2),
+            expected_revision: Some(0),
+        },
+    ];
+    let decisions = repo.apply_bulk(&items).unwrap();
+    assert!(matches!(
+        decisions[1].mutation,
+        NodeDocumentMutation::Conflict { .. }
+    ));
+    assert_eq!(repo.get_node_document("a").unwrap().unwrap().body, "a1");
+    assert_eq!(repo.get_node_document("b").unwrap().unwrap().body, "b1");
 }
 
 fn insert_metadata(conn: &rusqlite::Connection, id: &str, revision: i64) {
@@ -347,4 +419,49 @@ fn metadata_ownership_drift_is_a_conflict_and_rolls_back() {
             .unwrap(),
         "user_authored"
     );
+}
+
+#[test]
+fn sync_acknowledgement_is_a_revision_and_origin_cas_without_revision_drift() {
+    let (_dir, db) = temp_db();
+    let repo = NodeDocumentRepository::new(db.connection());
+    let mut document = input("n", "pending", ContentOrigin::UserAuthored, 8);
+    document.neo4j_synced = false;
+    repo.apply_reconciliation(&document, None).unwrap();
+    insert_metadata(db.connection(), "n", 8);
+    db.connection().execute("UPDATE graph_node_metadata SET content_origin='user_authored', sync_state='pending' WHERE graph_node_id='n'", []).unwrap();
+
+    assert_eq!(
+        repo.acknowledge_sync("n", 8, ContentOrigin::UserAuthored)
+            .unwrap(),
+        SyncAcknowledgementMutation::Updated
+    );
+    let stored = repo.get_node_document("n").unwrap().unwrap();
+    assert!(stored.neo4j_synced);
+    assert_eq!(stored.content_revision, 8);
+    assert_eq!(
+        repo.acknowledge_sync("n", 8, ContentOrigin::UserAuthored)
+            .unwrap(),
+        SyncAcknowledgementMutation::Preserved
+    );
+}
+
+#[test]
+fn stale_sync_acknowledgement_conflicts_and_leaves_newer_edit_pending() {
+    let (_dir, db) = temp_db();
+    let repo = NodeDocumentRepository::new(db.connection());
+    let document = input("n", "rev8", ContentOrigin::UserAuthored, 8);
+    repo.apply_reconciliation(&document, None).unwrap();
+    insert_metadata(db.connection(), "n", 8);
+    db.connection().execute("UPDATE graph_node_metadata SET content_origin='user_authored', sync_state='pending' WHERE graph_node_id='n'", []).unwrap();
+    repo.apply_user_edit("n", "rev9", "face", 8).unwrap();
+
+    assert!(matches!(
+        repo.acknowledge_sync("n", 8, ContentOrigin::UserAuthored)
+            .unwrap(),
+        SyncAcknowledgementMutation::Conflict { .. }
+    ));
+    let stored = repo.get_node_document("n").unwrap().unwrap();
+    assert_eq!(stored.content_revision, 9);
+    assert!(!stored.neo4j_synced);
 }

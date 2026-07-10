@@ -23,6 +23,7 @@ graph_targets=(
   graph_bundle_lighting_index
   root_archetypal_field_seed
   graph_test_harness
+  content_sync_cas
 )
 
 compose() {

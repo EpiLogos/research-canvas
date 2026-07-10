@@ -6,18 +6,24 @@ import {
   type NodeDocumentStore,
 } from "@research-canvas/node-document";
 import { BlockNoteDocument } from "@research-canvas/viewers";
-import type { GraphNode, GraphNodePatch } from "@research-canvas/desktop-api";
+import type { ContentOrigin, GraphNode } from "@research-canvas/desktop-api";
 
 interface NodeDocumentTransport {
   readGraphNode(input: { graphNodeId: string }): Promise<GraphNode>;
-  updateGraphNode(input: {
+  compareAndSwapGraphNodeContent?(input: {
     graphNodeId: string;
-    patch: GraphNodePatch;
-  }): Promise<GraphNode>;
+    expectedRemoteRevision: number | null;
+    expectedRemoteOrigin: ContentOrigin | null;
+    body: string;
+    summary: string;
+    contentOrigin: ContentOrigin;
+    contentRevision: number;
+    bodySourceCoordinates: string[];
+  }): Promise<{ kind: string; reason?: string }>;
   readLocalNodeDocument(input: {
     databasePath: string;
     graphNodeId: string;
-  }): Promise<{ body: string; summary: string; neo4jSynced: boolean; contentRevision?: number; bodySourceCoordinates?: string[] } | null>;
+  }): Promise<{ body: string; summary: string; neo4jSynced: boolean; contentOrigin?: ContentOrigin; contentRevision?: number; bodySourceCoordinates?: string[] } | null>;
   upsertLocalNodeDocument(input: {
     databasePath: string;
     graphNodeId: string;
@@ -29,6 +35,12 @@ interface NodeDocumentTransport {
     expectedRevision?: number;
     bodySourceCoordinates?: string[];
   }): Promise<unknown>;
+  acknowledgeLocalNodeDocumentSync?(input: {
+    databasePath: string;
+    graphNodeId: string;
+    expectedRevision: number;
+    expectedOrigin: ContentOrigin;
+  }): Promise<{ kind: string; reason?: string }>;
 }
 
 interface NodeDocumentPaneProps {
@@ -50,6 +62,8 @@ interface NodeDocumentPaneProps {
    */
   __testSetBody?: string;
 }
+
+class ContentSyncConflictError extends Error {}
 
 /** True when the BlockNote body JSON has no visible text content. */
 function isEmptyBody(body: string): boolean {
@@ -79,17 +93,20 @@ export function NodeDocumentPane({
   // Non-blocking, inline-only status; NEVER a full-pane dead-end. Neo4j is a
   // sync target, not a read gate — the editor must always mount.
   const [statusNote, setStatusNote] = useState<string | null>(null);
+  const [localAuthorityAvailable, setLocalAuthorityAvailable] = useState(databasePath !== null);
   const transportRef = useRef(transport);
   transportRef.current = transport;
   const databasePathRef = useRef(databasePath);
   databasePathRef.current = databasePath;
   const contentRevisionRef = useRef<number | null>(null);
+  const contentOriginRef = useRef<ContentOrigin | null>(null);
   const bodySourcesRef = useRef<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     setStore(null);
     setStatusNote(null);
+    setLocalAuthorityAvailable(databasePath !== null);
 
     // flush is authoritative-local-first: write the local document (SQLite)
     // FIRST — this is the durable write and its failure must propagate so the
@@ -100,35 +117,13 @@ export function NodeDocumentPane({
       const dbPath = databasePathRef.current;
 
       if (!dbPath) {
-        // No local store available (e.g. no workspace db path). Fall back to
-        // Neo4j as the only persistence; surface its failure non-blockingly
-        // via a thrown error (there is nothing else to fall back on).
-        try {
-          await transportRef.current.updateGraphNode({
-            graphNodeId,
-            patch: {
-              body,
-              summary,
-              contentOrigin: "user_authored",
-              bodySourceCoordinates: bodySourcesRef.current,
-            } as GraphNodePatch,
-          });
-          if (!cancelled) {
-            setStatusNote(null);
-          }
-        } catch (error) {
-          if (!cancelled) {
-            setStatusNote("Saved locally, sync pending");
-          }
-          console.warn("node document Neo4j sync failed; kept locally", error);
-          throw new Error("saved locally unavailable: no workspace database");
-        }
-        return;
+        throw new Error("editing requires the authoritative local document store");
       }
 
       // Authoritative local write, FIRST. A failure here IS a real save
       // failure and must propagate so the doc store surfaces status="error".
       const expectedRevision = contentRevisionRef.current;
+      const expectedOrigin = contentOriginRef.current;
       const contentRevision = expectedRevision === null ? 0 : expectedRevision + 1;
       const localResult = await transportRef.current.upsertLocalNodeDocument({
         databasePath: dbPath,
@@ -148,31 +143,44 @@ export function NodeDocumentPane({
       const returnedRevision = (localResult as { document?: { contentRevision?: number } | null } | undefined)
         ?.document?.contentRevision;
       contentRevisionRef.current = returnedRevision ?? contentRevision;
+      contentOriginRef.current = "user_authored";
 
       // Best-effort Neo4j sync, AFTER the local write succeeded. Never blocks
       // and never surfaces a blocking error — only a subtle status note.
       try {
-        await transportRef.current.updateGraphNode({
+        if (expectedRevision === null || expectedOrigin === null) {
+          throw new Error("remote content baseline unavailable; local edit remains pending");
+        }
+        const compareAndSwap = transportRef.current.compareAndSwapGraphNodeContent;
+        if (!compareAndSwap) {
+          throw new Error("revision-aware remote content sync is unavailable");
+        }
+        const remote = await compareAndSwap({
           graphNodeId,
-            patch: {
-              body,
-              summary,
-              contentOrigin: "user_authored",
-              contentRevision: contentRevisionRef.current,
-              bodySourceCoordinates: bodySourcesRef.current,
-            } as GraphNodePatch,
-        });
-        await transportRef.current.upsertLocalNodeDocument({
-          databasePath: dbPath,
-          graphNodeId,
+          expectedRemoteRevision: expectedRevision,
+          expectedRemoteOrigin: expectedOrigin,
           body,
           summary,
-          neo4jSynced: true,
           contentOrigin: "user_authored",
-          contentRevision: contentRevisionRef.current,
-          expectedRevision: contentRevisionRef.current,
+          contentRevision,
           bodySourceCoordinates: bodySourcesRef.current,
         });
+        if (remote.kind !== "updated") {
+          throw new ContentSyncConflictError(remote.reason ?? `remote content sync ${remote.kind}`);
+        }
+        const acknowledge = transportRef.current.acknowledgeLocalNodeDocumentSync;
+        if (!acknowledge) {
+          throw new Error("local sync acknowledgement is unavailable");
+        }
+        const acknowledgement = await acknowledge({
+          databasePath: dbPath,
+          graphNodeId,
+          expectedRevision: contentRevision,
+          expectedOrigin: "user_authored",
+        });
+        if (!["updated", "preserved"].includes(acknowledgement.kind)) {
+          throw new ContentSyncConflictError(acknowledgement.reason ?? `local sync acknowledgement ${acknowledgement.kind}`);
+        }
         if (!cancelled) {
           setStatusNote(null);
         }
@@ -180,9 +188,12 @@ export function NodeDocumentPane({
         // Local write already succeeded; leave neo4j_synced=false and just
         // note the pending sync. Non-blocking by design.
         if (!cancelled) {
-          setStatusNote("Saved locally, sync pending");
+          setStatusNote(error instanceof ContentSyncConflictError ? "Saved locally, sync conflict" : "Saved locally, sync pending");
         }
         console.warn("node document Neo4j sync failed; kept locally", error);
+        if (error instanceof ContentSyncConflictError) {
+          throw error;
+        }
       }
     };
 
@@ -207,8 +218,13 @@ export function NodeDocumentPane({
         if (cancelled) {
           return;
         }
+        setLocalAuthorityAvailable(databasePath !== null);
+        if (!databasePath) {
+          setStatusNote("Local document unavailable — read-only");
+        }
         const localBody = local?.body ?? "";
         contentRevisionRef.current = local?.contentRevision ?? null;
+        contentOriginRef.current = local?.contentOrigin ?? null;
         bodySourcesRef.current = local?.bodySourceCoordinates ?? [];
         const mounted = mountStore(localBody);
 
@@ -255,10 +271,11 @@ export function NodeDocumentPane({
         if (cancelled) {
           return;
         }
-        // Local DB read itself failed: still mount an editable editor (empty
+        // Local DB read itself failed: still mount the reader (empty
         // body) with a small non-blocking status — never a dead-end pane.
         console.warn("readLocalNodeDocument failed; mounting empty editor", error);
         setStatusNote("Local document unavailable");
+        setLocalAuthorityAvailable(false);
         mountStore("");
       });
 
@@ -279,6 +296,7 @@ export function NodeDocumentPane({
     <NodeDocumentBody
       store={store}
       editable={editable}
+      localAuthorityAvailable={localAuthorityAvailable}
       statusNote={statusNote}
       testSetBody={__testSetBody}
     />
@@ -290,11 +308,13 @@ function NodeDocumentBody({
   editable,
   statusNote,
   testSetBody,
+  localAuthorityAvailable,
 }: {
   store: NodeDocumentStore;
   editable: boolean;
   statusNote: string | null;
   testSetBody?: string;
+  localAuthorityAvailable: boolean;
 }) {
   const body = useStore(store, (state) => state.body);
   const status = useStore(store, (state) => state.status);
@@ -330,7 +350,7 @@ function NodeDocumentBody({
     <div className="node-document-pane">
       <BlockNoteDocument
         body={body}
-        editable={editable}
+        editable={editable && localAuthorityAvailable}
         saveState={status}
         saveErrorMessage={errorMessage}
         onChange={(next) => store.getState().setBody(next)}

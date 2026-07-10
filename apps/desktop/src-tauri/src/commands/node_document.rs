@@ -6,8 +6,8 @@ use crate::db::repositories::graph::ContentOrigin;
 use crate::db::{
     connection::Database,
     repositories::{
-        DocumentContentInput, LocalNodeDocument, NodeDocumentMutation, NodeDocumentRepository,
-        ReconciliationDecision,
+        DocumentContentInput, DocumentReconciliationItem, LocalNodeDocument, NodeDocumentMutation,
+        NodeDocumentRepository, ReconciliationDecision, SyncAcknowledgementMutation,
     },
 };
 use crate::SharedApiState;
@@ -49,9 +49,19 @@ pub struct UpsertLocalNodeDocumentRequest {
 pub struct ReconcileLocalNodeDocumentsRequest {
     #[serde(default)]
     pub database_path: Option<String>,
-    pub documents: Vec<DocumentContentInput>,
+    pub items: Vec<DocumentReconciliationItem>,
     #[serde(default)]
     pub dry_run: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcknowledgeLocalNodeDocumentSyncRequest {
+    #[serde(default)]
+    pub database_path: Option<String>,
+    pub graph_node_id: String,
+    pub expected_revision: i64,
+    pub expected_origin: ContentOrigin,
 }
 
 #[derive(Debug, Serialize)]
@@ -138,20 +148,23 @@ pub async fn reconcile_local_node_documents_command(
     let db = Database::open(&path).map_err(|e| e.to_string())?;
     let repo = NodeDocumentRepository::new(db.connection());
     if request.dry_run {
-        return repo
-            .plan_bulk(&request.documents)
-            .map_err(|e| e.to_string());
+        return repo.plan_bulk(&request.items).map_err(|e| e.to_string());
     }
-    request
-        .documents
-        .iter()
-        .map(|document| {
-            repo.apply_reconciliation(document, None)
-                .map(|mutation| ReconciliationDecision {
-                    graph_node_id: document.graph_node_id.clone(),
-                    mutation,
-                })
-                .map_err(|e| e.to_string())
-        })
-        .collect()
+    repo.apply_bulk(&request.items).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn acknowledge_local_node_document_sync_command(
+    request: AcknowledgeLocalNodeDocumentSyncRequest,
+    api_state: tauri::State<'_, SharedApiState>,
+) -> Result<SyncAcknowledgementMutation, String> {
+    let path = resolve_db_path(&request.database_path, &api_state)?;
+    let db = Database::open(&path).map_err(|e| e.to_string())?;
+    NodeDocumentRepository::new(db.connection())
+        .acknowledge_sync(
+            &request.graph_node_id,
+            request.expected_revision,
+            request.expected_origin,
+        )
+        .map_err(|e| e.to_string())
 }

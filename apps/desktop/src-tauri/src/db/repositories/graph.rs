@@ -161,6 +161,34 @@ pub struct GraphRelationship {
     pub properties: serde_json::Value,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphContentCasInput {
+    pub graph_node_id: String,
+    pub expected_remote_revision: Option<i64>,
+    pub expected_remote_origin: Option<ContentOrigin>,
+    #[serde(default)]
+    pub allow_legacy_null: bool,
+    pub body: String,
+    pub summary: String,
+    pub content_origin: ContentOrigin,
+    pub content_revision: i64,
+    #[serde(default)]
+    pub body_source_coordinates: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum GraphContentCasMutation {
+    Updated,
+    Missing,
+    Conflict {
+        current_remote_revision: Option<i64>,
+        current_remote_origin: Option<ContentOrigin>,
+        reason: String,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewGraphNode {
@@ -1002,6 +1030,106 @@ impl GraphRepository {
             .await
             .map_err(|e| format!("delete_node failed: {e}"))?;
         Ok(())
+    }
+
+    /// Compare-and-swap boundary for body content. Generic `update_node`
+    /// remains available for non-content metadata, but editors must use this
+    /// operation so a stale client can never overwrite newer remote prose.
+    pub async fn compare_and_swap_content(
+        &self,
+        input: &GraphContentCasInput,
+    ) -> Result<GraphContentCasMutation, String> {
+        validate_contract_revision("contentRevision", input.content_revision)?;
+        let expected_condition = match (
+            input.expected_remote_revision,
+            input.expected_remote_origin,
+            input.allow_legacy_null,
+        ) {
+            (Some(revision), Some(_), false) => {
+                validate_contract_revision("expectedRemoteRevision", revision)?;
+                if input.content_revision <= revision {
+                    return Err("contentRevision must advance beyond expectedRemoteRevision".into());
+                }
+                "toInteger(n.content_revision) = $expected_revision AND n.content_origin = $expected_origin"
+            }
+            (None, None, true) => {
+                "n.content_revision IS NULL AND n.content_origin IS NULL"
+            }
+            (Some(_), Some(_), true) => {
+                return Err("allowLegacyNull requires both expected remote fields to be null".into())
+            }
+            _ => return Err("expectedRemoteRevision and expectedRemoteOrigin must both be supplied; legacy null requires allowLegacyNull=true".into()),
+        };
+        let cypher = format!(
+            "OPTIONAL MATCH (n:TheoryNode {{graph_node_id: $id}}) \
+             WITH n, n.content_revision AS old_revision, n.content_origin AS old_origin, \
+                  coalesce(({expected_condition}), false) AS can_update \
+             FOREACH (_ IN CASE WHEN can_update THEN [1] ELSE [] END | \
+               SET n.body=$body, n.summary=$summary, n.content_origin=$content_origin, \
+                   n.content_revision=$content_revision, n.body_source_coordinates=$body_sources, \
+                   n.updated_at=$now) \
+             RETURN n IS NOT NULL AS exists, can_update AS updated, \
+                    coalesce(toString(old_revision), '') AS current_revision, \
+                    coalesce(old_origin, '') AS current_origin"
+        );
+        let mut query = neo4rs::query(&cypher)
+            .param("id", input.graph_node_id.clone())
+            .param("body", input.body.clone())
+            .param("summary", input.summary.clone())
+            .param("content_origin", input.content_origin.as_str())
+            .param("content_revision", input.content_revision.to_string())
+            .param("body_sources", input.body_source_coordinates.clone())
+            .param("now", now_rfc3339());
+        if let (Some(revision), Some(origin)) =
+            (input.expected_remote_revision, input.expected_remote_origin)
+        {
+            query = query
+                .param("expected_revision", revision.to_string())
+                .param("expected_origin", origin.as_str());
+        }
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, query)
+            .await
+            .map_err(|error| format!("content compare-and-swap failed: {error}"))?;
+        let row = rows
+            .next()
+            .await
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "content compare-and-swap returned no status row".to_string())?;
+        let exists: bool = row.get("exists").map_err(|error| error.to_string())?;
+        if !exists {
+            return Ok(GraphContentCasMutation::Missing);
+        }
+        let updated: bool = row.get("updated").map_err(|error| error.to_string())?;
+        if updated {
+            return Ok(GraphContentCasMutation::Updated);
+        }
+        let raw_revision: String = row
+            .get("current_revision")
+            .map_err(|error| error.to_string())?;
+        let current_revision = if raw_revision.is_empty() {
+            None
+        } else {
+            Some(
+                raw_revision
+                    .parse::<i64>()
+                    .map_err(|_| format!("invalid remote content revision {raw_revision:?}"))?,
+            )
+        };
+        let raw_origin: String = row
+            .get("current_origin")
+            .map_err(|error| error.to_string())?;
+        let current_origin = if raw_origin.is_empty() {
+            None
+        } else {
+            Some(ContentOrigin::try_from(raw_origin)?)
+        };
+        Ok(GraphContentCasMutation::Conflict {
+            current_remote_revision: current_revision,
+            current_remote_origin: current_origin,
+            reason: "remote content revision or ownership no longer matches".into(),
+        })
     }
 
     pub async fn upsert_seed_node(&self, input: &SeedGraphNode) -> Result<GraphNode, String> {

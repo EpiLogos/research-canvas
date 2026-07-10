@@ -59,6 +59,29 @@ export interface LocalNodeDocumentInput {
   bodySourceCoordinates?: string[];
   dryRun?: boolean;
 }
+
+export interface GraphContentCasInput {
+  graphNodeId: string;
+  expectedRemoteRevision: number | null;
+  expectedRemoteOrigin: ContentOrigin | null;
+  allowLegacyNull?: boolean;
+  body: string;
+  summary: string;
+  contentOrigin: ContentOrigin;
+  contentRevision: number;
+  bodySourceCoordinates: string[];
+}
+
+export type GraphContentCasMutation =
+  | { kind: "updated" }
+  | { kind: "missing" }
+  | { kind: "conflict"; current_remote_revision: number | null; current_remote_origin: ContentOrigin | null; reason: string };
+
+export type SyncAcknowledgementMutation =
+  | { kind: "updated" }
+  | { kind: "preserved" }
+  | { kind: "missing" }
+  | { kind: "conflict"; current_revision: number; current_origin: ContentOrigin; reason: string };
 import type {
   ArchetypalLighting,
   CanvasNodeSidecar,
@@ -453,6 +476,7 @@ export interface WorkspaceTransport {
   readGraphNode(input: { graphNodeId: string }): Promise<GraphNode>;
   createGraphNode(input: NewGraphNodeInput): Promise<GraphNode>;
   updateGraphNode(input: { graphNodeId: string; patch: GraphNodePatch }): Promise<GraphNode>;
+  compareAndSwapGraphNodeContent(input: GraphContentCasInput): Promise<GraphContentCasMutation>;
   deleteGraphNode(input: { graphNodeId: string }): Promise<void>;
   connectGraphNodes(input: {
     sourceGraphNodeId: string; targetGraphNodeId: string;
@@ -497,6 +521,12 @@ export interface WorkspaceTransport {
     graphNodeId: string;
   }): Promise<LocalNodeDocument | null>;
   upsertLocalNodeDocument(input: LocalNodeDocumentInput): Promise<LocalNodeDocumentWriteResult>;
+  acknowledgeLocalNodeDocumentSync(input: {
+    databasePath: string;
+    graphNodeId: string;
+    expectedRevision: number;
+    expectedOrigin: ContentOrigin;
+  }): Promise<SyncAcknowledgementMutation>;
 }
 
 const DEFAULT_BRIDGE_PORT = 4789;
@@ -633,6 +663,9 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async updateGraphNode(input) {
       return invokeTauri<GraphNode>("update_graph_node_command", { request: input });
     },
+    async compareAndSwapGraphNodeContent(input) {
+      return invokeTauri<GraphContentCasMutation>("compare_and_swap_graph_node_content_command", { request: input });
+    },
     async deleteGraphNode(input) {
       await invokeTauri<void>("delete_graph_node_command", { request: input });
     },
@@ -689,6 +722,9 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     },
     async upsertLocalNodeDocument(input) {
       return invokeTauri<LocalNodeDocumentWriteResult>("upsert_local_node_document_command", { request: input });
+    },
+    async acknowledgeLocalNodeDocumentSync(input) {
+      return invokeTauri<SyncAcknowledgementMutation>("acknowledge_local_node_document_sync_command", { request: input });
     },
   };
 }
@@ -819,6 +855,7 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     },
     async createGraphNode() { throw new Error("read-only web build"); },
     async updateGraphNode() { throw new Error("read-only web build"); },
+    async compareAndSwapGraphNodeContent() { throw new Error("read-only web build"); },
     async deleteGraphNode() { throw new Error("read-only web build"); },
     async connectGraphNodes() { throw new Error("read-only web build"); },
     async disconnectGraphNodes() { throw new Error("read-only web build"); },
@@ -836,6 +873,7 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     },
     async readLocalNodeDocument() { throw new Error("read-only web build"); },
     async upsertLocalNodeDocument() { throw new Error("read-only web build"); },
+    async acknowledgeLocalNodeDocumentSync() { throw new Error("read-only web build"); },
   };
 }
 
@@ -1205,6 +1243,7 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
     // ---- mutations: structurally forbidden on the web read-layer ----
     createGraphNode: readOnlyReject,
     updateGraphNode: readOnlyReject,
+    compareAndSwapGraphNodeContent: readOnlyReject,
     deleteGraphNode: readOnlyReject,
     connectGraphNodes: readOnlyReject,
     disconnectGraphNodes: readOnlyReject,
@@ -1222,6 +1261,7 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
 
     // ---- local node document: local-only SQLite store, not part of the static bundle ----
     readLocalNodeDocument: readOnlyReject,
-    upsertLocalNodeDocument: readOnlyReject
+    upsertLocalNodeDocument: readOnlyReject,
+    acknowledgeLocalNodeDocumentSync: readOnlyReject
   };
 }

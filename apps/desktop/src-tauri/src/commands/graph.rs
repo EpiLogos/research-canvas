@@ -8,9 +8,10 @@ use crate::db::{
     repositories::{
         graph::{
             ArchetypalLightingResult, ClaimKind, ContentOrigin, EntityType, EvidenceStatus,
-            GraphNode, GraphNodePatch, GraphRelationship, GraphRepository, Historicity,
-            LitInstance, NewGraphNode, NewGraphNodeMetadata, PlaceCoverage, QlArc,
-            QlCompletenessStatus, QlForm, QlTopology, TemporalPrecision, TemporalRole,
+            GraphContentCasInput, GraphContentCasMutation, GraphNode, GraphNodePatch,
+            GraphRelationship, GraphRepository, Historicity, LitInstance, NewGraphNode,
+            NewGraphNodeMetadata, PlaceCoverage, QlArc, QlCompletenessStatus, QlForm, QlTopology,
+            TemporalPrecision, TemporalRole,
         },
         layout::{CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord},
     },
@@ -329,6 +330,14 @@ pub async fn update_graph_node_command(
     repo(&graph_state)
         .update_node(&request.graph_node_id, request.patch)
         .await
+}
+
+#[tauri::command]
+pub async fn compare_and_swap_graph_node_content_command(
+    request: GraphContentCasInput,
+    graph_state: tauri::State<'_, SharedGraphState>,
+) -> Result<GraphContentCasMutation, String> {
+    repo(&graph_state).compare_and_swap_content(&request).await
 }
 
 #[tauri::command]

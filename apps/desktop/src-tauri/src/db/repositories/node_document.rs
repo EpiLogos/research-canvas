@@ -34,6 +34,14 @@ pub struct DocumentContentInput {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentReconciliationItem {
+    pub document: DocumentContentInput,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum NodeDocumentMutation {
     Created,
@@ -50,6 +58,19 @@ pub enum NodeDocumentMutation {
 pub struct ReconciliationDecision {
     pub graph_node_id: String,
     pub mutation: NodeDocumentMutation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SyncAcknowledgementMutation {
+    Updated,
+    Preserved,
+    Missing,
+    Conflict {
+        current_revision: i64,
+        current_origin: ContentOrigin,
+        reason: String,
+    },
 }
 
 pub struct NodeDocumentRepository<'conn> {
@@ -125,17 +146,50 @@ impl<'conn> NodeDocumentRepository<'conn> {
 
     pub fn plan_bulk(
         &self,
-        inputs: &[DocumentContentInput],
+        items: &[DocumentReconciliationItem],
     ) -> RepositoryResult<Vec<ReconciliationDecision>> {
-        inputs
+        items
             .iter()
-            .map(|input| {
+            .map(|item| {
                 Ok(ReconciliationDecision {
-                    graph_node_id: input.graph_node_id.clone(),
-                    mutation: self.plan_reconciliation(input, None)?,
+                    graph_node_id: item.document.graph_node_id.clone(),
+                    mutation: self.plan_reconciliation(&item.document, item.expected_revision)?,
                 })
             })
             .collect()
+    }
+
+    /// Applies a stable ordered batch atomically. If planning or the
+    /// transaction-time recheck contains a conflict, every item receives an
+    /// explicit decision and the batch performs zero writes.
+    pub fn apply_bulk(
+        &self,
+        items: &[DocumentReconciliationItem],
+    ) -> RepositoryResult<Vec<ReconciliationDecision>> {
+        let planned = self.plan_bulk(items)?;
+        if planned
+            .iter()
+            .any(|decision| matches!(decision.mutation, NodeDocumentMutation::Conflict { .. }))
+        {
+            return Ok(planned);
+        }
+        let transaction = TransactionGuard::begin(self.connection)?;
+        let fresh = self.plan_bulk(items)?;
+        if fresh
+            .iter()
+            .any(|decision| matches!(decision.mutation, NodeDocumentMutation::Conflict { .. }))
+        {
+            return Ok(fresh);
+        }
+        for (item, decision) in items.iter().zip(&fresh) {
+            self.apply_planned_without_transaction(
+                &item.document,
+                item.expected_revision,
+                &decision.mutation,
+            )?;
+        }
+        transaction.commit()?;
+        Ok(fresh)
     }
 
     pub fn apply_reconciliation(
@@ -153,19 +207,97 @@ impl<'conn> NodeDocumentRepository<'conn> {
         let transaction = TransactionGuard::begin(self.connection)?;
         let fresh = self.get_node_document(&incoming.graph_node_id)?;
         let fresh_decision = plan(fresh.as_ref(), incoming, expected_revision);
-        match fresh_decision {
+        self.apply_planned_without_transaction(incoming, expected_revision, &fresh_decision)?;
+        transaction.commit()?;
+        Ok(fresh_decision)
+    }
+
+    fn apply_planned_without_transaction(
+        &self,
+        incoming: &DocumentContentInput,
+        expected_revision: Option<i64>,
+        decision: &NodeDocumentMutation,
+    ) -> RepositoryResult<()> {
+        let previous = self.get_node_document(&incoming.graph_node_id)?;
+        match decision {
             NodeDocumentMutation::Created => self.insert(incoming)?,
             NodeDocumentMutation::Updated => self.update(
                 incoming,
                 expected_revision
-                    .or_else(|| fresh.as_ref().map(|row| row.content_revision))
+                    .or_else(|| previous.as_ref().map(|row| row.content_revision))
                     .expect("updated document has a current revision"),
             )?,
-            other => return Ok(other),
+            NodeDocumentMutation::Preserved => return Ok(()),
+            NodeDocumentMutation::Conflict { .. } => return Ok(()),
         }
-        self.align_existing_graph_metadata(incoming, fresh.as_ref())?;
+        self.align_existing_graph_metadata(incoming, previous.as_ref())
+    }
+
+    /// Acknowledges a successful remote CAS without rewriting content or
+    /// advancing its revision. Both local projections must still match.
+    pub fn acknowledge_sync(
+        &self,
+        graph_node_id: &str,
+        expected_revision: i64,
+        expected_origin: ContentOrigin,
+    ) -> RepositoryResult<SyncAcknowledgementMutation> {
+        validate_contract_revision("expectedRevision", expected_revision)
+            .map_err(RepositoryError::Validation)?;
+        let Some(document) = self.get_node_document(graph_node_id)? else {
+            return Ok(SyncAcknowledgementMutation::Missing);
+        };
+        if document.content_revision != expected_revision
+            || document.content_origin != expected_origin
+        {
+            return Ok(SyncAcknowledgementMutation::Conflict {
+                current_revision: document.content_revision,
+                current_origin: document.content_origin,
+                reason: "local document changed before remote sync acknowledgement".into(),
+            });
+        }
+        let metadata: Option<(String, i64, String)> = self
+            .connection
+            .query_row(
+                "SELECT content_origin, content_revision, sync_state FROM graph_node_metadata WHERE graph_node_id=?1",
+                [graph_node_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?;
+        let Some((metadata_origin, metadata_revision, sync_state)) = metadata else {
+            return Ok(SyncAcknowledgementMutation::Missing);
+        };
+        if metadata_revision != expected_revision || metadata_origin != expected_origin.as_str() {
+            return Ok(SyncAcknowledgementMutation::Conflict {
+                current_revision: metadata_revision,
+                current_origin: ContentOrigin::try_from(metadata_origin)
+                    .map_err(RepositoryError::CorruptData)?,
+                reason: "graph metadata changed before remote sync acknowledgement".into(),
+            });
+        }
+        if document.neo4j_synced && sync_state == "synced" {
+            return Ok(SyncAcknowledgementMutation::Preserved);
+        }
+        let transaction = TransactionGuard::begin(self.connection)?;
+        let document_updated = self.connection.execute(
+            "UPDATE node_document SET neo4j_synced=1, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE graph_node_id=?1 AND content_revision=?2 AND content_origin=?3",
+            params![graph_node_id, expected_revision, expected_origin.as_str()],
+        )?;
+        let metadata_updated = self.connection.execute(
+            "UPDATE graph_node_metadata SET sync_state='synced', remote_revision=?2,
+             updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE graph_node_id=?1 AND content_revision=?2 AND content_origin=?3",
+            params![graph_node_id, expected_revision, expected_origin.as_str()],
+        )?;
+        if document_updated != 1 || metadata_updated != 1 {
+            return Ok(SyncAcknowledgementMutation::Conflict {
+                current_revision: expected_revision,
+                current_origin: expected_origin,
+                reason: "local projections changed during sync acknowledgement".into(),
+            });
+        }
         transaction.commit()?;
-        Ok(fresh_decision)
+        Ok(SyncAcknowledgementMutation::Updated)
     }
 
     pub fn apply_user_edit(

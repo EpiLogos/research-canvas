@@ -216,10 +216,12 @@ describe("NodeDocumentPane", () => {
     const transport = {
       readLocalNodeDocument: vi
         .fn()
-        .mockResolvedValue({ body: localBody, summary: "", neo4jSynced: true, contentRevision: 7, bodySourceCoordinates: ["source.md#p1"] }),
+        .mockResolvedValue({ body: localBody, summary: "", neo4jSynced: true, contentOrigin: "user_authored", contentRevision: 7, bodySourceCoordinates: ["source.md#p1"] }),
       upsertLocalNodeDocument: vi.fn().mockResolvedValue({ document: { contentRevision: 8 } }),
       readGraphNode: vi.fn().mockResolvedValue(makeNode(localBody)),
       updateGraphNode: vi.fn().mockResolvedValue(makeNode(edited)),
+      compareAndSwapGraphNodeContent: vi.fn().mockResolvedValue({ kind: "updated" }),
+      acknowledgeLocalNodeDocumentSync: vi.fn().mockResolvedValue({ kind: "updated" }),
     };
 
     const { unmount } = render(
@@ -247,23 +249,17 @@ describe("NodeDocumentPane", () => {
       bodySourceCoordinates: ["source.md#p1"],
       neo4jSynced: false,
     }));
-    // Local upsert is authoritative and happens with the edited body.
-    expect(transport.upsertLocalNodeDocument).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        databasePath: "/tmp/db.sqlite",
-        graphNodeId: "n1",
-        body: edited,
-        contentRevision: 8,
-        expectedRevision: 8,
-        neo4jSynced: true,
-      })
-    );
-    // Neo4j is still synced best-effort with the same body.
-    await waitFor(() => expect(transport.updateGraphNode).toHaveBeenCalled());
-    expect(transport.updateGraphNode).toHaveBeenLastCalledWith({
-      graphNodeId: "n1",
-      patch: expect.objectContaining({ body: edited, contentOrigin: "user_authored", contentRevision: 8 }),
+    expect(transport.upsertLocalNodeDocument).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(transport.compareAndSwapGraphNodeContent).toHaveBeenCalled());
+    expect(transport.compareAndSwapGraphNodeContent).toHaveBeenLastCalledWith(expect.objectContaining({
+      graphNodeId: "n1", body: edited, expectedRemoteRevision: 7,
+      expectedRemoteOrigin: "user_authored", contentRevision: 8,
+    }));
+    expect(transport.acknowledgeLocalNodeDocumentSync).toHaveBeenCalledWith({
+      databasePath: "/tmp/db.sqlite", graphNodeId: "n1", expectedRevision: 8,
+      expectedOrigin: "user_authored",
     });
+    expect(transport.updateGraphNode).not.toHaveBeenCalled();
   });
 
   it("flushes the dirty body on unmount (crash-safe close flush)", async () => {
@@ -288,10 +284,12 @@ describe("NodeDocumentPane", () => {
     const transport = {
       readLocalNodeDocument: vi
         .fn()
-        .mockResolvedValue({ body, summary: "", neo4jSynced: true }),
-      upsertLocalNodeDocument: vi.fn().mockResolvedValue(undefined),
+        .mockResolvedValue({ body, summary: "", neo4jSynced: true, contentOrigin: "user_authored", contentRevision: 3 }),
+      upsertLocalNodeDocument: vi.fn().mockResolvedValue({ document: { contentRevision: 4 } }),
       readGraphNode: vi.fn().mockResolvedValue(makeNode(body)),
       updateGraphNode: vi.fn().mockResolvedValue(makeNode(edited)),
+      compareAndSwapGraphNodeContent: vi.fn().mockResolvedValue({ kind: "updated" }),
+      acknowledgeLocalNodeDocumentSync: vi.fn().mockResolvedValue({ kind: "updated" }),
     };
 
     const { unmount } = render(
@@ -311,11 +309,8 @@ describe("NodeDocumentPane", () => {
     // Closing the view must force a final write of the dirty body.
     unmount();
 
-    await waitFor(() => expect(transport.updateGraphNode).toHaveBeenCalled());
-    expect(transport.updateGraphNode).toHaveBeenLastCalledWith({
-      graphNodeId: "n1",
-      patch: expect.objectContaining({ body: edited }),
-    });
+    await waitFor(() => expect(transport.compareAndSwapGraphNodeContent).toHaveBeenCalled());
+    expect(transport.updateGraphNode).not.toHaveBeenCalled();
   });
 
   it("surfaces a failed close flush instead of swallowing it", async () => {
@@ -389,6 +384,47 @@ describe("NodeDocumentPane", () => {
     await waitFor(() => expect(errorSpy).toHaveBeenCalled());
     expect(transport.updateGraphNode).not.toHaveBeenCalled();
     expect(errorSpy.mock.calls.flat().join(" ")).toMatch(/expected revision/i);
+    errorSpy.mockRestore();
+  });
+
+  it("surfaces a concurrent-edit acknowledgement conflict and never uses the unsafe updater", async () => {
+    const body = JSON.stringify([{ id: "b1", type: "paragraph", props: {}, content: [{ type: "text", text: "Stored", styles: {} }], children: [] }]);
+    const edited = JSON.stringify([{ id: "b1", type: "paragraph", props: {}, content: [{ type: "text", text: "Edit 8", styles: {} }], children: [] }]);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const transport = {
+      readLocalNodeDocument: vi.fn().mockResolvedValue({ body, summary: "", neo4jSynced: false, contentOrigin: "user_authored", contentRevision: 7 }),
+      upsertLocalNodeDocument: vi.fn().mockResolvedValue({ mutation: { kind: "updated" }, document: { contentRevision: 8 } }),
+      readGraphNode: vi.fn().mockResolvedValue(makeNode(body)),
+      updateGraphNode: vi.fn().mockResolvedValue(makeNode(edited)),
+      compareAndSwapGraphNodeContent: vi.fn().mockResolvedValue({ kind: "updated" }),
+      acknowledgeLocalNodeDocumentSync: vi.fn().mockResolvedValue({ kind: "conflict", reason: "local document changed before remote sync acknowledgement" }),
+    };
+    const { unmount } = render(<NodeDocumentPane graphNodeId="n1" transport={transport} databasePath="/tmp/db.sqlite" __testSetBody={edited} />);
+    await screen.findByText("Stored");
+    fireEvent.click(screen.getByTestId("set-body"));
+    unmount();
+    await waitFor(() => expect(errorSpy).toHaveBeenCalled());
+    expect(errorSpy.mock.calls.flat().join(" ")).toMatch(/changed before remote sync acknowledgement/i);
+    expect(transport.updateGraphNode).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("never writes remote body content when the local authority is unavailable", async () => {
+    const edited = JSON.stringify([{ id: "b1", type: "paragraph", props: {}, content: [{ type: "text", text: "Unsafe", styles: {} }], children: [] }]);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const transport = {
+      readLocalNodeDocument: vi.fn(), upsertLocalNodeDocument: vi.fn(),
+      readGraphNode: vi.fn(), updateGraphNode: vi.fn(),
+      compareAndSwapGraphNodeContent: vi.fn(), acknowledgeLocalNodeDocumentSync: vi.fn(),
+    };
+    const { unmount } = render(<NodeDocumentPane graphNodeId="n1" transport={transport} databasePath={null} __testSetBody={edited} />);
+    await screen.findByText("Local document unavailable — read-only");
+    fireEvent.click(screen.getByTestId("set-body"));
+    unmount();
+    await waitFor(() => expect(errorSpy).toHaveBeenCalled());
+    expect(transport.upsertLocalNodeDocument).not.toHaveBeenCalled();
+    expect(transport.compareAndSwapGraphNodeContent).not.toHaveBeenCalled();
+    expect(transport.updateGraphNode).not.toHaveBeenCalled();
     errorSpy.mockRestore();
   });
 });
