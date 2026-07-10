@@ -129,6 +129,7 @@ pub fn run() {
             commands::agent_activity::list_agent_activity_command,
             commands::node_document::read_local_node_document_command,
             commands::node_document::upsert_local_node_document_command,
+            commands::node_document::reconcile_local_node_documents_command,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Research Canvas");

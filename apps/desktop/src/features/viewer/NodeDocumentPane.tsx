@@ -17,14 +17,18 @@ interface NodeDocumentTransport {
   readLocalNodeDocument(input: {
     databasePath: string;
     graphNodeId: string;
-  }): Promise<{ body: string; summary: string; neo4jSynced: boolean } | null>;
+  }): Promise<{ body: string; summary: string; neo4jSynced: boolean; contentRevision?: number; bodySourceCoordinates?: string[] } | null>;
   upsertLocalNodeDocument(input: {
     databasePath: string;
     graphNodeId: string;
     body: string;
     summary: string;
     neo4jSynced?: boolean;
-  }): Promise<void>;
+    contentOrigin?: "user_authored" | "seed" | "corpus_compiled" | "imported";
+    contentRevision?: number;
+    expectedRevision?: number;
+    bodySourceCoordinates?: string[];
+  }): Promise<unknown>;
 }
 
 interface NodeDocumentPaneProps {
@@ -79,6 +83,8 @@ export function NodeDocumentPane({
   transportRef.current = transport;
   const databasePathRef = useRef(databasePath);
   databasePathRef.current = databasePath;
+  const contentRevisionRef = useRef<number | null>(null);
+  const bodySourcesRef = useRef<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,7 +106,12 @@ export function NodeDocumentPane({
         try {
           await transportRef.current.updateGraphNode({
             graphNodeId,
-            patch: { body, summary } as GraphNodePatch,
+            patch: {
+              body,
+              summary,
+              contentOrigin: "user_authored",
+              bodySourceCoordinates: bodySourcesRef.current,
+            } as GraphNodePatch,
           });
           if (!cancelled) {
             setStatusNote(null);
@@ -117,20 +128,39 @@ export function NodeDocumentPane({
 
       // Authoritative local write, FIRST. A failure here IS a real save
       // failure and must propagate so the doc store surfaces status="error".
-      await transportRef.current.upsertLocalNodeDocument({
+      const expectedRevision = contentRevisionRef.current;
+      const contentRevision = expectedRevision === null ? 0 : expectedRevision + 1;
+      const localResult = await transportRef.current.upsertLocalNodeDocument({
         databasePath: dbPath,
         graphNodeId,
         body,
         summary,
         neo4jSynced: false,
+        contentOrigin: "user_authored",
+        contentRevision,
+        ...(expectedRevision === null ? {} : { expectedRevision }),
+        bodySourceCoordinates: bodySourcesRef.current,
       });
+      const mutation = (localResult as { mutation?: { kind?: string; reason?: string } } | undefined)?.mutation;
+      if (mutation?.kind === "conflict") {
+        throw new Error(mutation.reason ?? "node document reconciliation conflict");
+      }
+      const returnedRevision = (localResult as { document?: { contentRevision?: number } | null } | undefined)
+        ?.document?.contentRevision;
+      contentRevisionRef.current = returnedRevision ?? contentRevision;
 
       // Best-effort Neo4j sync, AFTER the local write succeeded. Never blocks
       // and never surfaces a blocking error — only a subtle status note.
       try {
         await transportRef.current.updateGraphNode({
           graphNodeId,
-          patch: { body, summary } as GraphNodePatch,
+            patch: {
+              body,
+              summary,
+              contentOrigin: "user_authored",
+              contentRevision: contentRevisionRef.current,
+              bodySourceCoordinates: bodySourcesRef.current,
+            } as GraphNodePatch,
         });
         await transportRef.current.upsertLocalNodeDocument({
           databasePath: dbPath,
@@ -138,6 +168,10 @@ export function NodeDocumentPane({
           body,
           summary,
           neo4jSynced: true,
+          contentOrigin: "user_authored",
+          contentRevision: contentRevisionRef.current,
+          expectedRevision: contentRevisionRef.current,
+          bodySourceCoordinates: bodySourcesRef.current,
         });
         if (!cancelled) {
           setStatusNote(null);
@@ -174,6 +208,8 @@ export function NodeDocumentPane({
           return;
         }
         const localBody = local?.body ?? "";
+        contentRevisionRef.current = local?.contentRevision ?? null;
+        bodySourcesRef.current = local?.bodySourceCoordinates ?? [];
         const mounted = mountStore(localBody);
 
         // Reconcile (best-effort, non-blocking): if the local body was empty
@@ -201,6 +237,10 @@ export function NodeDocumentPane({
                   body: node.body,
                   summary: node.summary ?? "",
                   neo4jSynced: true,
+                  contentOrigin: node.contentOrigin ?? "imported",
+                  contentRevision: node.contentRevision ?? 0,
+                  ...(local?.contentRevision === undefined ? {} : { expectedRevision: local.contentRevision }),
+                  bodySourceCoordinates: node.bodySourceCoordinates ?? [],
                 })
                 .catch((error) =>
                   console.warn("reconcile local seed failed", error)

@@ -1,10 +1,14 @@
 // apps/desktop/src-tauri/src/commands/node_document.rs
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::commands::graph::resolve_db_path;
+use crate::db::repositories::graph::ContentOrigin;
 use crate::db::{
     connection::Database,
-    repositories::{LocalNodeDocument, NodeDocumentRepository},
+    repositories::{
+        DocumentContentInput, LocalNodeDocument, NodeDocumentMutation, NodeDocumentRepository,
+        ReconciliationDecision,
+    },
 };
 use crate::SharedApiState;
 
@@ -28,6 +32,33 @@ pub struct UpsertLocalNodeDocumentRequest {
     pub summary: String,
     #[serde(default)]
     pub neo4j_synced: bool,
+    #[serde(default)]
+    pub content_origin: Option<ContentOrigin>,
+    #[serde(default)]
+    pub content_revision: Option<i64>,
+    #[serde(default)]
+    pub expected_revision: Option<i64>,
+    #[serde(default)]
+    pub body_source_coordinates: Vec<String>,
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReconcileLocalNodeDocumentsRequest {
+    #[serde(default)]
+    pub database_path: Option<String>,
+    pub documents: Vec<DocumentContentInput>,
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalNodeDocumentWriteResult {
+    pub mutation: NodeDocumentMutation,
+    pub document: Option<LocalNodeDocument>,
 }
 
 #[tauri::command]
@@ -46,15 +77,81 @@ pub async fn read_local_node_document_command(
 pub async fn upsert_local_node_document_command(
     request: UpsertLocalNodeDocumentRequest,
     api_state: tauri::State<'_, SharedApiState>,
-) -> Result<(), String> {
+) -> Result<LocalNodeDocumentWriteResult, String> {
     let path = resolve_db_path(&request.database_path, &api_state)?;
     let db = Database::open(&path).map_err(|e| e.to_string())?;
-    NodeDocumentRepository::new(db.connection())
-        .upsert_node_document(
+    let repo = NodeDocumentRepository::new(db.connection());
+    let mutation = if let Some(origin) = request.content_origin {
+        let revision = request.content_revision.ok_or_else(|| {
+            "contentRevision is required when contentOrigin is supplied".to_string()
+        })?;
+        let input = DocumentContentInput {
+            graph_node_id: request.graph_node_id.clone(),
+            body: request.body,
+            summary: request.summary,
+            content_origin: origin,
+            content_revision: revision,
+            body_source_coordinates: request.body_source_coordinates,
+            neo4j_synced: request.neo4j_synced,
+        };
+        if request.dry_run {
+            repo.plan_reconciliation(&input, request.expected_revision)
+        } else {
+            repo.apply_reconciliation(&input, request.expected_revision)
+        }
+    } else if request.dry_run {
+        Err(crate::db::repositories::RepositoryError::Validation(
+            "legacy document writes cannot be dry-run; supply ownership and revision".into(),
+        ))
+    } else {
+        let existed = repo
+            .get_node_document(&request.graph_node_id)
+            .map_err(|error| error.to_string())?
+            .is_some();
+        repo.upsert_node_document(
             &request.graph_node_id,
             &request.body,
             &request.summary,
             request.neo4j_synced,
         )
-        .map_err(|e| e.to_string())
+        .map(|_| {
+            if existed {
+                NodeDocumentMutation::Updated
+            } else {
+                NodeDocumentMutation::Created
+            }
+        })
+    }
+    .map_err(|e| e.to_string())?;
+    let document = repo
+        .get_node_document(&request.graph_node_id)
+        .map_err(|e| e.to_string())?;
+    Ok(LocalNodeDocumentWriteResult { mutation, document })
+}
+
+#[tauri::command]
+pub async fn reconcile_local_node_documents_command(
+    request: ReconcileLocalNodeDocumentsRequest,
+    api_state: tauri::State<'_, SharedApiState>,
+) -> Result<Vec<ReconciliationDecision>, String> {
+    let path = resolve_db_path(&request.database_path, &api_state)?;
+    let db = Database::open(&path).map_err(|e| e.to_string())?;
+    let repo = NodeDocumentRepository::new(db.connection());
+    if request.dry_run {
+        return repo
+            .plan_bulk(&request.documents)
+            .map_err(|e| e.to_string());
+    }
+    request
+        .documents
+        .iter()
+        .map(|document| {
+            repo.apply_reconciliation(document, None)
+                .map(|mutation| ReconciliationDecision {
+                    graph_node_id: document.graph_node_id.clone(),
+                    mutation,
+                })
+                .map_err(|e| e.to_string())
+        })
+        .collect()
 }

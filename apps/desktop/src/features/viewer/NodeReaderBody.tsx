@@ -67,14 +67,18 @@ export function NodeReaderBody({
       readLocalNodeDocument: (input: {
         databasePath: string;
         graphNodeId: string;
-      }) => Promise<{ body: string; summary: string; neo4jSynced: boolean } | null>;
+      }) => Promise<{ body: string; summary: string; neo4jSynced: boolean; contentRevision?: number; bodySourceCoordinates?: string[] } | null>;
       upsertLocalNodeDocument: (input: {
         databasePath: string;
         graphNodeId: string;
         body: string;
         summary: string;
         neo4jSynced?: boolean;
-      }) => Promise<void>;
+        contentOrigin?: "user_authored" | "seed" | "corpus_compiled" | "imported";
+        contentRevision?: number;
+        expectedRevision?: number;
+        bodySourceCoordinates?: string[];
+      }) => Promise<unknown>;
     };
     const databasePath = workspace.databasePath ?? null;
     return affordances ? (

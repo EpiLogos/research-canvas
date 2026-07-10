@@ -28,7 +28,10 @@ pub use graph_metadata::{
     GraphMetadataMutation, GraphNodeMetadataRecord, GraphNodeMetadataRepository, SyncState,
 };
 pub use layout::{CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord};
-pub use node_document::{LocalNodeDocument, NodeDocumentRepository};
+pub use node_document::{
+    DocumentContentInput, LocalNodeDocument, NodeDocumentMutation, NodeDocumentRepository,
+    ReconciliationDecision,
+};
 pub use resource_roots::{ResourceRootRecord, ResourceRootRepository};
 pub use saved_sequences::{SavedSequenceRecord, SavedSequenceRepository};
 pub use search::{SearchHit, SearchIndexSummary, SearchRepository};

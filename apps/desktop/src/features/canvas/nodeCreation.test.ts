@@ -16,6 +16,9 @@ describe("buildNewGraphNodeInput", () => {
       body: "[]",
       isTemporal: false,
       sourceCoordinates: [],
+      contentOrigin: "user_authored",
+      contentRevision: 0,
+      bodySourceCoordinates: [],
     });
   });
 
@@ -27,6 +30,9 @@ describe("buildNewGraphNodeInput", () => {
       body: "[]",
       isTemporal: false,
       sourceCoordinates: [],
+      contentOrigin: "user_authored",
+      contentRevision: 0,
+      bodySourceCoordinates: [],
     });
   });
 
@@ -38,6 +44,9 @@ describe("buildNewGraphNodeInput", () => {
       body: "[]",
       isTemporal: false,
       sourceCoordinates: [],
+      contentOrigin: "user_authored",
+      contentRevision: 0,
+      bodySourceCoordinates: [],
     });
   });
 });
@@ -64,7 +73,17 @@ describe("seedNoteNodeEffects", () => {
       graphNodeId: "node-1",
       body: "",
       summary: "",
+      contentOrigin: "user_authored",
+      contentRevision: 0,
+      bodySourceCoordinates: [],
     });
+
+    expect(createGraphNode).toHaveBeenCalledWith(expect.objectContaining({
+      graphNodeId: "node-1",
+      contentOrigin: "user_authored",
+      contentRevision: 0,
+      bodySourceCoordinates: [],
+    }));
   });
 
   it("skips seeding the local document gracefully when databasePath is null", async () => {

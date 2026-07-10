@@ -53,7 +53,7 @@ fn db_migrations_applies_initial_migration_to_a_real_temp_database() {
             row.get(0)
         })
         .expect("migration count");
-    assert_eq!(applied_migrations, 12);
+    assert_eq!(applied_migrations, 13);
 }
 
 #[test]
@@ -68,7 +68,7 @@ fn db_migrations_migration_runner_is_idempotent_and_deterministic() {
             row.get(0)
         })
         .expect("migration count");
-    assert_eq!(applied_migrations, 12);
+    assert_eq!(applied_migrations, 13);
 }
 
 #[test]
@@ -142,10 +142,62 @@ fn db_migrations_upgrade_0010_without_touching_documents_or_canvas_layouts() {
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row
                 .get::<_, i64>(0))
             .unwrap(),
-        12
+        13
     );
     assert!(table_exists(&reopened, "graph_node_metadata"));
     assert!(table_exists(&reopened, "timeline_layout"));
+}
+
+#[test]
+fn db_migrations_upgrade_actual_0012_documents_as_honest_imports_without_changing_content() {
+    let dir = tempdir().expect("temp dir");
+    let path = dir.path().join("upgrade-0012.sqlite");
+    let connection = Connection::open(&path).expect("fixture database");
+    MigrationRunner::migrate_through(&connection, "0012_timeline_layout")
+        .expect("apply real migrations through 0012");
+    connection
+        .execute(
+            "INSERT INTO node_document(graph_node_id, body, summary, updated_at, neo4j_synced)
+         VALUES ('legacy', ?1, ?2, '2024-04-05T06:07:08Z', 1)",
+            ["unaltered body", "unaltered face"],
+        )
+        .unwrap();
+
+    MigrationRunner::migrate(&connection).expect("upgrade through 0013");
+    drop(connection);
+    let reopened = Connection::open(&path).expect("reopen");
+    MigrationRunner::migrate(&reopened).expect("rerun migrations");
+
+    let row = reopened
+        .query_row(
+            "SELECT body, summary, updated_at, neo4j_synced, content_origin, content_revision,
+                body_source_coordinates_json FROM node_document WHERE graph_node_id='legacy'",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, i64>(5)?,
+                    row.get::<_, String>(6)?,
+                ))
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        row,
+        (
+            "unaltered body".into(),
+            "unaltered face".into(),
+            "2024-04-05T06:07:08Z".into(),
+            1,
+            "imported".into(),
+            0,
+            "[]".into()
+        )
+    );
 }
 
 #[test]

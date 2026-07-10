@@ -5,7 +5,7 @@ use crate::db::repositories::{
     canvas::CanvasRepository,
     graph::{GraphRepository, SeedGraphNode},
     layout::{LayoutRepository, NodeLayoutRecord},
-    ConstellationRepository,
+    ConstellationRepository, DocumentContentInput,
 };
 
 #[derive(Debug, Clone)]
@@ -141,6 +141,22 @@ pub fn ensure_root_archetypal_constellation_workspace(
 }
 
 impl NodeSeed {
+    fn to_document_input(&self, namespace: &str) -> DocumentContentInput {
+        DocumentContentInput {
+            graph_node_id: graph_id(namespace, self.slug),
+            body: body_for(self.title, self.summary, self.evidence_tags),
+            summary: self.summary.to_string(),
+            content_origin: crate::db::repositories::graph::ContentOrigin::Seed,
+            content_revision: 1,
+            body_source_coordinates: self
+                .source_coordinates
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
+            neo4j_synced: false,
+        }
+    }
+
     fn to_graph_node(&self, namespace: &str) -> SeedGraphNode {
         let source_coordinates = self
             .source_coordinates
@@ -220,6 +236,15 @@ impl NodeSeed {
             temporal_precision: self.temporal_precision.map(str::to_string),
         }
     }
+}
+
+/// Plannable local-document side of the root seed. Task 6 may dry-run these
+/// inputs before applying them; merely constructing this list performs no IO.
+pub fn root_archetypal_document_inputs(namespace: &str) -> Vec<DocumentContentInput> {
+    node_seeds()
+        .iter()
+        .map(|seed| seed.to_document_input(namespace))
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -3122,12 +3147,54 @@ fn r(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::{
+        connection::Database,
+        repositories::{NodeDocumentMutation, NodeDocumentRepository},
+    };
 
     fn fake_canvas_ids(constellations: &[ConstellationSeed]) -> HashMap<&'static str, String> {
         constellations
             .iter()
             .map(|seed| (seed.slug, format!("canvas:{}", seed.slug)))
             .collect()
+    }
+
+    #[test]
+    fn real_root_seed_reconciliation_preserves_an_edit_between_seed_runs() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let database = Database::open(directory.path().join("seed.sqlite")).expect("database");
+        let repo = NodeDocumentRepository::new(database.connection());
+        let real_seed = root_archetypal_document_inputs("root")
+            .into_iter()
+            .next()
+            .expect("root seed");
+        assert_eq!(
+            repo.apply_reconciliation(&real_seed, None).unwrap(),
+            NodeDocumentMutation::Created
+        );
+        assert_eq!(
+            repo.apply_user_edit(
+                &real_seed.graph_node_id,
+                "authored deep reading",
+                "authored face",
+                1
+            )
+            .unwrap(),
+            NodeDocumentMutation::Updated
+        );
+        assert_eq!(
+            repo.apply_reconciliation(&real_seed, None).unwrap(),
+            NodeDocumentMutation::Preserved
+        );
+        let stored = repo
+            .get_node_document(&real_seed.graph_node_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.body, "authored deep reading");
+        assert_eq!(
+            stored.content_origin,
+            crate::db::repositories::graph::ContentOrigin::UserAuthored
+        );
     }
 
     fn canvas_sidecar(record: &NodeLayoutRecord) -> serde_json::Value {

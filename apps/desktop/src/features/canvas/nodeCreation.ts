@@ -18,6 +18,9 @@ export function buildNewGraphNodeInput(args: {
     body: "[]",
     isTemporal: false,
     sourceCoordinates: [],
+    contentOrigin: "user_authored",
+    contentRevision: 0,
+    bodySourceCoordinates: [],
   };
 }
 
@@ -43,7 +46,10 @@ export async function seedNoteNodeEffects(args: {
     graphNodeId: string;
     body: string;
     summary: string;
-  }) => Promise<void>;
+    contentOrigin: "user_authored";
+    contentRevision: number;
+    bodySourceCoordinates: string[];
+  }) => Promise<unknown>;
   createGraphNode: (
     input: NewGraphNodeInput & { graphNodeId: string }
   ) => Promise<unknown>;
@@ -57,6 +63,9 @@ export async function seedNoteNodeEffects(args: {
         graphNodeId,
         body: "",
         summary: "",
+        contentOrigin: "user_authored",
+        contentRevision: 0,
+        bodySourceCoordinates: [],
       });
     } catch (error) {
       console.warn("upsertLocalNodeDocument failed; note kept locally without a seeded doc row", error);

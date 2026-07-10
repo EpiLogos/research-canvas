@@ -16,6 +16,7 @@ export type {
   EntityType,
   GraphNode,
   GraphNodePatch,
+  ContentOrigin,
   GraphRelationship,
   JoinedCanvasNode,
   LitInstance,
@@ -24,10 +25,45 @@ export type {
   TimelineNodeRecord,
   TemporalPrecision,
 } from "./graph";
+
+export type NodeDocumentMutation =
+  | { kind: "created" }
+  | { kind: "updated" }
+  | { kind: "preserved" }
+  | { kind: "conflict"; current_revision: number; reason: string };
+
+export interface LocalNodeDocument {
+  graphNodeId: string;
+  body: string;
+  summary: string;
+  neo4jSynced: boolean;
+  contentOrigin: ContentOrigin;
+  contentRevision: number;
+  bodySourceCoordinates: string[];
+}
+
+export interface LocalNodeDocumentWriteResult {
+  mutation: NodeDocumentMutation;
+  document: LocalNodeDocument | null;
+}
+
+export interface LocalNodeDocumentInput {
+  databasePath: string;
+  graphNodeId: string;
+  body: string;
+  summary: string;
+  neo4jSynced?: boolean;
+  contentOrigin?: ContentOrigin;
+  contentRevision?: number;
+  expectedRevision?: number;
+  bodySourceCoordinates?: string[];
+  dryRun?: boolean;
+}
 import type {
   ArchetypalLighting,
   CanvasNodeSidecar,
   CanvasView,
+  ContentOrigin,
   GraphNode,
   GraphNodePatch,
   GraphRelationship,
@@ -459,14 +495,8 @@ export interface WorkspaceTransport {
   readLocalNodeDocument(input: {
     databasePath: string;
     graphNodeId: string;
-  }): Promise<{ body: string; summary: string; neo4jSynced: boolean } | null>;
-  upsertLocalNodeDocument(input: {
-    databasePath: string;
-    graphNodeId: string;
-    body: string;
-    summary: string;
-    neo4jSynced?: boolean;
-  }): Promise<void>;
+  }): Promise<LocalNodeDocument | null>;
+  upsertLocalNodeDocument(input: LocalNodeDocumentInput): Promise<LocalNodeDocumentWriteResult>;
 }
 
 const DEFAULT_BRIDGE_PORT = 4789;
@@ -652,13 +682,13 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
       return rows.map(mapAgentActivityRow);
     },
     async readLocalNodeDocument(input) {
-      return invokeTauri<{ body: string; summary: string; neo4jSynced: boolean } | null>(
+      return invokeTauri<LocalNodeDocument | null>(
         "read_local_node_document_command",
         { request: input }
       );
     },
     async upsertLocalNodeDocument(input) {
-      await invokeTauri<void>("upsert_local_node_document_command", { request: input });
+      return invokeTauri<LocalNodeDocumentWriteResult>("upsert_local_node_document_command", { request: input });
     },
   };
 }
