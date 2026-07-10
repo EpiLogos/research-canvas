@@ -1,7 +1,7 @@
 import type { ExportBundle } from "@research-canvas/schema";
 
 import type { GraphExportBundle } from "@research-canvas/exporter";
-import { parseGraphExportBundle } from "@research-canvas/exporter";
+import { parseLegacyGraphExportBundle } from "@research-canvas/exporter";
 
 declare global {
   interface Window {
@@ -28,7 +28,7 @@ export function readBootstrappedGraphBundle(): GraphExportBundle | null {
     return null;
   }
 
-  return parseGraphExportBundle(raw);
+  return parseLegacyGraphExportBundle(raw);
 }
 
 export function OfflineBootstrap({ bundle }: { bundle: ExportBundle }) {

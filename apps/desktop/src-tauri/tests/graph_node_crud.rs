@@ -310,9 +310,13 @@ fn malformed_present_metadata_and_revision_ranges_fail_reads() {
         ("list", "ql_source_coordinates: 'not-a-list'"),
         ("negative", "content_revision: -1"),
         ("unsafe", "ql_schema_version: 9007199254740992"),
+        ("core-string", "title: 42"),
+        ("temporal-bool", "is_temporal: 'yes'"),
+        ("coordinate", "coordinate: 42"),
+        ("valid-from", "valid_from: true"),
     ] {
         let id = format!("{run_id}:malformed-{suffix}");
-        let cypher = format!("CREATE (:TheoryNode:Event {{graph_node_id: $id, title: 'bad', body: '[]', summary: '', source_coordinates: [], evidence_tags: [], is_temporal: true, {property}}})");
+        let cypher = format!("CREATE (:TheoryNode:Event {{graph_node_id: $id, body: '[]', summary: '', source_coordinates: [], evidence_tags: [], {property}}})");
         support::block_on(graph.run_on(&database, query(&cypher).param("id", id.clone())))
             .expect("malformed fixture");
         let result = support::block_on(repo.get_node(&id));
@@ -320,7 +324,7 @@ fn malformed_present_metadata_and_revision_ranges_fail_reads() {
     }
     assert_eq!(
         support::cleanup_run_namespace(&graph, &database, &run_id),
-        4
+        8
     );
 }
 
@@ -329,20 +333,61 @@ fn reseed_preserves_authored_content_and_requires_a_newer_seed_revision() {
     let (graph, run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph.clone(), database.clone());
     let seed_id = format!("{run_id}:seed-owned");
-    let first = support::block_on(repo.upsert_seed_node(&seed_input(&seed_id, 2, "seed-v2")))
-        .expect("seed create");
+    let mut initial = seed_input(&seed_id, 2, "seed-v2");
+    initial.ql_form = Some(QlForm::CompleteSixfold);
+    initial.ql_unit_id = Some("seed-ql".into());
+    initial.ql_arc = Some(QlArc::Day);
+    initial.ql_topology = Some(QlTopology::Torus);
+    initial.ql_schema_version = Some(2);
+    initial.ql_source_coordinates = vec!["Canon/seed-ql.md".into()];
+    initial.ql_completeness_status = Some(QlCompletenessStatus::Complete);
+    let first = support::block_on(repo.upsert_seed_node(&initial)).expect("seed create");
     assert_eq!(first.body, "seed-v2");
+    let frozen_updated_at = "2000-01-01T00:00:00Z";
+    support::block_on(
+        graph.run_on(
+            &database,
+            query("MATCH (n {graph_node_id: $id}) SET n.updated_at = $updated_at")
+                .param("id", seed_id.clone())
+                .param("updated_at", frozen_updated_at),
+        ),
+    )
+    .expect("freeze timestamp before no-op reseeds");
     let same =
         support::block_on(repo.upsert_seed_node(&seed_input(&seed_id, 2, "same-revision-change")))
             .expect("same revision");
     assert_eq!(same.body, "seed-v2");
+    assert_eq!(same.updated_at, frozen_updated_at);
+    assert_eq!(same.ql_form, Some(QlForm::CompleteSixfold));
     let older = support::block_on(repo.upsert_seed_node(&seed_input(&seed_id, 1, "older")))
         .expect("older revision");
     assert_eq!(older.body, "seed-v2");
-    let newer = support::block_on(repo.upsert_seed_node(&seed_input(&seed_id, 3, "seed-v3")))
-        .expect("newer revision");
+    assert_eq!(older.updated_at, frozen_updated_at);
+    let mut clearing = seed_input(&seed_id, 3, "seed-v3");
+    clearing.source_coordinates.clear();
+    clearing.evidence_tags.clear();
+    clearing.source_kind = None;
+    clearing.body_source_coordinates.clear();
+    clearing.historicity = None;
+    clearing.claim_kind = None;
+    clearing.evidence_status = None;
+    clearing.temporal_role = None;
+    clearing.place_coverage = None;
+    clearing.is_temporal = false;
+    clearing.valid_from = None;
+    clearing.valid_to = None;
+    clearing.temporal_precision = None;
+    let newer = support::block_on(repo.upsert_seed_node(&clearing)).expect("newer revision");
     assert_eq!(newer.body, "seed-v3");
     assert_eq!(newer.summary, "summary-3");
+    assert!(newer.source_coordinates.is_empty());
+    assert!(newer.evidence_tags.is_empty());
+    assert_eq!(newer.historicity, None);
+    assert_eq!(newer.ql_form, None);
+    assert!(newer.ql_source_coordinates.is_empty());
+    assert!(!newer.is_temporal);
+    assert_eq!(newer.valid_from, None);
+    assert_eq!(newer.temporal_precision, None);
 
     let authored_id = format!("{run_id}:authored");
     support::block_on(graph.run_on(

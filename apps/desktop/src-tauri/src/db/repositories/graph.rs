@@ -413,6 +413,32 @@ fn optional_string_from_neo(node: &neo4rs::Node, property: &str) -> Result<Optio
         .map_err(|error| format!("Neo4j property `{property}` has wrong type: {error}"))
 }
 
+fn string_from_neo(
+    node: &neo4rs::Node,
+    property: &str,
+    absent_default: Option<&str>,
+) -> Result<String, String> {
+    if !has_neo_property(node, property) {
+        return absent_default
+            .map(str::to_string)
+            .ok_or_else(|| format!("required Neo4j property `{property}` is absent"));
+    }
+    node.get::<String>(property)
+        .map_err(|error| format!("Neo4j property `{property}` has wrong type: {error}"))
+}
+
+fn bool_from_neo(
+    node: &neo4rs::Node,
+    property: &str,
+    absent_default: bool,
+) -> Result<bool, String> {
+    if !has_neo_property(node, property) {
+        return Ok(absent_default);
+    }
+    node.get::<bool>(property)
+        .map_err(|error| format!("Neo4j property `{property}` has wrong type: {error}"))
+}
+
 fn revision_from_neo(node: &neo4rs::Node, property: &str) -> Result<Option<i64>, String> {
     if !has_neo_property(node, property) {
         return Ok(None);
@@ -493,13 +519,13 @@ fn node_from_neo(node: neo4rs::Node) -> Result<GraphNode, String> {
         resolve_entity_type_from_labels(&labels).map_err(|error| error.to_string())?;
     let source_coordinates = string_list_from_neo(&node, "source_coordinates")?;
     Ok(GraphNode {
-        graph_node_id: node.get("graph_node_id").map_err(|e| e.to_string())?,
+        graph_node_id: string_from_neo(&node, "graph_node_id", None)?,
         entity_type,
-        title: node.get("title").unwrap_or_default(),
-        body: node.get("body").unwrap_or_else(|_| "[]".to_string()),
-        summary: node.get("summary").unwrap_or_default(),
-        archetypal_resonance: node.get("archetypal_resonance").ok(),
-        coordinate: node.get("coordinate").ok(),
+        title: string_from_neo(&node, "title", Some(""))?,
+        body: string_from_neo(&node, "body", Some("[]"))?,
+        summary: string_from_neo(&node, "summary", Some(""))?,
+        archetypal_resonance: optional_string_from_neo(&node, "archetypal_resonance")?,
+        coordinate: optional_string_from_neo(&node, "coordinate")?,
         source_coordinates,
         evidence_tags: string_list_from_neo(&node, "evidence_tags")?,
         source_kind: optional_string_from_neo(&node, "source_kind")?,
@@ -519,12 +545,12 @@ fn node_from_neo(node: neo4rs::Node) -> Result<GraphNode, String> {
         ql_schema_version: revision_from_neo(&node, "ql_schema_version")?,
         ql_source_coordinates: string_list_from_neo(&node, "ql_source_coordinates")?,
         ql_completeness_status: controlled_from_neo(&node, "ql_completeness_status")?,
-        is_temporal: node.get("is_temporal").unwrap_or(false),
-        valid_from: node.get("valid_from").ok(),
-        valid_to: node.get("valid_to").ok(),
+        is_temporal: bool_from_neo(&node, "is_temporal", false)?,
+        valid_from: optional_string_from_neo(&node, "valid_from")?,
+        valid_to: optional_string_from_neo(&node, "valid_to")?,
         temporal_precision: controlled_from_neo(&node, "temporal_precision")?,
-        created_at: node.get("created_at").unwrap_or_default(),
-        updated_at: node.get("updated_at").unwrap_or_default(),
+        created_at: string_from_neo(&node, "created_at", Some(""))?,
+        updated_at: string_from_neo(&node, "updated_at", Some(""))?,
     })
 }
 
@@ -1020,45 +1046,34 @@ impl GraphRepository {
                  n.valid_to = $valid_to, \
                  n.temporal_precision = $temporal_precision, \
                  n.created_at = $now, n.updated_at = $now \
-             ON MATCH SET \
-                 n.title = CASE WHEN n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) THEN $title ELSE n.title END, \
-                 n.body = CASE WHEN n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) THEN $body ELSE n.body END, \
-                 n.summary = CASE WHEN n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) THEN $summary ELSE n.summary END, \
-                 n.archetypal_resonance = CASE WHEN n.archetypal_resonance IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $archetypal_resonance IS NOT NULL) THEN coalesce($archetypal_resonance, n.archetypal_resonance) ELSE n.archetypal_resonance END, \
-                 n.coordinate = CASE WHEN n.coordinate IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $coordinate IS NOT NULL) THEN coalesce($coordinate, n.coordinate) ELSE n.coordinate END, \
-                 n.source_coordinates = CASE WHEN (size(coalesce(n.source_coordinates, [])) = 0 OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1))) AND size($source_coordinates) > 0 THEN $source_coordinates ELSE n.source_coordinates END, \
-                 n.evidence_tags = CASE WHEN (size(coalesce(n.evidence_tags, [])) = 0 OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1))) AND size($evidence_tags) > 0 THEN $evidence_tags ELSE n.evidence_tags END, \
-                 n.source_kind = CASE WHEN n.source_kind IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $source_kind IS NOT NULL) THEN coalesce($source_kind, n.source_kind) ELSE n.source_kind END, \
-                 n.body_source_coordinates = CASE WHEN (size(coalesce(n.body_source_coordinates, [])) = 0 OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1))) AND size($body_source_coordinates) > 0 THEN $body_source_coordinates ELSE n.body_source_coordinates END, \
-                 n.historicity = CASE WHEN n.historicity IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $historicity IS NOT NULL) THEN coalesce($historicity, n.historicity) ELSE n.historicity END, \
-                 n.claim_kind = CASE WHEN n.claim_kind IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $claim_kind IS NOT NULL) THEN coalesce($claim_kind, n.claim_kind) ELSE n.claim_kind END, \
-                 n.evidence_status = CASE WHEN n.evidence_status IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $evidence_status IS NOT NULL) THEN coalesce($evidence_status, n.evidence_status) ELSE n.evidence_status END, \
-                 n.temporal_role = CASE WHEN n.temporal_role IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $temporal_role IS NOT NULL) THEN coalesce($temporal_role, n.temporal_role) ELSE n.temporal_role END, \
-                 n.place_coverage = CASE WHEN n.place_coverage IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $place_coverage IS NOT NULL) THEN coalesce($place_coverage, n.place_coverage) ELSE n.place_coverage END, \
-                 n.ql_form = CASE WHEN n.ql_form IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $ql_form IS NOT NULL) THEN coalesce($ql_form, n.ql_form) ELSE n.ql_form END, \
-                 n.ql_unit_id = CASE WHEN n.ql_unit_id IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $ql_unit_id IS NOT NULL) THEN coalesce($ql_unit_id, n.ql_unit_id) ELSE n.ql_unit_id END, \
-                 n.ql_arc = CASE WHEN n.ql_arc IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $ql_arc IS NOT NULL) THEN coalesce($ql_arc, n.ql_arc) ELSE n.ql_arc END, \
-                 n.ql_topology = CASE WHEN n.ql_topology IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $ql_topology IS NOT NULL) THEN coalesce($ql_topology, n.ql_topology) ELSE n.ql_topology END, \
-                 n.ql_schema_version = CASE WHEN n.ql_schema_version IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $ql_schema_version IS NOT NULL) THEN coalesce($ql_schema_version, n.ql_schema_version) ELSE n.ql_schema_version END, \
-                 n.ql_source_coordinates = CASE WHEN (size(coalesce(n.ql_source_coordinates, [])) = 0 OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1))) AND size($ql_source_coordinates) > 0 THEN $ql_source_coordinates ELSE n.ql_source_coordinates END, \
-                 n.ql_completeness_status = CASE WHEN n.ql_completeness_status IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1) AND $ql_completeness_status IS NOT NULL) THEN coalesce($ql_completeness_status, n.ql_completeness_status) ELSE n.ql_completeness_status END, \
-                 n.is_temporal = coalesce(n.is_temporal, $is_temporal), \
-                 n.valid_from = coalesce(n.valid_from, $valid_from), n.valid_to = coalesce(n.valid_to, $valid_to), \
-                 n.temporal_precision = coalesce(n.temporal_precision, $temporal_precision), \
-                 n.seed_schema_version = CASE WHEN n.seed_schema_version IS NULL OR (n.content_origin = 'seed' AND $content_revision > coalesce(n.content_revision, -1)) THEN $seed_schema_version ELSE n.seed_schema_version END, \
-                 n.content_revision = CASE WHEN n.content_revision IS NULL OR (n.content_origin = 'seed' AND $content_revision > n.content_revision) THEN $content_revision ELSE n.content_revision END, \
-                 n.content_origin = CASE WHEN n.content_origin IS NULL AND (n.body IS NULL OR n.body = '') THEN $content_origin ELSE n.content_origin END, n.updated_at = $now \
+             WITH n, (n.content_origin = 'seed' AND toInteger($content_revision) > coalesce(toInteger(n.content_revision), -1)) AS newer_seed \
+             SET n.title = CASE WHEN newer_seed THEN $title ELSE n.title END, \
+                 n.body = CASE WHEN newer_seed THEN $body ELSE n.body END, n.summary = CASE WHEN newer_seed THEN $summary ELSE n.summary END, \
+                 n.archetypal_resonance = CASE WHEN newer_seed THEN $archetypal_resonance ELSE n.archetypal_resonance END, \
+                 n.coordinate = CASE WHEN newer_seed THEN $coordinate ELSE n.coordinate END, \
+                 n.source_coordinates = CASE WHEN newer_seed THEN $source_coordinates ELSE n.source_coordinates END, \
+                 n.evidence_tags = CASE WHEN newer_seed THEN $evidence_tags ELSE n.evidence_tags END, \
+                 n.source_kind = CASE WHEN newer_seed THEN $source_kind ELSE n.source_kind END, \
+                 n.body_source_coordinates = CASE WHEN newer_seed THEN $body_source_coordinates ELSE n.body_source_coordinates END, \
+                 n.historicity = CASE WHEN newer_seed THEN $historicity ELSE n.historicity END, \
+                 n.claim_kind = CASE WHEN newer_seed THEN $claim_kind ELSE n.claim_kind END, \
+                 n.evidence_status = CASE WHEN newer_seed THEN $evidence_status ELSE n.evidence_status END, \
+                 n.temporal_role = CASE WHEN newer_seed THEN $temporal_role ELSE n.temporal_role END, \
+                 n.place_coverage = CASE WHEN newer_seed THEN $place_coverage ELSE n.place_coverage END, \
+                 n.ql_form = CASE WHEN newer_seed THEN $ql_form ELSE n.ql_form END, n.ql_unit_id = CASE WHEN newer_seed THEN $ql_unit_id ELSE n.ql_unit_id END, \
+                 n.ql_arc = CASE WHEN newer_seed THEN $ql_arc ELSE n.ql_arc END, n.ql_topology = CASE WHEN newer_seed THEN $ql_topology ELSE n.ql_topology END, \
+                 n.ql_schema_version = CASE WHEN newer_seed THEN $ql_schema_version ELSE n.ql_schema_version END, \
+                 n.ql_source_coordinates = CASE WHEN newer_seed THEN $ql_source_coordinates ELSE n.ql_source_coordinates END, \
+                 n.ql_completeness_status = CASE WHEN newer_seed THEN $ql_completeness_status ELSE n.ql_completeness_status END, \
+                 n.is_temporal = CASE WHEN newer_seed THEN $is_temporal ELSE n.is_temporal END, \
+                 n.valid_from = CASE WHEN newer_seed THEN $valid_from ELSE n.valid_from END, n.valid_to = CASE WHEN newer_seed THEN $valid_to ELSE n.valid_to END, \
+                 n.temporal_precision = CASE WHEN newer_seed THEN $temporal_precision ELSE n.temporal_precision END, \
+                 n.seed_schema_version = CASE WHEN newer_seed THEN $seed_schema_version ELSE n.seed_schema_version END, \
+                 n.content_revision = CASE WHEN newer_seed THEN $content_revision ELSE n.content_revision END, \
+                 n.updated_at = CASE WHEN newer_seed THEN $now ELSE n.updated_at END \
              REMOVE n:{remove_labels} \
              SET n:{label} \
              RETURN n"
-        )
-        .replace(
-            "$content_revision > coalesce(n.content_revision, -1)",
-            "toInteger($content_revision) > coalesce(toInteger(n.content_revision), -1)",
-        )
-        .replace(
-            "$content_revision > n.content_revision",
-            "toInteger($content_revision) > toInteger(n.content_revision)",
         );
         let q = query(&cypher)
             .param("id", input.graph_node_id.clone())

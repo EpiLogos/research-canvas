@@ -5,6 +5,7 @@ import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 import type { GraphExportBundle } from "@research-canvas/exporter";
 
 import { GraphApp } from "./GraphApp";
+import { readBootstrappedGraphBundle } from "./OfflineBootstrap";
 
 // A REAL in-memory GraphExportBundle. Only the *data* is a fixture — every
 // component (GraphApp, the shared <TimelineLens>/<CanvasView>) and the
@@ -49,7 +50,7 @@ function bundle(): GraphExportBundle {
     generatedAt: "2026-06-28T12:00:00Z",
     project: {
       coverAssetPath: null,
-      createdAt: "t",
+      createdAt: "2026-06-28T12:00:00Z",
       displayName: "Antichrist",
       id: "11111111-1111-4111-8111-111111111111",
       parentConstellationId: null,
@@ -79,6 +80,13 @@ function bundle(): GraphExportBundle {
 }
 
 describe("GraphApp (mounted web entry, real static-bundle transport)", () => {
+  it("normalizes a pre-metadata bootstrapped graph bundle at the external boundary", () => {
+    const legacy = bundle();
+    delete (legacy.nodes[0] as Partial<(typeof legacy.nodes)[number]>).contentOrigin;
+    window.__RESEARCH_CANVAS_GRAPH_BUNDLE__ = legacy;
+    expect(readBootstrappedGraphBundle()?.nodes[0].contentOrigin).toBeNull();
+    delete window.__RESEARCH_CANVAS_GRAPH_BUNDLE__;
+  });
   it("shows the lens switch and defaults to the canvas lens", async () => {
     render(<GraphApp bundle={bundle()} />);
 

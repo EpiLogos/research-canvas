@@ -32,7 +32,7 @@ fn root_archetypal_field_seed_writes_real_graph_constellation_layout_and_timelin
     support::block_on(
         graph.run_on(
             &database,
-            query("CREATE (:TheoryNode:Source {graph_node_id: $id, title: 'legacy claim'})")
+        query("CREATE (:TheoryNode:Source {graph_node_id: $id, title: 'legacy claim', content_origin: 'seed', content_revision: '0'})")
                 .param("id", migrated_claim_id.clone()),
         ),
     )
