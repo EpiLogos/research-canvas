@@ -1,20 +1,21 @@
 services:
   neo4j-test:
-    image: neo4j:5.26-community
+    image: neo4j@sha256:937fbd163e302a5751dd329b719c1b05e2a4293af223d61b1aa17e3dea087709
     ports:
-      - "127.0.0.1:${NEO4J_TEST_HTTP_PORT:-27474}:7474"
-      - "127.0.0.1:${NEO4J_TEST_BOLT_PORT:-27687}:7687"
+      - "127.0.0.1::7687"
     environment:
-      NEO4J_AUTH: "neo4j/antichrist-integration-pw"
+      NEO4J_AUTH: "neo4j/${NEO4J_TEST_PASSWORD:?NEO4J_TEST_PASSWORD must be set by the integration wrapper}"
+      # GraphRepository relationship reads call apoc.convert.toJson. This exact
+      # image digest bundles the APOC core jar under /var/lib/neo4j/labs, so the
+      # entrypoint copies a pinned local artifact rather than downloading one.
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
-      NEO4J_dbms_security_auth__max__failed__attempts: "1000000"
     healthcheck:
       test:
         - CMD-SHELL
         - >-
           cypher-shell -a bolt://127.0.0.1:7687 -u neo4j
-          -p "antichrist-integration-pw"
+          -p "${NEO4J_TEST_PASSWORD}"
           "RETURN 1;" >/dev/null 2>&1
       interval: 2s
       timeout: 5s

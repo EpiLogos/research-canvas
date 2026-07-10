@@ -39,7 +39,6 @@ fn create_node_honours_client_supplied_id() {
     assert_eq!(fetched.graph_node_id, wanted);
 
     // --- Test 2: None still mints a fresh non-empty id ---
-    let none_id = format!("{run_id}:none");
     let minted = support::block_on(repo.create_node(NewGraphNode {
         graph_node_id: None,
         entity_type: "Work".into(),
@@ -79,6 +78,4 @@ fn create_node_honours_client_supplied_id() {
             .await
             .expect("cleanup minted");
     });
-
-    let _ = none_id; // suppress unused-variable warning
 }
