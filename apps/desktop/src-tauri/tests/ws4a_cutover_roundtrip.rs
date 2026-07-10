@@ -22,10 +22,7 @@ fn now() -> String {
 
 #[test]
 fn created_node_roundtrips_body_through_neo4j() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
 
     // --- SQLite: temp dir + real project + canvas_id ---
     let dir = tempdir().unwrap();
@@ -45,7 +42,7 @@ fn created_node_roundtrips_body_through_neo4j() {
     let canvas_id = project.primary_canvas_id.unwrap();
 
     // --- Neo4j: mint id, ensure schema, create node ---
-    let id = format!("ws4a-rt-{run_id}");
+    let id = format!("{run_id}:roundtrip");
     let repo = GraphRepository::new(graph.clone(), database.clone());
     support::block_on(repo.ensure_schema()).expect("ensure_schema");
 

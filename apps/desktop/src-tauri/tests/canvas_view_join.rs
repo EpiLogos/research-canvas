@@ -24,10 +24,7 @@ fn now() -> String {
 /// matching Neo4j node.
 #[test]
 fn load_canvas_view_is_layout_authoritative() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     // SQLite layout in a temp dir + a real canvas row.
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("t.db");
@@ -50,7 +47,7 @@ fn load_canvas_view_is_layout_authoritative() {
 
     // (a) A layout row WITH a matching Neo4j node -> real substance wins.
     let synced = support::block_on(repo.create_node(NewGraphNode {
-        graph_node_id: None,
+        graph_node_id: Some(format!("{run_id}:synced")),
         entity_type: "Event".into(),
         title: format!("Synced {run_id}"),
         body: "[]".into(),
@@ -78,7 +75,7 @@ fn load_canvas_view_is_layout_authoritative() {
 
     // (b) A layout row with NO Neo4j node (never synced) -> still returned,
     // with substance synthesized from the __canvasNode sidecar.
-    let unsynced_id = format!("unsynced-{run_id}");
+    let unsynced_id = format!("{run_id}:unsynced");
     let sidecar_json = serde_json::json!({
         "style": {},
         "__canvasNode": { "type": "note", "title": format!("Unsynced Note {run_id}"), "content": "hello", "tags": [] }
@@ -98,7 +95,7 @@ fn load_canvas_view_is_layout_authoritative() {
         .unwrap();
 
     // A resource-type sidecar should synthesize entity_type = Source.
-    let unsynced_resource_id = format!("unsynced-resource-{run_id}");
+    let unsynced_resource_id = format!("{run_id}:unsynced-resource");
     let resource_sidecar_json = serde_json::json!({
         "__canvasNode": {
             "type": "resource", "title": format!("Unsynced Resource {run_id}"),

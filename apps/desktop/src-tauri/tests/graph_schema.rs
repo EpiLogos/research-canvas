@@ -5,10 +5,7 @@ use research_canvas_desktop_lib::db::repositories::graph::GraphRepository;
 
 #[test]
 fn ensure_schema_creates_unique_constraint_on_graph_node_id() {
-    let Some((graph, _run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, _run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph.clone(), database.clone());
     support::block_on(repo.ensure_schema()).expect("ensure_schema");
     // ensure_schema is idempotent: a second pass must also succeed.

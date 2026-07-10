@@ -6,15 +6,12 @@ use research_canvas_desktop_lib::db::repositories::graph::{
 
 #[test]
 fn update_node_applies_patch_and_clears_with_some_none() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph, database);
     support::block_on(repo.ensure_schema()).expect("schema");
 
     let created = support::block_on(repo.create_node(NewGraphNode {
-        graph_node_id: None,
+        graph_node_id: Some(format!("{run_id}:dynamic")),
         entity_type: "Dynamic".into(),
         title: format!("Monopoly {run_id}"),
         body: "[]".into(),

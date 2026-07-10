@@ -6,15 +6,12 @@ use research_canvas_desktop_lib::db::repositories::graph::{GraphRepository, NewG
 
 #[test]
 fn create_node_honours_client_supplied_id() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph.clone(), database.clone());
     support::block_on(repo.ensure_schema()).expect("schema");
 
     // --- Test 1: client-supplied id is used verbatim ---
-    let wanted = format!("ws4a-{run_id}");
+    let wanted = format!("{run_id}:wanted");
     let created = support::block_on(repo.create_node(NewGraphNode {
         graph_node_id: Some(wanted.clone()),
         entity_type: "Work".into(),
@@ -42,7 +39,7 @@ fn create_node_honours_client_supplied_id() {
     assert_eq!(fetched.graph_node_id, wanted);
 
     // --- Test 2: None still mints a fresh non-empty id ---
-    let none_id = format!("ws4a-none-{run_id}");
+    let none_id = format!("{run_id}:none");
     let minted = support::block_on(repo.create_node(NewGraphNode {
         graph_node_id: None,
         entity_type: "Work".into(),

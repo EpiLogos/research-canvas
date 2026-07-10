@@ -37,6 +37,20 @@ cp .env.example .env
 
 Both the Tauri app and the Graphiti MCP server load this same `.env`.
 
+### Real graph integration tests
+
+Run `pnpm test:graph:integration` for the Neo4j-backed Rust suite. The command
+starts a dedicated Neo4j Community container on Bolt port `27687`, waits for its
+health check, runs every graph integration target against a unique run
+namespace, and removes the container and its anonymous data on success or
+failure. It does not use the persistent development service on port `17687` or
+its `neo4j_data` volume.
+
+Graph integration targets fail when the required test configuration is absent,
+when it identifies the development endpoint/database, or when Docker cannot
+start the disposable dependency. Pure Rust and SQLite tests remain runnable
+through ordinary `cargo test` target selection without Neo4j.
+
 ## 3. Start Neo4j (Docker)
 
 The repo ships a single-service `docker-compose.yml` at its root:

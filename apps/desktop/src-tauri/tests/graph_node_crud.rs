@@ -5,15 +5,12 @@ use research_canvas_desktop_lib::db::repositories::graph::{GraphRepository, NewG
 
 #[test]
 fn create_then_get_node_round_trips_substance_and_labels() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph.clone(), database.clone());
     support::block_on(repo.ensure_schema()).expect("schema");
 
     let created = support::block_on(repo.create_node(NewGraphNode {
-        graph_node_id: None,
+        graph_node_id: Some(format!("{run_id}:figure")),
         entity_type: "Figure".into(),
         title: format!("Cosimo {run_id}"),
         body: "[]".into(),
@@ -77,15 +74,12 @@ fn create_then_get_node_round_trips_substance_and_labels() {
 
 #[test]
 fn create_constellation_node_carries_constellation_label() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph.clone(), database.clone());
     support::block_on(repo.ensure_schema()).expect("schema");
 
     let created = support::block_on(repo.create_node(NewGraphNode {
-        graph_node_id: None,
+        graph_node_id: Some(format!("{run_id}:constellation")),
         entity_type: "Constellation".into(),
         title: format!("QL Unit {run_id}"),
         body: "Nested interpretive grouping".into(),

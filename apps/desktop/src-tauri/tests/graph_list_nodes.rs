@@ -5,15 +5,12 @@ use research_canvas_desktop_lib::db::repositories::graph::{GraphRepository, NewG
 
 #[test]
 fn timeline_lens_returns_only_temporal_nodes() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph.clone(), database.clone());
     support::block_on(repo.ensure_schema()).expect("schema");
 
     let event = support::block_on(repo.create_node(NewGraphNode {
-        graph_node_id: None,
+        graph_node_id: Some(format!("{run_id}:event")),
         entity_type: "Event".into(),
         title: format!("Banda {run_id}"),
         body: "[]".into(),
@@ -26,7 +23,7 @@ fn timeline_lens_returns_only_temporal_nodes() {
     }))
     .expect("event");
     let archetype = support::block_on(repo.create_node(NewGraphNode {
-        graph_node_id: None,
+        graph_node_id: Some(format!("{run_id}:archetype")),
         entity_type: "Archetype".into(),
         title: format!("Antichrist {run_id}"),
         body: "[]".into(),

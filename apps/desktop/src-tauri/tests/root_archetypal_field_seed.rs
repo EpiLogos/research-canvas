@@ -16,17 +16,17 @@ use tempfile::tempdir;
 
 #[test]
 fn root_archetypal_field_seed_writes_real_graph_constellation_layout_and_timeline() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, _run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph.clone(), database.clone());
     support::block_on(repo.ensure_schema()).expect("schema");
 
     let dir = tempdir().expect("tempdir");
     let db_path = dir.path().join("root-field.sqlite");
     let db = Database::open(&db_path).expect("sqlite");
-    let namespace = format!("test-root-field-{run_id}");
+    // This integration target verifies the production seed/layout join, whose
+    // stable IDs deliberately use this canonical namespace. Isolation comes
+    // from the disposable container; other graph tests use per-run IDs.
+    let namespace = "root-archetypal-field".to_string();
 
     let first = support::block_on(seed_root_archetypal_field(
         &repo,

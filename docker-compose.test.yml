@@ -1,0 +1,24 @@
+services:
+  neo4j-test:
+    image: neo4j:5.26-community
+    ports:
+      - "127.0.0.1:${NEO4J_TEST_HTTP_PORT:-27474}:7474"
+      - "127.0.0.1:${NEO4J_TEST_BOLT_PORT:-27687}:7687"
+    environment:
+      NEO4J_AUTH: "neo4j/antichrist-integration-pw"
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
+      NEO4J_dbms_security_auth__max__failed__attempts: "1000000"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          cypher-shell -a bolt://127.0.0.1:7687 -u neo4j
+          -p "antichrist-integration-pw"
+          "RETURN 1;" >/dev/null 2>&1
+      interval: 2s
+      timeout: 5s
+      retries: 45
+      start_period: 10s
+    labels:
+      org.antichrist-project.role: graph-integration-test

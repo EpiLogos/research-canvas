@@ -4,10 +4,7 @@ use neo4rs::query;
 
 #[test]
 fn connect_runs_a_trivial_query() {
-    let Some((graph, _run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, _run_id, database) = support::neo4j_test_graph();
     let value: i64 = support::block_on(async {
         let mut rows = graph
             .execute_on(&database, query("RETURN 7 AS v"))
