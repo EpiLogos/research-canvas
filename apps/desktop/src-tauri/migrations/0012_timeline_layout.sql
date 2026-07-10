@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS timeline_layout (
     offset_y      REAL NOT NULL,
     width         REAL NOT NULL CHECK (width > 0),
     height        REAL NOT NULL CHECK (height > 0),
-    style_json    TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(style_json)),
+    style_json    TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(style_json) AND json_type(style_json) = 'object'),
+    layout_revision INTEGER NOT NULL DEFAULT 0 CHECK (layout_revision BETWEEN 0 AND 9007199254740991),
     created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );

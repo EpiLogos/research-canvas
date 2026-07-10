@@ -3,7 +3,7 @@ use research_canvas_desktop_lib::db::repositories::{GraphNodeMetadataRecord, Syn
 use research_canvas_desktop_lib::db::{
     connection::Database,
     repositories::{
-        GraphNodeMetadataRepository, TimelineLayoutMutation, TimelineLayoutRecord,
+        GraphNodeMetadataRepository, RepositoryError, TimelineLayoutMutation, TimelineLayoutRecord,
         TimelineLayoutRepository,
     },
 };
@@ -54,16 +54,17 @@ fn layout(lane: &str) -> TimelineLayoutRecord {
         width: 320.0,
         height: 144.0,
         style_json: serde_json::json!({"color":"ochre"}),
+        layout_revision: 0,
         created_at: None,
         updated_at: None,
     }
 }
 
 #[test]
-fn timeline_layout_round_trips_and_requires_explicit_conflict_token() {
+fn timeline_layout_round_trips_and_requires_monotonic_expected_revision() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("timeline.sqlite");
-    let token;
+    let revision;
     {
         let db = Database::open(&path).unwrap();
         GraphNodeMetadataRepository::new(db.connection())
@@ -83,20 +84,29 @@ fn timeline_layout_round_trips_and_requires_explicit_conflict_token() {
             repo.save(&changed, None).unwrap(),
             TimelineLayoutMutation::Conflict { .. }
         ));
-        token = repo.get("event-1").unwrap().unwrap().updated_at.unwrap();
+        revision = repo.get("event-1").unwrap().unwrap().layout_revision;
         assert_eq!(
-            repo.save(&changed, Some(&token)).unwrap(),
+            repo.save(&changed, Some(revision)).unwrap(),
             TimelineLayoutMutation::Updated
         );
-        assert_ne!(
-            repo.get("event-1").unwrap().unwrap().updated_at.as_deref(),
-            Some(token.as_str()),
-            "every accepted mutation advances the concurrency token"
-        );
+        assert_eq!(repo.get("event-1").unwrap().unwrap().layout_revision, 1);
         changed.lane = "religion".into();
         assert!(matches!(
-            repo.save(&changed, Some("stale-token")).unwrap(),
+            repo.save(&changed, Some(0)).unwrap(),
             TimelineLayoutMutation::Conflict { .. }
+        ));
+        assert_eq!(
+            repo.save(&changed, Some(1)).unwrap(),
+            TimelineLayoutMutation::Updated
+        );
+        assert_eq!(repo.get("event-1").unwrap().unwrap().layout_revision, 2);
+        changed.lane = "culture".into();
+        assert!(matches!(
+            repo.save(&changed, Some(1)).unwrap(),
+            TimelineLayoutMutation::Conflict {
+                current_revision: 2,
+                ..
+            }
         ));
     }
     let db = Database::open(&path).unwrap();
@@ -104,7 +114,8 @@ fn timeline_layout_round_trips_and_requires_explicit_conflict_token() {
         .get("event-1")
         .unwrap()
         .unwrap();
-    assert_eq!(stored.lane, "politics");
+    assert_eq!(stored.lane, "religion");
+    assert_eq!(stored.layout_revision, 2);
     assert_eq!(stored.offset_y, 18.0);
     assert_eq!(stored.width, 320.0);
     assert_eq!(stored.style_json, serde_json::json!({"color":"ochre"}));
@@ -120,10 +131,45 @@ fn timeline_layout_rejects_non_finite_or_non_positive_geometry() {
     let repo = TimelineLayoutRepository::new(db.connection());
     let mut invalid = layout("events");
     invalid.offset_y = f64::INFINITY;
-    assert!(repo.save(&invalid, None).is_err());
+    assert!(matches!(
+        repo.save(&invalid, None),
+        Err(RepositoryError::Validation(_))
+    ));
     invalid.offset_y = 0.0;
     invalid.width = 0.0;
-    assert!(repo.save(&invalid, None).is_err());
+    assert!(matches!(
+        repo.save(&invalid, None),
+        Err(RepositoryError::Validation(_))
+    ));
+}
+
+#[test]
+fn timeline_repository_distinguishes_storage_and_corrupt_data_errors() {
+    let dir = tempdir().unwrap();
+    let db = Database::open(dir.path().join("timeline-errors.sqlite")).unwrap();
+    let repo = TimelineLayoutRepository::new(db.connection());
+    assert!(matches!(
+        repo.save(&layout("events"), None),
+        Err(RepositoryError::Storage(_))
+    ));
+
+    GraphNodeMetadataRepository::new(db.connection())
+        .save(&metadata(), None)
+        .unwrap();
+    repo.save(&layout("events"), None).unwrap();
+    db.connection()
+        .execute_batch("PRAGMA ignore_check_constraints=ON;")
+        .unwrap();
+    db.connection()
+        .execute(
+            "UPDATE timeline_layout SET style_json='[]' WHERE graph_node_id='event-1'",
+            [],
+        )
+        .unwrap();
+    assert!(matches!(
+        repo.get("event-1"),
+        Err(RepositoryError::CorruptData(_))
+    ));
 }
 
 #[test]
@@ -146,13 +192,8 @@ fn concurrent_timeline_creates_return_domain_results_without_overwriting() {
         std::thread::spawn(move || {
             let db = Database::open(path).unwrap();
             let candidate = layout(lane);
-            TimelineLayoutRepository::new(db.connection()).save_with_interlock(
-                &candidate,
-                None,
-                || {
-                    barrier.wait();
-                },
-            )
+            barrier.wait();
+            TimelineLayoutRepository::new(db.connection()).save(&candidate, None)
         })
     });
     let results = handles.map(|h| {
@@ -186,7 +227,7 @@ fn concurrent_timeline_creates_return_domain_results_without_overwriting() {
 fn concurrent_timeline_updates_return_one_update_and_one_conflict() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("timeline-update-race.sqlite");
-    let token = {
+    let revision = {
         let db = Database::open(&path).unwrap();
         db.connection()
             .execute_batch("PRAGMA journal_mode=WAL;")
@@ -196,23 +237,18 @@ fn concurrent_timeline_updates_return_one_update_and_one_conflict() {
             .unwrap();
         let repo = TimelineLayoutRepository::new(db.connection());
         repo.save(&layout("events"), None).unwrap();
-        repo.get("event-1").unwrap().unwrap().updated_at.unwrap()
+        repo.get("event-1").unwrap().unwrap().layout_revision
     };
     let barrier = Arc::new(Barrier::new(2));
     let handles = ["politics", "religion"].map(|lane| {
         let path = path.clone();
-        let token = token.clone();
+        let revision = revision;
         let barrier = barrier.clone();
         std::thread::spawn(move || {
             let db = Database::open(path).unwrap();
             let candidate = layout(lane);
-            TimelineLayoutRepository::new(db.connection()).save_with_interlock(
-                &candidate,
-                Some(&token),
-                || {
-                    barrier.wait();
-                },
-            )
+            barrier.wait();
+            TimelineLayoutRepository::new(db.connection()).save(&candidate, Some(revision))
         })
     });
     let results =

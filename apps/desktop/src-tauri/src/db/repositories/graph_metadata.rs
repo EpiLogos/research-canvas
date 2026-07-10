@@ -1,8 +1,9 @@
 use std::{error::Error, fmt::Display};
 
-use rusqlite::{types::Type, Connection, OptionalExtension, Result};
+use rusqlite::{types::Type, Connection, OptionalExtension, Result as SqlResult};
 use serde::{Deserialize, Serialize};
 
+use super::error::{RepositoryError, RepositoryResult};
 use super::graph::{
     validate_contract_revision, ClaimKind, ContentOrigin, EntityType, EvidenceStatus, Historicity,
     PlaceCoverage, QlArc, QlCompletenessStatus, QlForm, QlTopology, TemporalPrecision,
@@ -94,7 +95,7 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
         Self { connection }
     }
 
-    pub fn get(&self, graph_node_id: &str) -> Result<Option<GraphNodeMetadataRecord>> {
+    pub fn get(&self, graph_node_id: &str) -> RepositoryResult<Option<GraphNodeMetadataRecord>> {
         self.connection
             .query_row(
                 "SELECT graph_node_id, entity_type, title, archetypal_resonance, coordinate,
@@ -109,6 +110,7 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
                 record_from_row,
             )
             .optional()
+            .map_err(Into::into)
     }
 
     /// Optimistic, ownership-aware persistence. `expected_revision` is required
@@ -118,30 +120,13 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
         &self,
         incoming: &GraphNodeMetadataRecord,
         expected_revision: Option<i64>,
-    ) -> Result<GraphMetadataMutation> {
-        self.save_with_interlock(incoming, expected_revision, || {})
-    }
-
-    /// Deterministic concurrency seam used by file-backed integration tests.
-    /// The callback runs after the repository read and immediately before the
-    /// conditional write; production callers should use [`Self::save`].
-    #[doc(hidden)]
-    pub fn save_with_interlock<F>(
-        &self,
-        incoming: &GraphNodeMetadataRecord,
-        expected_revision: Option<i64>,
-        before_write: F,
-    ) -> Result<GraphMetadataMutation>
-    where
-        F: FnOnce(),
-    {
+    ) -> RepositoryResult<GraphMetadataMutation> {
         validate_record_versions(incoming)?;
         if let Some(expected_revision) = expected_revision {
             validate_contract_revision("expectedRevision", expected_revision)
-                .map_err(invalid_parameter)?;
+                .map_err(RepositoryError::Validation)?;
         }
         let Some(current) = self.get(&incoming.graph_node_id)? else {
-            before_write();
             if insert_record(self.connection, incoming)? {
                 return Ok(GraphMetadataMutation::Created);
             }
@@ -177,7 +162,6 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
                 reason: "expected revision does not match persisted revision".into(),
             });
         }
-        before_write();
         if update_record(self.connection, incoming, current.content_revision)? {
             return Ok(GraphMetadataMutation::Updated);
         }
@@ -192,11 +176,7 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
     }
 }
 
-fn invalid_parameter(message: impl Into<String>) -> rusqlite::Error {
-    rusqlite::Error::InvalidParameterName(message.into())
-}
-
-fn validate_record_versions(record: &GraphNodeMetadataRecord) -> Result<()> {
+fn validate_record_versions(record: &GraphNodeMetadataRecord) -> RepositoryResult<()> {
     for (name, value) in [
         ("contentRevision", Some(record.content_revision)),
         ("seedSchemaVersion", record.seed_schema_version),
@@ -205,18 +185,19 @@ fn validate_record_versions(record: &GraphNodeMetadataRecord) -> Result<()> {
         ("remoteRevision", record.remote_revision),
     ] {
         if let Some(value) = value {
-            validate_contract_revision(name, value).map_err(invalid_parameter)?;
+            validate_contract_revision(name, value).map_err(RepositoryError::Validation)?;
         }
     }
     Ok(())
 }
 
-fn json(values: &[String]) -> Result<String> {
-    serde_json::to_string(values)
-        .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))
+fn json(values: &[String]) -> RepositoryResult<String> {
+    serde_json::to_string(values).map_err(|error| RepositoryError::Validation(error.to_string()))
 }
 
-fn mutation_params(record: &GraphNodeMetadataRecord) -> Result<Vec<Box<dyn rusqlite::ToSql>>> {
+fn mutation_params(
+    record: &GraphNodeMetadataRecord,
+) -> RepositoryResult<Vec<Box<dyn rusqlite::ToSql>>> {
     Ok(vec![
         Box::new(record.graph_node_id.clone()),
         Box::new(record.entity_type.as_str()),
@@ -252,7 +233,10 @@ fn mutation_params(record: &GraphNodeMetadataRecord) -> Result<Vec<Box<dyn rusql
     ])
 }
 
-fn insert_record(connection: &Connection, record: &GraphNodeMetadataRecord) -> Result<bool> {
+fn insert_record(
+    connection: &Connection,
+    record: &GraphNodeMetadataRecord,
+) -> RepositoryResult<bool> {
     let values = mutation_params(record)?;
     let affected = connection.execute(
         "INSERT INTO graph_node_metadata (
@@ -273,7 +257,7 @@ fn update_record(
     connection: &Connection,
     record: &GraphNodeMetadataRecord,
     current_revision: i64,
-) -> Result<bool> {
+) -> RepositoryResult<bool> {
     let values = mutation_params(record)?;
     let affected = connection.execute(
         "UPDATE graph_node_metadata SET entity_type=?2, title=?3, archetypal_resonance=?4, coordinate=?5,
@@ -303,14 +287,14 @@ impl Display for DecodeMessage {
 }
 impl Error for DecodeMessage {}
 
-fn controlled<T>(row: &rusqlite::Row<'_>, index: usize) -> Result<T>
+fn controlled<T>(row: &rusqlite::Row<'_>, index: usize) -> SqlResult<T>
 where
     T: TryFrom<String, Error = String>,
 {
     let raw: String = row.get(index)?;
     T::try_from(raw).map_err(|e| decode_error(index, DecodeMessage(e)))
 }
-fn optional_controlled<T>(row: &rusqlite::Row<'_>, index: usize) -> Result<Option<T>>
+fn optional_controlled<T>(row: &rusqlite::Row<'_>, index: usize) -> SqlResult<Option<T>>
 where
     T: TryFrom<String, Error = String>,
 {
@@ -318,12 +302,12 @@ where
     raw.map(|v| T::try_from(v).map_err(|e| decode_error(index, DecodeMessage(e))))
         .transpose()
 }
-fn string_vec(row: &rusqlite::Row<'_>, index: usize) -> Result<Vec<String>> {
+fn string_vec(row: &rusqlite::Row<'_>, index: usize) -> SqlResult<Vec<String>> {
     let raw: String = row.get(index)?;
     serde_json::from_str(&raw).map_err(|e| decode_error(index, e))
 }
 
-fn record_from_row(row: &rusqlite::Row<'_>) -> Result<GraphNodeMetadataRecord> {
+fn record_from_row(row: &rusqlite::Row<'_>) -> SqlResult<GraphNodeMetadataRecord> {
     Ok(GraphNodeMetadataRecord {
         graph_node_id: row.get(0)?,
         entity_type: controlled(row, 1)?,

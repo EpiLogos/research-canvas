@@ -181,3 +181,132 @@ fn timeline_layout_foreign_key_is_enforced_and_cascades() {
         0
     );
 }
+
+#[test]
+fn graph_vector_json_and_timeline_style_shapes_are_enforced_by_sqlite() {
+    let (_dir, database) = open_temp_database();
+    let connection = database.connection();
+    let columns = [
+        "source_coordinates_json",
+        "evidence_tags_json",
+        "body_source_coordinates_json",
+        "ql_source_coordinates_json",
+    ];
+    for (column_index, column) in columns.iter().enumerate() {
+        for (value_index, invalid) in ["{}", "null", "42", "[\"valid\",7]"].iter().enumerate() {
+            let sql = format!(
+                "INSERT INTO graph_node_metadata(graph_node_id,entity_type,title,content_origin,content_revision,schema_version,sync_state,is_temporal,{column})
+                 VALUES (?1,'Event','Bad','seed',0,1,'pending',0,?2)"
+            );
+            let id = format!("bad-{column_index}-{value_index}");
+            assert!(
+                connection
+                    .execute(&sql, rusqlite::params![id, invalid])
+                    .is_err(),
+                "{column} rejected {invalid}"
+            );
+        }
+    }
+    connection.execute(
+        "INSERT INTO graph_node_metadata(graph_node_id,entity_type,title,content_origin,content_revision,schema_version,sync_state,is_temporal,
+         source_coordinates_json,evidence_tags_json,body_source_coordinates_json,ql_source_coordinates_json)
+         VALUES ('valid-arrays','Event','Valid','seed',0,1,'pending',0,'[]','[\"tag\"]','[\"body\"]','[]')", [],
+    ).unwrap();
+    for column in columns {
+        let sql = format!("UPDATE graph_node_metadata SET {column}='[\"valid\",false]' WHERE graph_node_id='valid-arrays'");
+        assert!(
+            connection.execute(&sql, []).is_err(),
+            "update trigger protects {column}"
+        );
+    }
+
+    connection.execute(
+        "INSERT INTO graph_node_metadata(graph_node_id,entity_type,title,content_origin,content_revision,schema_version,sync_state,is_temporal)
+         VALUES ('style-node','Event','Style','seed',0,1,'pending',0)", [],
+    ).unwrap();
+    for invalid in ["[]", "null", "\"red\"", "7"] {
+        let result = connection.execute(
+            "INSERT INTO timeline_layout(graph_node_id,lane,offset_y,width,height,style_json) VALUES ('style-node','events',0,300,140,?1)",
+            [invalid],
+        );
+        assert!(result.is_err());
+    }
+    connection.execute(
+        "INSERT INTO timeline_layout(graph_node_id,lane,offset_y,width,height,style_json) VALUES ('style-node','events',0,300,140,'{\"color\":\"red\"}')", [],
+    ).unwrap();
+}
+
+#[test]
+fn additive_migrations_expose_expected_schema_inventory() {
+    let (_dir, database) = open_temp_database();
+    let connection = database.connection();
+    for legacy in [
+        "projects",
+        "canvases",
+        "canvas_nodes",
+        "node_layout",
+        "node_document",
+    ] {
+        assert!(
+            table_exists(connection, legacy),
+            "legacy table {legacy} remains"
+        );
+    }
+    for (kind, name) in [
+        ("table", "graph_node_metadata"),
+        ("table", "timeline_layout"),
+        ("index", "idx_graph_node_metadata_temporal"),
+        ("index", "idx_timeline_layout_lane"),
+        ("trigger", "trg_graph_node_metadata_string_arrays_insert"),
+        ("trigger", "trg_graph_node_metadata_string_arrays_update"),
+    ] {
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_schema WHERE type=?1 AND name=?2",
+                    [kind, name],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1,
+            "{kind} {name}"
+        );
+    }
+    let timeline_sql: String = connection
+        .query_row(
+            "SELECT sql FROM sqlite_schema WHERE type='table' AND name='timeline_layout'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(timeline_sql.contains("layout_revision"));
+    assert!(!timeline_sql.contains("position_x"));
+}
+
+#[test]
+fn database_open_configures_file_wal_timeout_and_keeps_memory_databases_working() {
+    let (_dir, database) = open_temp_database();
+    assert_eq!(
+        database
+            .connection()
+            .query_row("PRAGMA journal_mode", [], |row| row.get::<_, String>(0))
+            .unwrap(),
+        "wal"
+    );
+    assert_eq!(
+        database
+            .connection()
+            .query_row("PRAGMA busy_timeout", [], |row| row.get::<_, i64>(0))
+            .unwrap(),
+        1000
+    );
+    let memory = Database::open(":memory:").unwrap();
+    assert_eq!(
+        memory
+            .connection()
+            .query_row("PRAGMA journal_mode", [], |row| row.get::<_, String>(0))
+            .unwrap(),
+        "memory"
+    );
+    assert!(table_exists(memory.connection(), "graph_node_metadata"));
+}

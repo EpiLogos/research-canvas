@@ -9,13 +9,13 @@ CREATE TABLE IF NOT EXISTS graph_node_metadata (
     title                      TEXT NOT NULL,
     archetypal_resonance       TEXT,
     coordinate                 TEXT,
-    source_coordinates_json    TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(source_coordinates_json)),
-    evidence_tags_json         TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(evidence_tags_json)),
+    source_coordinates_json    TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(source_coordinates_json) AND json_type(source_coordinates_json) = 'array'),
+    evidence_tags_json         TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(evidence_tags_json) AND json_type(evidence_tags_json) = 'array'),
     source_kind                TEXT,
     content_origin             TEXT NOT NULL CHECK (content_origin IN ('seed','corpus_compiled','user_authored','imported')),
     content_revision           INTEGER NOT NULL CHECK (content_revision BETWEEN 0 AND 9007199254740991),
     seed_schema_version        INTEGER CHECK (seed_schema_version BETWEEN 0 AND 9007199254740991),
-    body_source_coordinates_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(body_source_coordinates_json)),
+    body_source_coordinates_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(body_source_coordinates_json) AND json_type(body_source_coordinates_json) = 'array'),
     historicity                TEXT CHECK (historicity IS NULL OR historicity IN ('historical','mythic','literary','theoretical','mixed')),
     claim_kind                 TEXT CHECK (claim_kind IS NULL OR claim_kind IN ('fact','inference','interpretation','allegation','hypothesis','symbolic_parallel')),
     evidence_status            TEXT CHECK (evidence_status IS NULL OR evidence_status IN ('documented','well_evidenced_inference','interpretive','contested','alleged','unverified','disproven')),
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS graph_node_metadata (
     ql_arc                     TEXT CHECK (ql_arc IS NULL OR ql_arc IN ('day','night','braided','not_applicable')),
     ql_topology                TEXT CHECK (ql_topology IS NULL OR ql_topology IN ('torus','klein','lemniscatic','composite','unspecified')),
     ql_schema_version          INTEGER CHECK (ql_schema_version BETWEEN 0 AND 9007199254740991),
-    ql_source_coordinates_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(ql_source_coordinates_json)),
+    ql_source_coordinates_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(ql_source_coordinates_json) AND json_type(ql_source_coordinates_json) = 'array'),
     ql_completeness_status     TEXT CHECK (ql_completeness_status IS NULL OR ql_completeness_status IN ('complete','partial','incomplete','not_applicable')),
     is_temporal                INTEGER NOT NULL DEFAULT 0 CHECK (is_temporal IN (0,1)),
     valid_from                 TEXT,
@@ -41,3 +41,23 @@ CREATE TABLE IF NOT EXISTS graph_node_metadata (
 CREATE INDEX IF NOT EXISTS idx_graph_node_metadata_temporal ON graph_node_metadata(is_temporal, valid_from);
 CREATE INDEX IF NOT EXISTS idx_graph_node_metadata_entity_type ON graph_node_metadata(entity_type);
 CREATE INDEX IF NOT EXISTS idx_graph_node_metadata_sync_state ON graph_node_metadata(sync_state);
+
+CREATE TRIGGER IF NOT EXISTS trg_graph_node_metadata_string_arrays_insert
+BEFORE INSERT ON graph_node_metadata
+WHEN EXISTS (SELECT 1 FROM json_each(NEW.source_coordinates_json) WHERE type <> 'text')
+  OR EXISTS (SELECT 1 FROM json_each(NEW.evidence_tags_json) WHERE type <> 'text')
+  OR EXISTS (SELECT 1 FROM json_each(NEW.body_source_coordinates_json) WHERE type <> 'text')
+  OR EXISTS (SELECT 1 FROM json_each(NEW.ql_source_coordinates_json) WHERE type <> 'text')
+BEGIN
+  SELECT RAISE(ABORT, 'graph metadata vector JSON elements must be strings');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_graph_node_metadata_string_arrays_update
+BEFORE UPDATE OF source_coordinates_json, evidence_tags_json, body_source_coordinates_json, ql_source_coordinates_json ON graph_node_metadata
+WHEN EXISTS (SELECT 1 FROM json_each(NEW.source_coordinates_json) WHERE type <> 'text')
+  OR EXISTS (SELECT 1 FROM json_each(NEW.evidence_tags_json) WHERE type <> 'text')
+  OR EXISTS (SELECT 1 FROM json_each(NEW.body_source_coordinates_json) WHERE type <> 'text')
+  OR EXISTS (SELECT 1 FROM json_each(NEW.ql_source_coordinates_json) WHERE type <> 'text')
+BEGIN
+  SELECT RAISE(ABORT, 'graph metadata vector JSON elements must be strings');
+END;

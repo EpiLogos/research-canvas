@@ -2,6 +2,7 @@ pub mod agent_activity;
 pub mod annotations;
 pub mod canvas;
 pub mod constellations;
+pub mod error;
 pub mod graph;
 pub mod graph_metadata;
 pub mod layout;
@@ -18,6 +19,7 @@ pub use canvas::{
     CanvasSnapshotRecord,
 };
 pub use constellations::{Constellation, ConstellationRepository};
+pub use error::{RepositoryError, RepositoryResult};
 pub use graph::{
     ArchetypalLightingResult, GraphNode, GraphNodePatch, GraphRelationship, GraphRepository,
     LitInstance, NewGraphNode, OperatorSeed,

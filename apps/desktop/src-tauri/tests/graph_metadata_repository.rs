@@ -5,7 +5,8 @@ use research_canvas_desktop_lib::db::{
         QlCompletenessStatus, QlForm, QlTopology, TemporalPrecision, TemporalRole,
     },
     repositories::{
-        GraphMetadataMutation, GraphNodeMetadataRecord, GraphNodeMetadataRepository, SyncState,
+        GraphMetadataMutation, GraphNodeMetadataRecord, GraphNodeMetadataRepository,
+        RepositoryError, SyncState,
     },
 };
 use std::sync::{Arc, Barrier};
@@ -122,13 +123,18 @@ fn metadata_rejects_versions_outside_the_javascript_safe_integer_range() {
     let dir = tempdir().unwrap();
     let db = Database::open(dir.path().join("versions.sqlite")).unwrap();
     let repo = GraphNodeMetadataRepository::new(db.connection());
-    assert!(repo.save(&record(-1, ContentOrigin::Seed), None).is_err());
-    assert!(repo
-        .save(&record(9_007_199_254_740_992, ContentOrigin::Seed), None)
-        .is_err());
-    assert!(repo
-        .save(&record(1, ContentOrigin::Seed), Some(-1))
-        .is_err());
+    assert!(matches!(
+        repo.save(&record(-1, ContentOrigin::Seed), None),
+        Err(RepositoryError::Validation(_))
+    ));
+    assert!(matches!(
+        repo.save(&record(9_007_199_254_740_992, ContentOrigin::Seed), None),
+        Err(RepositoryError::Validation(_))
+    ));
+    assert!(matches!(
+        repo.save(&record(1, ContentOrigin::Seed), Some(-1)),
+        Err(RepositoryError::Validation(_))
+    ));
 }
 
 #[test]
@@ -149,13 +155,8 @@ fn concurrent_metadata_creates_and_updates_return_domain_conflicts_without_overw
             let db = Database::open(path).unwrap();
             let mut candidate = record(1, ContentOrigin::CorpusCompiled);
             candidate.title = title.into();
-            GraphNodeMetadataRepository::new(db.connection()).save_with_interlock(
-                &candidate,
-                None,
-                || {
-                    barrier.wait();
-                },
-            )
+            barrier.wait();
+            GraphNodeMetadataRepository::new(db.connection()).save(&candidate, None)
         })
     });
     let results = handles.map(|handle| {
@@ -187,13 +188,8 @@ fn concurrent_metadata_creates_and_updates_return_domain_conflicts_without_overw
             let db = Database::open(path).unwrap();
             let mut candidate = record(2, ContentOrigin::CorpusCompiled);
             candidate.title = title.into();
-            GraphNodeMetadataRepository::new(db.connection()).save_with_interlock(
-                &candidate,
-                Some(1),
-                || {
-                    barrier.wait();
-                },
-            )
+            barrier.wait();
+            GraphNodeMetadataRepository::new(db.connection()).save(&candidate, Some(1))
         })
     });
     let results =
@@ -219,4 +215,42 @@ fn concurrent_metadata_creates_and_updates_return_domain_conflicts_without_overw
         .unwrap();
     assert_eq!(stored.content_revision, 2);
     assert!(stored.title == "Update A" || stored.title == "Update B");
+}
+
+#[test]
+fn held_write_lock_returns_typed_busy_not_semantic_conflict() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("busy.sqlite");
+    let writer = Database::open(&path).unwrap();
+    let contender = Database::open(&path).unwrap();
+    writer
+        .connection()
+        .execute_batch("BEGIN IMMEDIATE;")
+        .unwrap();
+    let result = GraphNodeMetadataRepository::new(contender.connection())
+        .save(&record(1, ContentOrigin::CorpusCompiled), None);
+    writer.connection().execute_batch("ROLLBACK;").unwrap();
+    assert!(matches!(result, Err(RepositoryError::Busy)));
+}
+
+#[test]
+fn malformed_persisted_json_returns_typed_corrupt_data() {
+    let dir = tempdir().unwrap();
+    let db = Database::open(dir.path().join("corrupt.sqlite")).unwrap();
+    let repo = GraphNodeMetadataRepository::new(db.connection());
+    repo.save(&record(1, ContentOrigin::CorpusCompiled), None)
+        .unwrap();
+    db.connection()
+        .execute_batch("PRAGMA ignore_check_constraints=ON;")
+        .unwrap();
+    db.connection()
+        .execute(
+            "UPDATE graph_node_metadata SET source_coordinates_json='{}' WHERE graph_node_id='event-1'",
+            [],
+        )
+        .unwrap();
+    assert!(matches!(
+        repo.get("event-1"),
+        Err(RepositoryError::CorruptData(_))
+    ));
 }
