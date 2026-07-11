@@ -1016,7 +1016,7 @@ impl GraphRepository {
                 if input.content_revision <= revision {
                     return Err("contentRevision must advance beyond expectedRemoteRevision".into());
                 }
-                "toInteger(n.content_revision) = $expected_revision AND n.content_origin = $expected_origin"
+                "toString(n.content_revision) = $expected_revision AND n.content_origin = $expected_origin"
             }
             (None, None, true) => {
                 "n.content_revision IS NULL AND n.content_origin IS NULL"

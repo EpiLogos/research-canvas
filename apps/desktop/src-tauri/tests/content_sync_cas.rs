@@ -283,3 +283,33 @@ fn legacy_null_remote_cas_requires_an_explicit_all_null_boundary() {
     ));
     support::block_on(repo.delete_node(&id)).unwrap();
 }
+
+#[test]
+fn content_cas_matches_legacy_integer_revision_against_string_bound_expected_revision() {
+    let (graph, run_id, database) = support::neo4j_test_graph();
+    let repo = GraphRepository::new(graph.clone(), database.clone());
+    support::block_on(repo.ensure_schema()).unwrap();
+    let id = format!("{run_id}:legacy-integer-revision");
+    support::block_on(graph.run_on(
+        &database,
+        query("CREATE (:TheoryNode:Work {graph_node_id:$id,title:'Legacy integer',body:'remote7',summary:'remote7 face',content_origin:'imported',content_revision:7,source_coordinates:[],evidence_tags:[],body_source_coordinates:['source.md#body'],ql_source_coordinates:[],is_temporal:false,created_at:'now',updated_at:'now'})")
+            .param("id", id.clone()),
+    )).unwrap();
+
+    assert_eq!(
+        support::block_on(repo.compare_and_swap_content(&cas(
+            &id,
+            7,
+            ContentOrigin::Imported,
+            "local8",
+            8,
+        )))
+        .unwrap(),
+        GraphContentCasMutation::Updated
+    );
+    let updated = support::block_on(repo.get_node(&id)).unwrap().unwrap();
+    assert_eq!(updated.body, "local8");
+    assert_eq!(updated.content_revision, Some(8));
+    assert_eq!(updated.content_origin, Some(ContentOrigin::UserAuthored));
+    support::block_on(repo.delete_node(&id)).unwrap();
+}
