@@ -56,6 +56,8 @@ pub struct CreateGraphNodeRequest {
     pub title: String,
     pub body: String,
     #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
     pub coordinate: Option<String>,
     #[serde(default)]
     pub source_coordinates: Vec<String>,
@@ -278,6 +280,14 @@ pub async fn read_graph_node_command(
 }
 
 #[tauri::command]
+pub async fn find_graph_node_command(
+    request: ReadGraphNodeRequest,
+    graph_state: tauri::State<'_, SharedGraphState>,
+) -> Result<Option<GraphNode>, String> {
+    repo(&graph_state).get_node(&request.graph_node_id).await
+}
+
+#[tauri::command]
 pub async fn create_graph_node_command(
     request: CreateGraphNodeRequest,
     graph_state: tauri::State<'_, SharedGraphState>,
@@ -299,6 +309,7 @@ pub async fn create_graph_node_command(
                     .map(|value| value.as_str().to_string()),
             },
             NewGraphNodeMetadata {
+                summary: request.summary,
                 evidence_tags: request.evidence_tags,
                 source_kind: request.source_kind,
                 content_origin: request.content_origin,

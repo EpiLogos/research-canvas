@@ -23,7 +23,11 @@ import {
   type ContentLinkingActions,
 } from "@research-canvas/canvas";
 import { buildNewGraphNodeInput, createPreparedNoteNode } from "./nodeCreation";
-import { retryPendingGraphNodeSyncs } from "./pendingGraphNodeSync";
+import {
+  rehydratePendingGraphNodeSyncs,
+  retryPendingGraphNodeSyncs,
+  startDurablePendingGraphNodeSyncRetryInterval,
+} from "./pendingGraphNodeSync";
 import { canvasViewToCanvasNodes } from "./canvasViewToNodes";
 import { selectLegacyNodesNeedingImport, importLegacyCanvasNodes } from "./legacyNodeImport";
 import type { CanvasNode, CanvasEdge, Viewport } from "@research-canvas/schema";
@@ -314,6 +318,16 @@ export function CanvasWorkspaceProvider({
         );
         setErrorMessage(null);
         setIsHydrated(true);
+        void rehydratePendingGraphNodeSyncs(databasePath, {
+          listPendingNodeDocumentSyncs: (input) => transport.listPendingNodeDocumentSyncs(input),
+          createGraphNode: (input) => transport.createGraphNode(input),
+          findGraphNode: (input) => transport.findGraphNode(input),
+          readLocalNodeDocument: (input) => transport.readLocalNodeDocument(input),
+          compareAndSwapGraphNodeContent: (input) => transport.compareAndSwapGraphNodeContent(input),
+          acknowledgeLocalNodeDocumentSync: (input) => transport.acknowledgeLocalNodeDocumentSync(input),
+        }).catch((error) => {
+          console.warn("durable pending node sync hydration failed; rows remain pending", error);
+        });
         if (isTauriRuntime()) {
           invoke("activate_canvas_command", { canvasId: primaryCanvasId }).catch(() => {});
         }
@@ -476,7 +490,13 @@ export function CanvasWorkspaceProvider({
       stores.store.getState().hydrate({ nodes, edges });
       // A successful transport round-trip is a good signal Neo4j is
       // reachable again — opportunistically retry anything pending.
-      void retryPendingGraphNodeSyncs((input) => transport.createGraphNode(input));
+      void retryPendingGraphNodeSyncs({
+        createGraphNode: (input) => transport.createGraphNode(input),
+        findGraphNode: (input) => transport.findGraphNode(input),
+        readLocalNodeDocument: (input) => transport.readLocalNodeDocument(input),
+        compareAndSwapGraphNodeContent: (input) => transport.compareAndSwapGraphNodeContent(input),
+        acknowledgeLocalNodeDocumentSync: (input) => transport.acknowledgeLocalNodeDocumentSync(input),
+      });
     } catch (error) {
       console.error("refreshCanvas: loadCanvasView failed", error);
       setErrorMessage(error instanceof Error ? error.message : "failed to refresh canvas");
@@ -502,16 +522,21 @@ export function CanvasWorkspaceProvider({
     };
   }, [refreshCanvas]);
 
-  // Reconnect/retry: nodes created while Neo4j was unreachable are recorded
-  // as "pending sync" (pendingGraphNodeSync.ts). Re-attempt them on a modest
-  // interval — simple and best-effort, never blocking the UI. A node that
-  // syncs successfully is cleared from the pending set by the helper itself.
+  // Reconnect/retry: rescan SQLite, rather than only the process-local map, so
+  // ordinary document saves made while Neo4j was unavailable are discovered
+  // without an app restart. Reconciliation remains single-flight and never
+  // blocks the UI.
   useEffect(() => {
-    const intervalId = setInterval(() => {
-      void retryPendingGraphNodeSyncs((input) => transport.createGraphNode(input));
-    }, 15_000);
-    return () => clearInterval(intervalId);
-  }, [transport]);
+    if (!databasePath) return;
+    return startDurablePendingGraphNodeSyncRetryInterval(databasePath, {
+      listPendingNodeDocumentSyncs: (input) => transport.listPendingNodeDocumentSyncs(input),
+      createGraphNode: (input) => transport.createGraphNode(input),
+      findGraphNode: (input) => transport.findGraphNode(input),
+      readLocalNodeDocument: (input) => transport.readLocalNodeDocument(input),
+      compareAndSwapGraphNodeContent: (input) => transport.compareAndSwapGraphNodeContent(input),
+      acknowledgeLocalNodeDocumentSync: (input) => transport.acknowledgeLocalNodeDocumentSync(input),
+    });
+  }, [databasePath, transport]);
 
   const flushActiveCanvas = useCallback(async () => {
     if (!databasePath || !activeConstellation) {
@@ -673,6 +698,8 @@ export function CanvasWorkspaceProvider({
             transport.createGraphNode(
               input as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string }
             ),
+          acknowledgeLocalNodeDocumentSync: (input) =>
+            transport.acknowledgeLocalNodeDocumentSync(input),
         });
       },
       async createGroupNode(position) {

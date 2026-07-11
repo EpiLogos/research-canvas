@@ -47,6 +47,16 @@ export interface LocalNodeDocumentWriteResult {
   document: LocalNodeDocument | null;
 }
 
+export type PendingNodeStructure = Omit<
+  NewGraphNodeInput,
+  "body" | "summary" | "contentOrigin" | "contentRevision" | "bodySourceCoordinates"
+> & { graphNodeId: string };
+
+export interface PendingNodeDocumentSync {
+  document: LocalNodeDocument;
+  structure: PendingNodeStructure;
+}
+
 export interface LocalNodeDocumentInput {
   databasePath: string;
   graphNodeId: string;
@@ -480,6 +490,7 @@ export interface WorkspaceTransport {
 
   // ---- Substance (Neo4j) ----
   readGraphNode(input: { graphNodeId: string }): Promise<GraphNode>;
+  findGraphNode(input: { graphNodeId: string }): Promise<GraphNode | null>;
   createGraphNode(input: NewGraphNodeInput): Promise<GraphNode>;
   updateGraphNode(input: { graphNodeId: string; patch: GraphNodePatch }): Promise<GraphNode>;
   compareAndSwapGraphNodeContent(input: GraphContentCasInput): Promise<GraphContentCasMutation>;
@@ -526,6 +537,9 @@ export interface WorkspaceTransport {
     databasePath: string;
     graphNodeId: string;
   }): Promise<LocalNodeDocument | null>;
+  listPendingNodeDocumentSyncs(input: {
+    databasePath: string;
+  }): Promise<PendingNodeDocumentSync[]>;
   upsertLocalNodeDocument(input: LocalNodeDocumentInput): Promise<LocalNodeDocumentWriteResult>;
   acknowledgeLocalNodeDocumentSync(input: {
     databasePath: string;
@@ -663,6 +677,9 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async readGraphNode(input) {
       return invokeTauri<GraphNode>("read_graph_node_command", { request: input });
     },
+    async findGraphNode(input) {
+      return invokeTauri<GraphNode | null>("find_graph_node_command", { request: input });
+    },
     async createGraphNode(input) {
       return invokeTauri<GraphNode>("create_graph_node_command", { request: input });
     },
@@ -723,6 +740,12 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async readLocalNodeDocument(input) {
       return invokeTauri<LocalNodeDocument | null>(
         "read_local_node_document_command",
+        { request: input }
+      );
+    },
+    async listPendingNodeDocumentSyncs(input) {
+      return invokeTauri<PendingNodeDocumentSync[]>(
+        "list_pending_node_document_syncs_command",
         { request: input }
       );
     },
@@ -840,6 +863,7 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
         `/graph/node/${encodeURIComponent(input.graphNodeId)}`,
       );
     },
+    async findGraphNode() { throw new Error("read-only web build"); },
     async searchGraph(input) {
       const params = new URLSearchParams({ query: input.query });
       if (input.limit != null) params.set("limit", String(input.limit));
@@ -878,6 +902,7 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       return rows.map(mapAgentActivityRow);
     },
     async readLocalNodeDocument() { throw new Error("read-only web build"); },
+    async listPendingNodeDocumentSyncs() { throw new Error("read-only web build"); },
     async upsertLocalNodeDocument() { throw new Error("read-only web build"); },
     async acknowledgeLocalNodeDocumentSync() { throw new Error("read-only web build"); },
   };
@@ -1178,6 +1203,9 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
       }
       return node;
     },
+    async findGraphNode({ graphNodeId }) {
+      return nodeById.get(graphNodeId) ?? null;
+    },
     async searchGraph({ query, limit }) {
       const needle = query.trim().toLowerCase();
       if (needle === "") {
@@ -1267,6 +1295,7 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
 
     // ---- local node document: local-only SQLite store, not part of the static bundle ----
     readLocalNodeDocument: readOnlyReject,
+    listPendingNodeDocumentSyncs: readOnlyReject,
     upsertLocalNodeDocument: readOnlyReject,
     acknowledgeLocalNodeDocumentSync: readOnlyReject
   };

@@ -1,9 +1,14 @@
 use rusqlite::{params, types::Type, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 use super::{
     error::{RepositoryError, RepositoryResult},
-    graph::{validate_contract_revision, ContentOrigin},
+    graph::{
+        validate_contract_revision, ClaimKind, ContentOrigin, EntityType, EvidenceStatus,
+        Historicity, PlaceCoverage, QlArc, QlCompletenessStatus, QlForm, QlTopology,
+        TemporalPrecision, TemporalRole,
+    },
 };
 use crate::db::transaction::TransactionGuard;
 
@@ -39,6 +44,42 @@ pub struct DocumentMetadataProjection {
     pub entity_type: String,
     pub title: String,
     pub schema_version: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingNodeStructure {
+    pub graph_node_id: String,
+    pub entity_type: EntityType,
+    pub title: String,
+    pub coordinate: Option<String>,
+    pub source_coordinates: Vec<String>,
+    pub evidence_tags: Vec<String>,
+    pub source_kind: Option<String>,
+    pub seed_schema_version: Option<i64>,
+    pub historicity: Option<Historicity>,
+    pub claim_kind: Option<ClaimKind>,
+    pub evidence_status: Option<EvidenceStatus>,
+    pub temporal_role: Option<TemporalRole>,
+    pub place_coverage: Option<PlaceCoverage>,
+    pub ql_form: Option<QlForm>,
+    pub ql_unit_id: Option<String>,
+    pub ql_arc: Option<QlArc>,
+    pub ql_topology: Option<QlTopology>,
+    pub ql_schema_version: Option<i64>,
+    pub ql_source_coordinates: Vec<String>,
+    pub ql_completeness_status: Option<QlCompletenessStatus>,
+    pub is_temporal: bool,
+    pub valid_from: Option<String>,
+    pub valid_to: Option<String>,
+    pub temporal_precision: Option<TemporalPrecision>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingNodeDocumentSync {
+    pub document: LocalNodeDocument,
+    pub structure: PendingNodeStructure,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -106,6 +147,29 @@ impl<'conn> NodeDocumentRepository<'conn> {
             .map_err(Into::into)
     }
 
+    /// Returns every durable local document still awaiting Neo4j sync. A
+    /// pending document without an exact structural projection is corruption:
+    /// callers must never recreate it from a downgraded guessed node shape.
+    pub fn list_pending_syncs(&self) -> RepositoryResult<Vec<PendingNodeDocumentSync>> {
+        let mut statement = self.connection.prepare(
+            "SELECT d.graph_node_id,d.body,d.summary,d.neo4j_synced,d.content_origin,
+                    d.content_revision,d.body_source_coordinates_json,
+                    m.entity_type,m.title,m.coordinate,m.source_coordinates_json,
+                    m.evidence_tags_json,m.source_kind,m.seed_schema_version,m.historicity,
+                    m.claim_kind,m.evidence_status,m.temporal_role,m.place_coverage,m.ql_form,
+                    m.ql_unit_id,m.ql_arc,m.ql_topology,m.ql_schema_version,
+                    m.ql_source_coordinates_json,m.ql_completeness_status,m.is_temporal,
+                    m.valid_from,m.valid_to,m.temporal_precision,m.sync_state,
+                    m.content_origin,m.content_revision,m.body_source_coordinates_json
+             FROM node_document d
+             LEFT JOIN graph_node_metadata m ON m.graph_node_id=d.graph_node_id
+             WHERE d.neo4j_synced=0 OR m.sync_state='pending'
+             ORDER BY d.graph_node_id",
+        )?;
+        let rows = statement.query_map([], pending_sync_from_row)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
     /// Compatibility boundary for old call sites. It is deliberately a user
     /// edit, never seed content. Existing callers should migrate to
     /// `apply_user_edit` so stale writes can be rejected explicitly.
@@ -156,6 +220,7 @@ impl<'conn> NodeDocumentRepository<'conn> {
         &self,
         items: &[DocumentReconciliationItem],
     ) -> RepositoryResult<Vec<ReconciliationDecision>> {
+        validate_unique_bulk_ids(items)?;
         items
             .iter()
             .map(|item| {
@@ -221,12 +286,35 @@ impl<'conn> NodeDocumentRepository<'conn> {
         if projection.is_none() && matches!(decision, NodeDocumentMutation::Preserved) {
             return Ok(decision);
         }
+        self.apply_reconciliation_with_projection_after_plan(
+            incoming,
+            expected_revision,
+            projection,
+        )
+    }
+
+    fn apply_reconciliation_with_projection_after_plan(
+        &self,
+        incoming: &DocumentContentInput,
+        expected_revision: Option<i64>,
+        projection: Option<&DocumentMetadataProjection>,
+    ) -> RepositoryResult<NodeDocumentMutation> {
         let transaction = TransactionGuard::begin(self.connection)?;
         let fresh = self.get_node_document(&incoming.graph_node_id)?;
         let fresh_decision = plan(fresh.as_ref(), incoming, expected_revision);
+        if matches!(fresh_decision, NodeDocumentMutation::Conflict { .. }) {
+            return Ok(fresh_decision);
+        }
         self.apply_planned_without_transaction(incoming, expected_revision, &fresh_decision)?;
         if let Some(projection) = projection {
-            self.ensure_metadata_projection(incoming, projection)?;
+            let accepted_document = self
+                .get_node_document(&incoming.graph_node_id)?
+                .ok_or_else(|| {
+                    RepositoryError::CorruptData(
+                        "accepted reconciliation has no persisted document".into(),
+                    )
+                })?;
+            self.ensure_metadata_projection(&accepted_document, projection)?;
         }
         transaction.commit()?;
         Ok(fresh_decision)
@@ -234,7 +322,7 @@ impl<'conn> NodeDocumentRepository<'conn> {
 
     fn ensure_metadata_projection(
         &self,
-        document: &DocumentContentInput,
+        document: &LocalNodeDocument,
         projection: &DocumentMetadataProjection,
     ) -> RepositoryResult<()> {
         super::graph::EntityType::try_from(projection.entity_type.clone())
@@ -502,6 +590,19 @@ impl<'conn> NodeDocumentRepository<'conn> {
     }
 }
 
+fn validate_unique_bulk_ids(items: &[DocumentReconciliationItem]) -> RepositoryResult<()> {
+    let mut seen = HashSet::with_capacity(items.len());
+    for item in items {
+        if !seen.insert(item.document.graph_node_id.as_str()) {
+            return Err(RepositoryError::Validation(format!(
+                "duplicate graph node id {} in reconciliation batch",
+                item.document.graph_node_id
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn plan(
     current: Option<&LocalNodeDocument>,
     incoming: &DocumentContentInput,
@@ -611,4 +712,152 @@ fn node_document_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<LocalNode
         content_revision: row.get(5)?,
         body_source_coordinates,
     })
+}
+
+fn pending_sync_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PendingNodeDocumentSync> {
+    let document = node_document_from_row(row)?;
+    let metadata_origin: String = row.get(31)?;
+    let metadata_revision: i64 = row.get(32)?;
+    let metadata_body_sources: Vec<String> = string_vec(row, 33)?;
+    let sync_state: String = row.get(30)?;
+    if metadata_origin != document.content_origin.as_str()
+        || metadata_revision != document.content_revision
+        || metadata_body_sources != document.body_source_coordinates
+        || !matches!(sync_state.as_str(), "pending" | "synced")
+    {
+        return Err(conversion_error(
+            30,
+            "pending node document and graph metadata projection are not coherent",
+        ));
+    }
+    Ok(PendingNodeDocumentSync {
+        structure: PendingNodeStructure {
+            graph_node_id: document.graph_node_id.clone(),
+            entity_type: enum_value(row, 7)?,
+            title: row.get(8)?,
+            coordinate: row.get(9)?,
+            source_coordinates: string_vec(row, 10)?,
+            evidence_tags: string_vec(row, 11)?,
+            source_kind: row.get(12)?,
+            seed_schema_version: row.get(13)?,
+            historicity: optional_enum_value(row, 14)?,
+            claim_kind: optional_enum_value(row, 15)?,
+            evidence_status: optional_enum_value(row, 16)?,
+            temporal_role: optional_enum_value(row, 17)?,
+            place_coverage: optional_enum_value(row, 18)?,
+            ql_form: optional_enum_value(row, 19)?,
+            ql_unit_id: row.get(20)?,
+            ql_arc: optional_enum_value(row, 21)?,
+            ql_topology: optional_enum_value(row, 22)?,
+            ql_schema_version: row.get(23)?,
+            ql_source_coordinates: string_vec(row, 24)?,
+            ql_completeness_status: optional_enum_value(row, 25)?,
+            is_temporal: row.get::<_, i64>(26)? != 0,
+            valid_from: row.get(27)?,
+            valid_to: row.get(28)?,
+            temporal_precision: optional_enum_value(row, 29)?,
+        },
+        document,
+    })
+}
+
+fn string_vec(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<Vec<String>> {
+    let raw: String = row.get(index)?;
+    serde_json::from_str(&raw).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(index, Type::Text, Box::new(error))
+    })
+}
+
+fn enum_value<T>(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<T>
+where
+    T: TryFrom<String, Error = String>,
+{
+    let raw: String = row.get(index)?;
+    T::try_from(raw).map_err(|error| conversion_error(index, &error))
+}
+
+fn optional_enum_value<T>(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<Option<T>>
+where
+    T: TryFrom<String, Error = String>,
+{
+    row.get::<_, Option<String>>(index)?
+        .map(|raw| T::try_from(raw).map_err(|error| conversion_error(index, &error)))
+        .transpose()
+}
+
+fn conversion_error(index: usize, message: &str) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(
+        index,
+        Type::Text,
+        Box::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            message.to_string(),
+        )),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::connection::Database;
+
+    fn input(
+        graph_node_id: &str,
+        body: &str,
+        content_origin: ContentOrigin,
+        content_revision: i64,
+    ) -> DocumentContentInput {
+        DocumentContentInput {
+            graph_node_id: graph_node_id.into(),
+            body: body.into(),
+            summary: format!("{body} face"),
+            content_origin,
+            content_revision,
+            body_source_coordinates: vec![format!("{body}.md#source")],
+            neo4j_synced: false,
+        }
+    }
+
+    #[test]
+    fn transaction_time_conflict_after_initial_plan_creates_no_stale_projection() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("fresh-conflict.db");
+        let db = Database::open(path.to_str().unwrap()).expect("open db");
+        let repo = NodeDocumentRepository::new(db.connection());
+        repo.apply_reconciliation(&input("raced", "seed-v1", ContentOrigin::Seed, 1), None)
+            .unwrap();
+        let incoming = input("raced", "seed-v2", ContentOrigin::Seed, 2);
+        assert_eq!(
+            repo.plan_reconciliation(&incoming, Some(1)).unwrap(),
+            NodeDocumentMutation::Updated
+        );
+
+        repo.apply_user_edit("raced", "authored", "authored face", 1)
+            .unwrap();
+        let mutation = repo
+            .apply_reconciliation_with_projection_after_plan(
+                &incoming,
+                Some(1),
+                Some(&DocumentMetadataProjection {
+                    entity_type: "Work".into(),
+                    title: "Raced note".into(),
+                    schema_version: 1,
+                }),
+            )
+            .unwrap();
+
+        assert!(matches!(mutation, NodeDocumentMutation::Conflict { .. }));
+        let stored = repo.get_node_document("raced").unwrap().unwrap();
+        assert_eq!(stored.body, "authored");
+        assert_eq!(stored.content_origin, ContentOrigin::UserAuthored);
+        let projection_count: i64 = db
+            .connection()
+            .query_row(
+                "SELECT count(*) FROM graph_node_metadata WHERE graph_node_id='raced'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(projection_count, 0);
+    }
 }

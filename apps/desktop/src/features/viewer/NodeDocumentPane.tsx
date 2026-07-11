@@ -6,41 +6,37 @@ import {
   type NodeDocumentStore,
 } from "@research-canvas/node-document";
 import { BlockNoteDocument } from "@research-canvas/viewers";
-import type { ContentOrigin, GraphNode } from "@research-canvas/desktop-api";
+import type {
+  ContentOrigin,
+  GraphContentCasInput,
+  GraphContentCasMutation,
+  GraphNode,
+  LocalNodeDocumentInput,
+  LocalNodeDocumentWriteResult,
+  SyncAcknowledgementMutation,
+} from "@research-canvas/desktop-api";
 
 interface NodeDocumentTransport {
   readGraphNode(input: { graphNodeId: string }): Promise<GraphNode>;
-  compareAndSwapGraphNodeContent?(input: {
-    graphNodeId: string;
-    expectedRemoteRevision: number | null;
-    expectedRemoteOrigin: ContentOrigin | null;
-    body: string;
-    summary: string;
-    contentOrigin: ContentOrigin;
-    contentRevision: number;
-    bodySourceCoordinates: string[];
-  }): Promise<{ kind: string; reason?: string }>;
+  compareAndSwapGraphNodeContent?(input: GraphContentCasInput): Promise<GraphContentCasMutation>;
   readLocalNodeDocument(input: {
     databasePath: string;
     graphNodeId: string;
-  }): Promise<{ body: string; summary: string; neo4jSynced: boolean; contentOrigin?: ContentOrigin; contentRevision?: number; bodySourceCoordinates?: string[] } | null>;
-  upsertLocalNodeDocument(input: {
-    databasePath: string;
-    graphNodeId: string;
+  }): Promise<{
     body: string;
     summary: string;
-    neo4jSynced?: boolean;
-    contentOrigin?: "user_authored" | "seed" | "corpus_compiled" | "imported";
+    neo4jSynced: boolean;
+    contentOrigin?: ContentOrigin;
     contentRevision?: number;
-    expectedRevision?: number;
     bodySourceCoordinates?: string[];
-  }): Promise<unknown>;
+  } | null>;
+  upsertLocalNodeDocument(input: LocalNodeDocumentInput): Promise<LocalNodeDocumentWriteResult>;
   acknowledgeLocalNodeDocumentSync?(input: {
     databasePath: string;
     graphNodeId: string;
     expectedRevision: number;
     expectedOrigin: ContentOrigin;
-  }): Promise<{ kind: string; reason?: string }>;
+  }): Promise<SyncAcknowledgementMutation>;
 }
 
 interface NodeDocumentPaneProps {
@@ -65,23 +61,6 @@ interface NodeDocumentPaneProps {
 
 class ContentSyncConflictError extends Error {}
 
-/** True when the BlockNote body JSON has no visible text content. */
-function isEmptyBody(body: string): boolean {
-  if (!body) {
-    return true;
-  }
-  try {
-    const parsed = JSON.parse(body) as unknown;
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      return true;
-    }
-    const hasText = JSON.stringify(parsed).includes('"text"');
-    return !hasText;
-  } catch {
-    return body.trim().length === 0;
-  }
-}
-
 export function NodeDocumentPane({
   graphNodeId,
   transport,
@@ -100,10 +79,15 @@ export function NodeDocumentPane({
   databasePathRef.current = databasePath;
   const contentRevisionRef = useRef<number | null>(null);
   const contentOriginRef = useRef<ContentOrigin | null>(null);
+  const remoteRevisionRef = useRef<number | null>(null);
+  const remoteOriginRef = useRef<ContentOrigin | null>(null);
   const bodySourcesRef = useRef<string[]>([]);
+  const effectGenerationRef = useRef(0);
 
   useEffect(() => {
+    const generation = ++effectGenerationRef.current;
     let cancelled = false;
+    const isCurrentGeneration = () => !cancelled && effectGenerationRef.current === generation;
     setStore(null);
     setStatusNote(null);
     setLocalAuthorityAvailable(databasePath !== null);
@@ -123,7 +107,9 @@ export function NodeDocumentPane({
       // Authoritative local write, FIRST. A failure here IS a real save
       // failure and must propagate so the doc store surfaces status="error".
       const expectedRevision = contentRevisionRef.current;
-      const expectedOrigin = contentOriginRef.current;
+      const expectedRemoteRevision = remoteRevisionRef.current;
+      const expectedRemoteOrigin = remoteOriginRef.current;
+      const bodySourceCoordinates = [...bodySourcesRef.current];
       const contentRevision = expectedRevision === null ? 0 : expectedRevision + 1;
       const localResult = await transportRef.current.upsertLocalNodeDocument({
         databasePath: dbPath,
@@ -134,7 +120,7 @@ export function NodeDocumentPane({
         contentOrigin: "user_authored",
         contentRevision,
         ...(expectedRevision === null ? {} : { expectedRevision }),
-        bodySourceCoordinates: bodySourcesRef.current,
+        bodySourceCoordinates,
       });
       const mutation = (localResult as { mutation?: { kind?: string; reason?: string } } | undefined)?.mutation;
       if (mutation?.kind === "conflict") {
@@ -142,13 +128,15 @@ export function NodeDocumentPane({
       }
       const returnedRevision = (localResult as { document?: { contentRevision?: number } | null } | undefined)
         ?.document?.contentRevision;
-      contentRevisionRef.current = returnedRevision ?? contentRevision;
-      contentOriginRef.current = "user_authored";
+      if (isCurrentGeneration()) {
+        contentRevisionRef.current = returnedRevision ?? contentRevision;
+        contentOriginRef.current = "user_authored";
+      }
 
       // Best-effort Neo4j sync, AFTER the local write succeeded. Never blocks
       // and never surfaces a blocking error — only a subtle status note.
       try {
-        if (expectedRevision === null || expectedOrigin === null) {
+        if (expectedRemoteRevision === null || expectedRemoteOrigin === null) {
           throw new Error("remote content baseline unavailable; local edit remains pending");
         }
         const compareAndSwap = transportRef.current.compareAndSwapGraphNodeContent;
@@ -157,16 +145,22 @@ export function NodeDocumentPane({
         }
         const remote = await compareAndSwap({
           graphNodeId,
-          expectedRemoteRevision: expectedRevision,
-          expectedRemoteOrigin: expectedOrigin,
+          expectedRemoteRevision,
+          expectedRemoteOrigin,
           body,
           summary,
           contentOrigin: "user_authored",
           contentRevision,
-          bodySourceCoordinates: bodySourcesRef.current,
+          bodySourceCoordinates,
         });
         if (remote.kind !== "updated") {
-          throw new ContentSyncConflictError(remote.reason ?? `remote content sync ${remote.kind}`);
+          throw new ContentSyncConflictError(
+            remote.kind === "conflict" ? remote.reason : `remote content sync ${remote.kind}`
+          );
+        }
+        if (isCurrentGeneration()) {
+          remoteRevisionRef.current = contentRevision;
+          remoteOriginRef.current = "user_authored";
         }
         const acknowledge = transportRef.current.acknowledgeLocalNodeDocumentSync;
         if (!acknowledge) {
@@ -179,15 +173,19 @@ export function NodeDocumentPane({
           expectedOrigin: "user_authored",
         });
         if (!["updated", "preserved"].includes(acknowledgement.kind)) {
-          throw new ContentSyncConflictError(acknowledgement.reason ?? `local sync acknowledgement ${acknowledgement.kind}`);
+          throw new ContentSyncConflictError(
+            acknowledgement.kind === "conflict"
+              ? acknowledgement.reason
+              : `local sync acknowledgement ${acknowledgement.kind}`
+          );
         }
-        if (!cancelled) {
+        if (isCurrentGeneration()) {
           setStatusNote(null);
         }
       } catch (error) {
         // Local write already succeeded; leave neo4j_synced=false and just
         // note the pending sync. Non-blocking by design.
-        if (!cancelled) {
+        if (isCurrentGeneration()) {
           setStatusNote(error instanceof ContentSyncConflictError ? "Saved locally, sync conflict" : "Saved locally, sync pending");
         }
         console.warn("node document Neo4j sync failed; kept locally", error);
@@ -203,7 +201,7 @@ export function NodeDocumentPane({
         initialBody,
         flush,
       });
-      if (!cancelled) {
+      if (isCurrentGeneration()) {
         setStore(nextStore);
       }
       return nextStore;
@@ -214,8 +212,8 @@ export function NodeDocumentPane({
       : Promise.resolve(null);
 
     readLocal
-      .then((local) => {
-        if (cancelled) {
+      .then(async (local) => {
+        if (!isCurrentGeneration()) {
           return;
         }
         setLocalAuthorityAvailable(databasePath !== null);
@@ -226,49 +224,67 @@ export function NodeDocumentPane({
         contentRevisionRef.current = local?.contentRevision ?? null;
         contentOriginRef.current = local?.contentOrigin ?? null;
         bodySourcesRef.current = local?.bodySourceCoordinates ?? [];
-        const mounted = mountStore(localBody);
-
-        // Reconcile (best-effort, non-blocking): if the local body was empty
-        // but Neo4j has substance, seed the local store from Neo4j and persist
-        // it as synced. Offline / missing node is fine — ignore failures.
-        if (isEmptyBody(localBody) && databasePath) {
-          transportRef.current
-            .readGraphNode({ graphNodeId })
-            .then((node) => {
-              if (cancelled || !node || isEmptyBody(node.body)) {
-                return;
-              }
-              // Re-check the LIVE store body at resolution time (not the
-              // mount-time snapshot): if the user has started typing into the
-              // empty editor while this request was in flight, the store body
-              // is no longer empty and reconcile must NOT clobber it.
-              if (!isEmptyBody(mounted.getState().body)) {
-                return;
-              }
-              mounted.getState().setBody(node.body);
-              void transportRef.current
-                .upsertLocalNodeDocument({
-                  databasePath,
-                  graphNodeId,
-                  body: node.body,
-                  summary: node.summary ?? "",
-                  neo4jSynced: true,
-                  contentOrigin: node.contentOrigin ?? "imported",
-                  contentRevision: node.contentRevision ?? 0,
-                  ...(local?.contentRevision === undefined ? {} : { expectedRevision: local.contentRevision }),
-                  bodySourceCoordinates: node.bodySourceCoordinates ?? [],
-                })
-                .catch((error) =>
-                  console.warn("reconcile local seed failed", error)
-                );
-            })
-            .catch(() => {
-              // Offline / node not in Neo4j — the empty local editor stands.
-            });
+        if (local?.neo4jSynced) {
+          remoteRevisionRef.current = local.contentRevision ?? null;
+          remoteOriginRef.current = local.contentOrigin ?? null;
+        } else {
+          remoteRevisionRef.current = null;
+          remoteOriginRef.current = null;
         }
+
+        // Backfill completes before store construction. The reconciled body is
+        // mounted as both body and savedBody, so no setBody debounce can emit a
+        // stale second write.
+        if (local === null && databasePath) {
+          try {
+            const node = await transportRef.current.readGraphNode({ graphNodeId });
+            if (!isCurrentGeneration()) {
+              return;
+            }
+            remoteRevisionRef.current = node.contentRevision ?? null;
+            remoteOriginRef.current = node.contentOrigin ?? null;
+            const result = await transportRef.current.upsertLocalNodeDocument({
+              databasePath, graphNodeId, body: node.body, summary: node.summary ?? "",
+              neo4jSynced: true, contentOrigin: node.contentOrigin ?? "imported",
+              contentRevision: node.contentRevision ?? 0,
+              bodySourceCoordinates: node.bodySourceCoordinates ?? [],
+              metadataProjection: {
+                entityType: node.entityType,
+                title: node.title,
+                schemaVersion: 1,
+              },
+            });
+            if (!isCurrentGeneration()) {
+              return;
+            }
+            if (result.mutation?.kind === "conflict" || !result.document) {
+              throw new Error(
+                result.mutation.kind === "conflict"
+                  ? result.mutation.reason
+                  : "remote backfill was not accepted locally"
+              );
+            }
+            contentRevisionRef.current = result.document.contentRevision;
+            contentOriginRef.current = result.document.contentOrigin;
+            bodySourcesRef.current = result.document.bodySourceCoordinates;
+            mountStore(result.document.body);
+            return;
+          } catch (error) {
+            console.warn("remote document backfill failed; mounting local body", error);
+          }
+        } else if (local && !local.neo4jSynced) {
+          void transportRef.current.readGraphNode({ graphNodeId }).then((node) => {
+            if (!isCurrentGeneration()) {
+              return;
+            }
+            remoteRevisionRef.current = node.contentRevision ?? null;
+            remoteOriginRef.current = node.contentOrigin ?? null;
+          }).catch(() => {});
+        }
+        mountStore(localBody);
       })
       .catch((error: unknown) => {
-        if (cancelled) {
+        if (!isCurrentGeneration()) {
           return;
         }
         // Local DB read itself failed: still mount the reader (empty

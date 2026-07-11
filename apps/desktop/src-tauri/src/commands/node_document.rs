@@ -7,8 +7,8 @@ use crate::db::{
     connection::Database,
     repositories::{
         DocumentContentInput, DocumentMetadataProjection, DocumentReconciliationItem,
-        LocalNodeDocument, NodeDocumentMutation, NodeDocumentRepository, ReconciliationDecision,
-        SyncAcknowledgementMutation,
+        LocalNodeDocument, NodeDocumentMutation, NodeDocumentRepository, PendingNodeDocumentSync,
+        ReconciliationDecision, SyncAcknowledgementMutation,
     },
 };
 use crate::SharedApiState;
@@ -67,6 +67,13 @@ pub struct AcknowledgeLocalNodeDocumentSyncRequest {
     pub expected_origin: ContentOrigin,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListPendingNodeDocumentSyncsRequest {
+    #[serde(default)]
+    pub database_path: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalNodeDocumentWriteResult {
@@ -84,6 +91,24 @@ pub async fn read_local_node_document_command(
     NodeDocumentRepository::new(db.connection())
         .get_node_document(&request.graph_node_id)
         .map_err(|e| e.to_string())
+}
+
+pub fn list_pending_node_document_syncs_at_path(
+    path: &str,
+) -> Result<Vec<PendingNodeDocumentSync>, String> {
+    let db = Database::open(path).map_err(|e| e.to_string())?;
+    NodeDocumentRepository::new(db.connection())
+        .list_pending_syncs()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_pending_node_document_syncs_command(
+    request: ListPendingNodeDocumentSyncsRequest,
+    api_state: tauri::State<'_, SharedApiState>,
+) -> Result<Vec<PendingNodeDocumentSync>, String> {
+    let path = resolve_db_path(&request.database_path, &api_state)?;
+    list_pending_node_document_syncs_at_path(&path)
 }
 
 #[tauri::command]

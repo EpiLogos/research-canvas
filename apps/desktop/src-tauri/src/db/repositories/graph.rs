@@ -216,6 +216,8 @@ pub struct NewGraphNode {
 #[serde(rename_all = "camelCase")]
 pub struct NewGraphNodeMetadata {
     #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
     pub evidence_tags: Vec<String>,
     #[serde(default)]
     pub source_kind: Option<String>,
@@ -669,7 +671,7 @@ impl GraphRepository {
         let label = validate_entity_label(&input.entity_type)?.as_str();
         let cypher = format!(
             "CREATE (n:TheoryNode:{label} {{
-                graph_node_id: $id, title: $title, body: $body, summary: '',
+                graph_node_id: $id, title: $title, body: $body, summary: $summary,
                 coordinate: $coordinate, source_coordinates: $source_coordinates,
                 evidence_tags: $evidence_tags, source_kind: $source_kind,
                 content_origin: $content_origin, content_revision: $content_revision,
@@ -691,6 +693,7 @@ impl GraphRepository {
             .param("id", id.clone())
             .param("title", input.title)
             .param("body", input.body)
+            .param("summary", metadata.summary.unwrap_or_default())
             .param("coordinate", input.coordinate)
             .param("source_coordinates", input.source_coordinates)
             .param("evidence_tags", metadata.evidence_tags)

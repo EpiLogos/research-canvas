@@ -62,6 +62,7 @@ fn create_then_get_node_round_trips_substance_and_labels() {
             temporal_precision: Some("year".into()),
         },
         NewGraphNodeMetadata {
+            summary: Some("Medici patron and political architect".into()),
             evidence_tags: vec!["archival".into()],
             source_kind: Some("historical-figure".into()),
             content_origin: Some(ContentOrigin::CorpusCompiled),

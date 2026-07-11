@@ -126,6 +126,7 @@ export interface NewGraphNodeInput {
   entityType: CreatableEntityType;
   title: string;
   body: string;
+  summary?: string;
   coordinate?: string | null;
   sourceCoordinates?: string[];
   evidenceTags?: string[];

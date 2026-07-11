@@ -1,6 +1,6 @@
 import { entityTypeForNodeType } from "@research-canvas/canvas";
-import type { LocalNodeDocumentWriteResult, NewGraphNodeInput } from "@research-canvas/desktop-api";
-import { markGraphNodeSyncPending } from "./pendingGraphNodeSync";
+import type { LocalNodeDocumentWriteResult, NewGraphNodeInput, SyncAcknowledgementMutation } from "@research-canvas/desktop-api";
+import { clearGraphNodeSyncPending, markGraphNodeSyncPending } from "./pendingGraphNodeSync";
 
 /**
  * Build a `NewGraphNodeInput` for a canvas node type.
@@ -56,9 +56,13 @@ interface NoteAuthorityArgs {
 interface NoteRemoteArgs {
   graphNodeId: string;
   title: string;
+  databasePath: string | null;
   createGraphNode: (
     input: NewGraphNodeInput & { graphNodeId: string }
   ) => Promise<unknown>;
+  acknowledgeLocalNodeDocumentSync: (input: {
+    databasePath: string; graphNodeId: string; expectedRevision: number; expectedOrigin: "user_authored";
+  }) => Promise<SyncAcknowledgementMutation>;
 }
 
 export async function prepareNoteNodeAuthority(args: NoteAuthorityArgs): Promise<void> {
@@ -82,22 +86,52 @@ export async function prepareNoteNodeAuthority(args: NoteAuthorityArgs): Promise
     throw new Error(`new note local authority was not created (${result.mutation.kind})${detail}`);
   }
   if (!result.document || result.document.graphNodeId !== graphNodeId
-      || result.document.contentOrigin !== "user_authored" || result.document.contentRevision !== 0) {
+      || result.document.body !== "" || result.document.summary !== ""
+      || result.document.neo4jSynced !== false
+      || result.document.contentOrigin !== "user_authored" || result.document.contentRevision !== 0
+      || result.document.bodySourceCoordinates.length !== 0) {
     throw new Error("new note local authority returned an incoherent document");
   }
 }
 
-export async function syncNoteNodeRemote(args: NoteRemoteArgs): Promise<void> {
-  const { graphNodeId, title, createGraphNode } = args;
-  const input = {
-    ...buildNewGraphNodeInput({ nodeType: "note", title }),
+export type NoteRemoteSyncOutcome = "synced" | "pending";
+
+function initialNoteGraphInput(graphNodeId: string, title: string) {
+  return {
+    ...buildNewGraphNodeInput({ nodeType: "note" as const, title }),
     graphNodeId,
+    body: "",
   };
+}
+
+export async function syncNoteNodeRemote(args: NoteRemoteArgs): Promise<NoteRemoteSyncOutcome> {
+  const { graphNodeId, title, databasePath, createGraphNode, acknowledgeLocalNodeDocumentSync } = args;
+  if (!databasePath) {
+    throw new Error("remote note sync requires the authoritative local document store");
+  }
+  const input = initialNoteGraphInput(graphNodeId, title);
   try {
     await createGraphNode(input);
   } catch (error) {
-    markGraphNodeSyncPending(input);
+    markGraphNodeSyncPending(input, databasePath, false);
     console.warn("createGraphNode sync failed; node kept locally", error);
+    return "pending";
+  }
+  try {
+    const acknowledgement = await acknowledgeLocalNodeDocumentSync({
+      databasePath, graphNodeId, expectedRevision: 0, expectedOrigin: "user_authored",
+    });
+    if (["updated", "preserved"].includes(acknowledgement.kind)) {
+      clearGraphNodeSyncPending(graphNodeId);
+      return "synced";
+    }
+    markGraphNodeSyncPending(input, databasePath, true);
+    console.warn("initial note sync acknowledgement rejected; node kept pending", acknowledgement);
+    return "pending";
+  } catch (error) {
+    markGraphNodeSyncPending(input, databasePath, true);
+    console.warn("initial note sync acknowledgement failed; node kept pending", error);
+    return "pending";
   }
 }
 
@@ -114,7 +148,9 @@ export async function createPreparedNoteNode(args: NoteAuthorityArgs & NoteRemot
   await prepareNoteNodeAuthority(args);
   args.publishCanvasNode();
   void syncNoteNodeRemote(args).catch((error) => {
-    markGraphNodeSyncPending({ ...buildNewGraphNodeInput({ nodeType: "note", title: args.title }), graphNodeId: args.graphNodeId });
+    if (args.databasePath) {
+      markGraphNodeSyncPending(initialNoteGraphInput(args.graphNodeId, args.title), args.databasePath, false);
+    }
     console.warn("unexpected remote note sync failure; node kept locally", error);
   });
 }
