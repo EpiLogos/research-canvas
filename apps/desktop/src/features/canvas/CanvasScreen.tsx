@@ -92,7 +92,7 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, onPlaySequence, 
               void workspace.createGroupNode(position);
             }}
             onConnectNodes={(input) => {
-              workspace.addEdge(input);
+              void workspace.addEdge(input);
             }}
             onReconnectEdge={(edgeId, input) => {
               workspace.store.getState().updateEdgeConnection(edgeId, input);
@@ -101,10 +101,10 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, onPlaySequence, 
               workspace.store.getState().cycleEdgeDirectionality(edgeId);
             }}
             onDeleteEdge={(edgeId) => {
-              workspace.deleteEdge(edgeId);
+              void workspace.deleteEdge(edgeId);
             }}
             onUpdateEdgeRelationKind={(edgeId, relationKind) => {
-              workspace.store.getState().updateEdgeRelationKind(edgeId, relationKind);
+              void workspace.updateEdgeRelationKind(edgeId, relationKind);
             }}
             onResizeNode={(nodeId, width, height) => {
               workspace.resizeNode(nodeId, width, height);

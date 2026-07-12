@@ -8,6 +8,7 @@ import { placeItems, type TimelinePresentation } from "./projection";
 import { generateTicks } from "./ticks";
 import { TimelineAxis } from "./TimelineAxis";
 import { TimelineNode } from "./TimelineNode";
+import { TimelineRelationshipLayer } from "./TimelineRelationshipLayer";
 import { ResonancePopover } from "./ResonancePopover";
 import { TimelineTransport } from "./TimelineTransport";
 import { pixelToYear, yearToPixel } from "./viewport";
@@ -349,6 +350,12 @@ export function TimelineLens({
             No temporal nodes loaded
           </div>
         )}
+        <TimelineRelationshipLayer
+          relationships={state.relationships}
+          placed={placed}
+          viewportWidth={viewport.widthPx}
+          lod={lod}
+        />
         <div className="timeline-nodes">
           {placed.map((p) => {
             const lit = lighting.get(p.item.graphNodeId) ?? null;

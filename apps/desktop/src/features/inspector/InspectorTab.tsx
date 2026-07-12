@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import type { GraphNodePatch } from "@research-canvas/desktop-api";
 import { walkSequenceGraph } from "@research-canvas/canvas";
 import { useCanvasWorkspace } from "../canvas/CanvasWorkspaceContext";
 import { WorkspaceFilePickerButton } from "../canvas/WorkspaceFilePickerButton";
@@ -75,16 +76,85 @@ export function InspectorTab() {
     );
   }
 
+  const canonicalTags = node.graph?.evidenceTags ?? [];
+  const hasGraphRecord = Boolean(node.graphNodeId);
+  const saveMetadata = (patch: GraphNodePatch) => {
+    void workspace.updateNodeMetadata(node.id, patch).catch(() => {
+      // The provider exposes the transport failure in the persistent workspace
+      // error surface. Keeping the last confirmed graph cache avoids lying in
+      // the card, inspector, or reader after a rejected write.
+    });
+  };
+
+  const metadataRows = [
+    ["Historicity", node.graph?.historicity],
+    ["Claim", node.graph?.claimKind],
+    ["Evidence", node.graph?.evidenceStatus],
+    ["Temporal role", node.graph?.temporalRole],
+    ["Place", node.graph?.placeCoverage],
+    ["QL form", node.graph?.qlForm],
+    ["QL unit", node.graph?.qlUnitId],
+  ].filter(([, value]) => Boolean(value)) as Array<[string, string]>;
+
   return (
     <div className="inspector-tab">
       <div className="inspector-field">
         <label className="inspector-label">Title</label>
-        <div className="inspector-value">{node.title}</div>
+        <input
+          key={`${node.id}:${node.title}`}
+          aria-label="Canonical title"
+          className="inspector-value inspector-value--input"
+          type="text"
+          defaultValue={node.title}
+          disabled={!hasGraphRecord}
+          onBlur={(event) => {
+            const title = event.currentTarget.value.trim();
+            if (title && title !== node.title) saveMetadata({ title });
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+          }}
+        />
       </div>
       <div className="inspector-field">
         <label className="inspector-label">Type</label>
         <div className="inspector-value inspector-value--type">{node.type}</div>
       </div>
+      <div className="inspector-field">
+        <label className="inspector-label" htmlFor="inspector-semantic-tags">Knowledge tags</label>
+        <input
+          key={`${node.id}:${canonicalTags.join("|")}`}
+          id="inspector-semantic-tags"
+          className="inspector-value inspector-value--input"
+          type="text"
+          defaultValue={canonicalTags.join(", ")}
+          disabled={!hasGraphRecord}
+          placeholder="documented, archive, institution"
+          onBlur={(event) => {
+            const tags = parseTagInput(event.currentTarget.value);
+            if (tags.join("|") !== canonicalTags.join("|")) saveMetadata({ evidenceTags: tags });
+          }}
+        />
+      </div>
+      {node.graph?.summary && (
+        <div className="inspector-field">
+          <label className="inspector-label">Card pith</label>
+          <div className="inspector-value">{node.graph.summary}</div>
+        </div>
+      )}
+      {metadataRows.length > 0 && (
+        <>
+          <div className="inspector-section-title">Knowledge record</div>
+          <dl className="inspector-metadata-list">
+            {metadataRows.map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>{value.replaceAll("_", " ")}</dd>
+              </div>
+            ))}
+          </dl>
+        </>
+      )}
       <div className="inspector-section-title">Appearance</div>
       <ColourRow
         label="Dot colour"
@@ -116,18 +186,6 @@ export function InspectorTab() {
           }}
         />
       </div>
-      {node.type === "note" && (
-        <div className="inspector-field">
-          <label className="inspector-label" htmlFor="inspector-note-tags">Tags</label>
-          <input
-            id="inspector-note-tags"
-            className="inspector-value inspector-value--input"
-            type="text"
-            value={node.tags.join(", ")}
-            onChange={(event) => workspace.updateNodeTags(node.id, parseTagInput(event.target.value))}
-          />
-        </div>
-      )}
       {nodeInSequence && (
         <>
           <div className="inspector-section-title">Sequence</div>

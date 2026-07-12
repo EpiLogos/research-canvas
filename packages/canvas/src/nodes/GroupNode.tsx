@@ -4,8 +4,10 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import { AdaptiveNode } from "./AdaptiveNode";
-import type { AdaptiveNodeStyle } from "./AdaptiveNode";
+import type { GraphNodeContract } from "@research-canvas/schema";
+import type { NodeVisualStyle } from "./nodeVisualStyle";
+import { KnowledgeCard } from "./KnowledgeCard";
+import { resolveKnowledgeCardPresentation } from "../presentation/cardPresentation";
 import {
   HANDLE_POSITIONS,
   HANDLE_SIDES,
@@ -17,13 +19,22 @@ interface GroupNodeData {
   nodeType?: "group" | "portal";
   title: string;
   summary?: string;
-  style?: AdaptiveNodeStyle;
+  graph?: GraphNodeContract;
+  style?: NodeVisualStyle;
   [key: string]: unknown;
 }
 
 export type GroupNodeType = Node<GroupNodeData, "group">;
 
 export function GroupNode({ data, selected }: NodeProps<GroupNodeType>) {
+  const presentation = resolveKnowledgeCardPresentation({
+    title: data.title,
+    summary: data.summary ?? "",
+    dotColour: data.style?.dotColour,
+    bgColour: data.style?.bgColour,
+    textColour: data.style?.textColour,
+    thumbnail: data.style?.thumbnail,
+  }, data.graph);
   return (
     <>
       <NodeResizeControl
@@ -72,13 +83,9 @@ export function GroupNode({ data, selected }: NodeProps<GroupNodeType>) {
             className="flow-handle"
           />
         ))}
-        <AdaptiveNode
-          nodeType={data.nodeType ?? "group"}
-          title={data.title}
-          summary={data.summary}
-          selected={selected}
-          style={data.style}
-        />
+        <div className="group-node" data-node-type={data.nodeType ?? "group"} data-selected={selected ? "true" : undefined}>
+          <KnowledgeCard presentation={presentation} />
+        </div>
         {HANDLE_SIDES.map((side) => (
           <Handle
             id={sourceHandleId(side)}

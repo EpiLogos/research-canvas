@@ -1365,9 +1365,14 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
           },
           layoutOverride: timelineLayoutById.get(node.graphNodeId) ?? null,
         }));
+      const temporalIds = new Set(nodes.map((record) => record.node.graphNodeId));
       return {
         workspaceId: canonicalWorkspaceId,
         nodes,
+        relationships: bundle.relationships.filter((relationship) =>
+          temporalIds.has(relationship.sourceGraphNodeId)
+          && temporalIds.has(relationship.targetGraphNodeId),
+        ),
         lanes: [],
         diagnostics: invalid.map((node) => ({
           graphNodeId: node.graphNodeId,

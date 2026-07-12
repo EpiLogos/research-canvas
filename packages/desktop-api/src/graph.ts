@@ -154,6 +154,8 @@ export interface TimelineDiagnostic {
 export interface TimelineView {
   workspaceId: string;
   nodes: TimelineViewNode[];
+  /** Canonical graph links whose two endpoints are temporally located. */
+  relationships: GraphRelationship[];
   lanes: TimelineLane[];
   diagnostics: TimelineDiagnostic[];
 }

@@ -19,6 +19,7 @@ import {
   createCanvasStore,
   createContentLinkingActions,
   entityTypeForNodeType,
+  isRelationshipKind,
   serializeLayoutSnapshot,
   type ContentLinkingActions,
 } from "@research-canvas/canvas";
@@ -40,6 +41,7 @@ import {
   type ResourceRoot,
   type SavedSequence,
   type SearchHit,
+  type GraphNodePatch,
   type WorkspaceConstellation
 } from "@research-canvas/desktop-api";
 type WorkspaceTransport = ReturnType<typeof createWorkspaceTransport>;
@@ -72,13 +74,13 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
     sourceHandleId?: string;
     targetHandleId?: string;
     directionality?: "none" | "forward" | "backward" | "bidirectional";
-  }) => void;
+  }) => Promise<void>;
   attachResourceRoot: (rootPath: string, displayName?: string) => Promise<void>;
   createNoteNode: (position?: { x: number; y: number }) => Promise<void>;
   createGroupNode: (position?: { x: number; y: number }) => Promise<void>;
   addResourceNode: (entry: { id?: string; name: string; path?: string; absolutePath?: string; relativePath?: string; kind?: string }, position: { x: number; y: number }) => Promise<void>;
   addResourceNodeFromAbsolutePath: (absolutePath: string, position: { x: number; y: number }) => Promise<void>;
-  deleteEdge: (edgeId: string) => void;
+  deleteEdge: (edgeId: string) => Promise<void>;
   deleteNode: (nodeId: string) => void;
   detachResourceRoot: (rootPath: string) => Promise<void>;
   duplicateNode: (nodeId: string) => Promise<void>;
@@ -107,6 +109,10 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
     position?: { x?: number; y?: number },
   ) => void;
   updateNodeContent: (nodeId: string, content: string) => void;
+  /** Persist canonical graph metadata before updating the canvas cache. */
+  updateNodeMetadata: (nodeId: string, patch: GraphNodePatch) => Promise<void>;
+  /** Re-types a semantic relationship without leaving a layout-only lie behind. */
+  updateEdgeRelationKind: (edgeId: string, relationKind: string) => Promise<void>;
   setNodeThumbnailFromAbsolutePath: (nodeId: string, absolutePath: string) => Promise<void>;
   updateNodeStyle: (nodeId: string, style: { dotColour?: string; bgColour?: string; textColour?: string; thumbnail?: string }) => void;
   updateNodeTags: (nodeId: string, tags: string[]) => void;
@@ -680,8 +686,37 @@ export function CanvasWorkspaceProvider({
         return transport.deleteSavedSequence(input);
       },
       openCanvas,
-      addEdge: (input) => {
-        stores.store.getState().connectNodes(input);
+      async addEdge(input) {
+        if (!isRelationshipKind(input.relationKind)) {
+          const message = `Unknown relationship type: ${input.relationKind}`;
+          setErrorMessage(message);
+          throw new Error(message);
+        }
+        const source = stores.store.getState().nodes.find((node) => node.id === input.sourceNodeId);
+        const target = stores.store.getState().nodes.find((node) => node.id === input.targetNodeId);
+        if (!source?.graphNodeId || !target?.graphNodeId) {
+          const message = "Both cards must be synchronised to the knowledge graph before they can be linked.";
+          setErrorMessage(message);
+          throw new Error(message);
+        }
+
+        try {
+          const relationship = await transport.connectGraphNodes({
+            sourceGraphNodeId: source.graphNodeId,
+            targetGraphNodeId: target.graphNodeId,
+            relType: input.relationKind,
+          });
+          stores.store.getState().connectNodes({
+            ...input,
+            id: `graph:${relationship.id}`,
+            relationKind: relationship.relType,
+          });
+          setErrorMessage(null);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Could not create graph relationship.";
+          setErrorMessage(message);
+          throw error;
+        }
       },
       async createNoteNode(position) {
         const graphNodeId = crypto.randomUUID();
@@ -781,8 +816,21 @@ export function CanvasWorkspaceProvider({
           } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string })
           .catch((error) => console.warn("createGraphNode sync failed; node kept locally", error));
       },
-      deleteEdge: (edgeId) => {
-        stores.store.getState().deleteEdge(edgeId);
+      async deleteEdge(edgeId) {
+        const edge = stores.store.getState().edges.find((candidate) => candidate.id === edgeId);
+        if (!edge) return;
+        const relationshipId = relationshipIdFromCanvasEdge(edgeId);
+        try {
+          if (relationshipId) {
+            await transport.disconnectGraphNodes({ relationshipId });
+          }
+          stores.store.getState().deleteEdge(edgeId);
+          setErrorMessage(null);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Could not delete graph relationship.";
+          setErrorMessage(message);
+          throw error;
+        }
         if (selectedEdgeId === edgeId) {
           setSelectedEdgeId(null);
         }
@@ -894,6 +942,72 @@ export function CanvasWorkspaceProvider({
       updateNodeContent: (nodeId, content) => {
         stores.store.getState().updateNodeContent(nodeId, content);
       },
+      async updateNodeMetadata(nodeId, patch) {
+        const node = stores.store.getState().nodes.find((candidate) => candidate.id === nodeId);
+        if (!node?.graphNodeId) {
+          const message = "This card has not yet been synchronised to the knowledge graph; its metadata cannot be edited yet.";
+          setErrorMessage(message);
+          throw new Error(message);
+        }
+
+        try {
+          const graph = await transport.updateGraphNode({ graphNodeId: node.graphNodeId, patch });
+          stores.store.getState().updateNodeGraph(nodeId, graph);
+          setErrorMessage(null);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Could not save canonical node metadata.";
+          setErrorMessage(message);
+          throw error;
+        }
+      },
+      async updateEdgeRelationKind(edgeId, relationKind) {
+        if (!isRelationshipKind(relationKind)) {
+          const message = `Unknown relationship type: ${relationKind}`;
+          setErrorMessage(message);
+          throw new Error(message);
+        }
+        const edge = stores.store.getState().edges.find((candidate) => candidate.id === edgeId);
+        if (!edge) return;
+        const oldRelationshipId = relationshipIdFromCanvasEdge(edge.id);
+        if (!oldRelationshipId) {
+          stores.store.getState().updateEdgeRelationKind(edgeId, relationKind);
+          return;
+        }
+
+        try {
+          // Create the replacement before deleting the old semantic edge. If
+          // the create fails the original relationship and visual link remain
+          // intact; if deletion fails, remove the replacement again rather
+          // than leave two competing assertions in the graph.
+          const replacement = await transport.connectGraphNodes({
+            sourceGraphNodeId: edge.sourceNodeId,
+            targetGraphNodeId: edge.targetNodeId,
+            relType: relationKind,
+          });
+          try {
+            await transport.disconnectGraphNodes({ relationshipId: oldRelationshipId });
+          } catch (disconnectError) {
+            try {
+              await transport.disconnectGraphNodes({ relationshipId: replacement.id });
+            } catch {
+              // The primary failure is more actionable; the workspace error
+              // surface reports it, while the two relationships remain explicit
+              // rather than silently changing the canvas label.
+            }
+            throw disconnectError;
+          }
+          stores.store.getState().rebindEdgeToGraphRelationship(
+            edgeId,
+            replacement.id,
+            replacement.relType,
+          );
+          setErrorMessage(null);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Could not change graph relationship type.";
+          setErrorMessage(message);
+          throw error;
+        }
+      },
       async setNodeThumbnailFromAbsolutePath(nodeId, absolutePath) {
         const plan = deriveResourceImportPlan({
           absolutePath,
@@ -990,6 +1104,10 @@ function createWorkspaceStores(canvasId: string, _constellationId: string): Work
     annotationStore: createAnnotationStore({ canvasId }),
     store: createCanvasStore({ canvasId })
   };
+}
+
+function relationshipIdFromCanvasEdge(edgeId: string): string | null {
+  return edgeId.startsWith("graph:") ? edgeId.slice("graph:".length) || null : null;
 }
 
 function hydrateWorkspaceDocument(

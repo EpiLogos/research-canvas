@@ -163,10 +163,55 @@ describe("updateNodeTitle", () => {
     const updated = store.getState().nodes.find((n) => n.id === node.id);
     expect(updated?.title).toBe("new title");
   });
+
+  it("adopts canonical graph substance after a confirmed metadata write", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const node = store.getState().createNoteNode({ title: "Local title", content: "" });
+
+    store.getState().updateNodeGraph(node.id, {
+      graphNodeId: "graph-1",
+      entityType: "Event",
+      title: "Canonical title",
+      body: "[]",
+      summary: "Canonical pith.",
+      archetypalResonance: null,
+      coordinate: null,
+      sourceCoordinates: [],
+      evidenceTags: ["archive"],
+      sourceKind: null,
+      contentOrigin: "user_authored",
+      contentRevision: 0,
+      seedSchemaVersion: null,
+      bodySourceCoordinates: [],
+      historicity: "historical",
+      claimKind: "fact",
+      evidenceStatus: "documented",
+      temporalRole: "occurred_at",
+      placeCoverage: "resolved",
+      qlForm: null,
+      qlUnitId: null,
+      qlArc: null,
+      qlTopology: null,
+      qlSchemaVersion: null,
+      qlSourceCoordinates: [],
+      qlCompletenessStatus: null,
+      isTemporal: true,
+      validFrom: "1980-01-01",
+      validTo: null,
+      temporalPrecision: "year",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    const updated = store.getState().nodes.find((candidate) => candidate.id === node.id);
+    expect(updated?.title).toBe("Canonical title");
+    expect(updated?.summary).toBe("Canonical pith.");
+    expect(updated?.graph?.evidenceTags).toEqual(["archive"]);
+  });
 });
 
 describe("updateNodeContent", () => {
-  it("derives a note title and summary from the edited content", () => {
+  it("refreshes the reading summary without overwriting the canonical display title", () => {
     const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
     const node = store.getState().createNoteNode({ title: "old", content: "" });
 
@@ -175,7 +220,7 @@ describe("updateNodeContent", () => {
       .updateNodeContent(node.id, "# Working thesis\n\nSupport the claim with concrete evidence.");
 
     const updated = store.getState().nodes.find((candidate) => candidate.id === node.id);
-    expect(updated?.title).toBe("Working thesis");
+    expect(updated?.title).toBe("old");
     expect(updated?.summary).toBe("Working thesis Support the claim with concrete evidence.");
   });
 });
@@ -199,6 +244,43 @@ describe("deleteEdge", () => {
     expect(store.getState().edges).toHaveLength(0);
     // nodes are untouched
     expect(store.getState().nodes).toHaveLength(2);
+  });
+});
+
+describe("connectNodes", () => {
+  it("keeps a supplied graph-relationship id so the local layout and semantic edge stay coupled", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const source = store.getState().createNoteNode({ title: "Source", content: "" });
+    const target = store.getState().createNoteNode({ title: "Target", content: "" });
+
+    const edge = store.getState().connectNodes({
+      id: "graph:relationship-7",
+      sourceNodeId: source.id,
+      targetNodeId: target.id,
+      relationKind: "SUPPORTS",
+    });
+
+    expect(edge.id).toBe("graph:relationship-7");
+  });
+
+  it("rebinds an existing layout edge after its graph relationship type changes", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const source = store.getState().createNoteNode({ title: "Source", content: "" });
+    const target = store.getState().createNoteNode({ title: "Target", content: "" });
+    const edge = store.getState().connectNodes({
+      id: "graph:old-relationship",
+      sourceNodeId: source.id,
+      targetNodeId: target.id,
+      relationKind: "SUPPORTS",
+    });
+
+    store.getState().rebindEdgeToGraphRelationship(edge.id, "new-relationship", "CONTESTS");
+
+    expect(store.getState().edges[0]).toEqual(expect.objectContaining({
+      id: "graph:new-relationship",
+      relationKind: "CONTESTS",
+      label: "CONTESTS",
+    }));
   });
 });
 

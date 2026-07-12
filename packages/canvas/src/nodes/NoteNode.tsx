@@ -4,10 +4,12 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import type { CSSProperties } from "react";
 import { useEffect, useRef } from "react";
 
-import type { AdaptiveNodeStyle } from "./AdaptiveNode";
+import type { NodeVisualStyle } from "./nodeVisualStyle";
+import { KnowledgeCard } from "./KnowledgeCard";
+import { resolveKnowledgeCardPresentation } from "../presentation/cardPresentation";
+import type { GraphNodeContract } from "@research-canvas/schema";
 import {
   HANDLE_POSITIONS,
   HANDLE_SIDES,
@@ -18,7 +20,8 @@ import {
 interface NoteNodeData {
   title: string;
   summary?: string;
-  style?: AdaptiveNodeStyle;
+  graph?: GraphNodeContract;
+  style?: NodeVisualStyle;
   tags?: string[];
   content?: string;
   isEditing?: boolean;
@@ -32,11 +35,14 @@ export type NoteNodeType = Node<NoteNodeData, "note">;
 
 export function NoteNode({ data, selected }: NodeProps<NoteNodeType>) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const noteStyle = {
-    backgroundColor: data.style?.bgColour,
-    color: data.style?.textColour,
-    "--node-accent": data.style?.dotColour,
-  } as CSSProperties;
+  const presentation = resolveKnowledgeCardPresentation({
+    title: data.title,
+    summary: data.summary ?? "",
+    dotColour: data.style?.dotColour,
+    bgColour: data.style?.bgColour,
+    textColour: data.style?.textColour,
+    thumbnail: data.style?.thumbnail,
+  }, data.graph);
 
   useEffect(() => {
     if (data.isEditing) {
@@ -101,7 +107,6 @@ export function NoteNode({ data, selected }: NodeProps<NoteNodeType>) {
           data-testid="note-node-surface"
           data-editing={data.isEditing ? "true" : "false"}
           data-selected={selected ? "true" : "false"}
-          style={noteStyle}
         >
           {data.isEditing ? (
             <textarea
@@ -120,29 +125,7 @@ export function NoteNode({ data, selected }: NodeProps<NoteNodeType>) {
               value={data.content ?? ""}
             />
           ) : (
-            <div
-              className="note-node__preview"
-              style={{ color: data.style?.textColour } as CSSProperties}
-            >
-              {data.style?.thumbnail ? (
-                <img
-                  className="note-node__thumbnail"
-                  src={data.style.thumbnail}
-                  alt={data.title}
-                  draggable={false}
-                />
-              ) : null}
-              {data.content ?? ""}
-              {data.tags && data.tags.length > 0 ? (
-                <div className="note-node__tags" aria-label="Note tags">
-                  {data.tags.map((tag) => (
-                    <span className="note-node__tag" key={tag}>
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-            </div>
+            <KnowledgeCard presentation={presentation} />
           )}
         </div>
         {HANDLE_SIDES.map((side) => (

@@ -422,6 +422,15 @@ impl NodeSeed {
             .collect::<Vec<_>>();
         let is_claim = self.entity_type == "Claim";
         let is_interpretive = self.evidence_tags.contains(&"interpretive_vector");
+        let ql_metadata = ql_metadata_for_seed(self);
+        let mut evidence_tags = self
+            .evidence_tags
+            .iter()
+            .map(|tag| (*tag).to_string())
+            .collect::<Vec<_>>();
+        if let Some(place_tag) = geographic_tag_for_seed(self.slug) {
+            evidence_tags.push(place_tag.to_string());
+        }
         SeedGraphNode {
             graph_node_id: graph_id(namespace, self.slug),
             entity_type: self.entity_type.to_string(),
@@ -431,7 +440,7 @@ impl NodeSeed {
             archetypal_resonance: Some(self.summary.to_string()),
             coordinate: self.coordinate.map(str::to_string),
             source_coordinates: source_coordinates.clone(),
-            evidence_tags: self.evidence_tags.iter().map(|s| s.to_string()).collect(),
+            evidence_tags,
             source_kind: self.source_kind.map(str::to_string),
             content_origin: crate::db::repositories::graph::ContentOrigin::Seed,
             content_revision: 1,
@@ -475,23 +484,111 @@ impl NodeSeed {
             } else {
                 None
             },
-            place_coverage: Some(if self.is_temporal {
+            place_coverage: Some(if geographic_tag_for_seed(self.slug).is_some() {
+                crate::db::repositories::graph::PlaceCoverage::Resolved
+            } else if self.is_temporal {
                 crate::db::repositories::graph::PlaceCoverage::Unknown
             } else {
                 crate::db::repositories::graph::PlaceCoverage::NotApplicable
             }),
-            ql_form: None,
-            ql_unit_id: None,
-            ql_arc: None,
-            ql_topology: None,
-            ql_schema_version: None,
-            ql_source_coordinates: Vec::new(),
-            ql_completeness_status: None,
+            ql_form: ql_metadata.map(|metadata| metadata.form),
+            ql_unit_id: ql_metadata.map(|_| self.slug.to_string()),
+            ql_arc: ql_metadata.map(|metadata| metadata.arc),
+            ql_topology: ql_metadata.map(|metadata| metadata.topology),
+            ql_schema_version: ql_metadata.map(|_| 1),
+            ql_source_coordinates: ql_metadata
+                .map(|_| {
+                    self.source_coordinates
+                        .iter()
+                        .filter(|coordinate| coordinate.starts_with('#'))
+                        .map(|coordinate| (*coordinate).to_string())
+                        .collect()
+                })
+                .unwrap_or_default(),
+            ql_completeness_status: ql_metadata.map(|metadata| metadata.completeness),
             is_temporal: self.is_temporal,
             valid_from: self.valid_from.map(str::to_string),
             valid_to: self.valid_to.map(str::to_string),
             temporal_precision: self.temporal_precision.map(str::to_string),
         }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct QlSeedMetadata {
+    form: crate::db::repositories::graph::QlForm,
+    arc: crate::db::repositories::graph::QlArc,
+    topology: crate::db::repositories::graph::QlTopology,
+    completeness: crate::db::repositories::graph::QlCompletenessStatus,
+}
+
+/// QL is not inferred from incidental `#` strings.  The bounded seed units
+/// below explicitly declare a form, while their positional markers are kept as
+/// provenance for the declaration.  This preserves the distinction between a
+/// complete QL unit and an arbitrary node that happens to cite a position.
+fn ql_metadata_for_seed(seed: &NodeSeed) -> Option<QlSeedMetadata> {
+    use crate::db::repositories::graph::{QlArc, QlCompletenessStatus, QlForm, QlTopology};
+
+    let (form, arc, topology) = match seed.slug {
+        "ql-position-wheel" => (
+            QlForm::PositionWheel,
+            QlArc::NotApplicable,
+            QlTopology::Unspecified,
+        ),
+        "ontological-unit"
+        | "solar-system-unit"
+        | "social-power-unit"
+        | "christ-sixfold-lineage" => {
+            (QlForm::CompleteSixfold, QlArc::Day, QlTopology::Unspecified)
+        }
+        "deficiency-unit" | "devil-sixfold-lineage" => (
+            QlForm::CompleteSixfold,
+            QlArc::Night,
+            QlTopology::Unspecified,
+        ),
+        "double-helix" => (QlForm::DoubleHelix, QlArc::Braided, QlTopology::Composite),
+        "dual-animal-quaternity" => (QlForm::Quaternity, QlArc::Braided, QlTopology::Composite),
+        "conceptual-operations-quaternity" => (
+            QlForm::Quaternity,
+            QlArc::NotApplicable,
+            QlTopology::Unspecified,
+        ),
+        _ => return None,
+    };
+
+    Some(QlSeedMetadata {
+        form,
+        arc,
+        topology,
+        completeness: QlCompletenessStatus::Complete,
+    })
+}
+
+/// Canonical geographic tags are deliberately orthogonal to both evidence and
+/// historicality. The tag names a place carried by the dated record; it does
+/// not turn a documented event into a myth or lend a claim the event's status.
+/// The initial vocabulary is source-grounded and intentionally conservative;
+/// unresolved records remain `place_coverage = unknown` rather than guessing.
+fn geographic_tag_for_seed(slug: &str) -> Option<&'static str> {
+    match slug {
+        "ebla-opium-residue" => Some("place:ebla-syria"),
+        "medici-template" | "studiolo-image-knowledge" => Some("place:florence-italy"),
+        "voc-eic-corpora" => Some("place:amsterdam-netherlands"),
+        "banda-genocide" => Some("place:banda-islands-indonesia"),
+        "enlightenment-occultation" => Some("place:europe"),
+        "bank-of-england" | "balfour-declaration" | "chatham-cfr" => Some("place:london-england"),
+        "plassey-eic-sovereignty" => Some("place:plassey-bengal-india"),
+        "opium-war" => Some("place:qing-china"),
+        "rhodes-round-table-city" => Some("place:cape-town-south-africa"),
+        "ig-farben" | "nazi-oss-cia-continuum" => Some("place:germany"),
+        "bis" => Some("place:basel-switzerland"),
+        "mk-ultra-midnight-climax" | "in-q-tel" | "epstein-construct" => {
+            Some("place:united-states")
+        }
+        "dutroux-institutional-failure" => Some("place:belgium"),
+        "nygard-complement" => Some("place:bahamas"),
+        "fentanyl-corridor" => Some("place:north-america"),
+        _ => None,
     }
 }
 
@@ -545,12 +642,8 @@ fn ensure_root_archetypal_constellation_layout_with_transaction(
     let (constellation_id, canvas_id) =
         ensure_root_constellation(connection, root_path, transaction_owned_by_caller)?;
     let constellations = constellation_seeds();
-    let constellation_canvas_ids = ensure_constellation_canvases(
-        connection,
-        &constellation_id,
-        root_path,
-        &constellations,
-    )?;
+    let constellation_canvas_ids =
+        ensure_constellation_canvases(connection, &constellation_id, root_path, &constellations)?;
     let nodes = node_seeds();
     let layouts = layout_records(
         ROOT_CONSTELLATION_SLUG,
@@ -694,7 +787,10 @@ fn ensure_constellation_canvases(
                     )
                     .map_err(|error| error.to_string())?;
                 let primary_canvas_id = child.primary_canvas_id.ok_or_else(|| {
-                    format!("created constellation `{}` has no primary canvas", seed.slug)
+                    format!(
+                        "created constellation `{}` has no primary canvas",
+                        seed.slug
+                    )
                 })?;
                 (child.id, primary_canvas_id)
             }
@@ -3478,19 +3574,33 @@ fn relationship_seeds() -> Vec<RelSeed> {
         ),
     ];
 
-    for constellation in constellation_seeds() {
+    let constellations = constellation_seeds();
+    for constellation in &constellations {
         for member in constellation.members {
-            if !relationships.iter().any(|rel| {
-                rel.source == *member
-                    && rel.target == constellation.slug
-                    && rel.rel_type == "RESONATES_WITH"
-            }) {
+            let (source, rel_type, target) = if constellations
+                .iter()
+                .any(|candidate| candidate.slug == *member)
+            {
+                // A constellation shown in a higher-order constellation is
+                // not merely a resonant symbol: it is a real nested surface
+                // with its own canvas, metadata, and navigable portal.
+                (constellation.slug, "NESTS", *member)
+            } else {
+                // Ordinary members retain their own semantic relationships,
+                // while this link records the structural membership that
+                // makes the constellation legible and projectable.
+                (*member, "PART_OF", constellation.slug)
+            };
+            if !relationships
+                .iter()
+                .any(|rel| rel.source == source && rel.target == target && rel.rel_type == rel_type)
+            {
                 relationships.push(r(
-                    member,
-                    "RESONATES_WITH",
-                    constellation.slug,
+                    source,
+                    rel_type,
+                    target,
                     None,
-                    &["interpretive_vector"],
+                    &["structural_membership"],
                 ));
             }
         }
@@ -3675,6 +3785,52 @@ mod tests {
                             .is_some_and(|kind| kind.eq_ignore_ascii_case("timeline")))
             }),
             "timeline stays a lens over temporal nodes, not a constellation entity",
+        );
+    }
+
+    #[test]
+    fn ql_unit_constellations_project_explicit_typed_ql_metadata_into_graph_nodes() {
+        let nodes = node_seeds();
+        for seed in nodes
+            .iter()
+            .filter(|seed| seed.source_kind == Some("ql-unit"))
+        {
+            let graph = seed.to_graph_node("test");
+            assert!(
+                graph.ql_form.is_some(),
+                "{} declares its QL form",
+                seed.slug
+            );
+            assert_eq!(graph.ql_unit_id.as_deref(), Some(seed.slug));
+            assert_eq!(graph.ql_schema_version, Some(1));
+            assert_eq!(
+                graph.ql_completeness_status,
+                Some(crate::db::repositories::graph::QlCompletenessStatus::Complete),
+                "{} is a declared completed unit rather than a loose QL tag",
+                seed.slug,
+            );
+            assert!(
+                graph
+                    .ql_source_coordinates
+                    .iter()
+                    .any(|coordinate| coordinate.starts_with('#')),
+                "{} preserves its positional evidence separately from file provenance",
+                seed.slug,
+            );
+        }
+
+        let double_helix = nodes
+            .iter()
+            .find(|seed| seed.slug == "double-helix")
+            .expect("double helix seed")
+            .to_graph_node("test");
+        assert_eq!(
+            double_helix.ql_form,
+            Some(crate::db::repositories::graph::QlForm::DoubleHelix),
+        );
+        assert_eq!(
+            double_helix.ql_topology,
+            Some(crate::db::repositories::graph::QlTopology::Composite),
         );
     }
 
@@ -3873,6 +4029,59 @@ mod tests {
                     || !matches!(rel.rel_type, "INSTANTIATES" | "CAUSES" | "INFLUENCES")
             }),
             "claim nodes must not become factual historical operators",
+        );
+    }
+
+    #[test]
+    fn constellation_membership_is_structural_and_nested_constellations_are_visible_as_real_links()
+    {
+        let relationships = relationship_seeds();
+
+        assert!(relationships.iter().any(|rel| {
+            rel.source == "root-ecology"
+                && rel.rel_type == "NESTS"
+                && rel.target == "spectral-lineage-field"
+        }));
+        assert!(relationships.iter().any(|rel| {
+            rel.source == "banda-genocide"
+                && rel.rel_type == "PART_OF"
+                && rel.target == "historical-forms"
+        }));
+        assert!(relationships.iter().all(|rel| {
+            !(rel.source == "spectral-lineage-field"
+                && rel.target == "root-ecology"
+                && rel.rel_type == "RESONATES_WITH")
+        }));
+    }
+
+    #[test]
+    fn dated_historical_seeds_carry_explicit_geographic_tags_separate_from_evidence_status() {
+        let banda = node_seeds()
+            .into_iter()
+            .find(|seed| seed.slug == "banda-genocide")
+            .expect("Banda seed")
+            .to_graph_node("test");
+        assert_eq!(
+            banda.place_coverage,
+            Some(crate::db::repositories::graph::PlaceCoverage::Resolved),
+        );
+        assert!(banda
+            .evidence_tags
+            .iter()
+            .any(|tag| tag == "place:banda-islands-indonesia"));
+        assert!(banda.evidence_tags.iter().any(|tag| tag == "documented"));
+
+        let claim = node_seeds()
+            .into_iter()
+            .find(|seed| seed.slug == "claim-balfour-hidden-hand")
+            .expect("claim seed")
+            .to_graph_node("test");
+        assert!(
+            !claim
+                .evidence_tags
+                .iter()
+                .any(|tag| tag.starts_with("place:")),
+            "a claim does not borrow the dated event's geography as if it were fact",
         );
     }
 }

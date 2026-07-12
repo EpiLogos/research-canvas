@@ -53,6 +53,8 @@ function makeBundle(): GraphExportBundle {
         coordinate: null,
         sourceCoordinates: [],
         ...EMPTY_GRAPH_NODE_METADATA,
+        evidenceTags: ["archive"],
+        sourceKind: "archive",
         isTemporal: true,
         validFrom: "1621-01-01",
         validTo: "1621-12-31",

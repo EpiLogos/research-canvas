@@ -201,6 +201,9 @@ export function normalizeLegacyGraphNode(input: unknown): GraphNodeContract {
 const baseNodeSchema = z.object({
   id: z.string().min(1),
   graphNodeId: z.string().min(1).nullable().default(null),
+  /** Cached canonical graph substance supplied by joined reads. It is never
+   * persisted as canvas layout; layout remains presentation-only. */
+  graph: graphNodeSchema.optional(),
   canvasId: z.string().uuid(),
   title: z.string().min(1),
   position: positionSchema,

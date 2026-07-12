@@ -1,6 +1,6 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 
-import type { ArchetypalLighting, TimelineDiagnostic, TimelineLane, TimelineLayoutOverride, TimelineView } from "./contracts";
+import type { ArchetypalLighting, GraphRelationship, TimelineDiagnostic, TimelineLane, TimelineLayoutOverride, TimelineView } from "./contracts";
 import { tierForPixelsPerYear, type ScaleTier } from "./scale";
 import { projectNodes, type TimelineItem, type TimelinePresentation } from "./projection";
 import { buildLitMap, type LitMap } from "./lighting";
@@ -19,6 +19,7 @@ export interface TimelineStoreState {
   pixelsPerYear: number;
   widthPx: number;
   items: TimelineItem[];
+  relationships: GraphRelationship[];
   lanes: TimelineLane[];
   diagnostics: TimelineDiagnostic[];
   litMap: LitMap;
@@ -68,6 +69,7 @@ export function createTimelineStore(
     pixelsPerYear: clampPixelsPerYear(options.initialPixelsPerYear ?? 2),
     widthPx: 1000,
     items: [],
+    relationships: [],
     lanes: [],
     diagnostics: [],
     litMap: new Map(),
@@ -100,6 +102,10 @@ export function createTimelineStore(
       const preserveViewport = get().manualViewport;
       set({
         items,
+        // Older local terminal bridges may return a timeline payload from
+        // before temporal relationships were added. Treat that as a readable
+        // no-link timeline rather than blanking the whole lens.
+        relationships: view.relationships ?? [],
         lanes: view.lanes,
         diagnostics: view.diagnostics,
         manualViewport: preserveViewport,

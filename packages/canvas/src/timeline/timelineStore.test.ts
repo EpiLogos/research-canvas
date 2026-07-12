@@ -58,7 +58,7 @@ function record(over: Partial<GraphNode>): TimelineViewNode {
 }
 
 function view(nodes: TimelineViewNode[]) {
-  return { workspaceId: "sqlite:/test", nodes, lanes: [{ id: "events" }], diagnostics: [] };
+  return { workspaceId: "sqlite:/test", nodes, relationships: [], lanes: [{ id: "events" }], diagnostics: [] };
 }
 
 describe("timelineStore", () => {

@@ -71,7 +71,18 @@ const transport = {
   // and seeds the editor with "Graph body" — exercising the local-first mount +
   // best-effort reconcile path.
   readLocalNodeDocument: vi.fn().mockResolvedValue(null),
-  upsertLocalNodeDocument: vi.fn().mockResolvedValue(undefined),
+  upsertLocalNodeDocument: vi.fn().mockResolvedValue({
+    mutation: { kind: "created" },
+    document: {
+      graphNodeId: "g1",
+      body,
+      summary: "",
+      neo4jSynced: true,
+      contentOrigin: "imported",
+      contentRevision: 0,
+      bodySourceCoordinates: [],
+    },
+  }),
   searchGraph: vi.fn().mockResolvedValue([]),
 };
 
