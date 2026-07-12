@@ -1,7 +1,7 @@
 import { describe, expect, it, test } from "vitest";
 import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 import { createTimelineStore } from "./timelineStore";
-import type { ArchetypalLighting, GraphNode, TimelineNodeRecord } from "./contracts";
+import type { ArchetypalLighting, GraphNode, TimelineViewNode } from "./contracts";
 import { pixelToYear } from "./viewport";
 
 function node(over: Partial<GraphNode>): GraphNode {
@@ -24,40 +24,48 @@ function node(over: Partial<GraphNode>): GraphNode {
   };
 }
 
-function record(over: Partial<GraphNode>): TimelineNodeRecord {
+function record(over: Partial<GraphNode>): TimelineViewNode {
   const graphNode = node(over);
   return {
     node: graphNode,
-    layout: {
-      graphNodeId: graphNode.graphNodeId,
-      canvasId: "c1",
-      positionX: 0,
-      positionY: 0,
+    anchor: {
+      validFrom: graphNode.validFrom ?? "invalid",
+      validTo: graphNode.validTo,
+      precision: graphNode.temporalPrecision ?? "year",
+    },
+    layoutOverride: {
+      lane: "events",
+      offsetY: 0,
       width: 240,
       height: 72,
       style: {},
+      layoutRevision: 1,
     },
   };
+}
+
+function view(nodes: TimelineViewNode[]) {
+  return { workspaceId: "sqlite:/test", nodes, lanes: [{ id: "events" }], diagnostics: [] };
 }
 
 describe("timelineStore", () => {
   test("hydrate keeps only temporal nodes, sorted ascending", () => {
     const store = createTimelineStore();
-    store.getState().hydrate([
+    store.getState().hydrate(view([
       record({ graphNodeId: "late", validFrom: "1900-01-01" }),
       record({ graphNodeId: "early", validFrom: "1600-01-01" }),
       record({ graphNodeId: "trans", isTemporal: false, validFrom: "1700-01-01" }),
-    ]);
+    ]));
     expect(store.getState().items.map((i) => i.graphNodeId)).toEqual(["early", "late"]);
   });
 
   test("hydrate frames the visible years around the loaded historical nodes", () => {
     const store = createTimelineStore();
     store.getState().setWidth(1800);
-    store.getState().hydrate([
+    store.getState().hydrate(view([
       record({ graphNodeId: "medici", validFrom: "1460-01-01", validTo: "1600-12-31" }),
       record({ graphNodeId: "nygard", validFrom: "2020-01-01", validTo: "2025-12-31" }),
-    ]);
+    ]));
 
     const viewport = store.getState().viewport();
     expect(pixelToYear(viewport, 0)).toBeGreaterThan(1300);
@@ -106,9 +114,9 @@ describe("timelineStore", () => {
     expect(store.getState().selectedNodeId).toBe("x");
   });
 
-  test("updateCardSize persists timeline-only card geometry without moving canvas layout", () => {
+  test("updateCardSize changes only native timeline presentation", () => {
     const store = createTimelineStore();
-    store.getState().hydrate([record({ graphNodeId: "a", validFrom: "1600-01-01" })]);
+    store.getState().hydrate(view([record({ graphNodeId: "a", validFrom: "1600-01-01" })]));
 
     store.getState().updateCardSize("a", {
       positionX: -14,
@@ -117,18 +125,12 @@ describe("timelineStore", () => {
       height: 118,
     });
 
-    expect(store.getState().items[0].layout).toMatchObject({
-      positionX: 0,
-      positionY: 0,
+    expect(store.getState().items[0].presentation).toMatchObject({
+      lane: "events",
+      offsetY: 42,
       width: 310,
       height: 118,
-      style: {
-        __timelineCard: {
-          offsetY: 42,
-          width: 310,
-          height: 118,
-        },
-      },
+      style: {},
     });
   });
 });

@@ -51,10 +51,9 @@ export function TimelineNode({
   const category = deriveTimelineCategory(item.node);
   const categoryStyle = categoryDefinition(category);
   const positionX = 0;
-  const timelineCard = item.layout.style.__timelineCard;
-  const positionY = timelineCard?.offsetY ?? 0;
-  const cardWidth = clampNumber(timelineCard?.width || DEFAULT_TIMELINE_CARD_WIDTH_PX, MIN_CARD_WIDTH, MAX_CARD_WIDTH);
-  const cardHeight = clampNumber(timelineCard?.height || DEFAULT_TIMELINE_CARD_HEIGHT_PX, MIN_CARD_HEIGHT, MAX_CARD_HEIGHT);
+  const positionY = item.presentation.offsetY;
+  const cardWidth = clampNumber(item.presentation.width || DEFAULT_TIMELINE_CARD_WIDTH_PX, MIN_CARD_WIDTH, MAX_CARD_WIDTH);
+  const cardHeight = clampNumber(item.presentation.height || DEFAULT_TIMELINE_CARD_HEIGHT_PX, MIN_CARD_HEIGHT, MAX_CARD_HEIGHT);
   const dragState = useRef<{
     mode: "resize" | "move";
     pointerId: number;
@@ -194,9 +193,9 @@ export function TimelineNode({
           transform: "none",
           width: `${cardWidth}px`,
           height: `${cardHeight}px`,
-          backgroundColor: item.layout.style.bgColour ?? categoryStyle.background,
-          borderColor: item.layout.style.dotColour ?? categoryStyle.color,
-          color: item.layout.style.textColour ?? undefined,
+          backgroundColor: item.presentation.style.bgColour ?? categoryStyle.background,
+          borderColor: item.presentation.style.dotColour ?? categoryStyle.color,
+          color: item.presentation.style.textColour ?? undefined,
           "--timeline-card-offset-y": `${positionY}px`,
           "--timeline-edge-fade-left": String(edgeFade.left),
           "--timeline-edge-fade-right": String(edgeFade.right),
@@ -205,7 +204,7 @@ export function TimelineNode({
         <span
           className="timeline-node-category"
           title={categoryStyle.label}
-          style={{ backgroundColor: item.layout.style.dotColour ?? categoryStyle.color }}
+          style={{ backgroundColor: item.presentation.style.dotColour ?? categoryStyle.color }}
         />
         <span className="timeline-node-date">{formatItemDate(item)}</span>
         <span className="timeline-node-title">{item.node.title}</span>

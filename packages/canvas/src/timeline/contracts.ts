@@ -11,5 +11,10 @@ export type {
   LitInstance,
   NodeLayout,
   TemporalPrecision,
-  TimelineNodeRecord,
+  TimelineAnchor,
+  TimelineLayoutOverride,
+  TimelineViewNode,
+  TimelineView,
+  TimelineLane,
+  TimelineDiagnostic,
 } from "@research-canvas/desktop-api";

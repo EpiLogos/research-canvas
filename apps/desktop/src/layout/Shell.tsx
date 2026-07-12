@@ -37,12 +37,12 @@ export function Shell() {
     setFullScreenMode("closed");
   }, []);
   const timelineDataSource = useMemo(
-    () =>
+    () => workspace.workspaceId ?
       createTimelineDataSource({
         transport: createWorkspaceTransport(),
-        canvasId: workspace.canvasId,
-      }),
-    [workspace.canvasId],
+        workspaceId: workspace.workspaceId,
+      }) : null,
+    [workspace.workspaceId],
   );
 
   const openNodeDocument = useCallback(
@@ -236,16 +236,17 @@ export function Shell() {
             />
           )}
 
-          {lens === "timeline" && (
+          {lens === "timeline" && timelineDataSource && (
             <section className="canvas-pane" data-testid="timeline-pane" style={{ position: "absolute", inset: 0 }}>
               <TimelineLens
                 dataSource={timelineDataSource}
                 onOpenNode={openNodeDocument}
                 onPlaySequence={handlePlaySequence}
-                onUpdateTimelineCard={workspace.updateNodeTimelineCard}
-                onUpdateNodeStyle={workspace.updateNodeStyle}
               />
             </section>
+          )}
+          {lens === "timeline" && !timelineDataSource && (
+            <section className="canvas-pane" data-testid="timeline-workspace-loading">Loading timeline workspace…</section>
           )}
 
           {lens === "reading" && (

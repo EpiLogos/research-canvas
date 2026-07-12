@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 import { computeCardViewportFade, placeItems, projectNodes } from "./projection";
-import type { GraphNode, TimelineNodeRecord } from "./contracts";
+import type { GraphNode, TimelineViewNode } from "./contracts";
 import type { TimelineViewport } from "./viewport";
 
 function node(over: Partial<GraphNode>): GraphNode {
@@ -24,18 +24,22 @@ function node(over: Partial<GraphNode>): GraphNode {
   };
 }
 
-function record(over: Partial<GraphNode> & { width?: number; height?: number }): TimelineNodeRecord {
+function record(over: Partial<GraphNode> & { width?: number; height?: number }): TimelineViewNode {
   const graphNode = node(over);
   return {
     node: graphNode,
-    layout: {
-      graphNodeId: graphNode.graphNodeId,
-      canvasId: "c1",
-      positionX: 0,
-      positionY: 0,
+    anchor: {
+      validFrom: graphNode.validFrom ?? "invalid",
+      validTo: graphNode.validTo,
+      precision: graphNode.temporalPrecision ?? "year",
+    },
+    layoutOverride: {
+      lane: "events",
+      offsetY: 0,
       width: over.width ?? 240,
       height: over.height ?? 72,
       style: {},
+      layoutRevision: 1,
     },
   };
 }
@@ -100,11 +104,26 @@ describe("placeItems", () => {
     expect(b.endPx).toBeCloseTo(500, 3); // ongoing
   });
 
+  test("persisted lane ids retain stable grouping across reload while unassigned nodes use later auto lanes", () => {
+    const items = projectNodes([
+      { ...record({ graphNodeId: "explicit-a", validFrom: "1700-01-01" }), layoutOverride: { lane: "sources", offsetY: 0, width: 240, height: 72, style: {}, layoutRevision: 2 } },
+      { ...record({ graphNodeId: "auto", validFrom: "1700-01-01" }), layoutOverride: null },
+      { ...record({ graphNodeId: "explicit-b", validFrom: "1710-01-01" }), layoutOverride: { lane: "sources", offsetY: 0, width: 240, height: 72, style: {}, layoutRevision: 3 } },
+    ]);
+    const lanes = [{ id: "events" }, { id: "sources" }];
+    const first = placeItems(items, viewport, lanes);
+    const reloaded = placeItems([...items], viewport, lanes);
+    const laneShape = (placed: typeof first) => Object.fromEntries(placed.map((p) => [p.item.graphNodeId, [p.laneIndex, p.laneSide]]));
+    expect(laneShape(reloaded)).toEqual(laneShape(first));
+    expect(laneShape(first)["explicit-a"]).toEqual(laneShape(first)["explicit-b"]);
+    expect(first.find((p) => p.item.graphNodeId === "auto")!.laneIndex).toBeGreaterThanOrEqual(1);
+  });
+
   test("assigns nearby events to alternating above/below lanes", () => {
     const items = projectNodes([
-      record({ graphNodeId: "a", validFrom: "1953-01-01" }),
-      record({ graphNodeId: "b", validFrom: "1954-01-01" }),
-      record({ graphNodeId: "c", validFrom: "1955-01-01" }),
+      { ...record({ graphNodeId: "a", validFrom: "1953-01-01" }), layoutOverride: null },
+      { ...record({ graphNodeId: "b", validFrom: "1954-01-01" }), layoutOverride: null },
+      { ...record({ graphNodeId: "c", validFrom: "1955-01-01" }), layoutOverride: null },
     ]);
     const placed = placeItems(items, { centerYear: 1954, pixelsPerYear: 10, widthPx: 1000 });
 

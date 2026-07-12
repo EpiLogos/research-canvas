@@ -1,8 +1,8 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 
-import type { ArchetypalLighting, NodeLayout, TimelineNodeRecord } from "./contracts";
+import type { ArchetypalLighting, TimelineDiagnostic, TimelineLane, TimelineView } from "./contracts";
 import { tierForPixelsPerYear, type ScaleTier } from "./scale";
-import { projectNodes, type TimelineItem } from "./projection";
+import { projectNodes, type TimelineItem, type TimelinePresentation } from "./projection";
 import { buildLitMap, type LitMap } from "./lighting";
 import {
   clampPixelsPerYear,
@@ -19,6 +19,8 @@ export interface TimelineStoreState {
   pixelsPerYear: number;
   widthPx: number;
   items: TimelineItem[];
+  lanes: TimelineLane[];
+  diagnostics: TimelineDiagnostic[];
   litMap: LitMap;
   selectedNodeId: string | null;
   lightingOperatorId: string | null;
@@ -30,7 +32,7 @@ export interface TimelineStoreState {
   tier: () => ScaleTier;
 
   setWidth: (px: number) => void;
-  hydrate: (records: TimelineNodeRecord[]) => void;
+  hydrate: (view: TimelineView) => void;
   pan: (deltaPx: number) => void;
   zoom: (factor: number, anchorPx: number) => void;
   setView: (centerYear: number, pixelsPerYear: number) => void;
@@ -40,7 +42,7 @@ export interface TimelineStoreState {
   setCursorYear: (year: number | null) => void;
   setPlaying: (playing: boolean) => void;
   updateCardSize: (nodeId: string, size: TimelineCardGeometryUpdate) => void;
-  updateCardStyle: (nodeId: string, style: Partial<NodeLayout["style"]>) => void;
+  updateCardStyle: (nodeId: string, style: Partial<TimelinePresentation["style"]>) => void;
 }
 
 export interface TimelineCardGeometryUpdate {
@@ -63,6 +65,8 @@ export function createTimelineStore(
     pixelsPerYear: clampPixelsPerYear(options.initialPixelsPerYear ?? 2),
     widthPx: 1000,
     items: [],
+    lanes: [],
+    diagnostics: [],
     litMap: new Map(),
     selectedNodeId: null,
     lightingOperatorId: null,
@@ -88,10 +92,12 @@ export function createTimelineStore(
         set({ widthPx: px });
       }
     },
-    hydrate: (records) => {
-      const items = projectNodes(records);
+    hydrate: (view) => {
+      const items = projectNodes(view.nodes);
       set({
         items,
+        lanes: view.lanes,
+        diagnostics: view.diagnostics,
         manualViewport: false,
         ...(items.length > 0 ? fitViewportToItems(items, get().widthPx) : {}),
       });
@@ -121,18 +127,11 @@ export function createTimelineStore(
           item.graphNodeId === nodeId
             ? {
                 ...item,
-                layout: {
-                  ...item.layout,
+                presentation: {
+                  ...item.presentation,
+                  offsetY: size.positionY ?? item.presentation.offsetY,
                   width: size.width,
                   height: size.height,
-                  style: {
-                    ...item.layout.style,
-                    __timelineCard: {
-                      offsetY: size.positionY ?? item.layout.style.__timelineCard?.offsetY ?? 0,
-                      width: size.width,
-                      height: size.height,
-                    },
-                  },
                 },
               }
             : item,
@@ -142,7 +141,7 @@ export function createTimelineStore(
       set((state) => ({
         items: state.items.map((item) =>
           item.graphNodeId === nodeId
-            ? { ...item, layout: { ...item.layout, style: { ...item.layout.style, ...style } } }
+            ? { ...item, presentation: { ...item.presentation, style: { ...item.presentation.style, ...style } } }
             : item,
         ),
       })),

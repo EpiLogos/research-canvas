@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::{
+    commands::timeline::timeline_workspace_identity,
     db::{
         connection::Database,
         repositories::{
@@ -27,6 +28,7 @@ use crate::{
 pub struct WorkspaceBootstrap {
     pub active_constellation_id: String,
     pub database_path: String,
+    pub workspace_id: String,
     pub constellations: Vec<ConstellationTreeNodePayload>,
 }
 
@@ -329,6 +331,7 @@ pub fn bootstrap_workspace_at(
     Ok(WorkspaceBootstrap {
         active_constellation_id,
         database_path: database_path.to_string_lossy().to_string(),
+        workspace_id: timeline_workspace_identity(&database_path)?,
         constellations: constellations
             .into_iter()
             .map(constellation_tree_payload)

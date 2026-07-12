@@ -40,22 +40,16 @@ function placed(
       startYear: 1621,
       endYear: null,
       precision: "year",
-      layout: {
-        graphNodeId: node.graphNodeId,
-        canvasId: "c1",
-        positionX: over.positionX ?? 0,
-        positionY: 0,
-        width: 320,
-        height: 120,
+      presentation: {
+        lane: "events",
+        offsetY: over.positionY ?? 0,
+        width: over.width ?? 320,
+        height: over.height ?? 120,
+        layoutRevision: 1,
         style: {
           bgColour: "#2f1d3a",
           textColour: "#f8e7ff",
           dotColour: "#d98cff",
-          __timelineCard: {
-            offsetY: over.positionY ?? 0,
-            width: over.width ?? 320,
-            height: over.height ?? 120,
-          },
         },
       },
     },

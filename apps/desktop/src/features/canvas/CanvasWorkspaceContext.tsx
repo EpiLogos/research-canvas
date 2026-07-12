@@ -62,6 +62,7 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   activeConstellationId: string | null;
   canvasId: string;
   databasePath: string | null;
+  workspaceId: string | null;
   entries: IndexedEntry[];
   errorMessage: string | null;
   addEdge: (input: {
@@ -141,6 +142,7 @@ export function CanvasWorkspaceProvider({
   );
   const [constellations, setConstellations] = useState<ConstellationTreeNode[]>([]);
   const [databasePath, setDatabasePath] = useState<string | null>(null);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [activeConstellation, setActiveConstellation] = useState<WorkspaceConstellation | null>(null);
   const [activeConstellationId, setActiveConstellationId] = useState<string | null>(null);
   const [activeCanvasId, setActiveCanvasId] = useState(EMPTY_CANVAS_ID);
@@ -203,6 +205,7 @@ export function CanvasWorkspaceProvider({
 
         setConstellations(workspace.constellations);
         setDatabasePath(workspace.databasePath);
+        setWorkspaceId(workspace.workspaceId);
         setActiveConstellationId((current) =>
           current && workspace.constellations.some((constellation) => constellation.id === current)
             ? current
@@ -609,6 +612,7 @@ export function CanvasWorkspaceProvider({
       activeConstellationId,
       canvasId: activeCanvasId,
       databasePath,
+      workspaceId,
       entries,
       errorMessage,
       isHydrated,
@@ -934,6 +938,7 @@ export function CanvasWorkspaceProvider({
       activeCanvasId,
       contentLinkingActions,
       databasePath,
+      workspaceId,
       entries,
       errorMessage,
       isHydrated,

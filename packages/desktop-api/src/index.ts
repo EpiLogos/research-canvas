@@ -179,6 +179,8 @@ export interface ResourceRoot {
 export interface WorkspaceBootstrap {
   activeConstellationId: string;
   databasePath: string;
+  /** Server-derived identity of the canonical SQLite path. */
+  workspaceId: string;
   constellations: ConstellationTreeNode[];
 }
 

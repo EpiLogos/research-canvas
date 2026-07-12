@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useStore } from "zustand";
 
-import type { ArchetypalLighting, LitInstance, NodeLayout, TimelineNodeRecord } from "./contracts";
+import type { ArchetypalLighting, LitInstance, TimelineView } from "./contracts";
 import { createTimelineStore, type TimelineCardGeometryUpdate } from "./timelineStore";
-import { placeItems } from "./projection";
+import { placeItems, type TimelinePresentation } from "./projection";
 import { generateTicks } from "./ticks";
 import { TimelineAxis } from "./TimelineAxis";
 import { TimelineNode } from "./TimelineNode";
@@ -20,7 +20,7 @@ function clamp01(value: number): number {
 }
 
 export interface TimelineDataSource {
-  loadTimelineNodes(): Promise<TimelineNodeRecord[]>;
+  loadTimelineView(): Promise<TimelineView>;
   archetypalLighting(operatorGraphNodeId: string): Promise<ArchetypalLighting>;
   resonancesForInstance(graphNodeId: string): Promise<LitInstance[]>;
 }
@@ -29,12 +29,6 @@ export interface TimelineLensProps {
   dataSource: TimelineDataSource;
   onOpenNode: (graphNodeId: string) => void;
   onPlaySequence?: () => void;
-  onResizeNode?: (graphNodeId: string, size: TimelineCardGeometryUpdate) => void;
-  onUpdateTimelineCard?: (
-    graphNodeId: string,
-    timelineCard: { offsetY: number; width?: number; height?: number },
-  ) => void;
-  onUpdateNodeStyle?: (graphNodeId: string, style: Partial<NodeLayout["style"]>) => void;
 }
 
 const AXIS_HEIGHT = 48;
@@ -47,9 +41,6 @@ export function TimelineLens({
   dataSource,
   onOpenNode,
   onPlaySequence,
-  onResizeNode,
-  onUpdateTimelineCard,
-  onUpdateNodeStyle,
 }: TimelineLensProps): JSX.Element {
   const store = useMemo(() => createTimelineStore(), []);
   const state = useStore(store);
@@ -66,9 +57,9 @@ export function TimelineLens({
     let cancelled = false;
     setLoaded(false);
     setLoadError(null);
-    void dataSource.loadTimelineNodes()
-      .then((nodes) => {
-        if (!cancelled) store.getState().hydrate(nodes);
+    void dataSource.loadTimelineView()
+      .then((view) => {
+        if (!cancelled) store.getState().hydrate(view);
       })
       .catch((error: unknown) => {
         if (!cancelled) {
@@ -100,7 +91,7 @@ export function TimelineLens({
 
   const viewport = state.viewport();
   const tier = state.tier();
-  const allPlaced = placeItems(state.items, viewport);
+  const allPlaced = placeItems(state.items, viewport, state.lanes);
   const placed = allPlaced.filter((p) => visibleCategories[deriveTimelineCategory(p.item.node)]);
   const ticks = generateTicks(viewport, tier);
   const lighting = state.litMap;
@@ -168,17 +159,10 @@ export function TimelineLens({
 
   const handleResizeNode = (graphNodeId: string, size: TimelineCardGeometryUpdate) => {
     store.getState().updateCardSize(graphNodeId, size);
-    onResizeNode?.(graphNodeId, size);
-    onUpdateTimelineCard?.(graphNodeId, {
-      offsetY: size.positionY ?? 0,
-      width: size.width,
-      height: size.height,
-    });
   };
 
-  const handleColorTag = (graphNodeId: string, style: Partial<NodeLayout["style"]>) => {
+  const handleColorTag = (graphNodeId: string, style: Partial<TimelinePresentation["style"]>) => {
     store.getState().updateCardStyle(graphNodeId, style);
-    onUpdateNodeStyle?.(graphNodeId, style);
   };
 
   const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
@@ -260,6 +244,18 @@ export function TimelineLens({
           <div className="timeline-load-state timeline-load-state--error" data-testid="timeline-load-error">
             Timeline data unavailable: {loadError}
           </div>
+        )}
+        {state.diagnostics.length > 0 && (
+          <aside className="timeline-diagnostics" data-testid="timeline-diagnostics" aria-label="Timeline diagnostics">
+            <strong>{state.diagnostics.length} timeline {state.diagnostics.length === 1 ? "issue" : "issues"}</strong>
+            <ul>
+              {state.diagnostics.map((diagnostic) => (
+                <li key={`${diagnostic.graphNodeId}:${diagnostic.code}`}>
+                  {diagnostic.graphNodeId}: {diagnostic.message}
+                </li>
+              ))}
+            </ul>
+          </aside>
         )}
         {showEmptyState && (
           <div className="timeline-load-state" data-testid="timeline-empty-state">

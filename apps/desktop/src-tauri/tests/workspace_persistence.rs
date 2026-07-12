@@ -220,6 +220,16 @@ fn bootstrap_workspace_surfaces_root_constellation_portals_and_preserves_layout_
     cleanup_database(&database_path);
 
     let bootstrap = bootstrap_workspace_at(&database_path).expect("bootstrap workspace");
+    assert_eq!(
+        bootstrap.workspace_id,
+        format!(
+            "sqlite:{}",
+            database_path
+                .canonicalize()
+                .expect("canonical database")
+                .to_string_lossy()
+        )
+    );
     let root = bootstrap
         .constellations
         .iter()

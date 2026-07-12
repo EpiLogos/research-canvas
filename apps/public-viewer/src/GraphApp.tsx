@@ -151,8 +151,8 @@ function TimelineLensPane({
   onOpenNode: (graphNodeId: string) => void;
 }) {
   const dataSource = useMemo(
-    () => createTimelineDataSource({ transport, canvasId: bundle.canvasId }),
-    [transport, bundle.canvasId]
+    () => createTimelineDataSource({ transport, workspaceId: `static:${bundle.project.id}` }),
+    [transport, bundle.project.id]
   );
 
   return (
