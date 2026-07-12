@@ -21,7 +21,10 @@ fn agent_activity_table_exists_after_migration() {
             |row| row.get(0),
         )
         .expect("query sqlite_master");
-    assert_eq!(count, 1, "agent_activity table should exist after migrations");
+    assert_eq!(
+        count, 1,
+        "agent_activity table should exist after migrations"
+    );
 }
 
 #[test]
@@ -62,8 +65,12 @@ fn records_and_lists_recent_newest_first() {
     let (_dir, db) = temp_db();
     let conn = db.connection();
     let repo = AgentActivityRepository::new(conn);
-    let first = repo.record(&sample("node_created", "gn-1", "First")).unwrap();
-    let second = repo.record(&sample("node_created", "gn-2", "Second")).unwrap();
+    let first = repo
+        .record(&sample("node_created", "gn-1", "First"))
+        .unwrap();
+    let second = repo
+        .record(&sample("node_created", "gn-2", "Second"))
+        .unwrap();
     assert!(!first.id.is_empty());
     assert!(!first.reviewed);
     let recent = repo.list_recent(10).unwrap();
@@ -77,7 +84,9 @@ fn marks_reviewed_and_placed() {
     let (_dir, db) = temp_db();
     let conn = db.connection();
     let repo = AgentActivityRepository::new(conn);
-    let rec = repo.record(&sample("node_created", "gn-9", "Node")).unwrap();
+    let rec = repo
+        .record(&sample("node_created", "gn-9", "Node"))
+        .unwrap();
     repo.mark_reviewed(&rec.id).unwrap();
     repo.mark_placed("gn-9").unwrap();
     let recent = repo.list_recent(10).unwrap();

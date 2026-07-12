@@ -102,7 +102,10 @@ fn edge_layout_upserts_updates_in_place_and_deletes() {
     assert_eq!(after_update[0].relation_kind, "opposes");
 
     repo.delete_edge_layout("e1").expect("delete edge");
-    assert!(repo.list_edge_layout(&canvas_id).expect("list empty").is_empty());
+    assert!(repo
+        .list_edge_layout(&canvas_id)
+        .expect("list empty")
+        .is_empty());
 }
 
 #[test]
@@ -132,27 +135,37 @@ fn app_state_upsert_persists_viewport_and_is_readable() {
 
     assert!(repo.get_app_state(&canvas_id).expect("get none").is_none());
 
-    repo.upsert_app_state(&research_canvas_desktop_lib::db::repositories::CanvasAppStateRecord {
-        canvas_id: canvas_id.clone(),
-        viewport_json: r#"{"x":12,"y":34,"zoom":1.5}"#.to_string(),
-        app_state_json: r#"{"panel":"open"}"#.to_string(),
-        updated_at: "2026-06-28T00:00:00Z".to_string(),
-    })
+    repo.upsert_app_state(
+        &research_canvas_desktop_lib::db::repositories::CanvasAppStateRecord {
+            canvas_id: canvas_id.clone(),
+            viewport_json: r#"{"x":12,"y":34,"zoom":1.5}"#.to_string(),
+            app_state_json: r#"{"panel":"open"}"#.to_string(),
+            updated_at: "2026-06-28T00:00:00Z".to_string(),
+        },
+    )
     .expect("first upsert");
 
-    let loaded = repo.get_app_state(&canvas_id).expect("get some").expect("row");
+    let loaded = repo
+        .get_app_state(&canvas_id)
+        .expect("get some")
+        .expect("row");
     assert_eq!(loaded.viewport_json, r#"{"x":12,"y":34,"zoom":1.5}"#);
     assert_eq!(loaded.app_state_json, r#"{"panel":"open"}"#);
 
-    repo.upsert_app_state(&research_canvas_desktop_lib::db::repositories::CanvasAppStateRecord {
-        canvas_id: canvas_id.clone(),
-        viewport_json: r#"{"x":0,"y":0,"zoom":2}"#.to_string(),
-        app_state_json: "{}".to_string(),
-        updated_at: "2026-06-28T01:00:00Z".to_string(),
-    })
+    repo.upsert_app_state(
+        &research_canvas_desktop_lib::db::repositories::CanvasAppStateRecord {
+            canvas_id: canvas_id.clone(),
+            viewport_json: r#"{"x":0,"y":0,"zoom":2}"#.to_string(),
+            app_state_json: "{}".to_string(),
+            updated_at: "2026-06-28T01:00:00Z".to_string(),
+        },
+    )
     .expect("second upsert");
 
-    let updated = repo.get_app_state(&canvas_id).expect("get some 2").expect("row 2");
+    let updated = repo
+        .get_app_state(&canvas_id)
+        .expect("get some 2")
+        .expect("row 2");
     assert_eq!(updated.viewport_json, r#"{"x":0,"y":0,"zoom":2}"#);
 
     // Still exactly one row per canvas.
@@ -191,6 +204,9 @@ fn upsert_node_layouts_writes_all_records_and_returns_count() {
     assert_eq!(written2, 1);
     let listed2 = repo.list_node_layout(&canvas_id).expect("list 2");
     assert_eq!(listed2.len(), 3);
-    let n1 = listed2.iter().find(|r| r.graph_node_id == "n1").expect("n1");
+    let n1 = listed2
+        .iter()
+        .find(|r| r.graph_node_id == "n1")
+        .expect("n1");
     assert_eq!(n1.position_x, 50.0);
 }

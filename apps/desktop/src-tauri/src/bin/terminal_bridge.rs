@@ -3,11 +3,10 @@ use std::sync::Arc;
 use research_canvas_desktop_lib::{
     commands::{
         projects::{
-            attach_project_resource_root_at, bootstrap_workspace_at, default_database_path,
-            detach_project_resource_root_at, list_directories_at, list_project_resource_roots_at,
-            load_project_document_at, persist_project_document_at,
-            create_saved_sequence_command, delete_saved_sequence_command,
-            list_saved_sequences_command, update_saved_sequence_command,
+            attach_project_resource_root_at, bootstrap_workspace_at, create_saved_sequence_command,
+            default_database_path, delete_saved_sequence_command, detach_project_resource_root_at,
+            list_directories_at, list_project_resource_roots_at, list_saved_sequences_command,
+            load_project_document_at, persist_project_document_at, update_saved_sequence_command,
             CreateSavedSequenceRequest, DeleteSavedSequenceRequest, ListSavedSequencesRequest,
             PersistProjectDocumentRequest, ResourceRootLookupRequest, ResourceRootMutationRequest,
             UpdateSavedSequenceRequest,
@@ -103,9 +102,10 @@ fn handle_request(
     }
 
     if method == Method::Get && path == "/workspace/file-content" {
-        let requested_path = query_param(&url, "path")
-            .ok_or_else(|| "missing path query parameter".to_string())?;
-        let content = std::fs::read_to_string(&requested_path).map_err(|error| error.to_string())?;
+        let requested_path =
+            query_param(&url, "path").ok_or_else(|| "missing path query parameter".to_string())?;
+        let content =
+            std::fs::read_to_string(&requested_path).map_err(|error| error.to_string())?;
         return respond_json(request, StatusCode(200), json!({ "content": content }));
     }
 
@@ -170,9 +170,7 @@ fn handle_request(
             };
             let mut payload: PersistProjectDocumentRequest = match serde_json::from_str(&body) {
                 Ok(payload) => payload,
-                Err(error) => {
-                    return respond_error(request, StatusCode(400), &error.to_string())
-                }
+                Err(error) => return respond_error(request, StatusCode(400), &error.to_string()),
             };
             payload.database_path = database_path;
             payload.project_id = project_id;
@@ -216,24 +214,31 @@ fn handle_request(
         }
 
         if method == Method::Get && action == "sequences" {
-            let database_path = session_database_path(&request).to_string_lossy().to_string();
+            let database_path = session_database_path(&request)
+                .to_string_lossy()
+                .to_string();
             let payload = list_saved_sequences_command(ListSavedSequencesRequest {
                 database_path,
                 canvas_id: query_param(&url, "canvasId").unwrap_or_default(),
-            }).map_err(|e| e.to_string())?;
+            })
+            .map_err(|e| e.to_string())?;
             return respond_json(request, StatusCode(200), payload);
         }
 
         if method == Method::Post && action == "sequences" {
-            let database_path = session_database_path(&request).to_string_lossy().to_string();
+            let database_path = session_database_path(&request)
+                .to_string_lossy()
+                .to_string();
             let body = read_body(&mut request)?;
-            let input: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
+            let input: serde_json::Value =
+                serde_json::from_str(&body).map_err(|e| e.to_string())?;
             let payload = create_saved_sequence_command(CreateSavedSequenceRequest {
                 database_path,
                 project_id: project_id.clone(),
                 canvas_id: input["canvasId"].as_str().unwrap_or_default().to_string(),
                 name: input["name"].as_str().unwrap_or("Untitled").to_string(),
-            }).map_err(|e| e.to_string())?;
+            })
+            .map_err(|e| e.to_string())?;
             return respond_json(request, StatusCode(201), payload);
         }
     }
@@ -242,9 +247,12 @@ fn handle_request(
         let sequence_id = sequence_id.to_string();
 
         if method == Method::Put {
-            let database_path = session_database_path(&request).to_string_lossy().to_string();
+            let database_path = session_database_path(&request)
+                .to_string_lossy()
+                .to_string();
             let body = read_body(&mut request)?;
-            let input: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
+            let input: serde_json::Value =
+                serde_json::from_str(&body).map_err(|e| e.to_string())?;
             let edge_ids: Vec<String> = input["edgeIds"]
                 .as_array()
                 .unwrap_or(&vec![])
@@ -257,16 +265,20 @@ fn handle_request(
                 name: input["name"].as_str().unwrap_or("Untitled").to_string(),
                 root_node_id: input["rootNodeId"].as_str().map(ToOwned::to_owned),
                 edge_ids,
-            }).map_err(|e| e.to_string())?;
+            })
+            .map_err(|e| e.to_string())?;
             return respond_json(request, StatusCode(200), payload);
         }
 
         if method == Method::Delete {
-            let database_path = session_database_path(&request).to_string_lossy().to_string();
+            let database_path = session_database_path(&request)
+                .to_string_lossy()
+                .to_string();
             delete_saved_sequence_command(DeleteSavedSequenceRequest {
                 database_path,
                 id: sequence_id,
-            }).map_err(|e| e.to_string())?;
+            })
+            .map_err(|e| e.to_string())?;
             return respond_json(request, StatusCode(200), json!({ "ok": true }));
         }
     }

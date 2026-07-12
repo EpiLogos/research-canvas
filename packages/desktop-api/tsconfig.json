@@ -11,8 +11,10 @@
   "references": [
     {
       "path": "../schema"
+    },
+    {
+      "path": "../exporter"
     }
   ],
-  "include": ["src", "../exporter/src"],
-  "exclude": ["../exporter/src/**/*.test.ts"]
+  "include": ["src"]
 }

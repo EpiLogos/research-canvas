@@ -6,8 +6,7 @@ use tauri::Emitter;
 use tiny_http::{Method, Response, Server};
 
 pub fn start_server(state: SharedApiState, app_handle: tauri::AppHandle) {
-    let server = Server::http("127.0.0.1:9876")
-        .expect("Failed to bind HTTP server on port 9876");
+    let server = Server::http("127.0.0.1:9876").expect("Failed to bind HTTP server on port 9876");
 
     for mut request in server.incoming_requests() {
         let method = request.method().clone();
@@ -33,18 +32,12 @@ pub fn start_server(state: SharedApiState, app_handle: tauri::AppHandle) {
         let response = Response::from_string(json_body)
             .with_status_code(status)
             .with_header(
-                tiny_http::Header::from_bytes(
-                    &b"Content-Type"[..],
-                    &b"application/json"[..],
-                )
-                .unwrap(),
+                tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                    .unwrap(),
             )
             .with_header(
-                tiny_http::Header::from_bytes(
-                    &b"Access-Control-Allow-Origin"[..],
-                    &b"*"[..],
-                )
-                .unwrap(),
+                tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..])
+                    .unwrap(),
             );
 
         let _ = request.respond(response);
@@ -74,7 +67,9 @@ fn dispatch(
 
         // PUT /api/layout/node — place/move/restyle one node
         (Method::Put, "/api/layout/node") => {
-            let Some(raw) = body else { return err(400, "missing body") };
+            let Some(raw) = body else {
+                return err(400, "missing body");
+            };
             match serde_json::from_str(&raw) {
                 Ok(req) => match handlers::upsert_node_layout(req, state) {
                     Ok(data) => (200, serde_json::to_string(&data).unwrap(), true),
@@ -87,7 +82,9 @@ fn dispatch(
         // DELETE /api/layout/node/:graphNodeId — remove placement
         (Method::Delete, p) if p.starts_with("/api/layout/node/") => {
             let graph_node_id = p.trim_start_matches("/api/layout/node/").to_string();
-            if graph_node_id.is_empty() { return err(400, "missing graph node id") }
+            if graph_node_id.is_empty() {
+                return err(400, "missing graph node id");
+            }
             match handlers::remove_node_layout(graph_node_id, state) {
                 Ok(data) => (200, serde_json::to_string(&data).unwrap(), true),
                 Err(e) => err(500, &e),
@@ -96,7 +93,9 @@ fn dispatch(
 
         // POST /api/layout/batch — batch place
         (Method::Post, "/api/layout/batch") => {
-            let Some(raw) = body else { return err(400, "missing body") };
+            let Some(raw) = body else {
+                return err(400, "missing body");
+            };
             match serde_json::from_str(&raw) {
                 Ok(req) => match handlers::batch_place(req, state) {
                     Ok(data) => (201, serde_json::to_string(&data).unwrap(), true),

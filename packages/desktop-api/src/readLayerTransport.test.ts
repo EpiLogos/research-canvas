@@ -31,6 +31,8 @@ function bundle(): GraphExportBundle {
         archetypalResonance: null,
         coordinate: null,
         sourceCoordinates: [],
+        evidenceTags: [],
+        sourceKind: null,
         isTemporal: true,
         validFrom: "1621-01-01",
         validTo: null,

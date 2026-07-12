@@ -536,9 +536,8 @@ impl<'conn> CanvasGraphRepository<'conn> {
                 created_at, updated_at
             ) VALUES (?1, ?2, 'group', ?3, ?4, ?5, ?6, ?7, ?8, ?9, '[]', '[]', ?10, ?10)",
             params![
-                id, canvas_id, title, title,
-                position_x, position_y, 300.0_f64, 200.0_f64,
-                color, now
+                id, canvas_id, title, title, position_x, position_y, 300.0_f64, 200.0_f64, color,
+                now
             ],
         )?;
         self.get_node_by_id(&id)?
@@ -590,7 +589,7 @@ impl<'conn> CanvasGraphRepository<'conn> {
     fn get_edge_by_id(&self, edge_id: &str) -> Result<Option<CanvasEdgeRecord>> {
         self.connection
             .query_row(
-            "SELECT
+                "SELECT
                     id,
                     canvas_id,
                     source_node_id,

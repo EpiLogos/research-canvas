@@ -19,12 +19,14 @@ function bundle(): GraphExportBundle {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    evidenceTags: [],
+    sourceKind: null,
     isTemporal: true,
     validFrom: "1621-01-01",
     validTo: "1621-12-31",
     temporalPrecision: "year",
     createdAt: "2026-06-28T12:00:00Z",
-    updatedAt: "2026-06-28T12:00:00Z"
+    updatedAt: "2026-06-28T12:00:00Z",
   };
   const monopoly: GraphExportBundle["nodes"][number] = {
     graphNodeId: "node-monopoly",
@@ -35,12 +37,14 @@ function bundle(): GraphExportBundle {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    evidenceTags: [],
+    sourceKind: null,
     isTemporal: false,
     validFrom: null,
     validTo: null,
     temporalPrecision: null,
     createdAt: "2026-06-28T12:00:00Z",
-    updatedAt: "2026-06-28T12:00:00Z"
+    updatedAt: "2026-06-28T12:00:00Z",
   };
   return {
     generatedAt: "2026-06-28T12:00:00Z",

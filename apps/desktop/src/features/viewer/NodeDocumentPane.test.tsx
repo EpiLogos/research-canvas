@@ -37,6 +37,8 @@ function makeNode(body: string): GraphNode {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    evidenceTags: [],
+    sourceKind: null,
     isTemporal: true,
     validFrom: null,
     validTo: null,

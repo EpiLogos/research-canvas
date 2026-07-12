@@ -4,9 +4,10 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { agentTools } from "./tools/agent.js";
 import { canvasTools } from "./tools/canvas.js";
 
-const allTools = [...canvasTools];
+const allTools = [...canvasTools, ...agentTools];
 
 const server = new Server(
   { name: "research-canvas", version: "1.0.0" },

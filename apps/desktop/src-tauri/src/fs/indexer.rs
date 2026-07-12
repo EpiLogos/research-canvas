@@ -50,8 +50,14 @@ fn walk(
             continue;
         }
 
-        let metadata = child.metadata()?;
+        let metadata = fs::symlink_metadata(&path)?;
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
         let is_directory = metadata.is_dir();
+        if is_directory && is_skipped_build_or_cache_dir(&file_name) {
+            continue;
+        }
         let relative_path = relative_path(root, &path);
         let kind = if is_directory {
             IndexedEntryKind::Directory
@@ -94,6 +100,51 @@ fn classify_file(path: &Path) -> IndexedEntryKind {
 
 fn is_hidden(file_name: &str) -> bool {
     file_name.starts_with('.')
+}
+
+fn is_skipped_build_or_cache_dir(file_name: &str) -> bool {
+    matches!(
+        file_name,
+        "node_modules"
+            | "target"
+            | "dist"
+            | "build"
+            | "coverage"
+            | ".next"
+            | ".nuxt"
+            | ".svelte-kit"
+            | ".turbo"
+            | ".cache"
+    )
+}
+
+pub fn is_text_like_extension(extension: &str) -> bool {
+    matches!(
+        extension,
+        "md" | "markdown"
+            | "mdown"
+            | "mkd"
+            | "txt"
+            | "text"
+            | "log"
+            | "rst"
+            | "org"
+            | "csv"
+            | "json"
+            | "yaml"
+            | "yml"
+            | "toml"
+            | "rs"
+            | "ts"
+            | "tsx"
+            | "js"
+            | "jsx"
+            | "html"
+            | "css"
+            | "xml"
+            | "sh"
+            | "py"
+    )
 }
 
 fn relative_path(root: &Path, path: &Path) -> String {

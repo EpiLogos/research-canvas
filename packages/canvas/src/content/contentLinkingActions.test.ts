@@ -14,6 +14,8 @@ function makeNode(overrides: Partial<GraphNode> = {}): GraphNode {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    evidenceTags: [],
+    sourceKind: null,
     isTemporal: false,
     validFrom: null,
     validTo: null,

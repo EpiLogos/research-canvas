@@ -66,9 +66,7 @@ fn list_for_canvas_returns_sequences_in_created_at_order() {
         .create(&project_id, &canvas_id, "Gamma")
         .expect("create third");
 
-    let list = repo
-        .list_for_canvas(&canvas_id)
-        .expect("list sequences");
+    let list = repo.list_for_canvas(&canvas_id).expect("list sequences");
 
     assert_eq!(list.len(), 3);
     assert_eq!(list[0].id, first.id);
@@ -213,9 +211,7 @@ fn delete_removes_record_so_get_by_id_returns_none() {
 
     repo.delete(&created.id).expect("delete sequence");
 
-    let result = repo
-        .get_by_id(&created.id)
-        .expect("post-delete get");
+    let result = repo.get_by_id(&created.id).expect("post-delete get");
 
     assert!(result.is_none());
 }

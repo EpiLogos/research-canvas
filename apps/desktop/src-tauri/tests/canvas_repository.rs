@@ -171,8 +171,12 @@ fn update_node_title_and_position() {
     let conn = db.connection();
     let graph = CanvasGraphRepository::new(conn);
 
-    let node = graph.create_note_node(&canvas_id, "Old", "body", 0.0, 0.0).unwrap();
-    graph.update_node(&node.id, Some("New Title"), None, Some(100.0), Some(200.0)).unwrap();
+    let node = graph
+        .create_note_node(&canvas_id, "Old", "body", 0.0, 0.0)
+        .unwrap();
+    graph
+        .update_node(&node.id, Some("New Title"), None, Some(100.0), Some(200.0))
+        .unwrap();
 
     let updated = graph.get_node_by_id(&node.id).unwrap().unwrap();
     assert_eq!(updated.title, "New Title");
@@ -187,9 +191,15 @@ fn delete_node_removes_edges() {
     let conn = db.connection();
     let graph = CanvasGraphRepository::new(conn);
 
-    let a = graph.create_note_node(&canvas_id, "A", "", 0.0, 0.0).unwrap();
-    let b = graph.create_note_node(&canvas_id, "B", "", 100.0, 0.0).unwrap();
-    let edge = graph.connect_nodes(&canvas_id, &a.id, &b.id, "reference").unwrap();
+    let a = graph
+        .create_note_node(&canvas_id, "A", "", 0.0, 0.0)
+        .unwrap();
+    let b = graph
+        .create_note_node(&canvas_id, "B", "", 100.0, 0.0)
+        .unwrap();
+    let edge = graph
+        .connect_nodes(&canvas_id, &a.id, &b.id, "reference")
+        .unwrap();
 
     graph.delete_node(&a.id).unwrap();
 
@@ -205,9 +215,15 @@ fn delete_edge_by_id() {
     let conn = db.connection();
     let graph = CanvasGraphRepository::new(conn);
 
-    let a = graph.create_note_node(&canvas_id, "A", "", 0.0, 0.0).unwrap();
-    let b = graph.create_note_node(&canvas_id, "B", "", 100.0, 0.0).unwrap();
-    let edge = graph.connect_nodes(&canvas_id, &a.id, &b.id, "reference").unwrap();
+    let a = graph
+        .create_note_node(&canvas_id, "A", "", 0.0, 0.0)
+        .unwrap();
+    let b = graph
+        .create_note_node(&canvas_id, "B", "", 100.0, 0.0)
+        .unwrap();
+    let edge = graph
+        .connect_nodes(&canvas_id, &a.id, &b.id, "reference")
+        .unwrap();
 
     graph.delete_edge(&edge.id).unwrap();
 
@@ -222,7 +238,9 @@ fn create_group_node_test() {
     let conn = db.connection();
     let graph = CanvasGraphRepository::new(conn);
 
-    let node = graph.create_group_node(&canvas_id, "Movement 2", "#e67e22", 0.0, 0.0).unwrap();
+    let node = graph
+        .create_group_node(&canvas_id, "Movement 2", "#e67e22", 0.0, 0.0)
+        .unwrap();
     assert_eq!(node.node_type, "group");
     assert_eq!(node.color.as_deref(), Some("#e67e22"));
 }
@@ -262,9 +280,18 @@ fn sequencing_fields_round_trip_through_the_repository() {
     assert!(loaded_node.sequence_viewport_json.is_none());
 
     // Update node sequence fields
-    graph.update_node_sequence_fields(&node_a.id, Some("Opening"), Some(r#"{"x":1,"y":2,"zoom":1.5}"#)).unwrap();
+    graph
+        .update_node_sequence_fields(
+            &node_a.id,
+            Some("Opening"),
+            Some(r#"{"x":1,"y":2,"zoom":1.5}"#),
+        )
+        .unwrap();
     let snapshot2 = graph.load_canvas_snapshot(&canvas_id).unwrap();
     let loaded_node2 = snapshot2.nodes.iter().find(|n| n.id == node_a.id).unwrap();
     assert_eq!(loaded_node2.sequence_caption.as_deref(), Some("Opening"));
-    assert_eq!(loaded_node2.sequence_viewport_json.as_deref(), Some(r#"{"x":1,"y":2,"zoom":1.5}"#));
+    assert_eq!(
+        loaded_node2.sequence_viewport_json.as_deref(),
+        Some(r#"{"x":1,"y":2,"zoom":1.5}"#)
+    );
 }

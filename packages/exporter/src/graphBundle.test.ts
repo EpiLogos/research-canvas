@@ -34,6 +34,8 @@ function makeBundle(): GraphExportBundle {
         archetypalResonance: null,
         coordinate: null,
         sourceCoordinates: [],
+        evidenceTags: [],
+        sourceKind: null,
         isTemporal: false,
         validFrom: null,
         validTo: null,
@@ -50,6 +52,8 @@ function makeBundle(): GraphExportBundle {
         archetypalResonance: null,
         coordinate: null,
         sourceCoordinates: [],
+        evidenceTags: ["archive"],
+        sourceKind: "archive",
         isTemporal: true,
         validFrom: "1621-01-01",
         validTo: "1621-12-31",
@@ -93,6 +97,8 @@ function makeBundle(): GraphExportBundle {
             archetypalResonance: null,
             coordinate: null,
             sourceCoordinates: [],
+            evidenceTags: ["archive"],
+            sourceKind: "archive",
             isTemporal: true,
             validFrom: "1621-01-01",
             validTo: "1621-12-31",
@@ -115,7 +121,34 @@ describe("graphExportBundle", () => {
     const parsed = parseGraphExportBundle(bundle);
     expect(parsed.canvasId).toBe("22222222-2222-4222-8222-222222222222");
     expect(parsed.nodes).toHaveLength(2);
+    expect(parsed.nodes[1].evidenceTags).toEqual(["archive"]);
+    expect(parsed.nodes[1].sourceKind).toBe("archive");
     expect(parsed.lightingIndex["node-monopoly"]?.[0]?.relType).toBe("INSTANTIATES");
+  });
+
+  it("normalizes legacy bundle nodes missing evidence fields", () => {
+    const legacy = makeBundle();
+    for (const node of legacy.nodes) {
+      // @ts-expect-error intentionally remove Task 6 fields from a legacy bundle
+      delete node.evidenceTags;
+      // @ts-expect-error intentionally remove Task 6 fields from a legacy bundle
+      delete node.sourceKind;
+    }
+    const litNode = legacy.lightingIndex["node-monopoly"]?.[0]?.node;
+    if (!litNode) {
+      throw new Error("missing lighting fixture node");
+    }
+    // @ts-expect-error intentionally remove Task 6 fields from a legacy bundle
+    delete litNode.evidenceTags;
+    // @ts-expect-error intentionally remove Task 6 fields from a legacy bundle
+    delete litNode.sourceKind;
+
+    const parsed = parseGraphExportBundle(legacy);
+
+    expect(parsed.nodes[0].evidenceTags).toEqual([]);
+    expect(parsed.nodes[0].sourceKind).toBeNull();
+    expect(parsed.lightingIndex["node-monopoly"]?.[0]?.node.evidenceTags).toEqual([]);
+    expect(parsed.lightingIndex["node-monopoly"]?.[0]?.node.sourceKind).toBeNull();
   });
 
   it("rejects a bundle whose node is missing graphNodeId", () => {

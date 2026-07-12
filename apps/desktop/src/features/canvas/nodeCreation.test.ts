@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildNewGraphNodeInput, seedNoteNodeEffects } from "./nodeCreation";
 import {
   isGraphNodeSyncPending,
@@ -6,6 +6,10 @@ import {
   resetPendingGraphNodeSync,
   retryPendingGraphNodeSyncs,
 } from "./pendingGraphNodeSync";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("buildNewGraphNodeInput", () => {
   it("maps a note to a Work entity type with empty body", () => {
@@ -88,6 +92,7 @@ describe("seedNoteNodeEffects", () => {
   it("still creates the graph node even if upsertLocalNodeDocument fails", async () => {
     const upsertLocalNodeDocument = vi.fn().mockRejectedValue(new Error("sqlite busy"));
     const createGraphNode = vi.fn().mockResolvedValue({});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     await expect(
       seedNoteNodeEffects({
@@ -100,11 +105,16 @@ describe("seedNoteNodeEffects", () => {
     ).resolves.toBeUndefined();
 
     expect(createGraphNode).toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      "upsertLocalNodeDocument failed; note kept locally without a seeded doc row",
+      expect.any(Error)
+    );
   });
 
   it("records the node as pending sync when createGraphNode fails, and never throws", async () => {
     const upsertLocalNodeDocument = vi.fn().mockResolvedValue(undefined);
     const createGraphNode = vi.fn().mockRejectedValue(new Error("neo4j down"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     await expect(
       seedNoteNodeEffects({
@@ -117,6 +127,10 @@ describe("seedNoteNodeEffects", () => {
     ).resolves.toBeUndefined();
 
     expect(isGraphNodeSyncPending("node-2")).toBe(true);
+    expect(warn).toHaveBeenCalledWith(
+      "createGraphNode sync failed; node kept locally",
+      expect.any(Error)
+    );
   });
 
   it("does not record the node as pending when createGraphNode succeeds", async () => {
@@ -145,6 +159,7 @@ describe("retryPendingGraphNodeSyncs", () => {
       .fn()
       .mockRejectedValueOnce(new Error("neo4j down"))
       .mockResolvedValueOnce({});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     await seedNoteNodeEffects({
       graphNodeId: "node-4",
@@ -159,10 +174,16 @@ describe("retryPendingGraphNodeSyncs", () => {
 
     expect(isGraphNodeSyncPending("node-4")).toBe(false);
     expect(createGraphNode).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      "createGraphNode sync failed; node kept locally",
+      expect.any(Error)
+    );
   });
 
   it("keeps a node pending if the retry attempt also fails", async () => {
     const createGraphNode = vi.fn().mockRejectedValue(new Error("still down"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     await seedNoteNodeEffects({
       graphNodeId: "node-5",
@@ -177,5 +198,14 @@ describe("retryPendingGraphNodeSyncs", () => {
 
     expect(isGraphNodeSyncPending("node-5")).toBe(true);
     expect(pendingGraphNodeSyncCount()).toBe(1);
+    expect(warn).toHaveBeenCalledWith(
+      "createGraphNode sync failed; node kept locally",
+      expect.any(Error)
+    );
+    expect(warn).toHaveBeenCalledWith(
+      "retryPendingGraphNodeSyncs: createGraphNode still failing; node kept pending",
+      "node-5",
+      expect.any(Error)
+    );
   });
 });

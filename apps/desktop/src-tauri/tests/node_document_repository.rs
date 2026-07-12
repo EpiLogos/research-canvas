@@ -19,7 +19,10 @@ fn node_document_table_exists_after_migration() {
             |row| row.get(0),
         )
         .expect("query sqlite_master");
-    assert_eq!(count, 1, "node_document table should exist after migrations");
+    assert_eq!(
+        count, 1,
+        "node_document table should exist after migrations"
+    );
 }
 
 #[test]
@@ -37,9 +40,13 @@ fn upsert_then_get_returns_the_row() {
     let conn = db.connection();
     let repo = NodeDocumentRepository::new(conn);
 
-    repo.upsert_node_document("x", "BODY", "sum", false).unwrap();
+    repo.upsert_node_document("x", "BODY", "sum", false)
+        .unwrap();
 
-    let result = repo.get_node_document("x").unwrap().expect("row should exist");
+    let result = repo
+        .get_node_document("x")
+        .unwrap()
+        .expect("row should exist");
     assert_eq!(result.graph_node_id, "x");
     assert_eq!(result.body, "BODY");
     assert_eq!(result.summary, "sum");
@@ -52,8 +59,10 @@ fn second_upsert_updates_in_place_without_duplicate_rows() {
     let conn = db.connection();
     let repo = NodeDocumentRepository::new(conn);
 
-    repo.upsert_node_document("x", "BODY", "sum", false).unwrap();
-    repo.upsert_node_document("x", "BODY2", "sum2", true).unwrap();
+    repo.upsert_node_document("x", "BODY", "sum", false)
+        .unwrap();
+    repo.upsert_node_document("x", "BODY2", "sum2", true)
+        .unwrap();
 
     let count: i64 = conn
         .query_row(
@@ -64,7 +73,10 @@ fn second_upsert_updates_in_place_without_duplicate_rows() {
         .expect("count rows");
     assert_eq!(count, 1, "upsert should not create a duplicate row");
 
-    let result = repo.get_node_document("x").unwrap().expect("row should exist");
+    let result = repo
+        .get_node_document("x")
+        .unwrap()
+        .expect("row should exist");
     assert_eq!(result.body, "BODY2");
     assert_eq!(result.summary, "sum2");
     assert!(result.neo4j_synced);

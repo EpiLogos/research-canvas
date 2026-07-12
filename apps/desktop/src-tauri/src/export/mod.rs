@@ -696,7 +696,6 @@ fn build_node_pages(nodes: &[NodeExport]) -> Vec<NodePage> {
                 file_name: format!("{}.html", slug),
                 href: format!("nodes/{}.html", slug),
                 node_id: node_id(node),
-                slug,
             }
         })
         .collect()
@@ -707,7 +706,6 @@ struct NodePage {
     file_name: String,
     href: String,
     node_id: String,
-    slug: String,
 }
 
 fn node_id(node: &NodeExport) -> String {

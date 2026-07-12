@@ -2,27 +2,114 @@ import { z } from "zod";
 
 import type { ExportAsset, ExportBundle } from "@research-canvas/schema";
 import { projectSchema } from "@research-canvas/schema";
-import type {
-  CanvasNodeSidecar,
-  EdgeLayout,
-  GraphNode,
-  GraphRelationship,
-  LitInstance,
-  NodeLayout
-} from "@research-canvas/desktop-api";
+
+export type GraphBundleEntityType =
+  | "Figure"
+  | "People"
+  | "Event"
+  | "Institution"
+  | "Source"
+  | "Place"
+  | "Work"
+  | "Archetype"
+  | "Dynamic"
+  | "PsychoidOperator";
+
+export type GraphBundleTemporalPrecision =
+  | "year"
+  | "month"
+  | "day"
+  | "decade"
+  | "century"
+  | "millennium"
+  | null;
+
+export interface GraphBundleNode {
+  graphNodeId: string;
+  entityType: GraphBundleEntityType;
+  title: string;
+  body: string;
+  summary: string;
+  archetypalResonance: string | null;
+  coordinate: string | null;
+  sourceCoordinates: string[];
+  evidenceTags: string[];
+  sourceKind: string | null;
+  isTemporal: boolean;
+  validFrom: string | null;
+  validTo: string | null;
+  temporalPrecision: GraphBundleTemporalPrecision;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GraphBundleRelationship {
+  id: string;
+  relType: string;
+  sourceGraphNodeId: string;
+  targetGraphNodeId: string;
+  properties: Record<string, unknown>;
+}
+
+export type GraphBundleCanvasNodeSidecar =
+  | { type: "note"; title: string; content: string; tags: string[] }
+  | {
+      type: "resource";
+      title: string;
+      resourceKind: string;
+      absolutePath: string;
+      relativePath: string;
+      mimeType: string;
+      fileFingerprint: string;
+    }
+  | { type: "group"; title: string; color: string; childNodeIds: string[] }
+  | { type: "portal"; title: string; targetCanvasId: string };
+
+export interface GraphBundleNodeLayout {
+  graphNodeId: string;
+  canvasId: string;
+  positionX: number;
+  positionY: number;
+  width: number;
+  height: number;
+  style: {
+    dotColour?: string;
+    bgColour?: string;
+    textColour?: string;
+    thumbnail?: string;
+    __canvasNode?: GraphBundleCanvasNodeSidecar;
+  };
+}
+
+export interface GraphBundleEdgeLayout {
+  id: string;
+  canvasId: string;
+  sourceGraphNodeId: string;
+  targetGraphNodeId: string;
+  relationKind: string;
+  sourceHandleId?: string;
+  targetHandleId?: string;
+  style: { stroke?: string; width?: number; dashed?: boolean };
+}
+
+export interface GraphBundleLitInstance {
+  node: GraphBundleNode;
+  relType: "INSTANTIATES" | "ECHOES" | "RESONATES_WITH";
+  dominance: "dominant" | "secondary" | null;
+}
 
 export interface GraphExportBundle {
   generatedAt: string;
   project: ExportBundle["project"];
   canvasId: string;
-  nodes: GraphNode[];
-  relationships: GraphRelationship[];
-  nodeLayout: NodeLayout[];
-  edgeLayout: EdgeLayout[];
+  nodes: GraphBundleNode[];
+  relationships: GraphBundleRelationship[];
+  nodeLayout: GraphBundleNodeLayout[];
+  edgeLayout: GraphBundleEdgeLayout[];
   viewport: { x: number; y: number; zoom: number };
   appState: Record<string, unknown>;
   /** operatorGraphNodeId -> lit datable instances (precomputed for the backend-less viewer). */
-  lightingIndex: Record<string, LitInstance[]>;
+  lightingIndex: Record<string, GraphBundleLitInstance[]>;
   assets: ExportAsset[];
 }
 
@@ -43,7 +130,7 @@ const temporalPrecisionSchema = z
   .enum(["year", "month", "day", "decade", "century", "millennium"])
   .nullable();
 
-const graphNodeSchema: z.ZodType<GraphNode> = z.object({
+const graphNodeSchema: z.ZodType<GraphBundleNode> = z.object({
   graphNodeId: z.string().min(1),
   entityType: entityTypeSchema,
   title: z.string(),
@@ -52,6 +139,8 @@ const graphNodeSchema: z.ZodType<GraphNode> = z.object({
   archetypalResonance: z.string().nullable(),
   coordinate: z.string().nullable(),
   sourceCoordinates: z.array(z.string()),
+  evidenceTags: z.array(z.string()).default([]),
+  sourceKind: z.string().nullable().default(null),
   isTemporal: z.boolean(),
   validFrom: z.string().nullable(),
   validTo: z.string().nullable(),
@@ -60,7 +149,7 @@ const graphNodeSchema: z.ZodType<GraphNode> = z.object({
   updatedAt: z.string()
 });
 
-const graphRelationshipSchema: z.ZodType<GraphRelationship> = z.object({
+const graphRelationshipSchema: z.ZodType<GraphBundleRelationship> = z.object({
   id: z.string().min(1),
   relType: z.string().min(1),
   sourceGraphNodeId: z.string().min(1),
@@ -68,7 +157,7 @@ const graphRelationshipSchema: z.ZodType<GraphRelationship> = z.object({
   properties: z.record(z.string(), z.unknown())
 });
 
-const canvasNodeSidecarSchema: z.ZodType<CanvasNodeSidecar> = z.union([
+const canvasNodeSidecarSchema: z.ZodType<GraphBundleCanvasNodeSidecar> = z.union([
   z.object({
     type: z.literal("note"),
     title: z.string(),
@@ -97,7 +186,7 @@ const canvasNodeSidecarSchema: z.ZodType<CanvasNodeSidecar> = z.union([
   })
 ]);
 
-const nodeLayoutSchema: z.ZodType<NodeLayout> = z.object({
+const nodeLayoutSchema: z.ZodType<GraphBundleNodeLayout> = z.object({
   graphNodeId: z.string().min(1),
   canvasId: z.string().min(1),
   positionX: z.number(),
@@ -113,7 +202,7 @@ const nodeLayoutSchema: z.ZodType<NodeLayout> = z.object({
   })
 });
 
-const edgeLayoutSchema: z.ZodType<EdgeLayout> = z.object({
+const edgeLayoutSchema: z.ZodType<GraphBundleEdgeLayout> = z.object({
   id: z.string().min(1),
   canvasId: z.string().min(1),
   sourceGraphNodeId: z.string().min(1),
@@ -128,7 +217,7 @@ const edgeLayoutSchema: z.ZodType<EdgeLayout> = z.object({
   })
 });
 
-const litInstanceSchema: z.ZodType<LitInstance> = z.object({
+const litInstanceSchema: z.ZodType<GraphBundleLitInstance> = z.object({
   node: graphNodeSchema,
   relType: z.enum(["INSTANTIATES", "ECHOES", "RESONATES_WITH"]),
   dominance: z.enum(["dominant", "secondary"]).nullable()

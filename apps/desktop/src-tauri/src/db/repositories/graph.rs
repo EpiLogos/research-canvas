@@ -12,6 +12,10 @@ pub struct GraphNode {
     pub archetypal_resonance: Option<String>,
     pub coordinate: Option<String>,
     pub source_coordinates: Vec<String>,
+    #[serde(default)]
+    pub evidence_tags: Vec<String>,
+    #[serde(default)]
+    pub source_kind: Option<String>,
     pub is_temporal: bool,
     pub valid_from: Option<String>,
     pub valid_to: Option<String>,
@@ -56,13 +60,31 @@ pub struct GraphNodePatch {
     pub title: Option<String>,
     pub body: Option<String>,
     pub summary: Option<String>,
-    pub archetypal_resonance: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_explicit_nullable_string")]
+    pub archetypal_resonance: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_explicit_nullable_string")]
     pub coordinate: Option<Option<String>>,
     pub source_coordinates: Option<Vec<String>>,
+    pub evidence_tags: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_explicit_nullable_string")]
+    pub source_kind: Option<Option<String>>,
     pub is_temporal: Option<bool>,
+    #[serde(default, deserialize_with = "deserialize_explicit_nullable_string")]
     pub valid_from: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_explicit_nullable_string")]
     pub valid_to: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_explicit_nullable_string")]
     pub temporal_precision: Option<Option<String>>,
+}
+
+fn deserialize_explicit_nullable_string<'de, D>(
+    deserializer: D,
+) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<String>::deserialize(deserializer)?;
+    Ok(Some(value))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,13 +126,19 @@ const SCHEMA_STATEMENTS: &[&str] = &[
      FOR (n:Operator) REQUIRE n.graph_node_id IS UNIQUE",
     "CREATE CONSTRAINT operator_coordinate IF NOT EXISTS \
      FOR (n:Operator) REQUIRE n.coordinate IS UNIQUE",
+    "CREATE CONSTRAINT source_coordinate IF NOT EXISTS \
+     FOR (n:Source) REQUIRE n.coordinate IS UNIQUE",
     "CREATE INDEX theory_node_title IF NOT EXISTS FOR (n:TheoryNode) ON (n.title)",
     "CREATE INDEX theory_node_is_temporal IF NOT EXISTS FOR (n:TheoryNode) ON (n.is_temporal)",
     "CREATE INDEX theory_node_valid_from IF NOT EXISTS FOR (n:TheoryNode) ON (n.valid_from)",
     "CREATE INDEX theory_node_coordinate IF NOT EXISTS FOR (n:TheoryNode) ON (n.coordinate)",
     "CREATE FULLTEXT INDEX theory_node_fulltext IF NOT EXISTS \
      FOR (n:TheoryNode) ON EACH [n.title, n.summary, n.archetypal_resonance]",
+    "CREATE FULLTEXT INDEX theory_node_context_fulltext IF NOT EXISTS \
+     FOR (n:TheoryNode) ON EACH [n.title, n.summary, n.archetypal_resonance, n.body]",
 ];
+
+const CONTEXT_SEARCH_MAX_LIMIT: i64 = 100;
 
 fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
@@ -125,6 +153,7 @@ fn node_from_neo(node: neo4rs::Node) -> Result<GraphNode, String> {
         .cloned()
         .unwrap_or_default();
     let source_coordinates: Vec<String> = node.get("source_coordinates").unwrap_or_default();
+    let evidence_tags: Vec<String> = node.get("evidence_tags").unwrap_or_default();
     Ok(GraphNode {
         graph_node_id: node.get("graph_node_id").map_err(|e| e.to_string())?,
         entity_type,
@@ -134,6 +163,8 @@ fn node_from_neo(node: neo4rs::Node) -> Result<GraphNode, String> {
         archetypal_resonance: node.get("archetypal_resonance").ok(),
         coordinate: node.get("coordinate").ok(),
         source_coordinates,
+        evidence_tags,
+        source_kind: node.get("source_kind").ok(),
         is_temporal: node.get("is_temporal").unwrap_or(false),
         valid_from: node.get("valid_from").ok(),
         valid_to: node.get("valid_to").ok(),
@@ -144,8 +175,15 @@ fn node_from_neo(node: neo4rs::Node) -> Result<GraphNode, String> {
 }
 
 const ENTITY_LABELS: &[&str] = &[
-    "Figure", "People", "Event", "Institution", "Source",
-    "Place", "Work", "Archetype", "Dynamic",
+    "Figure",
+    "People",
+    "Event",
+    "Institution",
+    "Source",
+    "Place",
+    "Work",
+    "Archetype",
+    "Dynamic",
 ];
 
 fn validate_entity_label(entity_type: &str) -> Result<&str, String> {
@@ -157,8 +195,16 @@ fn validate_entity_label(entity_type: &str) -> Result<&str, String> {
 }
 
 const REL_TYPES: &[&str] = &[
-    "INSTANTIATES", "ECHOES", "CAUSES", "INFLUENCES", "OPPOSES",
-    "INHERITS", "TRANSFORMS_INTO", "LOCATED_AT", "SOURCED_FROM", "RESONATES_WITH",
+    "INSTANTIATES",
+    "ECHOES",
+    "CAUSES",
+    "INFLUENCES",
+    "OPPOSES",
+    "INHERITS",
+    "TRANSFORMS_INTO",
+    "LOCATED_AT",
+    "SOURCED_FROM",
+    "RESONATES_WITH",
 ];
 
 fn validate_rel_type(rel_type: &str) -> Result<&str, String> {
@@ -263,16 +309,42 @@ impl GraphRepository {
         patch: GraphNodePatch,
     ) -> Result<GraphNode, String> {
         let mut sets: Vec<String> = vec!["n.updated_at = $now".to_string()];
-        if patch.title.is_some() { sets.push("n.title = $title".into()); }
-        if patch.body.is_some() { sets.push("n.body = $body".into()); }
-        if patch.summary.is_some() { sets.push("n.summary = $summary".into()); }
-        if patch.archetypal_resonance.is_some() { sets.push("n.archetypal_resonance = $archetypal_resonance".into()); }
-        if patch.coordinate.is_some() { sets.push("n.coordinate = $coordinate".into()); }
-        if patch.source_coordinates.is_some() { sets.push("n.source_coordinates = $source_coordinates".into()); }
-        if patch.is_temporal.is_some() { sets.push("n.is_temporal = $is_temporal".into()); }
-        if patch.valid_from.is_some() { sets.push("n.valid_from = $valid_from".into()); }
-        if patch.valid_to.is_some() { sets.push("n.valid_to = $valid_to".into()); }
-        if patch.temporal_precision.is_some() { sets.push("n.temporal_precision = $temporal_precision".into()); }
+        if patch.title.is_some() {
+            sets.push("n.title = $title".into());
+        }
+        if patch.body.is_some() {
+            sets.push("n.body = $body".into());
+        }
+        if patch.summary.is_some() {
+            sets.push("n.summary = $summary".into());
+        }
+        if patch.archetypal_resonance.is_some() {
+            sets.push("n.archetypal_resonance = $archetypal_resonance".into());
+        }
+        if patch.coordinate.is_some() {
+            sets.push("n.coordinate = $coordinate".into());
+        }
+        if patch.source_coordinates.is_some() {
+            sets.push("n.source_coordinates = $source_coordinates".into());
+        }
+        if patch.evidence_tags.is_some() {
+            sets.push("n.evidence_tags = $evidence_tags".into());
+        }
+        if patch.source_kind.is_some() {
+            sets.push("n.source_kind = $source_kind".into());
+        }
+        if patch.is_temporal.is_some() {
+            sets.push("n.is_temporal = $is_temporal".into());
+        }
+        if patch.valid_from.is_some() {
+            sets.push("n.valid_from = $valid_from".into());
+        }
+        if patch.valid_to.is_some() {
+            sets.push("n.valid_to = $valid_to".into());
+        }
+        if patch.temporal_precision.is_some() {
+            sets.push("n.temporal_precision = $temporal_precision".into());
+        }
 
         // No meaningful fields — return the current node without touching the DB.
         if sets.len() == 1 {
@@ -289,16 +361,42 @@ impl GraphRepository {
         let mut q = query(&cypher)
             .param("id", graph_node_id.to_string())
             .param("now", now_rfc3339());
-        if let Some(v) = patch.title { q = q.param("title", v); }
-        if let Some(v) = patch.body { q = q.param("body", v); }
-        if let Some(v) = patch.summary { q = q.param("summary", v); }
-        if let Some(v) = patch.archetypal_resonance { q = q.param("archetypal_resonance", v); }
-        if let Some(v) = patch.coordinate { q = q.param("coordinate", v); }
-        if let Some(v) = patch.source_coordinates { q = q.param("source_coordinates", v); }
-        if let Some(v) = patch.is_temporal { q = q.param("is_temporal", v); }
-        if let Some(v) = patch.valid_from { q = q.param("valid_from", v); }
-        if let Some(v) = patch.valid_to { q = q.param("valid_to", v); }
-        if let Some(v) = patch.temporal_precision { q = q.param("temporal_precision", v); }
+        if let Some(v) = patch.title {
+            q = q.param("title", v);
+        }
+        if let Some(v) = patch.body {
+            q = q.param("body", v);
+        }
+        if let Some(v) = patch.summary {
+            q = q.param("summary", v);
+        }
+        if let Some(v) = patch.archetypal_resonance {
+            q = q.param("archetypal_resonance", v);
+        }
+        if let Some(v) = patch.coordinate {
+            q = q.param("coordinate", v);
+        }
+        if let Some(v) = patch.source_coordinates {
+            q = q.param("source_coordinates", v);
+        }
+        if let Some(v) = patch.evidence_tags {
+            q = q.param("evidence_tags", v);
+        }
+        if let Some(v) = patch.source_kind {
+            q = q.param("source_kind", v);
+        }
+        if let Some(v) = patch.is_temporal {
+            q = q.param("is_temporal", v);
+        }
+        if let Some(v) = patch.valid_from {
+            q = q.param("valid_from", v);
+        }
+        if let Some(v) = patch.valid_to {
+            q = q.param("valid_to", v);
+        }
+        if let Some(v) = patch.temporal_precision {
+            q = q.param("temporal_precision", v);
+        }
 
         let mut rows = self
             .graph
@@ -312,6 +410,40 @@ impl GraphRepository {
             .ok_or_else(|| format!("update_node: no node with id {graph_node_id}"))?;
         let node: neo4rs::Node = row.get("n").map_err(|e| e.to_string())?;
         node_from_neo(node)
+    }
+
+    pub async fn add_evidence_tag(
+        &self,
+        graph_node_id: &str,
+        tag: &str,
+    ) -> Result<Option<(GraphNode, bool)>, String> {
+        let q = query(
+            "MATCH (n:TheoryNode {graph_node_id: $id})
+             SET n.__agent_tag_lock = $marker
+             WITH n, NOT $tag IN coalesce(n.evidence_tags, []) AS added
+             SET n.evidence_tags = CASE
+                    WHEN added THEN coalesce(n.evidence_tags, []) + $tag
+                    ELSE coalesce(n.evidence_tags, [])
+                 END,
+                 n.updated_at = CASE WHEN added THEN $now ELSE n.updated_at END
+             REMOVE n.__agent_tag_lock
+             RETURN n, added",
+        )
+        .param("id", graph_node_id.to_string())
+        .param("tag", tag.to_string())
+        .param("now", now_rfc3339())
+        .param("marker", uuid::Uuid::new_v4().to_string());
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("add_evidence_tag failed: {e}"))?;
+        let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
+            return Ok(None);
+        };
+        let node: neo4rs::Node = row.get("n").map_err(|e| e.to_string())?;
+        let added: bool = row.get("added").map_err(|e| e.to_string())?;
+        Ok(Some((node_from_neo(node)?, added)))
     }
 
     pub async fn delete_node(&self, graph_node_id: &str) -> Result<(), String> {
@@ -396,6 +528,114 @@ impl GraphRepository {
         relationship_from_row(&row, properties)
     }
 
+    pub async fn ensure_vault_source_node(
+        &self,
+        canonical_path: &str,
+        title: &str,
+    ) -> Result<(GraphNode, bool), String> {
+        let now = now_rfc3339();
+        let marker = uuid::Uuid::new_v4().to_string();
+        let coordinate = format!("vault-file:{canonical_path}");
+        let q = query(
+            "MERGE (n:TheoryNode:Source {coordinate: $coordinate})
+             ON CREATE SET
+                n.graph_node_id = $id,
+                n.title = $title,
+                n.body = '[]',
+                n.summary = '',
+                n.source_coordinates = [],
+                n.evidence_tags = [],
+                n.source_kind = 'vault-file',
+                n.is_temporal = false,
+                n.created_at = $now,
+                n.updated_at = $now,
+                n.__agent_created_marker = $marker
+             ON MATCH SET
+                n.title = coalesce(n.title, $title),
+                n.body = coalesce(n.body, '[]'),
+                n.summary = coalesce(n.summary, ''),
+                n.source_coordinates = coalesce(n.source_coordinates, []),
+                n.evidence_tags = coalesce(n.evidence_tags, []),
+                n.source_kind = coalesce(n.source_kind, 'vault-file'),
+                n.is_temporal = coalesce(n.is_temporal, false),
+                n.created_at = coalesce(n.created_at, $now),
+                n.updated_at = coalesce(n.updated_at, $now)
+             WITH n, coalesce(n.__agent_created_marker = $marker, false) AS created
+             REMOVE n.__agent_created_marker
+             RETURN n, created",
+        )
+        .param("coordinate", coordinate)
+        .param("id", uuid::Uuid::new_v4().to_string())
+        .param("title", title.to_string())
+        .param("now", now)
+        .param("marker", marker);
+
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("ensure_vault_source_node failed: {e}"))?;
+        let row = rows
+            .next()
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "ensure_vault_source_node returned no row".to_string())?;
+        let node: neo4rs::Node = row.get("n").map_err(|e| e.to_string())?;
+        let created: bool = row.get("created").map_err(|e| e.to_string())?;
+        Ok((node_from_neo(node)?, created))
+    }
+
+    pub async fn ensure_sourced_from_relationship(
+        &self,
+        source_graph_node_id: &str,
+        target_source_node_id: &str,
+        source_path: &str,
+        quote: &str,
+        note: &str,
+    ) -> Result<(GraphRelationship, bool), String> {
+        let marker = uuid::Uuid::new_v4().to_string();
+        let q = query(
+            "MATCH (s:TheoryNode {graph_node_id: $src}), (t:TheoryNode:Source {graph_node_id: $tgt})
+             SET s.__agent_relationship_lock = $marker
+             WITH s, t
+             MERGE (s)-[r:SOURCED_FROM {sourcePath: $source_path, quote: $quote}]->(t)
+             ON CREATE SET
+                r.note = $note,
+                r.__agent_created_marker = $marker
+             WITH s, t, r, coalesce(r.__agent_created_marker = $marker, false) AS created
+             REMOVE s.__agent_relationship_lock
+             REMOVE r.__agent_created_marker
+             RETURN elementId(r) AS id,
+                    type(r) AS rel_type,
+                    s.graph_node_id AS src,
+                    t.graph_node_id AS tgt,
+                    apoc.convert.toJson(properties(r)) AS props,
+                    created",
+        )
+        .param("src", source_graph_node_id.to_string())
+        .param("tgt", target_source_node_id.to_string())
+        .param("source_path", source_path.to_string())
+        .param("quote", quote.to_string())
+        .param("note", note.to_string())
+        .param("marker", marker);
+
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("ensure_sourced_from_relationship failed: {e}"))?;
+        let row = rows
+            .next()
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "ensure_sourced_from_relationship: endpoints not found".to_string())?;
+        let created: bool = row.get("created").map_err(|e| e.to_string())?;
+        let props_json: String = row.get("props").unwrap_or_else(|_| "{}".to_string());
+        let properties: serde_json::Value =
+            serde_json::from_str(&props_json).unwrap_or(serde_json::json!({}));
+        Ok((relationship_from_row(&row, properties)?, created))
+    }
+
     pub async fn disconnect(&self, relationship_id: &str) -> Result<(), String> {
         let q = query("MATCH ()-[r]-() WHERE elementId(r) = $id DELETE r")
             .param("id", relationship_id.to_string());
@@ -424,7 +664,10 @@ impl GraphRepository {
         )
         .param("id", operator_graph_node_id.to_string());
         let instances = self.collect_lit_instances(q, "inst").await?;
-        Ok(ArchetypalLightingResult { operator, instances })
+        Ok(ArchetypalLightingResult {
+            operator,
+            instances,
+        })
     }
 
     pub async fn resonances_for_instance(
@@ -458,6 +701,58 @@ impl GraphRepository {
             out.push(node_from_neo(node)?);
         }
         Ok(out)
+    }
+
+    pub async fn search_context(
+        &self,
+        query_text: &str,
+        limit: i64,
+    ) -> Result<Vec<GraphNode>, String> {
+        let Some(limit) = Self::normalize_context_search_limit(limit) else {
+            return Ok(Vec::new());
+        };
+        let Some(query_text) = Self::context_fulltext_query(query_text) else {
+            return Ok(Vec::new());
+        };
+        let q = query(
+            "CALL db.index.fulltext.queryNodes('theory_node_context_fulltext', $q) \
+             YIELD node, score RETURN node ORDER BY score DESC LIMIT $limit",
+        )
+        .param("q", query_text)
+        .param("limit", limit);
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("search_context failed: {e}"))?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            let node: neo4rs::Node = row.get("node").map_err(|e| e.to_string())?;
+            out.push(node_from_neo(node)?);
+        }
+        Ok(out)
+    }
+
+    fn normalize_context_search_limit(limit: i64) -> Option<i64> {
+        if limit <= 0 {
+            None
+        } else {
+            Some(limit.min(CONTEXT_SEARCH_MAX_LIMIT))
+        }
+    }
+
+    fn context_fulltext_query(query_text: &str) -> Option<String> {
+        let terms: Vec<String> = query_text
+            .split(|character: char| !character.is_alphanumeric())
+            .map(str::trim)
+            .map(|term| term.to_ascii_lowercase())
+            .filter(|term| !term.is_empty() && !matches!(term.as_str(), "and" | "or" | "not"))
+            .collect();
+        if terms.is_empty() {
+            None
+        } else {
+            Some(terms.join(" "))
+        }
     }
 
     async fn collect_lit_instances(
@@ -555,5 +850,41 @@ impl GraphRepository {
             out.push(relationship_from_row(&row, props)?);
         }
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GraphRepository;
+
+    #[test]
+    fn context_search_query_drops_lucene_syntax_and_empty_queries() {
+        assert_eq!(
+            GraphRepository::context_fulltext_query("\"body-only:(term"),
+            Some("body only term".to_string())
+        );
+        assert_eq!(
+            GraphRepository::context_fulltext_query("foo OR bar AND NOT baz"),
+            Some("foo bar baz".to_string())
+        );
+        assert_eq!(
+            GraphRepository::context_fulltext_query("+-&&||!(){}[]^~*?:\\/"),
+            None
+        );
+        assert_eq!(GraphRepository::context_fulltext_query("AND OR NOT"), None);
+    }
+
+    #[test]
+    fn context_search_limit_is_positive_and_bounded() {
+        assert_eq!(GraphRepository::normalize_context_search_limit(-1), None);
+        assert_eq!(GraphRepository::normalize_context_search_limit(0), None);
+        assert_eq!(
+            GraphRepository::normalize_context_search_limit(25),
+            Some(25)
+        );
+        assert_eq!(
+            GraphRepository::normalize_context_search_limit(500),
+            Some(100)
+        );
     }
 }

@@ -25,13 +25,9 @@ fn writes_graph_bundle_json_to_output_dir() {
         "lightingIndex": {},
         "assets": []
     });
-    let bundle: GraphExportBundle =
-        serde_json::from_value(json_value).expect("deserialize bundle");
+    let bundle: GraphExportBundle = serde_json::from_value(json_value).expect("deserialize bundle");
 
-    let temp_dir = std::env::temp_dir().join(format!(
-        "antichrist-bundle-{}",
-        std::process::id()
-    ));
+    let temp_dir = std::env::temp_dir().join(format!("antichrist-bundle-{}", std::process::id()));
     fs::create_dir_all(&temp_dir).expect("create temp dir");
 
     let written = write_graph_bundle(&bundle, &temp_dir).expect("write bundle");

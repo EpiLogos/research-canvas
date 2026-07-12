@@ -21,6 +21,8 @@ export interface GraphNode {
   archetypalResonance: string | null;
   coordinate: string | null;
   sourceCoordinates: string[];
+  evidenceTags: string[];
+  sourceKind: string | null;
   isTemporal: boolean;
   validFrom: string | null;
   validTo: string | null;
@@ -114,5 +116,6 @@ export type GraphNodePatch = Partial<
   Pick<GraphNode,
     "title" | "body" | "summary" | "archetypalResonance" |
     "coordinate" | "sourceCoordinates" | "isTemporal" |
-    "validFrom" | "validTo" | "temporalPrecision">
+    "validFrom" | "validTo" | "temporalPrecision" |
+    "evidenceTags" | "sourceKind">
 >;

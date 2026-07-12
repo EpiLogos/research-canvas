@@ -17,6 +17,8 @@ function gnode(id: string, isTemporal: boolean): GraphNode {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    evidenceTags: [],
+    sourceKind: null,
     isTemporal,
     validFrom: isTemporal ? "1621-01-01" : null,
     validTo: null,

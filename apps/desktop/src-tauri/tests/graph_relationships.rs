@@ -15,7 +15,9 @@ fn mk(repo: &GraphRepository, run_id: &str, title: &str, et: &str, temporal: boo
         valid_from: None,
         valid_to: None,
         temporal_precision: None,
-    })).expect("create").graph_node_id
+    }))
+    .expect("create")
+    .graph_node_id
 }
 
 #[test]
@@ -31,9 +33,12 @@ fn connect_list_and_disconnect_relationship() {
     let dynamic = mk(&repo, &run_id, "Monopoly", "Dynamic", false);
 
     let rel = support::block_on(repo.connect_nodes(
-        &event, &dynamic, "INSTANTIATES",
+        &event,
+        &dynamic,
+        "INSTANTIATES",
         serde_json::json!({ "dominance": "dominant" }),
-    )).expect("connect");
+    ))
+    .expect("connect");
     assert_eq!(rel.rel_type, "INSTANTIATES");
     assert_eq!(rel.source_graph_node_id, event);
     assert_eq!(rel.target_graph_node_id, dynamic);
@@ -44,12 +49,20 @@ fn connect_list_and_disconnect_relationship() {
 
     support::block_on(repo.disconnect(&rel.id)).expect("disconnect");
     let after = support::block_on(repo.relationships_for_node(&event)).expect("after");
-    assert!(!after.iter().any(|r| r.id == rel.id), "relationship removed");
+    assert!(
+        !after.iter().any(|r| r.id == rel.id),
+        "relationship removed"
+    );
 
     for id in [event, dynamic] {
         support::block_on(async {
-            graph.run_on(&database, query("MATCH (n {graph_node_id: $id}) DETACH DELETE n")
-                .param("id", id)).await.expect("cleanup");
+            graph
+                .run_on(
+                    &database,
+                    query("MATCH (n {graph_node_id: $id}) DETACH DELETE n").param("id", id),
+                )
+                .await
+                .expect("cleanup");
         });
     }
 }

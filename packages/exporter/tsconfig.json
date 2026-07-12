@@ -10,10 +10,8 @@
   "references": [
     {
       "path": "../schema"
-    },
-    {
-      "path": "../desktop-api"
     }
   ],
-  "include": ["src", "../../tests/fixtures/export-fixture.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
 }

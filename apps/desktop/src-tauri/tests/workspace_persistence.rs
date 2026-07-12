@@ -230,8 +230,14 @@ fn project_document_persistence_survives_reload_and_replaces_previous_canvas_sta
     assert_eq!(persisted.nodes.len(), 2);
     assert_eq!(persisted.edges.len(), 1);
     assert_eq!(persisted.annotations.len(), 1);
-    assert_eq!(persisted.edges[0].source_handle_id.as_deref(), Some("source-bottom"));
-    assert_eq!(persisted.edges[0].target_handle_id.as_deref(), Some("target-top"));
+    assert_eq!(
+        persisted.edges[0].source_handle_id.as_deref(),
+        Some("source-bottom")
+    );
+    assert_eq!(
+        persisted.edges[0].target_handle_id.as_deref(),
+        Some("target-top")
+    );
     assert!(persisted
         .nodes
         .iter()
@@ -243,8 +249,14 @@ fn project_document_persistence_survives_reload_and_replaces_previous_canvas_sta
     assert_eq!(reopened.nodes.len(), 2);
     assert_eq!(reopened.edges.len(), 1);
     assert_eq!(reopened.annotations.len(), 1);
-    assert_eq!(reopened.edges[0].source_handle_id.as_deref(), Some("source-bottom"));
-    assert_eq!(reopened.edges[0].target_handle_id.as_deref(), Some("target-top"));
+    assert_eq!(
+        reopened.edges[0].source_handle_id.as_deref(),
+        Some("source-bottom")
+    );
+    assert_eq!(
+        reopened.edges[0].target_handle_id.as_deref(),
+        Some("target-top")
+    );
     assert!(reopened
         .nodes
         .iter()
@@ -334,12 +346,10 @@ fn browser_persist_payload_allows_resource_nodes_without_tags() {
     let persisted = persist_project_document_at(request).expect("persist browser payload");
 
     assert_eq!(persisted.nodes.len(), 2);
-    assert!(
-        persisted
-            .nodes
-            .iter()
-            .any(|node| node.node_type == "resource" && node.title == "README.md")
-    );
+    assert!(persisted
+        .nodes
+        .iter()
+        .any(|node| node.node_type == "resource" && node.title == "README.md"));
 }
 
 #[test]

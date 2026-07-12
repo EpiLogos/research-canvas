@@ -302,7 +302,9 @@ pub async fn disconnect_graph_nodes_command(
     request: DisconnectGraphNodesRequest,
     graph_state: tauri::State<'_, SharedGraphState>,
 ) -> Result<(), String> {
-    repo(&graph_state).disconnect(&request.relationship_id).await
+    repo(&graph_state)
+        .disconnect(&request.relationship_id)
+        .await
 }
 
 #[tauri::command]
@@ -370,8 +372,7 @@ pub async fn upsert_node_layouts_command(
     api_state: tauri::State<'_, SharedApiState>,
 ) -> Result<usize, String> {
     let path = resolve_db_path(&request.database_path, &api_state)?;
-    let records: Vec<NodeLayoutRecord> =
-        request.layouts.iter().map(layout_record).collect();
+    let records: Vec<NodeLayoutRecord> = request.layouts.iter().map(layout_record).collect();
     let mut db = Database::open(&path).map_err(|e| e.to_string())?;
     let tx = db
         .connection_mut()

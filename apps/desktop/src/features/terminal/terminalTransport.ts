@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { resolveBrowserBridgeBaseUrl } from "@research-canvas/desktop-api";
 
 const TERMINAL_BRIDGE_BASE_URL = resolveBrowserBridgeBaseUrl();
@@ -37,7 +37,7 @@ interface TerminalTransport {
 }
 
 export function createTerminalTransport(): TerminalTransport {
-  return isTauriRuntime()
+  return isTauri()
     ? createTauriTerminalTransport()
     : createBrowserBridgeTransport();
 }
@@ -124,10 +124,6 @@ function createBrowserBridgeTransport(): TerminalTransport {
       });
     }
   };
-}
-
-function isTauriRuntime() {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
 async function requestJson<T>(

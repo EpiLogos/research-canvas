@@ -68,7 +68,7 @@ fn rebuilds_and_queries_a_real_search_index_from_files_notes_sequences_and_neste
                 160.0,
             )
             .expect("create note node");
-        let report_node = graph
+        let _report_node = graph
             .create_resource_node(
                 &root_canvas_id,
                 "Source report",

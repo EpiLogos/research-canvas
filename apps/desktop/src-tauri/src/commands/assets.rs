@@ -119,7 +119,8 @@ mod tests {
 
     #[test]
     fn rejects_graph_node_id_with_path_traversal() {
-        let temp = std::env::temp_dir().join(format!("ws4-assets-traversal-{}", std::process::id()));
+        let temp =
+            std::env::temp_dir().join(format!("ws4-assets-traversal-{}", std::process::id()));
         let workspace = temp.join("workspace");
         fs::create_dir_all(&workspace).unwrap();
 
@@ -154,7 +155,10 @@ mod tests {
         let request = ImportNodeImageRequest {
             workspace_root: workspace.to_string_lossy().to_string(),
             graph_node_id: "n1".to_string(),
-            source_absolute_path: workspace.join("does-not-exist.png").to_string_lossy().to_string(),
+            source_absolute_path: workspace
+                .join("does-not-exist.png")
+                .to_string_lossy()
+                .to_string(),
         };
 
         assert!(import_node_image(request).is_err());

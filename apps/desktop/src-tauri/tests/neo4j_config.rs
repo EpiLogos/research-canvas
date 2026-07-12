@@ -19,5 +19,8 @@ fn from_env_uses_defaults_and_requires_password() {
 fn from_env_errors_when_password_missing() {
     std::env::remove_var("NEO4J_PASSWORD");
     let err = Neo4jConfig::from_env().expect_err("missing password is an error");
-    assert!(err.contains("NEO4J_PASSWORD"), "error mentions the missing var: {err}");
+    assert!(
+        err.contains("NEO4J_PASSWORD"),
+        "error mentions the missing var: {err}"
+    );
 }

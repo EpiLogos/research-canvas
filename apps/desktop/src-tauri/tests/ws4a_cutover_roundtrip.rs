@@ -108,8 +108,7 @@ fn created_node_roundtrips_body_through_neo4j() {
         "graph_node_id must equal the client-supplied id"
     );
     assert_eq!(
-        joined.node.body,
-        "[{\"type\":\"paragraph\"}]",
+        joined.node.body, "[{\"type\":\"paragraph\"}]",
         "body must reflect the update_node edit"
     );
     assert_eq!(

@@ -6,7 +6,7 @@ import { BottomDock } from "./BottomDock";
 describe("BottomDock", () => {
   it("renders nothing when closed", () => {
     render(
-      <BottomDock open={false} height={200} label="Terminal" onClose={() => {}} onResizeStart={() => {}}>
+      <BottomDock open={false} height={200} width={640} label="Terminal" onClose={() => {}} onResizeStart={() => {}} onWidthResizeStart={() => {}}>
         <div>session</div>
       </BottomDock>,
     );
@@ -15,7 +15,7 @@ describe("BottomDock", () => {
 
   it("renders children and title when open", () => {
     render(
-      <BottomDock open height={200} label="Terminal · antichrist" onClose={() => {}} onResizeStart={() => {}}>
+      <BottomDock open height={200} width={640} label="Terminal · antichrist" onClose={() => {}} onResizeStart={() => {}} onWidthResizeStart={() => {}}>
         <div>session-body</div>
       </BottomDock>,
     );
@@ -27,7 +27,7 @@ describe("BottomDock", () => {
   it("calls onClose from the close button", () => {
     const onClose = vi.fn();
     render(
-      <BottomDock open height={200} label="Terminal" onClose={onClose} onResizeStart={() => {}}>
+      <BottomDock open height={200} width={640} label="Terminal" onClose={onClose} onResizeStart={() => {}} onWidthResizeStart={() => {}}>
         <div>x</div>
       </BottomDock>,
     );
@@ -37,10 +37,27 @@ describe("BottomDock", () => {
 
   it("applies the height to the dock element", () => {
     render(
-      <BottomDock open height={321} label="Terminal" onClose={() => {}} onResizeStart={() => {}}>
+      <BottomDock open height={321} width={777} label="Terminal" onClose={() => {}} onResizeStart={() => {}} onWidthResizeStart={() => {}}>
         <div>x</div>
       </BottomDock>,
     );
     expect(screen.getByTestId("bottom-dock")).toHaveStyle({ height: "321px" });
+    expect(screen.getByTestId("bottom-dock")).toHaveStyle({ width: "777px" });
+  });
+
+  it("exposes separate height and width resize handles", () => {
+    const onResizeStart = vi.fn();
+    const onWidthResizeStart = vi.fn();
+    render(
+      <BottomDock open height={240} width={640} label="Terminal" onClose={() => {}} onResizeStart={onResizeStart} onWidthResizeStart={onWidthResizeStart}>
+        <div>x</div>
+      </BottomDock>,
+    );
+
+    fireEvent.pointerDown(screen.getByTitle("Drag to resize height"));
+    fireEvent.pointerDown(screen.getByTitle("Drag to resize width"));
+
+    expect(onResizeStart).toHaveBeenCalledTimes(1);
+    expect(onWidthResizeStart).toHaveBeenCalledTimes(1);
   });
 });

@@ -1001,9 +1001,19 @@ pub fn list_directories_at() -> Result<Vec<DirectoryEntry>, String> {
     let home = dirs::home_dir().ok_or_else(|| "cannot resolve home directory".to_string())?;
     let mut entries = Vec::new();
     let skip_names: std::collections::HashSet<&str> = [
-        "node_modules", ".git", "__pycache__", "target", ".Trash",
-        ".cache", ".npm", ".cargo", "Library", ".local",
-    ].into_iter().collect();
+        "node_modules",
+        ".git",
+        "__pycache__",
+        "target",
+        ".Trash",
+        ".cache",
+        ".npm",
+        ".cargo",
+        "Library",
+        ".local",
+    ]
+    .into_iter()
+    .collect();
 
     walk_directories(&home, 0, 4, &skip_names, &mut entries);
     entries.sort_by(|a, b| a.path.cmp(&b.path));
@@ -1047,10 +1057,7 @@ fn walk_directories(
 }
 
 #[tauri::command]
-pub fn activate_canvas_command(
-    canvas_id: String,
-    api_state: tauri::State<SharedApiState>,
-) {
+pub fn activate_canvas_command(canvas_id: String, api_state: tauri::State<SharedApiState>) {
     let mut state = api_state.lock().unwrap();
     state.active_canvas_id = Some(canvas_id);
 }
@@ -1107,7 +1114,9 @@ pub struct ListSavedSequencesRequest {
 }
 
 #[tauri::command]
-pub fn list_saved_sequences_command(request: ListSavedSequencesRequest) -> Result<Vec<SavedSequencePayload>, String> {
+pub fn list_saved_sequences_command(
+    request: ListSavedSequencesRequest,
+) -> Result<Vec<SavedSequencePayload>, String> {
     let db = Database::open(PathBuf::from(&request.database_path)).map_err(|e| e.to_string())?;
     let repo = SavedSequenceRepository::new(db.connection());
     repo.list_for_canvas(&request.canvas_id)
@@ -1116,7 +1125,9 @@ pub fn list_saved_sequences_command(request: ListSavedSequencesRequest) -> Resul
 }
 
 #[tauri::command]
-pub fn create_saved_sequence_command(request: CreateSavedSequenceRequest) -> Result<SavedSequencePayload, String> {
+pub fn create_saved_sequence_command(
+    request: CreateSavedSequenceRequest,
+) -> Result<SavedSequencePayload, String> {
     let db = Database::open(PathBuf::from(&request.database_path)).map_err(|e| e.to_string())?;
     let repo = SavedSequenceRepository::new(db.connection());
     repo.create(&request.project_id, &request.canvas_id, &request.name)
@@ -1125,12 +1136,19 @@ pub fn create_saved_sequence_command(request: CreateSavedSequenceRequest) -> Res
 }
 
 #[tauri::command]
-pub fn update_saved_sequence_command(request: UpdateSavedSequenceRequest) -> Result<SavedSequencePayload, String> {
+pub fn update_saved_sequence_command(
+    request: UpdateSavedSequenceRequest,
+) -> Result<SavedSequencePayload, String> {
     let db = Database::open(PathBuf::from(&request.database_path)).map_err(|e| e.to_string())?;
     let repo = SavedSequenceRepository::new(db.connection());
-    repo.update(&request.id, &request.name, request.root_node_id.as_deref(), &request.edge_ids)
-        .map(saved_sequence_payload)
-        .map_err(|e| e.to_string())
+    repo.update(
+        &request.id,
+        &request.name,
+        request.root_node_id.as_deref(),
+        &request.edge_ids,
+    )
+    .map(saved_sequence_payload)
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
