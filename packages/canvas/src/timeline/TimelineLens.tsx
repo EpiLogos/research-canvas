@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useStore } from "zustand";
 
-import type { ArchetypalLighting, LitInstance, TimelineView } from "./contracts";
+import type { ArchetypalLighting, LitInstance, TimelineLayoutMutationResult, TimelineView } from "./contracts";
 import { createTimelineStore, type TimelineCardGeometryUpdate } from "./timelineStore";
 import { placeItems, type TimelinePresentation } from "./projection";
 import { generateTicks } from "./ticks";
@@ -23,6 +23,10 @@ export interface TimelineDataSource {
   loadTimelineView(): Promise<TimelineView>;
   archetypalLighting(operatorGraphNodeId: string): Promise<ArchetypalLighting>;
   resonancesForInstance(graphNodeId: string): Promise<LitInstance[]>;
+  saveTimelineLayout?(input: {
+    graphNodeId: string; lane: string; offsetY: number; width: number; height: number;
+    style: Record<string, unknown>; expectedRevision: number | null;
+  }): Promise<TimelineLayoutMutationResult>;
 }
 
 export interface TimelineLensProps {
@@ -48,6 +52,11 @@ export function TimelineLens({
   const [resonances, setResonances] = useState<LitInstance[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
+  const saveQueues = useRef(new Map<string, Promise<void>>());
+  const saveVersions = useRef(new Map<string, number>());
+  const knownRevisions = useRef(new Map<string, number>());
+  const dataSourceEpoch = useRef(0);
   const [visibleCategories, setVisibleCategories] = useState<Record<TimelineCategory, boolean>>(() =>
     Object.fromEntries(TIMELINE_CATEGORIES.map((category) => [category.id, true])) as Record<TimelineCategory, boolean>,
   );
@@ -55,6 +64,11 @@ export function TimelineLens({
   // Load timeline nodes once on mount.
   useEffect(() => {
     let cancelled = false;
+    dataSourceEpoch.current += 1;
+    saveQueues.current.clear();
+    saveVersions.current.clear();
+    knownRevisions.current.clear();
+    setSaveErrors({});
     setLoaded(false);
     setLoadError(null);
     void dataSource.loadTimelineView()
@@ -158,11 +172,50 @@ export function TimelineLens({
   };
 
   const handleResizeNode = (graphNodeId: string, size: TimelineCardGeometryUpdate) => {
+    if (!dataSource.saveTimelineLayout) return;
     store.getState().updateCardSize(graphNodeId, size);
   };
 
   const handleColorTag = (graphNodeId: string, style: Partial<TimelinePresentation["style"]>) => {
+    if (!dataSource.saveTimelineLayout) return;
     store.getState().updateCardStyle(graphNodeId, style);
+    commitTimelineLayout(graphNodeId);
+  };
+
+  const commitTimelineLayout = (graphNodeId: string) => {
+    if (!dataSource.saveTimelineLayout) return;
+    const item = store.getState().items.find((candidate) => candidate.graphNodeId === graphNodeId);
+    if (!item) return;
+    const snapshot = { ...item.presentation, style: { ...item.presentation.style } };
+    const epoch = dataSourceEpoch.current;
+    const version = (saveVersions.current.get(graphNodeId) ?? 0) + 1;
+    saveVersions.current.set(graphNodeId, version);
+    const prior = saveQueues.current.get(graphNodeId) ?? Promise.resolve();
+    const next = prior.then(async () => {
+      if (dataSourceEpoch.current !== epoch) return;
+      const expectedRevision = knownRevisions.current.get(graphNodeId) ?? snapshot.layoutRevision;
+      try {
+        const result = await dataSource.saveTimelineLayout!({
+          graphNodeId, lane: snapshot.lane ?? "events", offsetY: snapshot.offsetY,
+          width: snapshot.width, height: snapshot.height, style: snapshot.style, expectedRevision,
+        });
+        if (dataSourceEpoch.current !== epoch) return;
+        if (result.status === "conflict") {
+          if (result.layout) knownRevisions.current.set(graphNodeId, result.layout.layoutRevision);
+          setSaveErrors((current) => ({ ...current, [graphNodeId]: `Pending timeline edit: ${result.reason}` }));
+          return;
+        }
+        knownRevisions.current.set(graphNodeId, result.layout.layoutRevision);
+        if (saveVersions.current.get(graphNodeId) === version) {
+          store.getState().applyPersistedLayout(graphNodeId, result.layout);
+        }
+        setSaveErrors((current) => { const copy = { ...current }; delete copy[graphNodeId]; return copy; });
+      } catch (error) {
+        if (dataSourceEpoch.current !== epoch) return;
+        setSaveErrors((current) => ({ ...current, [graphNodeId]: `Pending timeline edit: ${error instanceof Error ? error.message : String(error)}` }));
+      }
+    });
+    saveQueues.current.set(graphNodeId, next);
   };
 
   const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
@@ -245,6 +298,11 @@ export function TimelineLens({
             Timeline data unavailable: {loadError}
           </div>
         )}
+        {Object.entries(saveErrors).map(([nodeId, message]) => (
+          <div key={nodeId} role="alert" data-testid={`timeline-save-error-${nodeId}`}>
+            {message} <button type="button" onClick={() => commitTimelineLayout(nodeId)}>Retry</button>
+          </div>
+        ))}
         {state.diagnostics.length > 0 && (
           <aside className="timeline-diagnostics" data-testid="timeline-diagnostics" aria-label="Timeline diagnostics">
             <strong>{state.diagnostics.length} timeline {state.diagnostics.length === 1 ? "issue" : "issues"}</strong>
@@ -278,7 +336,9 @@ export function TimelineLens({
                 onSelect={handleSelect}
                 onOpen={onOpenNode}
                 onResize={handleResizeNode}
+                onCommit={commitTimelineLayout}
                 onColorTag={handleColorTag}
+                readOnly={!dataSource.saveTimelineLayout}
               />
             );
           })}

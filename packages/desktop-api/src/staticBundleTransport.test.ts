@@ -68,6 +68,7 @@ function fixtureBundle(): GraphExportBundle {
         properties: { dominance: "dominant" }
       }
     ],
+    timelineLayout: [{ graphNodeId: "node-banda", layout: { lane: "events", offsetY: 22, width: 310, height: 96, style: { dotColour: "#123456" }, layoutRevision: 3 } }],
     nodeLayout: [
       {
         graphNodeId: "node-banda",
@@ -128,6 +129,7 @@ describe("createStaticBundleTransport", () => {
       validTo: "1621-12-31",
       precision: "year",
     });
+    expect(view.nodes[0].layoutOverride).toEqual({ lane: "events", offsetY: 22, width: 310, height: 96, style: { dotColour: "#123456" }, layoutRevision: 3 });
     expect(view.diagnostics).toEqual([]);
   });
 

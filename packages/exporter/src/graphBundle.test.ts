@@ -70,6 +70,7 @@ function makeBundle(): GraphExportBundle {
         properties: { dominance: "dominant" }
       }
     ],
+    timelineLayout: [],
     nodeLayout: [
       {
         graphNodeId: "node-monopoly",
@@ -116,9 +117,11 @@ function makeBundle(): GraphExportBundle {
 describe("graphExportBundle", () => {
   it("round-trips timeline card presentation exactly", () => {
     const bundle = makeBundle();
-    bundle.nodeLayout[0].style.__timelineCard = { offsetY: 37, width: 311, height: 177 };
-    expect(parseGraphExportBundle(bundle).nodeLayout[0].style.__timelineCard).toEqual({
-      offsetY: 37, width: 311, height: 177,
+    bundle.timelineLayout = [{ graphNodeId: bundle.nodes[0].graphNodeId, layout: {
+      lane: "events", offsetY: 37, width: 311, height: 177, style: { dotColour: "#123456" }, layoutRevision: 4,
+    } }];
+    expect(parseGraphExportBundle(bundle).timelineLayout[0].layout).toEqual({
+      lane: "events", offsetY: 37, width: 311, height: 177, style: { dotColour: "#123456" }, layoutRevision: 4,
     });
   });
 
@@ -127,6 +130,8 @@ describe("graphExportBundle", () => {
     delete (legacy.nodes[0] as Partial<(typeof legacy.nodes)[number]>).contentOrigin;
     expect(graphExportBundleSchema.safeParse(legacy).success).toBe(false);
     expect(parseLegacyGraphExportBundle(legacy).nodes[0].contentOrigin).toBeNull();
+    delete (legacy as Partial<typeof legacy>).timelineLayout;
+    expect(parseLegacyGraphExportBundle(legacy).timelineLayout).toEqual([]);
   });
   it("accepts a well-formed bundle and round-trips through parse", () => {
     const bundle = makeBundle();

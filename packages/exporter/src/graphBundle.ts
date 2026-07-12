@@ -71,6 +71,12 @@ const nodeLayoutSchema: z.ZodType<NodeLayout> = z.object({
   })
 });
 
+const timelineLayoutSchema = z.object({
+  graphNodeId: z.string().min(1),
+  layout: z.object({ lane: z.string().min(1), offsetY: z.number(), width: z.number().positive(),
+    height: z.number().positive(), style: z.record(z.string(), z.unknown()), layoutRevision: z.number().int().nonnegative() }),
+});
+
 const edgeLayoutSchema: z.ZodType<EdgeLayout> = z.object({
   id: z.string().min(1),
   canvasId: z.string().min(1),
@@ -107,6 +113,7 @@ export const graphExportBundleSchema = z.object({
   nodes: z.array(graphNodeSchema),
   relationships: z.array(graphRelationshipSchema),
   nodeLayout: z.array(nodeLayoutSchema),
+  timelineLayout: z.array(timelineLayoutSchema),
   edgeLayout: z.array(edgeLayoutSchema),
   viewport: z.object({ x: z.number(), y: z.number(), zoom: z.number() }),
   appState: z.record(z.string(), z.unknown()),
@@ -118,6 +125,7 @@ const legacyLitInstanceSchema = litInstanceSchema.extend({ node: legacyGraphNode
 export const legacyGraphExportBundleInputSchema = graphExportBundleSchema.extend({
   nodes: z.array(legacyGraphNodeInputSchema),
   lightingIndex: z.record(z.string(), z.array(legacyLitInstanceSchema)),
+  timelineLayout: z.array(timelineLayoutSchema).default([]),
 });
 
 export function parseGraphExportBundle(value: unknown): GraphExportBundle {

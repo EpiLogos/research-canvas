@@ -8,7 +8,7 @@ import type {
 
 type TimelineTransport = Pick<
   WorkspaceTransport,
-  "loadTimelineView" | "archetypalLighting" | "resonancesForInstance"
+  "loadTimelineView" | "upsertTimelineLayout" | "archetypalLighting" | "resonancesForInstance"
 >;
 
 /**
@@ -24,6 +24,9 @@ export function createTimelineDataSource(input: {
   return {
     async loadTimelineView(): Promise<TimelineView> {
       return transport.loadTimelineView({ workspaceId });
+    },
+    async saveTimelineLayout(layout) {
+      return transport.upsertTimelineLayout({ ...layout, workspaceId });
     },
     async archetypalLighting(operatorGraphNodeId: string): Promise<ArchetypalLighting> {
       return transport.archetypalLighting({ operatorGraphNodeId });

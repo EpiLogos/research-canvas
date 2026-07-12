@@ -73,6 +73,14 @@ impl<'conn> TimelineLayoutRepository<'conn> {
         let style = serde_json::to_string(&incoming.style_json)
             .map_err(|error| RepositoryError::Validation(error.to_string()))?;
         let Some(current) = self.get(&incoming.graph_node_id)? else {
+            if let Some(expected_revision) = expected_revision {
+                return Ok(TimelineLayoutMutation::Conflict {
+                    current_revision: 0,
+                    reason: format!(
+                        "timeline layout does not exist at expected revision {expected_revision}"
+                    ),
+                });
+            }
             let affected = self.connection.execute(
                 "INSERT INTO timeline_layout(graph_node_id,lane,offset_y,width,height,style_json)
                  VALUES (?1,?2,?3,?4,?5,?6) ON CONFLICT(graph_node_id) DO NOTHING",

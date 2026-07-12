@@ -127,6 +127,13 @@ export interface TimelineLayoutOverride {
   style: Record<string, unknown>;
   layoutRevision: number;
 }
+export interface UpsertTimelineLayoutInput {
+  workspaceId: string; graphNodeId: string; lane: string; offsetY: number;
+  width: number; height: number; style: Record<string, unknown>; expectedRevision: number | null;
+}
+export type TimelineLayoutMutationResult =
+  | { status: "created" | "updated" | "preserved"; layout: TimelineLayoutOverride }
+  | { status: "conflict"; layout: TimelineLayoutOverride | null; reason: string };
 
 export interface TimelineViewNode {
   node: GraphNode;

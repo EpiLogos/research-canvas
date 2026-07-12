@@ -1,11 +1,180 @@
 use research_canvas_desktop_lib::{
     commands::timeline::{
-        load_timeline_view_at_path, timeline_workspace_identity, LoadTimelineViewRequest,
+        load_timeline_view_at_path, timeline_workspace_identity, upsert_timeline_layout_at_path,
+        LoadTimelineViewRequest, TimelineLayoutMutationResult, UpsertTimelineLayoutRequest,
     },
     db::connection::Database,
 };
 use serde_json::json;
 use tempfile::tempdir;
+
+#[test]
+fn timeline_layout_command_round_trips_without_touching_canvas_layout() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("timeline-layout.sqlite");
+    let db = Database::open(&path).unwrap();
+    db.connection().execute("INSERT INTO graph_node_metadata(graph_node_id,entity_type,title,content_origin,content_revision,is_temporal,valid_from,temporal_precision,schema_version,sync_state) VALUES ('event-1','Event','Event','user_authored',1,1,'1900','year',1,'pending')", []).unwrap();
+    db.connection().execute_batch(r##"INSERT INTO node_document(graph_node_id,body,summary,updated_at,content_origin,content_revision) VALUES ('event-1','body','face','2026-07-12T00:00:00Z','user_authored',1);
+        INSERT INTO projects(id,display_name,slug,root_path) VALUES ('project-1','Project','project','/project');
+        INSERT INTO canvases(id,project_id,name) VALUES ('canvas-1','project-1','Canvas');
+        INSERT INTO node_layout(graph_node_id,canvas_id,position_x,position_y,width,height,style_json) VALUES ('event-1','canvas-1',11.25,-22.5,444,155,'{"bgColour":"#111","__canvasNode":{"type":"note","title":"Canvas face","content":"x","tags":[]}}');"##).unwrap();
+    let canvas_before: (String, String, f64, f64, f64, f64, String, String, String) = db.connection().query_row(
+        "SELECT graph_node_id,canvas_id,position_x,position_y,width,height,style_json,created_at,updated_at FROM node_layout WHERE graph_node_id='event-1' AND canvas_id='canvas-1'", [],
+        |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?,row.get(5)?,row.get(6)?,row.get(7)?,row.get(8)?))).unwrap();
+    drop(db);
+    let result = upsert_timeline_layout_at_path(
+        &path,
+        UpsertTimelineLayoutRequest {
+            workspace_id: timeline_workspace_identity(&path).unwrap(),
+            graph_node_id: "event-1".into(),
+            lane: "events".into(),
+            offset_y: 34.0,
+            width: 312.0,
+            height: 118.0,
+            style: json!({"dotColour":"#123456"}),
+            expected_revision: None,
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        result,
+        TimelineLayoutMutationResult::Created { .. }
+    ));
+    let preserved = upsert_timeline_layout_at_path(
+        &path,
+        UpsertTimelineLayoutRequest {
+            workspace_id: timeline_workspace_identity(&path).unwrap(),
+            graph_node_id: "event-1".into(),
+            lane: "events".into(),
+            offset_y: 34.0,
+            width: 312.0,
+            height: 118.0,
+            style: json!({"dotColour":"#123456"}),
+            expected_revision: None,
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        preserved,
+        TimelineLayoutMutationResult::Preserved { .. }
+    ));
+    let updated = upsert_timeline_layout_at_path(
+        &path,
+        UpsertTimelineLayoutRequest {
+            workspace_id: timeline_workspace_identity(&path).unwrap(),
+            graph_node_id: "event-1".into(),
+            lane: "documents".into(),
+            offset_y: 40.0,
+            width: 330.0,
+            height: 120.0,
+            style: json!({"dotColour":"#abcdef"}),
+            expected_revision: Some(0),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        updated,
+        TimelineLayoutMutationResult::Updated { .. }
+    ));
+    let conflict = upsert_timeline_layout_at_path(
+        &path,
+        UpsertTimelineLayoutRequest {
+            workspace_id: timeline_workspace_identity(&path).unwrap(),
+            graph_node_id: "event-1".into(),
+            lane: "events".into(),
+            offset_y: 1.0,
+            width: 200.0,
+            height: 80.0,
+            style: json!({}),
+            expected_revision: Some(0),
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        conflict,
+        TimelineLayoutMutationResult::Conflict { .. }
+    ));
+    let reopened = Database::open(&path).unwrap();
+    let row = research_canvas_desktop_lib::db::repositories::TimelineLayoutRepository::new(
+        reopened.connection(),
+    )
+    .get("event-1")
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        (
+            row.lane.as_str(),
+            row.offset_y,
+            row.width,
+            row.height,
+            row.layout_revision
+        ),
+        ("documents", 40.0, 330.0, 120.0, 1)
+    );
+    assert_eq!(row.style_json, json!({"dotColour":"#abcdef"}));
+    let canvas_after: (String, String, f64, f64, f64, f64, String, String, String) = reopened.connection().query_row(
+        "SELECT graph_node_id,canvas_id,position_x,position_y,width,height,style_json,created_at,updated_at FROM node_layout WHERE graph_node_id='event-1' AND canvas_id='canvas-1'", [],
+        |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?,row.get(5)?,row.get(6)?,row.get(7)?,row.get(8)?))).unwrap();
+    assert_eq!(canvas_after, canvas_before);
+    drop(reopened);
+    let reloaded = load_timeline_view_at_path(
+        &path,
+        LoadTimelineViewRequest {
+            workspace_id: timeline_workspace_identity(&path).unwrap(),
+            filters: Default::default(),
+        },
+    )
+    .unwrap();
+    let layout = reloaded
+        .nodes
+        .iter()
+        .find(|node| node.node.graph_node_id == "event-1")
+        .unwrap()
+        .layout_override
+        .as_ref()
+        .unwrap();
+    assert_eq!(
+        (
+            layout.lane.as_str(),
+            layout.offset_y,
+            layout.width,
+            layout.height,
+            layout.layout_revision
+        ),
+        ("documents", 40.0, 330.0, 120.0, 1)
+    );
+    assert_eq!(layout.style, json!({"dotColour":"#abcdef"}));
+}
+
+#[test]
+fn timeline_layout_command_rejects_non_temporal_nodes_without_writing() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("non-temporal.sqlite");
+    let db = Database::open(&path).unwrap();
+    db.connection().execute("INSERT INTO graph_node_metadata(graph_node_id,entity_type,title,content_origin,content_revision,is_temporal,schema_version,sync_state) VALUES ('concept-1','Archetype','Concept','user_authored',1,0,1,'pending')", []).unwrap();
+    drop(db);
+    let error = upsert_timeline_layout_at_path(
+        &path,
+        UpsertTimelineLayoutRequest {
+            workspace_id: timeline_workspace_identity(&path).unwrap(),
+            graph_node_id: "concept-1".into(),
+            lane: "events".into(),
+            offset_y: 0.0,
+            width: 200.0,
+            height: 80.0,
+            style: json!({}),
+            expected_revision: None,
+        },
+    )
+    .unwrap_err();
+    assert!(error.contains("must be temporal"));
+    let reopened = Database::open(&path).unwrap();
+    let count: i64 = reopened
+        .connection()
+        .query_row("SELECT COUNT(*) FROM timeline_layout", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(count, 0);
+}
 
 #[test]
 fn workspace_timeline_joins_authoritative_documents_layout_and_diagnostics() {

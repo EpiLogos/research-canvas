@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { TimelineLens, type TimelineDataSource } from "./TimelineLens";
 import type { ArchetypalLighting, GraphNode, LitInstance, NodeLayout, TimelineViewNode } from "./contracts";
 
@@ -57,6 +57,13 @@ function makeDataSource(over: Partial<TimelineDataSource> = {}): TimelineDataSou
     resonancesForInstance: async (): Promise<LitInstance[]> => [
       { node: archetype("monopoly", "Monopoly mechanism"), relType: "INSTANTIATES", dominance: "dominant" },
     ],
+    saveTimelineLayout: async (input) => ({
+      status: input.expectedRevision === null ? "created" : "updated",
+      layout: {
+        lane: input.lane, offsetY: input.offsetY, width: input.width, height: input.height,
+        style: input.style, layoutRevision: (input.expectedRevision ?? -1) + 1,
+      },
+    }),
     ...over,
   };
 }
@@ -235,6 +242,84 @@ describe("TimelineLens", () => {
     await waitFor(() => {
       expect(screen.getByTestId("timeline-node-card-banda").style.getPropertyValue("--timeline-card-offset-y")).toBe("36px");
     });
+  });
+
+  test("failed persistence keeps the local preview and exposes a pending error", async () => {
+    render(<TimelineLens dataSource={makeDataSource({
+      saveTimelineLayout: async () => { throw new Error("disk busy"); },
+    })} onOpenNode={() => {}} />);
+    const handle = await screen.findByTestId("timeline-node-resize-banda-se");
+    fireEvent.pointerDown(handle, { pointerId: 7, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { pointerId: 7, clientX: 120, clientY: 110 });
+    fireEvent.pointerUp(window, { pointerId: 7 });
+    expect(screen.getByTestId("timeline-node-card-banda")).toHaveStyle({ width: "300px", height: "102px" });
+    expect(await screen.findByTestId("timeline-save-error-banda")).toHaveTextContent("Pending timeline edit: disk busy");
+  });
+
+  test("uses the returned layout revision for the next serialized edit", async () => {
+    const saveTimelineLayout = vi.fn(async (input) => ({
+      status: input.expectedRevision === 1 ? "updated" as const : "created" as const,
+      layout: { lane: input.lane, offsetY: input.offsetY, width: input.width, height: input.height,
+        style: input.style, layoutRevision: input.expectedRevision === 1 ? 8 : 9 },
+    }));
+    render(<TimelineLens dataSource={makeDataSource({ saveTimelineLayout })} onOpenNode={() => {}} />);
+    fireEvent.click(await screen.findByTestId("timeline-node-color-banda"));
+    await waitFor(() => expect(saveTimelineLayout).toHaveBeenCalledTimes(1));
+    const handle = screen.getByTestId("timeline-node-resize-banda-se");
+    fireEvent.pointerDown(handle, { pointerId: 8, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { pointerId: 8, clientX: 110, clientY: 105 });
+    fireEvent.pointerUp(window, { pointerId: 8 });
+    await waitFor(() => expect(saveTimelineLayout).toHaveBeenLastCalledWith(expect.objectContaining({ expectedRevision: 8 })));
+  });
+
+  test("a delayed save from an old datasource cannot mutate a new workspace with the same node id", async () => {
+    let resolveOld!: (value: Awaited<ReturnType<NonNullable<TimelineDataSource["saveTimelineLayout"]>>>) => void;
+    const oldSave = vi.fn(() => new Promise<Awaited<ReturnType<NonNullable<TimelineDataSource["saveTimelineLayout"]>>>>((resolve) => { resolveOld = resolve; }));
+    const oldSource = makeDataSource({ saveTimelineLayout: oldSave });
+    const newSource = makeDataSource({
+      loadTimelineView: async () => ({ workspaceId: "sqlite:/new", lanes: [{ id: "events" }], diagnostics: [], nodes: [
+        timelineRecord(event("banda", "New workspace Banda", "1621-01-01"), layout("banda", 400, 130, { bgColour: "#abcdef" })),
+      ] }),
+    });
+    const rendered = render(<TimelineLens dataSource={oldSource} onOpenNode={() => {}} />);
+    const handle = await screen.findByTestId("timeline-node-resize-banda-se");
+    fireEvent.pointerDown(handle, { pointerId: 41, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(window, { pointerId: 41, clientX: 120, clientY: 110 });
+    fireEvent.pointerUp(window, { pointerId: 41 });
+    await waitFor(() => expect(oldSave).toHaveBeenCalled());
+    rendered.rerender(<TimelineLens dataSource={newSource} onOpenNode={() => {}} />);
+    await waitFor(() => expect(screen.getByTestId("timeline-node-card-banda")).toHaveStyle({ width: "400px", height: "130px" }));
+    resolveOld({ status: "updated", layout: { lane: "events", offsetY: 0, width: 300, height: 102, style: {}, layoutRevision: 2 } });
+    await Promise.resolve();
+    expect(screen.getByTestId("timeline-node-card-banda")).toHaveStyle({ width: "400px", height: "130px" });
+    expect(screen.queryByTestId("timeline-save-error-banda")).not.toBeInTheDocument();
+  });
+
+  test("transient failure retries the current preview with the same revision and clears the error", async () => {
+    const save = vi.fn()
+      .mockRejectedValueOnce(new Error("disk busy"))
+      .mockImplementationOnce(async (input) => ({ status: "preserved", layout: { lane: input.lane, offsetY: input.offsetY,
+        width: input.width, height: input.height, style: input.style, layoutRevision: 2 } }));
+    render(<TimelineLens dataSource={makeDataSource({ saveTimelineLayout: save })} onOpenNode={() => {}} />);
+    fireEvent.click(await screen.findByTestId("timeline-node-color-banda"));
+    const alert = await screen.findByTestId("timeline-save-error-banda");
+    fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    expect(save.mock.calls[0][0].expectedRevision).toBe(1);
+    expect(save.mock.calls[1][0].expectedRevision).toBe(1);
+    await waitFor(() => expect(screen.queryByTestId("timeline-save-error-banda")).not.toBeInTheDocument());
+  });
+
+  test("conflict retry uses the returned current revision", async () => {
+    const save = vi.fn()
+      .mockResolvedValueOnce({ status: "conflict", layout: { lane: "events", offsetY: 0, width: 280, height: 92, style: {}, layoutRevision: 7 }, reason: "stale" })
+      .mockImplementationOnce(async (input) => ({ status: "updated", layout: { lane: input.lane, offsetY: input.offsetY,
+        width: input.width, height: input.height, style: input.style, layoutRevision: 8 } }));
+    render(<TimelineLens dataSource={makeDataSource({ saveTimelineLayout: save })} onOpenNode={() => {}} />);
+    fireEvent.click(await screen.findByTestId("timeline-node-color-banda"));
+    const alert = await screen.findByTestId("timeline-save-error-banda");
+    fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ expectedRevision: 7 })));
   });
 
   test("edge fade updates from rendered card position when the viewport zoom changes", async () => {

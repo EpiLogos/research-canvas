@@ -29,7 +29,9 @@ export interface TimelineNodeProps {
   onSelect: (nodeId: string) => void;
   onOpen: (nodeId: string) => void;
   onResize: (nodeId: string, size: TimelineCardGeometry) => void;
+  onCommit?: (nodeId: string) => void;
   onColorTag: (nodeId: string, style: { dotColour: string; bgColour: string; textColour?: string }) => void;
+  readOnly?: boolean;
 }
 
 export function TimelineNode({
@@ -42,7 +44,9 @@ export function TimelineNode({
   onSelect,
   onOpen,
   onResize,
+  onCommit,
   onColorTag,
+  readOnly = false,
 }: TimelineNodeProps): JSX.Element {
   const { item, startPx, endPx } = placed;
   const spanWidth = Math.max(endPx - startPx, 0);
@@ -111,6 +115,7 @@ export function TimelineNode({
   function handlePointerUp(event: PointerEvent) {
     if (dragState.current?.pointerId === event.pointerId) {
       dragState.current = null;
+      onCommit?.(item.graphNodeId);
     }
   }
 
@@ -182,6 +187,7 @@ export function TimelineNode({
         data-testid={`timeline-node-card-${item.graphNodeId}`}
         data-edge-fade={edgeFade.edge}
         onPointerDown={(event) => {
+          if (readOnly) return;
           const target = event.target as HTMLElement;
           if (target.closest("button") || target.closest(".timeline-node-resize")) return;
           beginDrag(event, "move");
@@ -221,6 +227,7 @@ export function TimelineNode({
           className="timeline-node-color"
           data-testid={`timeline-node-color-${item.graphNodeId}`}
           aria-label={`Tag ${item.node.title} as ${categoryStyle.label}`}
+          disabled={readOnly}
           onClick={(event) => {
             event.stopPropagation();
             onColorTag(item.graphNodeId, {
@@ -240,7 +247,7 @@ export function TimelineNode({
             role="presentation"
             className={`timeline-node-resize timeline-node-resize--${corner}`}
             data-testid={`timeline-node-resize-${item.graphNodeId}-${corner}`}
-            onPointerDown={(event) => beginDrag(event, "resize", corner)}
+            onPointerDown={(event) => { if (!readOnly) beginDrag(event, "resize", corner); }}
           />
         ))}
       </div>

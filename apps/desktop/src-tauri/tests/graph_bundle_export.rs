@@ -27,6 +27,22 @@ fn serialized_bundle_uses_camel_case_keys() {
             "sourceCoordinates": [],
             "evidenceTags": [],
             "sourceKind": null,
+            "contentOrigin": null,
+            "contentRevision": null,
+            "seedSchemaVersion": null,
+            "bodySourceCoordinates": [],
+            "historicity": null,
+            "claimKind": null,
+            "evidenceStatus": null,
+            "temporalRole": null,
+            "placeCoverage": null,
+            "qlForm": null,
+            "qlUnitId": null,
+            "qlArc": null,
+            "qlTopology": null,
+            "qlSchemaVersion": null,
+            "qlSourceCoordinates": [],
+            "qlCompletenessStatus": null,
             "isTemporal": true,
             "validFrom": "1621-01-01",
             "validTo": "1621-12-31",
@@ -44,6 +60,10 @@ fn serialized_bundle_uses_camel_case_keys() {
             "height": 4.0,
             "style": {}
         }],
+        "timelineLayout": [{
+            "graphNodeId": "node-banda",
+            "layout": { "lane": "events", "offsetY": 12.0, "width": 300.0, "height": 100.0, "style": {"dotColour":"#123456"}, "layoutRevision": 2 }
+        }],
         "edgeLayout": [],
         "viewport": { "x": 0.0, "y": 0.0, "zoom": 1.0 },
         "appState": {},
@@ -58,6 +78,9 @@ fn serialized_bundle_uses_camel_case_keys() {
     assert!(serialized.contains("\"graphNodeId\""));
     assert!(serialized.contains("\"isTemporal\""));
     assert!(serialized.contains("\"nodeLayout\""));
+    assert!(serialized.contains("\"timelineLayout\""));
+    let reparsed: serde_json::Value = serde_json::from_str(&serialized).unwrap();
+    assert_eq!(reparsed["timelineLayout"][0]["layout"]["layoutRevision"], 2);
     assert!(serialized.contains("\"lightingIndex\""));
     // snake_case must NOT appear
     assert!(!serialized.contains("graph_node_id"));

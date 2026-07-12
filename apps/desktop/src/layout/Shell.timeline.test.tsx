@@ -52,12 +52,17 @@ const loadTimelineView = vi.fn(async () => ({
   }],
   lanes: [], diagnostics: [],
 }));
+const upsertTimelineLayout = vi.fn(async (input) => ({ status: "created" as const, layout: {
+  lane: input.lane, offsetY: input.offsetY, width: input.width, height: input.height,
+  style: input.style, layoutRevision: 0,
+} }));
 vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@research-canvas/desktop-api")>();
   return {
     ...actual,
     createWorkspaceTransport: () => ({
       loadTimelineView,
+      upsertTimelineLayout,
       archetypalLighting: async () => ({ operator: {}, instances: [] }),
       resonancesForInstance: async () => [],
     }),
@@ -72,6 +77,7 @@ describe("Shell timeline lens", () => {
     selectNode.mockClear();
     resizeNode.mockClear();
     updateNodeTimelineCard.mockClear();
+    upsertTimelineLayout.mockClear();
     workspaceId = "sqlite:/server-canonical/workspace.sqlite";
   });
 
@@ -108,7 +114,7 @@ describe("Shell timeline lens", () => {
     expect(selectNode).toHaveBeenCalledWith("banda");
   });
 
-  test("timeline card geometry stays timeline-local and never mutates canvas state", async () => {
+  test("timeline card geometry persists through timeline storage and never mutates canvas state", async () => {
     render(<Shell />);
     fireEvent.click(screen.getByTestId("lens-timeline"));
     const handle = await screen.findByTestId("timeline-node-resize-banda-se");
@@ -120,5 +126,8 @@ describe("Shell timeline lens", () => {
     expect(resizeNode).not.toHaveBeenCalled();
     expect(updateNodeTimelineCard).not.toHaveBeenCalled();
     expect(screen.getByTestId("timeline-node-card-banda")).toHaveStyle({ width: "264px", height: "90px" });
+    await waitFor(() => expect(upsertTimelineLayout).toHaveBeenCalledWith(expect.objectContaining({
+      graphNodeId: "banda", width: 264, height: 90, expectedRevision: null,
+    })));
   });
 });

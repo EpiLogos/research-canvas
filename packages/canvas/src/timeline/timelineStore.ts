@@ -1,6 +1,6 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 
-import type { ArchetypalLighting, TimelineDiagnostic, TimelineLane, TimelineView } from "./contracts";
+import type { ArchetypalLighting, TimelineDiagnostic, TimelineLane, TimelineLayoutOverride, TimelineView } from "./contracts";
 import { tierForPixelsPerYear, type ScaleTier } from "./scale";
 import { projectNodes, type TimelineItem, type TimelinePresentation } from "./projection";
 import { buildLitMap, type LitMap } from "./lighting";
@@ -43,6 +43,7 @@ export interface TimelineStoreState {
   setPlaying: (playing: boolean) => void;
   updateCardSize: (nodeId: string, size: TimelineCardGeometryUpdate) => void;
   updateCardStyle: (nodeId: string, style: Partial<TimelinePresentation["style"]>) => void;
+  applyPersistedLayout: (nodeId: string, layout: TimelineLayoutOverride) => void;
 }
 
 export interface TimelineCardGeometryUpdate {
@@ -144,6 +145,13 @@ export function createTimelineStore(
             ? { ...item, presentation: { ...item.presentation, style: { ...item.presentation.style, ...style } } }
             : item,
         ),
+      })),
+    applyPersistedLayout: (nodeId, layout) =>
+      set((state) => ({
+        items: state.items.map((item) => item.graphNodeId === nodeId
+          ? { ...item, presentation: { lane: layout.lane, offsetY: layout.offsetY, width: layout.width,
+              height: layout.height, style: layout.style, layoutRevision: layout.layoutRevision } }
+          : item),
       })),
   }));
 }

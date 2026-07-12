@@ -7,7 +7,8 @@ use crate::{
         connection::Database,
         repositories::{
             graph::{EntityType, GraphNode, Historicity, TemporalPrecision, TemporalRole},
-            GraphNodeMetadataRepository, NodeDocumentRepository, TimelineLayoutRepository,
+            GraphNodeMetadataRepository, NodeDocumentRepository, TimelineLayoutMutation,
+            TimelineLayoutRecord, TimelineLayoutRepository,
         },
     },
     SharedApiState,
@@ -70,6 +71,122 @@ pub struct TimelineLayoutOverride {
     pub height: f64,
     pub style: serde_json::Value,
     pub layout_revision: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpsertTimelineLayoutRequest {
+    pub workspace_id: String,
+    pub graph_node_id: String,
+    pub lane: String,
+    pub offset_y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub style: serde_json::Value,
+    pub expected_revision: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "status", rename_all = "camelCase")]
+pub enum TimelineLayoutMutationResult {
+    Created {
+        layout: TimelineLayoutOverride,
+    },
+    Updated {
+        layout: TimelineLayoutOverride,
+    },
+    Preserved {
+        layout: TimelineLayoutOverride,
+    },
+    Conflict {
+        layout: Option<TimelineLayoutOverride>,
+        reason: String,
+    },
+}
+
+fn layout_override(record: TimelineLayoutRecord) -> TimelineLayoutOverride {
+    TimelineLayoutOverride {
+        lane: record.lane,
+        offset_y: record.offset_y,
+        width: record.width,
+        height: record.height,
+        style: record.style_json,
+        layout_revision: record.layout_revision,
+    }
+}
+
+pub fn upsert_timeline_layout_at_path(
+    path: impl AsRef<std::path::Path>,
+    request: UpsertTimelineLayoutRequest,
+) -> Result<TimelineLayoutMutationResult, String> {
+    let expected_workspace = timeline_workspace_identity(&path)?;
+    if request.workspace_id != expected_workspace {
+        return Err(format!(
+            "workspaceId does not match active SQLite workspace: expected {expected_workspace}"
+        ));
+    }
+    let database = Database::open(path).map_err(|error| error.to_string())?;
+    let transaction = database
+        .connection()
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    let metadata = GraphNodeMetadataRepository::new(&transaction)
+        .get(&request.graph_node_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "timeline layout target graph node does not exist".to_string())?;
+    if !metadata.is_temporal {
+        return Err("timeline layout target must be temporal".into());
+    }
+    let repository = TimelineLayoutRepository::new(&transaction);
+    let incoming = TimelineLayoutRecord {
+        graph_node_id: request.graph_node_id.clone(),
+        lane: request.lane,
+        offset_y: request.offset_y,
+        width: request.width,
+        height: request.height,
+        style_json: request.style,
+        layout_revision: request.expected_revision.unwrap_or(0),
+        created_at: None,
+        updated_at: None,
+    };
+    let mutation = repository
+        .save(&incoming, request.expected_revision)
+        .map_err(|error| error.to_string())?;
+    let result = match mutation {
+        TimelineLayoutMutation::Created => TimelineLayoutMutationResult::Created {
+            layout: layout_override(
+                repository
+                    .get(&request.graph_node_id)
+                    .map_err(|error| error.to_string())?
+                    .ok_or_else(|| "timeline layout disappeared after create".to_string())?,
+            ),
+        },
+        TimelineLayoutMutation::Updated => TimelineLayoutMutationResult::Updated {
+            layout: layout_override(
+                repository
+                    .get(&request.graph_node_id)
+                    .map_err(|error| error.to_string())?
+                    .ok_or_else(|| "timeline layout disappeared after update".to_string())?,
+            ),
+        },
+        TimelineLayoutMutation::Preserved => TimelineLayoutMutationResult::Preserved {
+            layout: layout_override(
+                repository
+                    .get(&request.graph_node_id)
+                    .map_err(|error| error.to_string())?
+                    .ok_or_else(|| "timeline layout disappeared after preserve".to_string())?,
+            ),
+        },
+        TimelineLayoutMutation::Conflict { reason, .. } => TimelineLayoutMutationResult::Conflict {
+            layout: repository
+                .get(&request.graph_node_id)
+                .map_err(|error| error.to_string())?
+                .map(layout_override),
+            reason,
+        },
+    };
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(result)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -367,4 +484,18 @@ pub async fn load_timeline_view_command(
         .clone()
         .ok_or_else(|| "App not bootstrapped yet".to_string())?;
     load_timeline_view_at_path(path, request)
+}
+
+#[tauri::command]
+pub async fn upsert_timeline_layout_command(
+    request: UpsertTimelineLayoutRequest,
+    api_state: tauri::State<'_, SharedApiState>,
+) -> Result<TimelineLayoutMutationResult, String> {
+    let path = api_state
+        .lock()
+        .map_err(|_| "API state lock poisoned".to_string())?
+        .db_path
+        .clone()
+        .ok_or_else(|| "App not bootstrapped yet".to_string())?;
+    upsert_timeline_layout_at_path(path, request)
 }

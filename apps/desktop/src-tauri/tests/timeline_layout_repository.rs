@@ -61,6 +61,21 @@ fn layout(lane: &str) -> TimelineLayoutRecord {
 }
 
 #[test]
+fn missing_layout_with_expected_revision_conflicts_without_creating() {
+    let dir = tempdir().unwrap();
+    let db = Database::open(dir.path().join("missing.sqlite")).unwrap();
+    GraphNodeMetadataRepository::new(db.connection())
+        .save(&metadata(), None)
+        .unwrap();
+    let repo = TimelineLayoutRepository::new(db.connection());
+    assert!(matches!(
+        repo.save(&layout("events"), Some(3)).unwrap(),
+        TimelineLayoutMutation::Conflict { .. }
+    ));
+    assert!(repo.get("event-1").unwrap().is_none());
+}
+
+#[test]
 fn timeline_layout_round_trips_and_requires_monotonic_expected_revision() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("timeline.sqlite");

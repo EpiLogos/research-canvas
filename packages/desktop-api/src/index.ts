@@ -29,6 +29,8 @@ export type {
   TimelineFilters,
   TimelineLane,
   TimelineLayoutOverride,
+  UpsertTimelineLayoutInput,
+  TimelineLayoutMutationResult,
   TimelineViewNode,
   TimelineValueFilter,
   TimelineNodeRecord,
@@ -122,6 +124,9 @@ import type {
   NodeLayout,
   EdgeLayout,
   TimelineView,
+  TimelineLayoutOverride,
+  UpsertTimelineLayoutInput,
+  TimelineLayoutMutationResult,
 } from "./graph";
 
 export type IndexedEntryKind =
@@ -210,6 +215,7 @@ export interface GraphExportBundle {
   nodes: GraphNode[];
   relationships: GraphRelationship[];
   nodeLayout: NodeLayout[];
+  timelineLayout: Array<{ graphNodeId: string; layout: TimelineLayoutOverride }>;
   edgeLayout: EdgeLayout[];
   viewport: { x: number; y: number; zoom: number };
   appState: Record<string, unknown>;
@@ -531,6 +537,7 @@ export interface WorkspaceTransport {
   // ---- Joined reads (both targets) ----
   loadCanvasView(input: { databasePath?: string; canvasId: string; lens: "canvas" | "timeline" }): Promise<CanvasView>;
   loadTimelineView(input: LoadTimelineViewRequest): Promise<TimelineView>;
+  upsertTimelineLayout(input: UpsertTimelineLayoutInput): Promise<TimelineLayoutMutationResult>;
 
   // ---- Two-lens / archetypal lighting ----
   archetypalLighting(input: { operatorGraphNodeId: string }): Promise<ArchetypalLighting>;
@@ -733,6 +740,9 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async loadTimelineView(input) {
       return invokeTauri<TimelineView>("load_timeline_view_command", { request: input });
     },
+    async upsertTimelineLayout(input) {
+      return invokeTauri<TimelineLayoutMutationResult>("upsert_timeline_layout_command", { request: input });
+    },
     async archetypalLighting(input) {
       return invokeTauri<ArchetypalLighting>("archetypal_lighting_command", { request: input });
     },
@@ -896,6 +906,7 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
         body: input,
       });
     },
+    async upsertTimelineLayout() { throw new Error("read-only web build"); },
     async archetypalLighting(input) {
       return requestJsonWithRetry<ArchetypalLighting>(
         `/graph/lighting/${encodeURIComponent(input.operatorGraphNodeId)}`,
@@ -1340,6 +1351,7 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
       const invalid = temporalNodes.filter((node) =>
         staticTimelineDiagnostic(node) !== null
       );
+      const timelineLayoutById = new Map(bundle.timelineLayout.map((record) => [record.graphNodeId, record.layout]));
       const nodes = temporalNodes
         .filter((node): node is GraphNode & { validFrom: string; temporalPrecision: NonNullable<GraphNode["temporalPrecision"]> } =>
           !invalid.includes(node) && typeof node.validFrom === "string" && node.temporalPrecision !== null
@@ -1351,7 +1363,7 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
             validTo: node.validTo,
             precision: node.temporalPrecision,
           },
-          layoutOverride: null,
+          layoutOverride: timelineLayoutById.get(node.graphNodeId) ?? null,
         }));
       return {
         workspaceId: canonicalWorkspaceId,
@@ -1366,6 +1378,7 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
         })),
       };
     },
+    async upsertTimelineLayout() { throw new Error("read-only static bundle"); },
     async archetypalLighting({ operatorGraphNodeId }) {
       const operator = nodeById.get(operatorGraphNodeId);
       if (!operator) {

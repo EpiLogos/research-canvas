@@ -20,6 +20,7 @@ use crate::db::repositories::graph::{GraphNode, GraphRelationship, GraphReposito
 use crate::db::repositories::layout::{
     CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord,
 };
+use crate::db::repositories::{TimelineLayoutRecord, TimelineLayoutRepository};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,6 +51,24 @@ pub struct BundleEdgeLayout {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct BundleTimelineLayout {
+    pub graph_node_id: String,
+    pub layout: BundleTimelineLayoutOverride,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundleTimelineLayoutOverride {
+    pub lane: String,
+    pub offset_y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub style: Value,
+    pub layout_revision: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BundleLitInstance {
     pub node: GraphNode,
     pub rel_type: String,
@@ -73,6 +92,8 @@ pub struct GraphExportBundle {
     pub nodes: Vec<GraphNode>,
     pub relationships: Vec<GraphRelationship>,
     pub node_layout: Vec<BundleNodeLayout>,
+    #[serde(default)]
+    pub timeline_layout: Vec<BundleTimelineLayout>,
     pub edge_layout: Vec<BundleEdgeLayout>,
     pub viewport: BundleViewport,
     pub app_state: Value,
@@ -106,6 +127,20 @@ fn edge_layout_from_record(record: EdgeLayoutRecord) -> BundleEdgeLayout {
         relation_kind: record.relation_kind,
         source_handle_id: record.source_handle_id,
         target_handle_id: record.target_handle_id,
+    }
+}
+
+fn timeline_layout_from_record(record: TimelineLayoutRecord) -> BundleTimelineLayout {
+    BundleTimelineLayout {
+        graph_node_id: record.graph_node_id,
+        layout: BundleTimelineLayoutOverride {
+            lane: record.lane,
+            offset_y: record.offset_y,
+            width: record.width,
+            height: record.height,
+            style: record.style_json,
+            layout_revision: record.layout_revision,
+        },
     }
 }
 
@@ -191,6 +226,12 @@ pub async fn build_graph_bundle(
         .into_iter()
         .map(node_layout_from_record)
         .collect::<Vec<_>>();
+    let timeline_layout = TimelineLayoutRepository::new(db.connection())
+        .list()
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(timeline_layout_from_record)
+        .collect::<Vec<_>>();
     let edge_layout = layout_repo
         .list_edge_layout(canvas_id)
         .map_err(|error| error.to_string())?
@@ -209,6 +250,7 @@ pub async fn build_graph_bundle(
         nodes,
         relationships,
         node_layout,
+        timeline_layout,
         edge_layout,
         viewport,
         app_state,

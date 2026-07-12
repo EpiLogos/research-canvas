@@ -67,6 +67,7 @@ function bundle(): GraphExportBundle {
     nodes: [monopoly, banda],
     relationships: [],
     nodeLayout: [],
+    timelineLayout: [{ graphNodeId: "node-banda", layout: { lane: "events", offsetY: 22, width: 310, height: 96, style: { dotColour: "#123456" }, layoutRevision: 3 } }],
     edgeLayout: [],
     viewport: { x: 0, y: 0, zoom: 1 },
     appState: {},
@@ -121,6 +122,7 @@ describe("GraphApp (mounted web entry, real static-bundle transport)", () => {
     });
     const event = await screen.findByTestId("timeline-node-node-banda");
     expect(event).toHaveTextContent("Banda genocide");
+    expect(screen.getByTestId("timeline-node-card-node-banda")).toHaveStyle({ width: "310px", height: "96px" });
     expect(screen.queryByTestId("timeline-node-node-monopoly")).toBeNull();
     expect(event.getAttribute("data-lit")).toBeNull();
 

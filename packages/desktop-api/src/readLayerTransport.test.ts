@@ -41,6 +41,7 @@ function bundle(): GraphExportBundle {
     ],
     relationships: [],
     nodeLayout: [],
+    timelineLayout: [],
     edgeLayout: [],
     viewport: { x: 0, y: 0, zoom: 1 },
     appState: {},

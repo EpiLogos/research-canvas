@@ -4,6 +4,19 @@ import { createTimelineStore } from "./timelineStore";
 import type { ArchetypalLighting, GraphNode, TimelineViewNode } from "./contracts";
 import { pixelToYear } from "./viewport";
 
+test("persisted timeline override updates presentation without changing date-derived time", () => {
+  const store = createTimelineStore();
+  store.getState().hydrate(view([record({ graphNodeId: "persisted", validFrom: "1900" })]));
+  const before = store.getState().items[0].startYear;
+  store.getState().applyPersistedLayout("persisted", {
+    lane: "events", offsetY: 31, width: 318, height: 110,
+    style: { dotColour: "#123456" }, layoutRevision: 4,
+  });
+  const item = store.getState().items[0];
+  expect(item.startYear).toBe(before);
+  expect(item.presentation).toMatchObject({ lane: "events", offsetY: 31, width: 318, height: 110, layoutRevision: 4 });
+});
+
 function node(over: Partial<GraphNode>): GraphNode {
   return {
     graphNodeId: over.graphNodeId ?? "n",

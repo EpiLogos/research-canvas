@@ -8,6 +8,18 @@ import type {
   TimelineView,
 } from "@research-canvas/desktop-api";
 
+test("timeline datasource persists through the timeline-only transport command", async () => {
+  const upsertTimelineLayout = vi.fn(async () => ({ status: "created" as const, layout: {
+    lane: "events", offsetY: 4, width: 260, height: 90, style: {}, layoutRevision: 0,
+  }}));
+  const ds = createTimelineDataSource({
+    transport: { loadTimelineView: vi.fn(), archetypalLighting: vi.fn(), resonancesForInstance: vi.fn(), upsertTimelineLayout },
+    workspaceId: "sqlite:/canonical/workspace.sqlite",
+  });
+  await ds.saveTimelineLayout?.({ graphNodeId: "event-1", lane: "events", offsetY: 4, width: 260, height: 90, style: {}, expectedRevision: null });
+  expect(upsertTimelineLayout).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: "sqlite:/canonical/workspace.sqlite", graphNodeId: "event-1" }));
+});
+
 function gnode(id: string, isTemporal: boolean): GraphNode {
   return {
     graphNodeId: id,
@@ -53,6 +65,7 @@ describe("createTimelineDataSource", () => {
     const ds = createTimelineDataSource({
       transport: {
         loadTimelineView,
+        upsertTimelineLayout: vi.fn(),
         archetypalLighting: vi.fn(),
         resonancesForInstance: vi.fn(),
       },
@@ -75,6 +88,7 @@ describe("createTimelineDataSource", () => {
     const ds = createTimelineDataSource({
       transport: {
         loadTimelineView: vi.fn(),
+        upsertTimelineLayout: vi.fn(),
         archetypalLighting,
         resonancesForInstance: vi.fn(),
       },
@@ -93,6 +107,7 @@ describe("createTimelineDataSource", () => {
     const ds = createTimelineDataSource({
       transport: {
         loadTimelineView: vi.fn(),
+        upsertTimelineLayout: vi.fn(),
         archetypalLighting: vi.fn(),
         resonancesForInstance,
       },

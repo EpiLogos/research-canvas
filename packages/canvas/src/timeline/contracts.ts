@@ -17,4 +17,5 @@ export type {
   TimelineView,
   TimelineLane,
   TimelineDiagnostic,
+  TimelineLayoutMutationResult,
 } from "@research-canvas/desktop-api";
