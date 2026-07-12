@@ -165,6 +165,19 @@ describe("TimelineLens", () => {
     );
   });
 
+  test("a read-only card still opens on double-click without moving the timeline camera", async () => {
+    const onOpenNode = vi.fn();
+    render(<TimelineLens dataSource={makeDataSource({ saveTimelineLayout: undefined })} onOpenNode={onOpenNode} />);
+    const card = await screen.findByTestId("timeline-node-card-banda");
+
+    fireEvent.pointerDown(card, { pointerId: 63, clientX: 300, clientY: 210 });
+    fireEvent.pointerMove(screen.getByTestId("timeline-track"), { pointerId: 63, clientX: 300, clientY: 270 });
+    fireEvent.doubleClick(card);
+
+    expect(screen.getByTestId("timeline-scene")).toHaveStyle({ transform: "translateY(0px)" });
+    expect(onOpenNode).toHaveBeenCalledWith("banda", expect.objectContaining({ graphNodeId: "banda" }));
+  });
+
   test("selecting an event fetches and shows its resonant archetypes", async () => {
     render(<TimelineLens dataSource={makeDataSource()} onOpenNode={() => {}} />);
     const node = await screen.findByTestId("timeline-node-banda");
@@ -211,6 +224,19 @@ describe("TimelineLens", () => {
     await waitFor(() => {
       expect(screen.getByTestId("timeline-tier").textContent).not.toBe(before);
     });
+  });
+
+  test("has no transport bar and pans the whole timeline scene vertically", async () => {
+    render(<TimelineLens dataSource={makeDataSource()} onOpenNode={() => {}} />);
+    await screen.findByTestId("timeline-node-banda");
+
+    expect(screen.queryByTestId("timeline-transport")).not.toBeInTheDocument();
+    const track = screen.getByTestId("timeline-track");
+    fireEvent.pointerDown(track, { pointerId: 19, clientX: 400, clientY: 200 });
+    fireEvent.pointerMove(track, { pointerId: 19, clientX: 400, clientY: 280 });
+    fireEvent.pointerUp(track, { pointerId: 19, clientX: 400, clientY: 280 });
+
+    expect(screen.getByTestId("timeline-scene")).toHaveStyle({ transform: "translateY(80px)" });
   });
 
   test("renders persisted card sizes and category color tags", async () => {

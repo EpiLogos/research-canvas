@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 
 import {
@@ -15,6 +15,7 @@ import type {
   LocalNodeDocumentWriteResult,
   SyncAcknowledgementMutation,
 } from "@research-canvas/desktop-api";
+import { resolveBlockNoteAssetUrls, restoreBlockNoteAssetUrls } from "../canvas/resourceFileHelpers";
 
 interface NodeDocumentTransport {
   readGraphNode(input: { graphNodeId: string }): Promise<GraphNode>;
@@ -50,6 +51,8 @@ interface NodeDocumentPaneProps {
    * is shown rather than a dead-end.
    */
   databasePath: string | null;
+  /** Workspace root resolves portable `assets/...` image blocks for display. */
+  workspaceRoot?: string | null;
   editable?: boolean;
   /**
    * Test-only: when set, renders a hidden button that pushes this body via
@@ -65,6 +68,7 @@ export function NodeDocumentPane({
   graphNodeId,
   transport,
   databasePath,
+  workspaceRoot = null,
   editable = true,
   __testSetBody,
 }: NodeDocumentPaneProps) {
@@ -314,6 +318,7 @@ export function NodeDocumentPane({
       editable={editable}
       localAuthorityAvailable={localAuthorityAvailable}
       statusNote={statusNote}
+      workspaceRoot={workspaceRoot}
       testSetBody={__testSetBody}
     />
   );
@@ -325,16 +330,22 @@ function NodeDocumentBody({
   statusNote,
   testSetBody,
   localAuthorityAvailable,
+  workspaceRoot,
 }: {
   store: NodeDocumentStore;
   editable: boolean;
   statusNote: string | null;
   testSetBody?: string;
   localAuthorityAvailable: boolean;
+  workspaceRoot: string | null;
 }) {
   const body = useStore(store, (state) => state.body);
   const status = useStore(store, (state) => state.status);
   const errorMessage = useStore(store, (state) => state.errorMessage);
+  const displayBody = useMemo(
+    () => resolveBlockNoteAssetUrls(body, workspaceRoot),
+    [body, workspaceRoot],
+  );
 
   // Crash-safe flush-on-close (WS1 robustness bar (b)): write the dirty body on
   // window unload AND on unmount, and SURFACE failure rather than dropping it.
@@ -365,11 +376,15 @@ function NodeDocumentBody({
   return (
     <div className="node-document-pane">
       <BlockNoteDocument
-        body={body}
+        // BlockNote seeds its document only on mount. Re-mount when the
+        // workspace becomes known so an early-opened reader upgrades stored
+        // `assets/...` image paths to renderable Tauri URLs.
+        key={workspaceRoot ?? "unresolved-workspace"}
+        body={displayBody}
         editable={editable && localAuthorityAvailable}
         saveState={status}
         saveErrorMessage={errorMessage}
-        onChange={(next) => store.getState().setBody(next)}
+        onChange={(next) => store.getState().setBody(restoreBlockNoteAssetUrls(next, workspaceRoot))}
       />
       <div className="node-document-pane__status" data-status={status}>
         {status === "saving"

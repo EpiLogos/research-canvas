@@ -10,15 +10,7 @@ import { TimelineAxis } from "./TimelineAxis";
 import { TimelineNode } from "./TimelineNode";
 import { TimelineRelationshipLayer } from "./TimelineRelationshipLayer";
 import { ResonancePopover } from "./ResonancePopover";
-import { TimelineTransport } from "./TimelineTransport";
-import { pixelToYear, yearToPixel } from "./viewport";
 import { deriveTimelineCategory, TIMELINE_CATEGORIES, type TimelineCategory } from "./categories";
-
-function clamp01(value: number): number {
-  if (value < 0) return 0;
-  if (value > 1) return 1;
-  return value;
-}
 
 export interface TimelineDataSource {
   loadTimelineView(): Promise<TimelineView>;
@@ -33,7 +25,6 @@ export interface TimelineDataSource {
 export interface TimelineLensProps {
   dataSource: TimelineDataSource;
   onOpenNode: (graphNodeId: string, node: GraphNode) => void;
-  onPlaySequence?: () => void;
   initialViewport?: { centerYear: number; pixelsPerYear: number };
   onViewportChange?: (viewport: { centerYear: number; pixelsPerYear: number }) => void;
 }
@@ -47,7 +38,6 @@ const WHEEL_ZOOM_BASE = 1.003;
 export function TimelineLens({
   dataSource,
   onOpenNode,
-  onPlaySequence,
   initialViewport,
   onViewportChange,
 }: TimelineLensProps): JSX.Element {
@@ -145,51 +135,6 @@ export function TimelineLens({
     state.items.some((item) => deriveTimelineCategory(item.node) === category.id),
   );
 
-  const minYear = pixelToYear(viewport, 0);
-  const maxYear = pixelToYear(viewport, viewport.widthPx);
-  const { cursorYear, playing } = state;
-  const fraction = cursorYear == null ? 0 : clamp01((cursorYear - minYear) / (maxYear - minYear));
-  const cursorLabel = cursorYear == null ? "—" : String(Math.round(cursorYear));
-
-  const handleScrub = (f: number) => {
-    store.getState().setCursorYear(minYear + f * (maxYear - minYear));
-  };
-
-  const handleTogglePlay = () => {
-    store.getState().setPlaying(!playing);
-  };
-
-  // Play animation: advance the cursor across the visible range over ~8s.
-  useEffect(() => {
-    if (!playing) return;
-    if (maxYear === minYear) {
-      store.getState().setPlaying(false);
-      return;
-    }
-    if (store.getState().cursorYear == null) {
-      store.getState().setCursorYear(minYear);
-    }
-    const yearsPerSecond = (maxYear - minYear) / 8;
-    let rafId: number;
-    let lastTs: number | null = null;
-    const step = (ts: number) => {
-      if (lastTs == null) lastTs = ts;
-      const dt = (ts - lastTs) / 1000;
-      lastTs = ts;
-      const current = store.getState().cursorYear ?? minYear;
-      const next = current + yearsPerSecond * dt;
-      if (next >= maxYear) {
-        store.getState().setCursorYear(maxYear);
-        store.getState().setPlaying(false);
-        return;
-      }
-      store.getState().setCursorYear(next);
-      rafId = requestAnimationFrame(step);
-    };
-    rafId = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(rafId);
-  }, [playing, minYear, maxYear, store]);
-
   const handleSelect = (graphNodeId: string) => {
     store.getState().setSelected(graphNodeId);
     void dataSource.resonancesForInstance(graphNodeId).then(setResonances);
@@ -257,16 +202,19 @@ export function TimelineLens({
   };
 
   // Drag-to-pan.
-  const dragState = useRef<{ lastX: number } | null>(null);
+  const dragState = useRef<{ lastX: number; lastY: number } | null>(null);
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    dragState.current = { lastX: event.clientX };
+    dragState.current = { lastX: event.clientX, lastY: event.clientY };
     (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
   };
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!dragState.current) return;
     const deltaPx = event.clientX - dragState.current.lastX;
+    const deltaY = event.clientY - dragState.current.lastY;
     dragState.current.lastX = event.clientX;
-    store.getState().pan(deltaPx);
+    dragState.current.lastY = event.clientY;
+    if (deltaPx !== 0) store.getState().pan(deltaPx);
+    if (deltaY !== 0) store.getState().panVertical(deltaY, verticalPanBounds(placed, trackRef.current?.clientHeight ?? 480));
   };
   const handlePointerUp = () => {
     dragState.current = null;
@@ -310,6 +258,15 @@ export function TimelineLens({
             Clear lighting
           </button>
         )}
+        {state.verticalOffset !== 0 && (
+          <button
+            type="button"
+            data-testid="timeline-reset-vertical"
+            onClick={() => store.getState().resetVerticalPan()}
+          >
+            Centre timeline
+          </button>
+        )}
       </div>
       <div
         className="timeline-track"
@@ -322,7 +279,6 @@ export function TimelineLens({
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
       >
-        <TimelineAxis ticks={ticks} height={AXIS_HEIGHT} />
         {loadError && (
           <div className="timeline-load-state timeline-load-state--error" data-testid="timeline-load-error">
             Timeline data unavailable: {loadError}
@@ -350,39 +306,43 @@ export function TimelineLens({
             No temporal nodes loaded
           </div>
         )}
-        <TimelineRelationshipLayer
-          relationships={state.relationships}
-          placed={placed}
-          viewportWidth={viewport.widthPx}
-          lod={lod}
-        />
-        <div className="timeline-nodes">
-          {placed.map((p) => {
-            const lit = lighting.get(p.item.graphNodeId) ?? null;
-            const dimmed = lightingActive && lit === null;
-            return (
-              <TimelineNode
-                key={p.item.graphNodeId}
-                placed={p}
-                lod={lod}
-                lit={lit}
-                selected={state.selectedNodeId === p.item.graphNodeId}
-                dimmed={dimmed}
-                filtered={false}
-                viewportWidth={viewport.widthPx}
-                onSelect={handleSelect}
-                onOpen={onOpenNode}
-                onResize={handleResizeNode}
-                onCommit={commitTimelineLayout}
-                onColorTag={handleColorTag}
-                readOnly={!dataSource.saveTimelineLayout}
-              />
-            );
-          })}
+        <div
+          className="timeline-scene"
+          data-testid="timeline-scene"
+          style={{ transform: `translateY(${state.verticalOffset}px)` }}
+        >
+          <TimelineAxis ticks={ticks} height={AXIS_HEIGHT} />
+          <TimelineRelationshipLayer
+            relationships={state.relationships}
+            placed={placed}
+            viewportWidth={viewport.widthPx}
+            lod={lod}
+          />
+          <div className="timeline-nodes">
+            {placed.map((p) => {
+              const lit = lighting.get(p.item.graphNodeId) ?? null;
+              const dimmed = lightingActive && lit === null;
+              return (
+                <TimelineNode
+                  key={p.item.graphNodeId}
+                  placed={p}
+                  lod={lod}
+                  lit={lit}
+                  selected={state.selectedNodeId === p.item.graphNodeId}
+                  dimmed={dimmed}
+                  filtered={false}
+                  viewportWidth={viewport.widthPx}
+                  onSelect={handleSelect}
+                  onOpen={onOpenNode}
+                  onResize={handleResizeNode}
+                  onCommit={commitTimelineLayout}
+                  onColorTag={handleColorTag}
+                  readOnly={!dataSource.saveTimelineLayout}
+                />
+              );
+            })}
+          </div>
         </div>
-        {cursorYear != null && (
-          <div className="timeline-cursor" style={{ left: `${yearToPixel(viewport, cursorYear)}px` }} />
-        )}
       </div>
       {state.selectedNodeId !== null && (
         <ResonancePopover
@@ -390,14 +350,32 @@ export function TimelineLens({
           onLightOperator={handleLightOperator}
         />
       )}
-      <TimelineTransport
-        playing={playing}
-        onTogglePlay={handleTogglePlay}
-        fraction={fraction}
-        onScrub={handleScrub}
-        label={cursorLabel}
-        onPlaySequence={onPlaySequence}
-      />
     </div>
   );
+}
+
+function verticalPanBounds(placed: ReturnType<typeof placeItems>, trackHeight: number) {
+  const height = Math.max(trackHeight, 1);
+  const halfHeight = height / 2;
+  const margin = 24;
+  const exploratoryPan = 96;
+  let highestCardTop = 0;
+  let lowestCardBottom = 0;
+
+  for (const position of placed) {
+    const laneOffset = 68 + position.laneIndex * 78;
+    const cardHeight = Math.min(260, Math.max(72, position.item.presentation.height));
+    const offsetY = position.item.presentation.offsetY;
+    const top = position.laneSide === "above"
+      ? -laneOffset - cardHeight + offsetY
+      : laneOffset + offsetY;
+    const bottom = top + cardHeight;
+    highestCardTop = Math.min(highestCardTop, top);
+    lowestCardBottom = Math.max(lowestCardBottom, bottom);
+  }
+
+  return {
+    min: Math.min(-exploratoryPan, height - margin - (halfHeight + lowestCardBottom)),
+    max: Math.max(exploratoryPan, margin - (halfHeight + highestCardTop)),
+  };
 }

@@ -85,6 +85,7 @@ export function NodeReaderBody({
         graphNodeId={graphNodeId}
         transport={transport}
         databasePath={databasePath}
+        workspaceRoot={workspace.workingRoot}
       />
     );
   }

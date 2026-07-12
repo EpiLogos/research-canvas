@@ -6,6 +6,7 @@ import {
 } from "@research-canvas/viewers";
 
 import type { CanvasNode } from "@research-canvas/schema";
+import { toAssetUrl } from "../canvas/resourceFileHelpers";
 
 interface NodeDetailBodyProps {
   node: CanvasNode;
@@ -36,7 +37,7 @@ export function NodeDetailBody({ node }: NodeDetailBodyProps) {
         />
 
         {node.resourceKind === "image" ? (
-          <ImageViewer source={node.absolutePath} title={node.title} />
+          <ImageViewer source={toAssetUrl(node.absolutePath)} title={node.title} />
         ) : null}
 
         {node.resourceKind === "pdf" ? (

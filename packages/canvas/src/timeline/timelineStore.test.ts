@@ -160,26 +160,16 @@ describe("timelineStore", () => {
   });
 });
 
-describe("timeline transport state", () => {
-  it("defaults cursorYear to null and playing to false", () => {
+describe("timeline vertical navigation", () => {
+  it("starts centred and clamps vertical panning without changing the time camera", () => {
     const store = createTimelineStore();
-    expect(store.getState().cursorYear).toBeNull();
-    expect(store.getState().playing).toBe(false);
-  });
+    const centerYear = store.getState().centerYear;
 
-  it("sets the cursor year", () => {
-    const store = createTimelineStore();
-    store.getState().setCursorYear(1789);
-    expect(store.getState().cursorYear).toBe(1789);
-    store.getState().setCursorYear(null);
-    expect(store.getState().cursorYear).toBeNull();
-  });
-
-  it("toggles playing", () => {
-    const store = createTimelineStore();
-    store.getState().setPlaying(true);
-    expect(store.getState().playing).toBe(true);
-    store.getState().setPlaying(false);
-    expect(store.getState().playing).toBe(false);
+    expect(store.getState().verticalOffset).toBe(0);
+    store.getState().panVertical(480, { min: -220, max: 220 });
+    expect(store.getState().verticalOffset).toBe(220);
+    store.getState().panVertical(-1000, { min: -220, max: 220 });
+    expect(store.getState().verticalOffset).toBe(-220);
+    expect(store.getState().centerYear).toBe(centerYear);
   });
 });

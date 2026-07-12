@@ -84,6 +84,37 @@ describe("NodeDocumentPane", () => {
     expect(await screen.findByText("Loaded body")).toBeInTheDocument();
   });
 
+  it("renders a portable attached-image path through the workspace asset protocol", async () => {
+    const body = JSON.stringify([
+      {
+        id: "image-1",
+        type: "image",
+        props: { url: "assets/n1/cat.png", caption: "A cat" },
+        content: [],
+        children: [],
+      },
+    ]);
+    const transport = {
+      readLocalNodeDocument: vi.fn().mockResolvedValue({ body, summary: "", neo4jSynced: true }),
+      upsertLocalNodeDocument: vi.fn().mockResolvedValue(undefined),
+      readGraphNode: vi.fn().mockResolvedValue(makeNode(body)),
+    };
+
+    const { container } = render(
+      <NodeDocumentPane
+        graphNodeId="n1"
+        transport={transport}
+        databasePath="/tmp/db.sqlite"
+        workspaceRoot="/workspace/project"
+        editable={false}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('img[src="asset://localhost/workspace/project/assets/n1/cat.png"]')).not.toBeNull();
+    });
+  });
+
   it("mounts the editor from the LOCAL document even when readGraphNode rejects (no dead-end)", async () => {
     const localBody = JSON.stringify([
       {

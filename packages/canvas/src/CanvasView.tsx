@@ -85,6 +85,8 @@ interface CanvasViewProps {
   ) => void;
   onToggleEdgeSequencing?: (edgeId: string) => void;
   onPlaySequence?: () => void;
+  /** Host-specific URL adapter for local resource thumbnails (e.g. Tauri asset://). */
+  assetUrlForPath?: (absolutePath: string) => string;
 }
 
 const nodeTypes: NodeTypes = {
@@ -136,7 +138,8 @@ function CanvasViewInner({
   onRegisterFlyToEdge,
   onRegisterCaptureViewport,
   onToggleEdgeSequencing,
-  onPlaySequence
+  onPlaySequence,
+  assetUrlForPath
 }: CanvasViewProps) {
   const { fitView, getViewport, getZoom, screenToFlowPosition, setCenter, setViewport } =
     useReactFlow();
@@ -377,7 +380,10 @@ function CanvasViewInner({
         dotColour: node.dotColour ?? undefined,
         bgColour: node.bgColour ?? undefined,
         textColour: node.textColour ?? undefined,
-        thumbnail: node.thumbnail ?? undefined,
+        thumbnail: node.thumbnail
+          ?? (node.type === "resource" && node.resourceKind === "image" && node.absolutePath
+            ? assetUrlForPath?.(node.absolutePath)
+            : undefined),
       },
     },
     draggable: true,

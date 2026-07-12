@@ -14,6 +14,11 @@ import {
 const MIN_INITIAL_VISIBLE_YEARS = 160;
 const DOMAIN_PADDING_RATIO = 0.18;
 
+export interface TimelineVerticalPanBounds {
+  min: number;
+  max: number;
+}
+
 export interface TimelineStoreState {
   centerYear: number;
   pixelsPerYear: number;
@@ -25,8 +30,8 @@ export interface TimelineStoreState {
   litMap: LitMap;
   selectedNodeId: string | null;
   lightingOperatorId: string | null;
-  cursorYear: number | null;
-  playing: boolean;
+  /** Transient screen-space camera offset for cards above/below the axis. */
+  verticalOffset: number;
   manualViewport: boolean;
 
   viewport: () => TimelineViewport;
@@ -35,13 +40,13 @@ export interface TimelineStoreState {
   setWidth: (px: number) => void;
   hydrate: (view: TimelineView) => void;
   pan: (deltaPx: number) => void;
+  panVertical: (deltaPx: number, bounds: TimelineVerticalPanBounds) => void;
+  resetVerticalPan: () => void;
   zoom: (factor: number, anchorPx: number) => void;
   setView: (centerYear: number, pixelsPerYear: number) => void;
   setLighting: (lighting: ArchetypalLighting) => void;
   clearLighting: () => void;
   setSelected: (nodeId: string | null) => void;
-  setCursorYear: (year: number | null) => void;
-  setPlaying: (playing: boolean) => void;
   updateCardSize: (nodeId: string, size: TimelineCardGeometryUpdate) => void;
   updateCardStyle: (nodeId: string, style: Partial<TimelinePresentation["style"]>) => void;
   applyPersistedLayout: (nodeId: string, layout: TimelineLayoutOverride) => void;
@@ -75,8 +80,7 @@ export function createTimelineStore(
     litMap: new Map(),
     selectedNodeId: null,
     lightingOperatorId: null,
-    cursorYear: null,
-    playing: false,
+    verticalOffset: 0,
     manualViewport: hasRememberedViewport,
 
     viewport: () => {
@@ -118,6 +122,13 @@ export function createTimelineStore(
       const next = panByPixels(get().viewport(), deltaPx);
       set({ centerYear: next.centerYear, manualViewport: true });
     },
+    panVertical: (deltaPx, bounds) => {
+      const min = Math.min(bounds.min, bounds.max);
+      const max = Math.max(bounds.min, bounds.max);
+      const next = Math.min(max, Math.max(min, get().verticalOffset + deltaPx));
+      set({ verticalOffset: Math.round(next) });
+    },
+    resetVerticalPan: () => set({ verticalOffset: 0 }),
     zoom: (factor, anchorPx) => {
       const next = zoomAt(get().viewport(), factor, anchorPx);
       set({ centerYear: next.centerYear, pixelsPerYear: next.pixelsPerYear, manualViewport: true });
@@ -131,8 +142,6 @@ export function createTimelineStore(
       }),
     clearLighting: () => set({ litMap: new Map(), lightingOperatorId: null }),
     setSelected: (nodeId) => set({ selectedNodeId: nodeId }),
-    setCursorYear: (year) => set({ cursorYear: year }),
-    setPlaying: (playing) => set({ playing }),
     updateCardSize: (nodeId, size) =>
       set((state) => ({
         items: state.items.map((item) =>

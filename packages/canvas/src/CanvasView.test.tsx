@@ -105,6 +105,41 @@ describe("CanvasView card rendering", () => {
     expect(screen.getByRole("heading", { name: "Archive note" })).toBeInTheDocument();
   });
 
+  it("uses the host asset resolver for an image resource without a manually chosen thumbnail", async () => {
+    const node: CanvasNode = {
+      id: "resource-image",
+      graphNodeId: "resource-image",
+      canvasId: CANVAS_ID,
+      type: "resource",
+      title: "Archive photograph",
+      position: { x: 0, y: 0 },
+      size: { width: 260, height: 180 },
+      summary: "photograph.jpg",
+      resourceKind: "image",
+      absolutePath: "/workspace/archive photograph.jpg",
+      relativePath: "archive photograph.jpg",
+      mimeType: "image/jpeg",
+      fileFingerprint: "image:archive photograph.jpg",
+      sequenceCaption: null,
+      sequenceViewport: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+
+    render(
+      <CanvasView
+        nodes={[node]}
+        edges={[]}
+        assetUrlForPath={(path) => `asset://localhost${path.replace(" ", "%20")}`}
+      />,
+    );
+
+    expect((await screen.findByTestId("knowledge-card")).querySelector("img")).toHaveAttribute(
+      "src",
+      "asset://localhost/workspace/archive%20photograph.jpg",
+    );
+  });
+
   it("renders a nested constellation portal with the same canonical card surface", async () => {
     const node: CanvasNode = {
       id: "ql-unit",

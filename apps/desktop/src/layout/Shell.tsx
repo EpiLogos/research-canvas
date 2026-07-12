@@ -264,7 +264,6 @@ export function Shell() {
               <TimelineLens
                 dataSource={timelineDataSource}
                 onOpenNode={openNodeDocument}
-                onPlaySequence={handlePlaySequence}
                 initialViewport={rememberedTimelineViewport}
                 onViewportChange={rememberTimelineViewport}
               />

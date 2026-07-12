@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { CanvasView } from "@research-canvas/canvas";
 
 import { useCanvasWorkspace } from "./CanvasWorkspaceContext";
+import { toAssetUrl } from "./resourceFileHelpers";
 
 interface CanvasScreenProps {
   onNodeSelect?: (nodeId: string) => void;
@@ -126,6 +127,7 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, onPlaySequence, 
               workspace.store.getState().toggleEdgeSequencing(edgeId);
             }}
             onPlaySequence={onPlaySequence}
+            assetUrlForPath={toAssetUrl}
           />
         </div>
 

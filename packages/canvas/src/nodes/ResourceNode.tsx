@@ -31,17 +31,13 @@ export type ResourceNodeType = Node<ResourceNodeData, "resource">;
 
 export function ResourceNode({ data, selected }: NodeProps<ResourceNodeType>) {
   const { zoom } = useViewport();
-  const coverUrl = data.style?.thumbnail
-    ?? (data.resourceKind === "image" && data.absolutePath
-      ? `asset://localhost/${encodeURI(data.absolutePath)}`
-      : undefined);
   const presentation = resolveKnowledgeCardPresentation({
     title: data.title,
     summary: data.summary ?? "",
     dotColour: data.style?.dotColour,
     bgColour: data.style?.bgColour,
     textColour: data.style?.textColour,
-    thumbnail: coverUrl,
+    thumbnail: data.style?.thumbnail,
   }, data.graph);
 
   return (

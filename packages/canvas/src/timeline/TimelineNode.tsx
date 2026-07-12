@@ -202,9 +202,14 @@ export function TimelineNode({
         data-testid={`timeline-node-card-${item.graphNodeId}`}
         data-edge-fade={edgeFade.edge}
         onPointerDown={(event) => {
-          if (readOnly) return;
           const target = event.target as HTMLElement;
-          if (target.closest("button") || target.closest(".timeline-node-resize")) return;
+          // A card interaction must never start the timeline camera pan. This
+          // matters in read-only timelines too: double-click remains a reader
+          // action even when drag/resize persistence is unavailable.
+          if (readOnly || target.closest("button") || target.closest(".timeline-node-resize")) {
+            event.stopPropagation();
+            return;
+          }
           beginDrag(event, "move");
         }}
         style={{

@@ -32,12 +32,14 @@ export function GraphDocumentContent({
   databasePath: string | null;
   editable?: boolean;
 }) {
+  const workspace = useCanvasWorkspace();
   return (
     <NodeContentDropSurface graphNodeId={graphNodeId}>
       <NodeDocumentPane
         graphNodeId={graphNodeId}
         transport={transport}
         databasePath={databasePath}
+        workspaceRoot={workspace.workingRoot}
         editable={editable}
       />
       <div className="graph-document-content__linking">
