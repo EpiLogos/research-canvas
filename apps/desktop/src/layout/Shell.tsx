@@ -278,9 +278,11 @@ export function Shell() {
           <BottomDock
             open={layout.dockOpen}
             height={layout.dockHeight}
+            width={layout.dockWidth}
             label="Terminal · antichrist"
             onClose={() => layout.setDockOpen(false)}
             onResizeStart={layout.beginDockResize}
+            onWidthResizeStart={layout.beginDockWidthResize}
           >
             <TerminalPane />
           </BottomDock>

@@ -521,7 +521,12 @@ g[data-sequencing="true"] .react-flow__edge-path {
 .terminal-pane__viewport {
   flex: 1;
   min-height: 0;
+  height: 100%;
   overflow: hidden;
+}
+
+.terminal-pane__viewport .xterm {
+  height: 100%;
 }
 
 .terminal-pane__error {

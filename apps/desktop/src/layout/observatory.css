@@ -218,9 +218,11 @@
 /* Bottom terminal dock. */
 .ishell-dock {
   position: absolute;
-  left: 0; right: 0; bottom: 0;
+  left: 0; bottom: 0;
+  max-width: 100%;
   background: var(--ob-panel);
   border-top: 1px solid var(--ob-line-3);
+  border-right: 1px solid var(--ob-line-3);
   box-shadow: 0 -18px 40px -20px rgba(0,0,0,0.8);
   z-index: var(--z-dock);
   display: flex; flex-direction: column;
@@ -229,7 +231,9 @@
 .ishell-dock__title { font-family: var(--ob-mono); font-size: 10px; letter-spacing: 0.06em; color: var(--ob-dim); }
 .ishell-dock__close { margin-left: auto; background: transparent; border: 0; color: var(--ob-faint); font-size: 11px; cursor: pointer; }
 .ishell-dock__body { flex: 1; min-height: 0; overflow: hidden; }
-.ishell-dock__resize { position: absolute; left: 0; right: 0; top: 0; height: 5px; cursor: ns-resize; }
+.ishell-dock__resize { position: absolute; background: transparent; }
+.ishell-dock__resize--height { left: 0; right: 0; top: 0; height: 5px; cursor: ns-resize; }
+.ishell-dock__resize--width { top: 0; right: 0; bottom: 0; width: 6px; cursor: ew-resize; }
 
 /* ===== Phase 3: reading lens ===== */
 .ishell-reading {

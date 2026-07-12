@@ -6,6 +6,8 @@ const INSPECTOR_MIN = 220;
 const INSPECTOR_MAX = 380;
 const DOCK_MIN = 120;
 const DOCK_MAX = 560;
+const DOCK_WIDTH_MIN = 420;
+const DOCK_WIDTH_MAX = 1100;
 
 export function useShellLayout() {
   const shellRef = useRef<HTMLDivElement>(null);
@@ -40,6 +42,7 @@ export function useShellLayout() {
 
   const [dockOpen, setDockOpen] = useState(false);
   const [dockHeight, setDockHeight] = useState(240);
+  const [dockWidth, setDockWidth] = useState(720);
   const toggleDock = useCallback(() => setDockOpen((v) => !v), []);
 
   const browserWidthRef = useRef(browserWidth);
@@ -48,6 +51,8 @@ export function useShellLayout() {
   inspectorWidthRef.current = inspectorWidth;
   const dockHeightRef = useRef(dockHeight);
   dockHeightRef.current = dockHeight;
+  const dockWidthRef = useRef(dockWidth);
+  dockWidthRef.current = dockWidth;
 
   const beginBrowserResize = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
@@ -97,6 +102,24 @@ export function useShellLayout() {
     window.addEventListener("pointerup", onUp);
   }, []);
 
+  const beginDockWidthResize = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = dockWidthRef.current;
+    const availableWidth = shellRef.current?.clientWidth || window.innerWidth || DOCK_WIDTH_MAX;
+    const maxWidth = Math.max(DOCK_WIDTH_MIN, Math.min(DOCK_WIDTH_MAX, availableWidth));
+    const onMove = (ev: PointerEvent) => {
+      const next = Math.min(maxWidth, Math.max(DOCK_WIDTH_MIN, startW + ev.clientX - startX));
+      setDockWidth(next);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, []);
+
   return {
     shellRef,
     browserOpen,
@@ -119,5 +142,7 @@ export function useShellLayout() {
     toggleDock,
     dockHeight,
     beginDockResize,
+    dockWidth,
+    beginDockWidthResize,
   };
 }

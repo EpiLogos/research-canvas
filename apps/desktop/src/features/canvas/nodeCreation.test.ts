@@ -139,7 +139,6 @@ describe("seedNoteNodeEffects", () => {
   it("fails closed before remote creation if authoritative local creation fails", async () => {
     const upsertLocalNodeDocument = vi.fn().mockRejectedValue(new Error("sqlite busy"));
     const createGraphNode = vi.fn().mockResolvedValue({});
-
     await expect(
       seedNoteNodeEffects({
         graphNodeId: "node-1",
@@ -187,6 +186,7 @@ describe("seedNoteNodeEffects", () => {
   it("records the node as pending sync when createGraphNode fails, and never throws", async () => {
     const upsertLocalNodeDocument = vi.fn().mockResolvedValue(createdLocal("node-2"));
     const createGraphNode = vi.fn().mockRejectedValue(new Error("neo4j down"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     await expect(
       seedNoteNodeEffects({
@@ -200,6 +200,10 @@ describe("seedNoteNodeEffects", () => {
     ).resolves.toBeUndefined();
 
     expect(isGraphNodeSyncPending("node-2")).toBe(true);
+    expect(warn).toHaveBeenCalledWith(
+      "createGraphNode sync failed; node kept locally",
+      expect.any(Error)
+    );
   });
 
   it("does not record the node as pending when createGraphNode succeeds", async () => {
@@ -363,6 +367,7 @@ describe("retryPendingGraphNodeSyncs", () => {
       .fn()
       .mockRejectedValueOnce(new Error("neo4j down"))
       .mockResolvedValueOnce({});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     await seedNoteNodeEffects({
       graphNodeId: "node-4",
@@ -386,10 +391,16 @@ describe("retryPendingGraphNodeSyncs", () => {
 
     expect(isGraphNodeSyncPending("node-4")).toBe(false);
     expect(createGraphNode).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      "createGraphNode sync failed; node kept locally",
+      expect.any(Error)
+    );
   });
 
   it("keeps a node pending if the retry attempt also fails", async () => {
     const createGraphNode = vi.fn().mockRejectedValue(new Error("still down"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     await seedNoteNodeEffects({
       graphNodeId: "node-5",
@@ -411,6 +422,15 @@ describe("retryPendingGraphNodeSyncs", () => {
 
     expect(isGraphNodeSyncPending("node-5")).toBe(true);
     expect(pendingGraphNodeSyncCount()).toBe(1);
+    expect(warn).toHaveBeenCalledWith(
+      "createGraphNode sync failed; node kept locally",
+      expect.any(Error)
+    );
+    expect(warn).toHaveBeenCalledWith(
+      "retryPendingGraphNodeSyncs: createGraphNode still failing; node kept pending",
+      "node-5",
+      expect.any(Error)
+    );
   });
 
   it("is single-flight and does not interpret lookup outages as absence", async () => {

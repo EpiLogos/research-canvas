@@ -10,6 +10,10 @@ import {
 const CANVAS_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const NOW = "2026-07-01T00:00:00.000Z";
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 function buildLegacyNode(id: string, title = "Legacy"): CanvasNode {
   return {
     id,
@@ -169,6 +173,7 @@ describe("importLegacyCanvasNodes", () => {
     const view = buildView([]);
     const upsertNodeLayout = vi.fn().mockResolvedValue(undefined);
     const createGraphNode = vi.fn().mockRejectedValue(new Error("neo4j unreachable"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     await expect(
       importLegacyCanvasNodes({
@@ -181,6 +186,11 @@ describe("importLegacyCanvasNodes", () => {
     ).resolves.toBeUndefined();
 
     expect(upsertNodeLayout).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      "legacy node import: createGraphNode sync failed; node kept locally",
+      "node-a",
+      expect.any(Error)
+    );
   });
 
   it("does not throw when upsertNodeLayout itself rejects for one node; continues with the rest", async () => {
@@ -192,6 +202,7 @@ describe("importLegacyCanvasNodes", () => {
       .mockRejectedValueOnce(new Error("disk full"))
       .mockResolvedValueOnce(undefined);
     const createGraphNode = vi.fn().mockResolvedValue({});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     await expect(
       importLegacyCanvasNodes({
@@ -210,6 +221,11 @@ describe("importLegacyCanvasNodes", () => {
     // layout row. Only the successfully-written node gets synced.
     expect(createGraphNode).toHaveBeenCalledTimes(1);
     expect(createGraphNode.mock.calls[0]![0].graphNodeId).toBe("node-b");
+    expect(warn).toHaveBeenCalledWith(
+      "legacy node import: upsertNodeLayout failed; skipping node",
+      "node-a",
+      expect.any(Error)
+    );
   });
 
   it("does nothing when there are no legacy nodes needing import", async () => {

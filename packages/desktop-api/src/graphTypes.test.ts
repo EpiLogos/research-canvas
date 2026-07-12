@@ -54,6 +54,8 @@ describe("graph shared types", () => {
     };
     const joined: JoinedCanvasNode = { node, layout };
     expect(joined.node.graphNodeId).toBe("n1");
+    expect(joined.node.evidenceTags).toEqual(["archive", "contested"]);
+    expect(joined.node.sourceKind).toBe("archive");
     expect(joined.layout.canvasId).toBe("c1");
   });
 
@@ -109,11 +111,17 @@ describe("graph shared types", () => {
       body: "[]",
       isTemporal: false
     };
-    const patch: GraphNodePatch = { title: "renamed" };
+    const patch: GraphNodePatch = {
+      title: "renamed",
+      evidenceTags: [],
+      sourceKind: null
+    };
     expect(rel.relType).toBe("INSTANTIATES");
     expect(lighting.instances).toHaveLength(1);
     expect(view.relationships[0].id).toBe("r1");
     expect(input.entityType).toBe("Dynamic");
     expect(patch.title).toBe("renamed");
+    expect(patch.evidenceTags).toEqual([]);
+    expect(patch.sourceKind).toBeNull();
   });
 });

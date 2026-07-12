@@ -138,6 +138,8 @@ describe("graphExportBundle", () => {
     const parsed = parseGraphExportBundle(bundle);
     expect(parsed.canvasId).toBe("22222222-2222-4222-8222-222222222222");
     expect(parsed.nodes).toHaveLength(2);
+    expect(parsed.nodes[1].evidenceTags).toEqual(["archive"]);
+    expect(parsed.nodes[1].sourceKind).toBe("archive");
     expect(parsed.lightingIndex["node-monopoly"]?.[0]?.relType).toBe("INSTANTIATES");
   });
 

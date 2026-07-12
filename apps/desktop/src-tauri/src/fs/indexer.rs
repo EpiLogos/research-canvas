@@ -50,7 +50,10 @@ fn walk(
             continue;
         }
 
-        let metadata = child.metadata()?;
+        let metadata = fs::symlink_metadata(&path)?;
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
         let is_directory = metadata.is_dir();
         if is_directory && should_skip_directory(&file_name) {
             continue;

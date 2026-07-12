@@ -59,9 +59,38 @@ fn graph_node_serializes_camel_case() {
     assert_eq!(json["graphNodeId"], "id-1");
     assert_eq!(json["entityType"], "Figure");
     assert_eq!(json["sourceCoordinates"][1], "L2");
+    assert_eq!(json["evidenceTags"][0], "archive");
+    assert_eq!(json["sourceKind"], "archive");
     assert_eq!(json["isTemporal"], true);
     let back: GraphNode = serde_json::from_value(json).expect("deserialize");
     assert_eq!(back.graph_node_id, "id-1");
+    assert_eq!(back.evidence_tags, vec!["archive", "contested"]);
+    assert_eq!(back.source_kind.as_deref(), Some("archive"));
+}
+
+#[test]
+fn graph_node_deserializes_legacy_json_without_evidence_fields() {
+    let node: GraphNode = serde_json::from_value(serde_json::json!({
+        "graphNodeId": "legacy-1",
+        "entityType": "Source",
+        "title": "Legacy source",
+        "body": "[]",
+        "summary": "",
+        "archetypalResonance": null,
+        "coordinate": null,
+        "sourceCoordinates": [],
+        "isTemporal": false,
+        "validFrom": null,
+        "validTo": null,
+        "temporalPrecision": null,
+        "createdAt": "2026-06-28T00:00:00Z",
+        "updatedAt": "2026-06-28T00:00:00Z"
+    }))
+    .expect("deserialize legacy graph node");
+
+    assert_eq!(node.graph_node_id, "legacy-1");
+    assert!(node.evidence_tags.is_empty());
+    assert_eq!(node.source_kind, None);
 }
 
 #[test]

@@ -99,4 +99,13 @@ describe("useShellLayout summoned panels", () => {
     expect(result.current.dockHeight).toBe(280);
     act(() => window.dispatchEvent(new PointerEvent("pointerup")));
   });
+
+  it("dock widens as the pointer moves right", () => {
+    const { result } = renderHook(() => useShellLayout());
+    const start = { clientX: 500, preventDefault() {} } as unknown as React.PointerEvent;
+    act(() => result.current.beginDockWidthResize(start));
+    act(() => window.dispatchEvent(new PointerEvent("pointermove", { clientX: 560 })));
+    expect(result.current.dockWidth).toBe(780);
+    act(() => window.dispatchEvent(new PointerEvent("pointerup")));
+  });
 });

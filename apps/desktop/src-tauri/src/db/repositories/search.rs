@@ -287,7 +287,11 @@ impl<'conn> SearchRepository<'conn> {
 
             for entry in entries {
                 let absolute_path = entry.absolute_path.to_string_lossy().to_string();
-                if !seen_file_paths.insert(absolute_path.clone()) {
+                let dedupe_path = fs::canonicalize(&entry.absolute_path)
+                    .unwrap_or_else(|_| entry.absolute_path.clone())
+                    .to_string_lossy()
+                    .to_string();
+                if !seen_file_paths.insert(dedupe_path) {
                     continue;
                 }
 

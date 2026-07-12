@@ -310,6 +310,16 @@ pub struct GraphNodePatch {
     pub temporal_precision: Option<Option<TemporalPrecision>>,
 }
 
+fn deserialize_explicit_nullable_string<'de, D>(
+    deserializer: D,
+) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<String>::deserialize(deserializer)?;
+    Ok(Some(value))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchetypalLightingResult {
@@ -384,13 +394,19 @@ const SCHEMA_STATEMENTS: &[&str] = &[
      FOR (n:Operator) REQUIRE n.graph_node_id IS UNIQUE",
     "CREATE CONSTRAINT operator_coordinate IF NOT EXISTS \
      FOR (n:Operator) REQUIRE n.coordinate IS UNIQUE",
+    "CREATE CONSTRAINT source_coordinate IF NOT EXISTS \
+     FOR (n:Source) REQUIRE n.coordinate IS UNIQUE",
     "CREATE INDEX theory_node_title IF NOT EXISTS FOR (n:TheoryNode) ON (n.title)",
     "CREATE INDEX theory_node_is_temporal IF NOT EXISTS FOR (n:TheoryNode) ON (n.is_temporal)",
     "CREATE INDEX theory_node_valid_from IF NOT EXISTS FOR (n:TheoryNode) ON (n.valid_from)",
     "CREATE INDEX theory_node_coordinate IF NOT EXISTS FOR (n:TheoryNode) ON (n.coordinate)",
     "CREATE FULLTEXT INDEX theory_node_fulltext IF NOT EXISTS \
      FOR (n:TheoryNode) ON EACH [n.title, n.summary, n.archetypal_resonance]",
+    "CREATE FULLTEXT INDEX theory_node_context_fulltext IF NOT EXISTS \
+     FOR (n:TheoryNode) ON EACH [n.title, n.summary, n.archetypal_resonance, n.body]",
 ];
+
+const CONTEXT_SEARCH_MAX_LIMIT: i64 = 100;
 
 fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
@@ -988,6 +1004,40 @@ impl GraphRepository {
         node_from_neo(node)
     }
 
+    pub async fn add_evidence_tag(
+        &self,
+        graph_node_id: &str,
+        tag: &str,
+    ) -> Result<Option<(GraphNode, bool)>, String> {
+        let q = query(
+            "MATCH (n:TheoryNode {graph_node_id: $id})
+             SET n.__agent_tag_lock = $marker
+             WITH n, NOT $tag IN coalesce(n.evidence_tags, []) AS added
+             SET n.evidence_tags = CASE
+                    WHEN added THEN coalesce(n.evidence_tags, []) + $tag
+                    ELSE coalesce(n.evidence_tags, [])
+                 END,
+                 n.updated_at = CASE WHEN added THEN $now ELSE n.updated_at END
+             REMOVE n.__agent_tag_lock
+             RETURN n, added",
+        )
+        .param("id", graph_node_id.to_string())
+        .param("tag", tag.to_string())
+        .param("now", now_rfc3339())
+        .param("marker", uuid::Uuid::new_v4().to_string());
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("add_evidence_tag failed: {e}"))?;
+        let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
+            return Ok(None);
+        };
+        let node: neo4rs::Node = row.get("n").map_err(|e| e.to_string())?;
+        let added: bool = row.get("added").map_err(|e| e.to_string())?;
+        Ok(Some((node_from_neo(node)?, added)))
+    }
+
     pub async fn delete_node(&self, graph_node_id: &str) -> Result<(), String> {
         let q = query("MATCH (n:TheoryNode {graph_node_id: $id}) DETACH DELETE n")
             .param("id", graph_node_id.to_string());
@@ -1300,6 +1350,90 @@ impl GraphRepository {
         relationship_from_row(&row, properties)
     }
 
+    /// Idempotently materialize a vault file as a typed `Source` node.  This
+    /// is intentionally a narrow agent boundary: it never goes through the
+    /// generic patch API and therefore cannot rewrite authored document body
+    /// ownership or revisions.
+    pub async fn ensure_vault_source_node(
+        &self,
+        canonical_path: &str,
+        title: &str,
+    ) -> Result<(GraphNode, bool), String> {
+        let generated_id = uuid::Uuid::new_v4().to_string();
+        let now = now_rfc3339();
+        let q = query(
+            "MERGE (n:TheoryNode:Source {coordinate: $coordinate}) \
+             ON CREATE SET n.graph_node_id = $id, n.title = $title, n.body = '[]', \
+                n.summary = '', n.source_coordinates = [$coordinate], \
+                n.evidence_tags = [], n.source_kind = 'vault-file', \
+                n.is_temporal = false, n.created_at = $now, n.updated_at = $now \
+             RETURN n, n.graph_node_id = $id AS created",
+        )
+        .param("coordinate", canonical_path.to_string())
+        .param("id", generated_id)
+        .param("title", title.to_string())
+        .param("now", now);
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|error| format!("ensure_vault_source_node failed: {error}"))?;
+        let row = rows
+            .next()
+            .await
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "ensure_vault_source_node returned no row".to_string())?;
+        let node: neo4rs::Node = row.get("n").map_err(|error| error.to_string())?;
+        let created: bool = row.get("created").map_err(|error| error.to_string())?;
+        Ok((node_from_neo(node)?, created))
+    }
+
+    /// Create one evidence edge per node/source/path.  Quotes and notes are
+    /// first-write evidence, so a repeated curation request cannot multiply
+    /// relationships or silently overwrite an earlier citation.
+    pub async fn ensure_sourced_from_relationship(
+        &self,
+        source_graph_node_id: &str,
+        target_graph_node_id: &str,
+        source_path: &str,
+        quote: &str,
+        note: &str,
+    ) -> Result<(GraphRelationship, bool), String> {
+        let marker = uuid::Uuid::new_v4().to_string();
+        let q = query(
+            "MATCH (s:TheoryNode {graph_node_id: $src}), (t:TheoryNode {graph_node_id: $tgt}) \
+             MERGE (s)-[r:SOURCED_FROM {sourcePath: $source_path}]->(t) \
+             ON CREATE SET r.quote = $quote, r.note = $note, r.__agent_created = $marker \
+             WITH r, r.__agent_created = $marker AS created \
+             REMOVE r.__agent_created \
+             RETURN elementId(r) AS id, type(r) AS rel_type, \
+                    s.graph_node_id AS src, t.graph_node_id AS tgt, \
+                    apoc.convert.toJson(properties(r)) AS props, created",
+        )
+        .param("src", source_graph_node_id.to_string())
+        .param("tgt", target_graph_node_id.to_string())
+        .param("source_path", source_path.to_string())
+        .param("quote", quote.to_string())
+        .param("note", note.to_string())
+        .param("marker", marker);
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|error| format!("ensure_sourced_from_relationship failed: {error}"))?;
+        let row = rows
+            .next()
+            .await
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "ensure_sourced_from_relationship: endpoints not found".to_string())?;
+        let props_json: String = row.get("props").unwrap_or_else(|_| "{}".to_string());
+        let properties =
+            serde_json::from_str(&props_json).unwrap_or_else(|_| serde_json::json!({}));
+        let relationship = relationship_from_row(&row, properties)?;
+        let created: bool = row.get("created").map_err(|error| error.to_string())?;
+        Ok((relationship, created))
+    }
+
     pub async fn merge_seed_relationship(
         &self,
         source_graph_node_id: &str,
@@ -1409,6 +1543,58 @@ impl GraphRepository {
         Ok(out)
     }
 
+    pub async fn search_context(
+        &self,
+        query_text: &str,
+        limit: i64,
+    ) -> Result<Vec<GraphNode>, String> {
+        let Some(limit) = Self::normalize_context_search_limit(limit) else {
+            return Ok(Vec::new());
+        };
+        let Some(query_text) = Self::context_fulltext_query(query_text) else {
+            return Ok(Vec::new());
+        };
+        let q = query(
+            "CALL db.index.fulltext.queryNodes('theory_node_context_fulltext', $q) \
+             YIELD node, score RETURN node ORDER BY score DESC LIMIT $limit",
+        )
+        .param("q", query_text)
+        .param("limit", limit);
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("search_context failed: {e}"))?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            let node: neo4rs::Node = row.get("node").map_err(|e| e.to_string())?;
+            out.push(node_from_neo(node)?);
+        }
+        Ok(out)
+    }
+
+    fn normalize_context_search_limit(limit: i64) -> Option<i64> {
+        if limit <= 0 {
+            None
+        } else {
+            Some(limit.min(CONTEXT_SEARCH_MAX_LIMIT))
+        }
+    }
+
+    fn context_fulltext_query(query_text: &str) -> Option<String> {
+        let terms: Vec<String> = query_text
+            .split(|character: char| !character.is_alphanumeric())
+            .map(str::trim)
+            .map(|term| term.to_ascii_lowercase())
+            .filter(|term| !term.is_empty() && !matches!(term.as_str(), "and" | "or" | "not"))
+            .collect();
+        if terms.is_empty() {
+            None
+        } else {
+            Some(terms.join(" "))
+        }
+    }
+
     async fn collect_lit_instances(
         &self,
         q: neo4rs::Query,
@@ -1504,5 +1690,41 @@ impl GraphRepository {
             out.push(relationship_from_row(&row, props)?);
         }
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GraphRepository;
+
+    #[test]
+    fn context_search_query_drops_lucene_syntax_and_empty_queries() {
+        assert_eq!(
+            GraphRepository::context_fulltext_query("\"body-only:(term"),
+            Some("body only term".to_string())
+        );
+        assert_eq!(
+            GraphRepository::context_fulltext_query("foo OR bar AND NOT baz"),
+            Some("foo bar baz".to_string())
+        );
+        assert_eq!(
+            GraphRepository::context_fulltext_query("+-&&||!(){}[]^~*?:\\/"),
+            None
+        );
+        assert_eq!(GraphRepository::context_fulltext_query("AND OR NOT"), None);
+    }
+
+    #[test]
+    fn context_search_limit_is_positive_and_bounded() {
+        assert_eq!(GraphRepository::normalize_context_search_limit(-1), None);
+        assert_eq!(GraphRepository::normalize_context_search_limit(0), None);
+        assert_eq!(
+            GraphRepository::normalize_context_search_limit(25),
+            Some(25)
+        );
+        assert_eq!(
+            GraphRepository::normalize_context_search_limit(500),
+            Some(100)
+        );
     }
 }
