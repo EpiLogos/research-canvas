@@ -1,15 +1,24 @@
-import type { GraphNode, NodeLayout, TemporalPrecision, TimelineNodeRecord } from "./contracts";
+import type { GraphNode, TemporalPrecision, TimelineLane, TimelineViewNode } from "./contracts";
 import { parseTemporalInstant } from "./instant";
 import { yearToPixel, type TimelineViewport } from "./viewport";
 
 export interface TimelineItem {
   graphNodeId: string;
   node: GraphNode;
-  layout: NodeLayout;
+  presentation: TimelinePresentation;
   startYear: number;
   /** null = ongoing / open-ended (no validTo). */
   endYear: number | null;
   precision: TemporalPrecision;
+}
+
+export interface TimelinePresentation {
+  lane: string | null;
+  offsetY: number;
+  width: number;
+  height: number;
+  style: Record<string, unknown> & { dotColour?: string; bgColour?: string; textColour?: string };
+  layoutRevision: number | null;
 }
 
 export interface PlacedItem {
@@ -40,21 +49,28 @@ const LANE_ORDER: readonly PlacedItem["laneSide"][] = [
  * them onto a numeric year axis. Trans-temporal nodes (isTemporal === false)
  * are never projected (WS0 §8.1). Sorted ascending by startYear.
  */
-export function projectNodes(records: TimelineNodeRecord[]): TimelineItem[] {
+export function projectNodes(records: TimelineViewNode[]): TimelineItem[] {
   const items: TimelineItem[] = [];
   for (const record of records) {
-    const { node, layout } = record;
+    const { node, anchor, layoutOverride } = record;
     if (!node.isTemporal) continue;
-    const startYear = parseTemporalInstant(node.validFrom);
+    const startYear = parseTemporalInstant(anchor.validFrom);
     if (startYear === null) continue;
-    const endYear = parseTemporalInstant(node.validTo);
+    const endYear = parseTemporalInstant(anchor.validTo);
     items.push({
       graphNodeId: node.graphNodeId,
       node,
-      layout,
+      presentation: {
+        lane: layoutOverride?.lane ?? null,
+        offsetY: layoutOverride?.offsetY ?? 0,
+        width: layoutOverride?.width ?? DEFAULT_TIMELINE_CARD_WIDTH_PX,
+        height: layoutOverride?.height ?? DEFAULT_TIMELINE_CARD_HEIGHT_PX,
+        style: layoutOverride?.style ?? {},
+        layoutRevision: layoutOverride?.layoutRevision ?? null,
+      },
       startYear,
       endYear,
-      precision: node.temporalPrecision ?? "year",
+      precision: anchor.precision,
     });
   }
   items.sort((a, b) => a.startYear - b.startYear);
@@ -64,20 +80,28 @@ export function projectNodes(records: TimelineNodeRecord[]): TimelineItem[] {
 export function placeItems(
   items: TimelineItem[],
   viewport: TimelineViewport,
+  laneDefinitions: TimelineLane[] = [],
 ): PlacedItem[] {
+  const explicitIds = Array.from(new Set([
+    ...laneDefinitions.map((lane) => lane.id),
+    ...items.map((item) => item.presentation.lane).filter((lane): lane is string => lane !== null).sort(),
+  ]));
+  const explicitSlots = new Map(explicitIds.map((id, index) => [id, index]));
   const laneEnds = new Array(LANE_ORDER.length).fill(Number.NEGATIVE_INFINITY);
   return items.map((item) => {
     const startPx = yearToPixel(viewport, item.startYear);
     const endPx =
       item.endYear === null ? startPx : yearToPixel(viewport, item.endYear);
-    const laneSlot = chooseLaneSlot(laneEnds, startPx);
-    laneEnds[laneSlot] = startPx + cardWidth(item.layout) + CARD_GAP_PX;
+    const explicitSlot = item.presentation.lane === null ? undefined : explicitSlots.get(item.presentation.lane);
+    const autoSlot = chooseLaneSlot(laneEnds, startPx);
+    const laneSlot = explicitSlot ?? explicitIds.length + autoSlot;
+    if (explicitSlot === undefined) laneEnds[autoSlot] = startPx + cardWidth(item.presentation) + CARD_GAP_PX;
     return {
       item,
       startPx,
       endPx,
       laneIndex: Math.floor(laneSlot / 2),
-      laneSide: LANE_ORDER[laneSlot],
+      laneSide: LANE_ORDER[laneSlot % LANE_ORDER.length],
     };
   });
 }
@@ -115,11 +139,8 @@ export function computeCardViewportFade({
   return { left, right, edge };
 }
 
-function cardWidth(layout: NodeLayout): number {
-  return Math.max(
-    layout.style.__timelineCard?.width || layout.width || DEFAULT_TIMELINE_CARD_WIDTH_PX,
-    DEFAULT_TIMELINE_CARD_WIDTH_PX,
-  );
+function cardWidth(presentation: TimelinePresentation): number {
+  return Math.max(presentation.width, DEFAULT_TIMELINE_CARD_WIDTH_PX);
 }
 
 function clamp01(value: number): number {

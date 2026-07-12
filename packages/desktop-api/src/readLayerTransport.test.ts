@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { GraphExportBundle } from "@research-canvas/exporter";
-
-import { createReadLayerTransport } from "./index";
+import { createReadLayerTransport, type GraphExportBundle } from "./index";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 
 function bundle(): GraphExportBundle {
   return {
@@ -31,6 +30,7 @@ function bundle(): GraphExportBundle {
         archetypalResonance: null,
         coordinate: null,
         sourceCoordinates: [],
+        ...EMPTY_GRAPH_NODE_METADATA,
         isTemporal: true,
         validFrom: "1621-01-01",
         validTo: null,
@@ -41,6 +41,7 @@ function bundle(): GraphExportBundle {
     ],
     relationships: [],
     nodeLayout: [],
+    timelineLayout: [],
     edgeLayout: [],
     viewport: { x: 0, y: 0, zoom: 1 },
     appState: {},

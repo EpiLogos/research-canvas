@@ -24,10 +24,7 @@ fn now() -> String {
 /// matching Neo4j node.
 #[test]
 fn load_canvas_view_is_layout_authoritative() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     // SQLite layout in a temp dir + a real canvas row.
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("t.db");
@@ -50,7 +47,7 @@ fn load_canvas_view_is_layout_authoritative() {
 
     // (a) A layout row WITH a matching Neo4j node -> real substance wins.
     let synced = support::block_on(repo.create_node(NewGraphNode {
-        graph_node_id: None,
+        graph_node_id: Some(format!("{run_id}:synced")),
         entity_type: "Event".into(),
         title: format!("Synced {run_id}"),
         body: "[]".into(),
@@ -78,7 +75,7 @@ fn load_canvas_view_is_layout_authoritative() {
 
     // (b) A layout row with NO Neo4j node (never synced) -> still returned,
     // with substance synthesized from the __canvasNode sidecar.
-    let unsynced_id = format!("unsynced-{run_id}");
+    let unsynced_id = format!("{run_id}:unsynced");
     let sidecar_json = serde_json::json!({
         "style": {},
         "__canvasNode": { "type": "note", "title": format!("Unsynced Note {run_id}"), "content": "hello", "tags": [] }
@@ -98,7 +95,7 @@ fn load_canvas_view_is_layout_authoritative() {
         .unwrap();
 
     // A resource-type sidecar should synthesize entity_type = Source.
-    let unsynced_resource_id = format!("unsynced-resource-{run_id}");
+    let unsynced_resource_id = format!("{run_id}:unsynced-resource");
     let resource_sidecar_json = serde_json::json!({
         "__canvasNode": {
             "type": "resource", "title": format!("Unsynced Resource {run_id}"),
@@ -138,7 +135,7 @@ fn load_canvas_view_is_layout_authoritative() {
         .find(|j| j.node.graph_node_id == synced.graph_node_id)
         .unwrap();
     assert_eq!(synced_join.node.title, format!("Synced {run_id}"));
-    assert_eq!(synced_join.node.entity_type, "Event");
+    assert_eq!(synced_join.node.entity_type.as_str(), "Event");
     assert_eq!(synced_join.layout.position_x, 50.0);
 
     let unsynced_join = view
@@ -152,7 +149,8 @@ fn load_canvas_view_is_layout_authoritative() {
         "title synthesized from sidecar"
     );
     assert_eq!(
-        unsynced_join.node.entity_type, "Work",
+        unsynced_join.node.entity_type.as_str(),
+        "Work",
         "note sidecar maps to Work, matching entityTypeForNodeType"
     );
     assert!(
@@ -171,7 +169,8 @@ fn load_canvas_view_is_layout_authoritative() {
         format!("Unsynced Resource {run_id}")
     );
     assert_eq!(
-        unsynced_resource_join.node.entity_type, "Source",
+        unsynced_resource_join.node.entity_type.as_str(),
+        "Source",
         "resource sidecar maps to Source, matching entityTypeForNodeType"
     );
 
@@ -188,12 +187,38 @@ fn load_canvas_view_is_layout_authoritative() {
         .iter()
         .any(|j| j.node.graph_node_id == unsynced_resource_id));
 
+    // A malformed graph node must fail the whole contract join. It must never
+    // be replaced by a synthesized non-temporal node that empties the lens.
+    let malformed_id = format!("{run_id}:malformed-temporal");
+    support::block_on(graph.run_on(
+        &database,
+        query("CREATE (:TheoryNode:Event:Claim {graph_node_id: $id, title: 'bad', body: '[]', summary: '', source_coordinates: [], evidence_tags: [], is_temporal: true})")
+            .param("id", malformed_id.clone()),
+    ))
+    .expect("malformed node");
+    LayoutRepository::new(db.connection())
+        .upsert_node_layout(&NodeLayoutRecord {
+            graph_node_id: malformed_id.clone(),
+            canvas_id: canvas_id.clone(),
+            position_x: 90.0,
+            position_y: 90.0,
+            width: 240.0,
+            height: 160.0,
+            style_json: "{}".into(),
+            created_at: now(),
+            updated_at: now(),
+        })
+        .unwrap();
+    let error = support::block_on(service.load_canvas_view(&canvas_id, "timeline"))
+        .expect_err("conflicting labels fail loudly");
+    assert!(error.contains("graph contract failed"));
+
     support::block_on(async {
         graph
             .run_on(
                 &database,
-                query("MATCH (n {graph_node_id: $id}) DETACH DELETE n")
-                    .param("id", synced.graph_node_id),
+                query("MATCH (n) WHERE n.graph_node_id IN $ids DETACH DELETE n")
+                    .param("ids", vec![synced.graph_node_id, malformed_id]),
             )
             .await
             .expect("cleanup");

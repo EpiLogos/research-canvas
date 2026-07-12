@@ -16,17 +16,27 @@ use tempfile::tempdir;
 
 #[test]
 fn root_archetypal_field_seed_writes_real_graph_constellation_layout_and_timeline() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, _run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph.clone(), database.clone());
     support::block_on(repo.ensure_schema()).expect("schema");
 
     let dir = tempdir().expect("tempdir");
     let db_path = dir.path().join("root-field.sqlite");
     let db = Database::open(&db_path).expect("sqlite");
-    let namespace = format!("test-root-field-{run_id}");
+    // This integration target verifies the production seed/layout join, whose
+    // stable IDs deliberately use this canonical namespace. Isolation comes
+    // from the disposable container; other graph tests use per-run IDs.
+    let namespace = "root-archetypal-field".to_string();
+
+    let migrated_claim_id = format!("{namespace}:claim-epstein-intelligence-role");
+    support::block_on(
+        graph.run_on(
+            &database,
+        query("CREATE (:TheoryNode:Source {graph_node_id: $id, title: 'legacy claim', content_origin: 'seed', content_revision: '0'})")
+                .param("id", migrated_claim_id.clone()),
+        ),
+    )
+    .expect("precreate legacy Source-labelled claim");
 
     let first = support::block_on(seed_root_archetypal_field(
         &repo,
@@ -153,9 +163,55 @@ fn root_archetypal_field_seed_writes_real_graph_constellation_layout_and_timelin
         support::block_on(repo.get_node(&format!("{namespace}:claim-epstein-intelligence-role")))
             .expect("claim query")
             .expect("claim node");
-    assert_eq!(claim.entity_type, "Source");
+    assert_eq!(claim.entity_type.as_str(), "Claim");
     assert_eq!(claim.source_kind.as_deref(), Some("claim"));
     assert!(claim.evidence_tags.contains(&"contested".to_string()));
+    assert_eq!(
+        claim.content_origin.map(|value| value.as_str()),
+        Some("seed")
+    );
+    assert_eq!(claim.content_revision, Some(1));
+    assert_eq!(claim.seed_schema_version, Some(1));
+    assert!(!claim.body_source_coordinates.is_empty());
+    assert_eq!(claim.historicity.map(|value| value.as_str()), Some("mixed"));
+    assert_eq!(
+        claim.claim_kind.map(|value| value.as_str()),
+        Some("allegation")
+    );
+    assert_eq!(
+        claim.evidence_status.map(|value| value.as_str()),
+        Some("contested")
+    );
+    assert_eq!(
+        claim.temporal_role.map(|value| value.as_str()),
+        Some("claim_about_time")
+    );
+    assert_eq!(
+        claim.place_coverage.map(|value| value.as_str()),
+        Some("unknown")
+    );
+    assert_eq!(claim.ql_form, None, "QL form awaits reviewed migration");
+    assert!(claim.ql_source_coordinates.is_empty());
+
+    let final_claim_labels: Vec<String> = support::block_on(async {
+        let mut rows = graph
+            .execute_on(
+                &database,
+                query("MATCH (n {graph_node_id: $id}) RETURN labels(n) AS labels")
+                    .param("id", migrated_claim_id),
+            )
+            .await
+            .expect("claim label query");
+        rows.next()
+            .await
+            .expect("claim label row")
+            .expect("claim label result")
+            .get("labels")
+            .expect("labels")
+    });
+    let mut final_claim_labels = final_claim_labels;
+    final_claim_labels.sort();
+    assert_eq!(final_claim_labels, vec!["Claim", "TheoryNode"]);
 
     let temporal =
         support::block_on(repo.get_node(&format!("{namespace}:mk-ultra-midnight-climax")))
@@ -163,7 +219,10 @@ fn root_archetypal_field_seed_writes_real_graph_constellation_layout_and_timelin
             .expect("temporal node");
     assert!(temporal.is_temporal);
     assert_eq!(temporal.valid_from.as_deref(), Some("1953-01-01"));
-    assert_eq!(temporal.temporal_precision.as_deref(), Some("year"));
+    assert_eq!(
+        temporal.temporal_precision.map(|value| value.as_str()),
+        Some("year")
+    );
     assert!(temporal.evidence_tags.contains(&"documented".to_string()));
     assert!(temporal
         .source_coordinates
@@ -174,7 +233,7 @@ fn root_archetypal_field_seed_writes_real_graph_constellation_layout_and_timelin
         support::block_on(repo.get_node(&format!("{namespace}:devil-sixfold-lineage")))
             .expect("constellation query")
             .expect("constellation node");
-    assert_eq!(constellation.entity_type, "Constellation");
+    assert_eq!(constellation.entity_type.as_str(), "Constellation");
     assert_eq!(constellation.source_kind.as_deref(), Some("ql-unit"));
     assert!(constellation.evidence_tags.contains(&"ql_unit".to_string()));
     assert!(constellation
@@ -237,7 +296,7 @@ fn root_archetypal_field_seed_writes_real_graph_constellation_layout_and_timelin
         .nodes
         .iter()
         .any(|j| j.node.title == "Devil Sixfold Spectral Lineage"
-            && j.node.entity_type == "Constellation"
+            && j.node.entity_type.as_str() == "Constellation"
             && j.layout.style["__canvasNode"]["type"] == "portal"));
     let historical_canvas_id = layouts
         .iter()

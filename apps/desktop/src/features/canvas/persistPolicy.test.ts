@@ -5,7 +5,7 @@ describe("shouldWriteSubstanceOnLayoutFlush", () => {
   /**
    * Invariant: after WS4a Task 6 cutover, the legacy persistConstellationDocument
    * substance double-write (nodes + edges) is retired. Node substance is owned
-   * by Neo4j (createGraphNode / updateGraphNode). This flag must remain false
+   * by explicit graph creation, metadata updates, and revision-aware content CAS. This flag must remain false
    * permanently.
    *
    * This function is wired directly into the persist effect and selectConstellation in

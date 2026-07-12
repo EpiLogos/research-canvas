@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 
-import { graphExportBundleSchema, parseGraphExportBundle } from "./graphBundle";
+import { graphExportBundleSchema, parseGraphExportBundle, parseLegacyGraphExportBundle } from "./graphBundle";
 import type { GraphExportBundle } from "./graphBundle";
 
 function makeBundle(): GraphExportBundle {
@@ -34,6 +35,7 @@ function makeBundle(): GraphExportBundle {
         archetypalResonance: null,
         coordinate: null,
         sourceCoordinates: [],
+        ...EMPTY_GRAPH_NODE_METADATA,
         isTemporal: false,
         validFrom: null,
         validTo: null,
@@ -50,6 +52,7 @@ function makeBundle(): GraphExportBundle {
         archetypalResonance: null,
         coordinate: null,
         sourceCoordinates: [],
+        ...EMPTY_GRAPH_NODE_METADATA,
         isTemporal: true,
         validFrom: "1621-01-01",
         validTo: "1621-12-31",
@@ -67,6 +70,7 @@ function makeBundle(): GraphExportBundle {
         properties: { dominance: "dominant" }
       }
     ],
+    timelineLayout: [],
     nodeLayout: [
       {
         graphNodeId: "node-monopoly",
@@ -93,6 +97,7 @@ function makeBundle(): GraphExportBundle {
             archetypalResonance: null,
             coordinate: null,
             sourceCoordinates: [],
+            ...EMPTY_GRAPH_NODE_METADATA,
             isTemporal: true,
             validFrom: "1621-01-01",
             validTo: "1621-12-31",
@@ -110,6 +115,24 @@ function makeBundle(): GraphExportBundle {
 }
 
 describe("graphExportBundle", () => {
+  it("round-trips timeline card presentation exactly", () => {
+    const bundle = makeBundle();
+    bundle.timelineLayout = [{ graphNodeId: bundle.nodes[0].graphNodeId, layout: {
+      lane: "events", offsetY: 37, width: 311, height: 177, style: { dotColour: "#123456" }, layoutRevision: 4,
+    } }];
+    expect(parseGraphExportBundle(bundle).timelineLayout[0].layout).toEqual({
+      lane: "events", offsetY: 37, width: 311, height: 177, style: { dotColour: "#123456" }, layoutRevision: 4,
+    });
+  });
+
+  it("separates strict current bundles from explicit legacy normalization", () => {
+    const legacy = makeBundle();
+    delete (legacy.nodes[0] as Partial<(typeof legacy.nodes)[number]>).contentOrigin;
+    expect(graphExportBundleSchema.safeParse(legacy).success).toBe(false);
+    expect(parseLegacyGraphExportBundle(legacy).nodes[0].contentOrigin).toBeNull();
+    delete (legacy as Partial<typeof legacy>).timelineLayout;
+    expect(parseLegacyGraphExportBundle(legacy).timelineLayout).toEqual([]);
+  });
   it("accepts a well-formed bundle and round-trips through parse", () => {
     const bundle = makeBundle();
     const parsed = parseGraphExportBundle(bundle);
@@ -129,6 +152,7 @@ describe("graphExportBundle", () => {
       archetypalResonance: null,
       coordinate: "#2:L3/P4",
       sourceCoordinates: ["#2", "L3", "P4"],
+      ...EMPTY_GRAPH_NODE_METADATA,
       evidenceTags: ["ql-unit"],
       sourceKind: "constellation",
       isTemporal: true,

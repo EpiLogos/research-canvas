@@ -1,11 +1,24 @@
 import { describe, expect, test, vi } from "vitest";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 import { createTimelineDataSource } from "./createTimelineDataSource";
 import type {
   ArchetypalLighting,
-  CanvasView,
   GraphNode,
   LitInstance,
+  TimelineView,
 } from "@research-canvas/desktop-api";
+
+test("timeline datasource persists through the timeline-only transport command", async () => {
+  const upsertTimelineLayout = vi.fn(async () => ({ status: "created" as const, layout: {
+    lane: "events", offsetY: 4, width: 260, height: 90, style: {}, layoutRevision: 0,
+  }}));
+  const ds = createTimelineDataSource({
+    transport: { loadTimelineView: vi.fn(), archetypalLighting: vi.fn(), resonancesForInstance: vi.fn(), upsertTimelineLayout },
+    workspaceId: "sqlite:/canonical/workspace.sqlite",
+  });
+  await ds.saveTimelineLayout?.({ graphNodeId: "event-1", lane: "events", offsetY: 4, width: 260, height: 90, style: {}, expectedRevision: null });
+  expect(upsertTimelineLayout).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: "sqlite:/canonical/workspace.sqlite", graphNodeId: "event-1" }));
+});
 
 function gnode(id: string, isTemporal: boolean): GraphNode {
   return {
@@ -17,6 +30,7 @@ function gnode(id: string, isTemporal: boolean): GraphNode {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal,
     validFrom: isTemporal ? "1621-01-01" : null,
     validTo: null,
@@ -27,47 +41,40 @@ function gnode(id: string, isTemporal: boolean): GraphNode {
 }
 
 describe("createTimelineDataSource", () => {
-  test("loadTimelineNodes requests the timeline lens and preserves joined layout metadata", async () => {
-    const view: CanvasView = {
-      canvasId: "c1",
+  test("loads the workspace timeline independently of canvas membership", async () => {
+    const view: TimelineView = {
+      workspaceId: "sqlite:/canonical/workspace.sqlite",
       nodes: [
         {
           node: gnode("banda", true),
-          layout: {
-            graphNodeId: "banda",
-            canvasId: "c1",
-            positionX: 0,
-            positionY: 0,
+          anchor: { validFrom: "1621-01-01", validTo: null, precision: "year" },
+          layoutOverride: {
+            lane: "events",
+            offsetY: 12,
             width: 100,
             height: 50,
             style: {},
+            layoutRevision: 3,
           },
         },
       ],
-      edges: [],
-      relationships: [],
-      viewport: { x: 0, y: 0, zoom: 1 },
-      appState: {},
+      lanes: [{ id: "events" }],
+      diagnostics: [],
     };
-    const loadCanvasView = vi.fn(async () => view);
+    const loadTimelineView = vi.fn(async () => view);
     const ds = createTimelineDataSource({
       transport: {
-        loadCanvasView,
+        loadTimelineView,
+        upsertTimelineLayout: vi.fn(),
         archetypalLighting: vi.fn(),
         resonancesForInstance: vi.fn(),
       },
-      canvasId: "c1",
+      workspaceId: "sqlite:/canonical/workspace.sqlite",
     });
-    const nodes = await ds.loadTimelineNodes();
-    expect(loadCanvasView).toHaveBeenCalledWith({ canvasId: "c1", lens: "timeline" });
-    expect(nodes.map((record) => record.node.graphNodeId)).toEqual(["banda"]);
-    expect(nodes[0]?.layout).toEqual(
-      expect.objectContaining({
-        graphNodeId: "banda",
-        width: 100,
-        height: 50,
-      }),
-    );
+    const loaded = await ds.loadTimelineView();
+    expect(loadTimelineView).toHaveBeenCalledWith({ workspaceId: "sqlite:/canonical/workspace.sqlite" });
+    expect(loaded.nodes.map((record) => record.node.graphNodeId)).toEqual(["banda"]);
+    expect(loaded.nodes[0]?.layoutOverride).toEqual(expect.objectContaining({ lane: "events", width: 100 }));
   });
 
   test("archetypalLighting forwards the operator id", async () => {
@@ -80,11 +87,12 @@ describe("createTimelineDataSource", () => {
     const archetypalLighting = vi.fn(async () => lighting);
     const ds = createTimelineDataSource({
       transport: {
-        loadCanvasView: vi.fn(),
+        loadTimelineView: vi.fn(),
+        upsertTimelineLayout: vi.fn(),
         archetypalLighting,
         resonancesForInstance: vi.fn(),
       },
-      canvasId: "c1",
+      workspaceId: "sqlite:/canonical/workspace.sqlite",
     });
     const out = await ds.archetypalLighting("op");
     expect(archetypalLighting).toHaveBeenCalledWith({ operatorGraphNodeId: "op" });
@@ -98,11 +106,12 @@ describe("createTimelineDataSource", () => {
     const resonancesForInstance = vi.fn(async () => resonances);
     const ds = createTimelineDataSource({
       transport: {
-        loadCanvasView: vi.fn(),
+        loadTimelineView: vi.fn(),
+        upsertTimelineLayout: vi.fn(),
         archetypalLighting: vi.fn(),
         resonancesForInstance,
       },
-      canvasId: "c1",
+      workspaceId: "sqlite:/canonical/workspace.sqlite",
     });
     const out = await ds.resonancesForInstance("banda");
     expect(resonancesForInstance).toHaveBeenCalledWith({ graphNodeId: "banda" });

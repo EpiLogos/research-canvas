@@ -3,10 +3,15 @@ use std::collections::HashMap;
 
 use crate::db::repositories::{
     canvas::CanvasRepository,
-    graph::{GraphRepository, SeedGraphNode},
+    graph::{EntityType, GraphRepository, SeedGraphNode, TemporalPrecision},
+    graph_metadata::{
+        GraphMetadataMutation, GraphNodeMetadataRecord, GraphNodeMetadataRepository, SyncState,
+    },
     layout::{LayoutRepository, NodeLayoutRecord},
-    ConstellationRepository,
+    ConstellationRepository, DocumentContentInput, DocumentReconciliationItem,
+    NodeDocumentMutation, NodeDocumentRepository,
 };
+use crate::db::transaction::TransactionGuard;
 
 #[derive(Debug, Clone)]
 pub struct RootArchetypalConstellationReport {
@@ -23,6 +28,16 @@ pub struct RootArchetypalSeedReport {
     pub canvas_id: String,
     pub nodes_written: usize,
     pub relationships_written: usize,
+    pub layouts_written: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RootArchetypalLocalProjectionReport {
+    pub constellation_id: String,
+    pub canvas_id: String,
+    pub nodes_projected: usize,
+    pub documents_projected: usize,
+    pub pending_syncs: usize,
     pub layouts_written: usize,
 }
 
@@ -140,8 +155,273 @@ pub fn ensure_root_archetypal_constellation_workspace(
     )
 }
 
+/// Materializes the complete canonical graph/document projection in SQLite.
+/// Neo4j is deliberately not opened here: every unsynchronised row remains a
+/// durable, fully typed pending item for the independent remote sync boundary.
+pub fn ensure_root_archetypal_local_projection(
+    connection: &Connection,
+    root_path: &str,
+    namespace: &str,
+) -> Result<RootArchetypalLocalProjectionReport, String> {
+    let transaction = TransactionGuard::begin(connection).map_err(|error| error.to_string())?;
+    let layout = ensure_root_archetypal_constellation_layout_in_existing_transaction(
+        connection,
+        root_path,
+        LayoutWriteMode::PreserveExisting,
+    )?;
+    let seeds = node_seeds()
+        .iter()
+        .map(|seed| seed.to_graph_node(namespace))
+        .collect::<Vec<_>>();
+    let mut documents = root_archetypal_document_inputs(namespace);
+
+    // Preserve a prior exact remote acknowledgement. Bootstrap is not a sync
+    // attempt and must not turn an already-synced document back into pending.
+    let document_repo = NodeDocumentRepository::new(connection);
+    for incoming in &mut documents {
+        if let Some(current) = document_repo
+            .get_node_document(&incoming.graph_node_id)
+            .map_err(|error| error.to_string())?
+        {
+            let same_content = current.body == incoming.body
+                && current.summary == incoming.summary
+                && current.content_origin == incoming.content_origin
+                && current.content_revision == incoming.content_revision
+                && current.body_source_coordinates == incoming.body_source_coordinates;
+            if same_content {
+                incoming.neo4j_synced = current.neo4j_synced;
+            }
+        }
+    }
+    let mut items = documents
+        .into_iter()
+        .map(|document| {
+            let expected_revision = document_repo
+                .get_node_document(&document.graph_node_id)
+                .map_err(|error| error.to_string())?
+                .and_then(|current| {
+                    (document.content_revision > current.content_revision)
+                        .then_some(current.content_revision)
+                });
+            Ok(DocumentReconciliationItem {
+                document,
+                expected_revision,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    let metadata_repo = GraphNodeMetadataRepository::new(connection);
+    for seed in &seeds {
+        let mut metadata = metadata_record(seed)?;
+        let document = NodeDocumentRepository::new(connection)
+            .get_node_document(&seed.graph_node_id)
+            .map_err(|error| error.to_string())?;
+        let current_metadata = metadata_repo
+            .get(&seed.graph_node_id)
+            .map_err(|error| error.to_string())?;
+        if let (Some(document), Some(current_metadata)) = (&document, &current_metadata) {
+            let document_sync_state = if document.neo4j_synced {
+                SyncState::Synced
+            } else {
+                SyncState::Pending
+            };
+            if document.content_origin != current_metadata.content_origin
+                || document.content_revision != current_metadata.content_revision
+                || document.body_source_coordinates != current_metadata.body_source_coordinates
+                || document_sync_state != current_metadata.sync_state
+                || (current_metadata.sync_state == SyncState::Synced
+                    && current_metadata.remote_revision != Some(current_metadata.content_revision))
+            {
+                return Err(format!(
+                    "local document and graph metadata projection diverged for {}",
+                    seed.graph_node_id
+                ));
+            }
+        }
+        if document.is_none() {
+            if let Some(current_metadata) = &current_metadata {
+                if current_metadata.content_origin != metadata.content_origin
+                    || current_metadata.content_revision != metadata.content_revision
+                    || current_metadata.body_source_coordinates != metadata.body_source_coordinates
+                    || !matches!(
+                        current_metadata.sync_state,
+                        SyncState::Pending | SyncState::Synced
+                    )
+                    || (current_metadata.sync_state == SyncState::Synced
+                        && current_metadata.remote_revision
+                            != Some(current_metadata.content_revision))
+                {
+                    return Err(format!(
+                        "metadata-only projection is incompatible with canonical seed document for {}",
+                        seed.graph_node_id
+                    ));
+                }
+                let item = items
+                    .iter_mut()
+                    .find(|item| item.document.graph_node_id == seed.graph_node_id)
+                    .expect("every seed has one document reconciliation item");
+                item.document.neo4j_synced = current_metadata.sync_state == SyncState::Synced;
+            }
+        }
+        // A document may pre-date the graph metadata migration. Repair that
+        // one-sided legacy state from the authoritative document without
+        // transferring its ownership or revision back to the seed.
+        if current_metadata.is_none() {
+            if let Some(document) = document {
+                metadata.content_origin = document.content_origin;
+                metadata.content_revision = document.content_revision;
+                metadata.body_source_coordinates = document.body_source_coordinates;
+                metadata.sync_state = if document.neo4j_synced {
+                    SyncState::Synced
+                } else {
+                    SyncState::Pending
+                };
+                metadata.remote_revision =
+                    document.neo4j_synced.then_some(document.content_revision);
+            }
+        }
+        if matches!(
+            metadata_repo
+                .ensure_seed_projection(&metadata)
+                .map_err(|error| error.to_string())?,
+            GraphMetadataMutation::Conflict { .. }
+        ) {
+            return Err(format!(
+                "canonical graph metadata projection conflicted for {}",
+                seed.graph_node_id
+            ));
+        }
+    }
+    let decisions = NodeDocumentRepository::new(connection)
+        .apply_bulk_in_existing_transaction(&items)
+        .map_err(|error| error.to_string())?;
+    if let Some(conflict) = decisions
+        .iter()
+        .find(|decision| matches!(decision.mutation, NodeDocumentMutation::Conflict { .. }))
+    {
+        return Err(format!(
+            "canonical document projection conflicted for {}",
+            conflict.graph_node_id
+        ));
+    }
+    for seed in &seeds {
+        let document = NodeDocumentRepository::new(connection)
+            .get_node_document(&seed.graph_node_id)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| {
+                format!(
+                    "missing local document postcondition for {}",
+                    seed.graph_node_id
+                )
+            })?;
+        let metadata = metadata_repo
+            .get(&seed.graph_node_id)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| {
+                format!(
+                    "missing graph metadata postcondition for {}",
+                    seed.graph_node_id
+                )
+            })?;
+        let expected_sync_state = if document.neo4j_synced {
+            SyncState::Synced
+        } else {
+            SyncState::Pending
+        };
+        if document.content_origin != metadata.content_origin
+            || document.content_revision != metadata.content_revision
+            || document.body_source_coordinates != metadata.body_source_coordinates
+            || expected_sync_state != metadata.sync_state
+            || (metadata.sync_state == SyncState::Synced
+                && metadata.remote_revision != Some(metadata.content_revision))
+        {
+            return Err(format!(
+                "local document and graph metadata postcondition failed for {}",
+                seed.graph_node_id
+            ));
+        }
+    }
+    let pending_syncs = NodeDocumentRepository::new(connection)
+        .list_pending_syncs()
+        .map_err(|error| error.to_string())?
+        .len();
+    transaction.commit().map_err(|error| error.to_string())?;
+
+    Ok(RootArchetypalLocalProjectionReport {
+        constellation_id: layout.constellation_id,
+        canvas_id: layout.canvas_id,
+        nodes_projected: seeds.len(),
+        documents_projected: items.len(),
+        pending_syncs,
+        layouts_written: layout.layouts_written,
+    })
+}
+
+fn metadata_record(seed: &SeedGraphNode) -> Result<GraphNodeMetadataRecord, String> {
+    Ok(GraphNodeMetadataRecord {
+        graph_node_id: seed.graph_node_id.clone(),
+        entity_type: EntityType::try_from(seed.entity_type.clone())?,
+        title: seed.title.clone(),
+        archetypal_resonance: seed.archetypal_resonance.clone(),
+        coordinate: seed.coordinate.clone(),
+        source_coordinates: seed.source_coordinates.clone(),
+        evidence_tags: seed.evidence_tags.clone(),
+        source_kind: seed.source_kind.clone(),
+        content_origin: seed.content_origin,
+        content_revision: seed.content_revision,
+        seed_schema_version: Some(seed.seed_schema_version),
+        body_source_coordinates: seed.body_source_coordinates.clone(),
+        historicity: seed.historicity,
+        claim_kind: seed.claim_kind,
+        evidence_status: seed.evidence_status,
+        temporal_role: seed.temporal_role,
+        place_coverage: seed.place_coverage,
+        ql_form: seed.ql_form,
+        ql_unit_id: seed.ql_unit_id.clone(),
+        ql_arc: seed.ql_arc,
+        ql_topology: seed.ql_topology,
+        ql_schema_version: seed.ql_schema_version,
+        ql_source_coordinates: seed.ql_source_coordinates.clone(),
+        ql_completeness_status: seed.ql_completeness_status,
+        is_temporal: seed.is_temporal,
+        valid_from: seed.valid_from.clone(),
+        valid_to: seed.valid_to.clone(),
+        temporal_precision: seed
+            .temporal_precision
+            .clone()
+            .map(TemporalPrecision::try_from)
+            .transpose()?,
+        schema_version: 1,
+        sync_state: SyncState::Pending,
+        remote_revision: None,
+    })
+}
+
 impl NodeSeed {
+    fn to_document_input(&self, namespace: &str) -> DocumentContentInput {
+        DocumentContentInput {
+            graph_node_id: graph_id(namespace, self.slug),
+            body: body_for(self.title, self.summary, self.evidence_tags),
+            summary: self.summary.to_string(),
+            content_origin: crate::db::repositories::graph::ContentOrigin::Seed,
+            content_revision: 1,
+            body_source_coordinates: self
+                .source_coordinates
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
+            neo4j_synced: false,
+        }
+    }
+
     fn to_graph_node(&self, namespace: &str) -> SeedGraphNode {
+        let source_coordinates = self
+            .source_coordinates
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>();
+        let is_claim = self.entity_type == "Claim";
+        let is_interpretive = self.evidence_tags.contains(&"interpretive_vector");
         SeedGraphNode {
             graph_node_id: graph_id(namespace, self.slug),
             entity_type: self.entity_type.to_string(),
@@ -150,19 +430,78 @@ impl NodeSeed {
             summary: self.summary.to_string(),
             archetypal_resonance: Some(self.summary.to_string()),
             coordinate: self.coordinate.map(str::to_string),
-            source_coordinates: self
-                .source_coordinates
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
+            source_coordinates: source_coordinates.clone(),
             evidence_tags: self.evidence_tags.iter().map(|s| s.to_string()).collect(),
             source_kind: self.source_kind.map(str::to_string),
+            content_origin: crate::db::repositories::graph::ContentOrigin::Seed,
+            content_revision: 1,
+            seed_schema_version: 1,
+            body_source_coordinates: source_coordinates,
+            historicity: match self.entity_type {
+                "Event" | "Figure" | "People" | "Institution" | "Place" => {
+                    Some(crate::db::repositories::graph::Historicity::Historical)
+                }
+                "Claim" => Some(crate::db::repositories::graph::Historicity::Mixed),
+                "Myth" => Some(crate::db::repositories::graph::Historicity::Mythic),
+                "Interpretation" | "Archetype" | "Dynamic" | "Constellation" => {
+                    Some(crate::db::repositories::graph::Historicity::Theoretical)
+                }
+                _ => None,
+            },
+            claim_kind: if is_claim {
+                Some(if is_interpretive {
+                    crate::db::repositories::graph::ClaimKind::Interpretation
+                } else {
+                    crate::db::repositories::graph::ClaimKind::Allegation
+                })
+            } else {
+                None
+            },
+            evidence_status: if self.evidence_tags.contains(&"documented") {
+                Some(crate::db::repositories::graph::EvidenceStatus::Documented)
+            } else if self.evidence_tags.contains(&"contested") {
+                Some(crate::db::repositories::graph::EvidenceStatus::Contested)
+            } else if is_interpretive {
+                Some(crate::db::repositories::graph::EvidenceStatus::Interpretive)
+            } else {
+                None
+            },
+            temporal_role: if self.is_temporal {
+                Some(if is_claim {
+                    crate::db::repositories::graph::TemporalRole::ClaimAboutTime
+                } else {
+                    crate::db::repositories::graph::TemporalRole::OccurredAt
+                })
+            } else {
+                None
+            },
+            place_coverage: Some(if self.is_temporal {
+                crate::db::repositories::graph::PlaceCoverage::Unknown
+            } else {
+                crate::db::repositories::graph::PlaceCoverage::NotApplicable
+            }),
+            ql_form: None,
+            ql_unit_id: None,
+            ql_arc: None,
+            ql_topology: None,
+            ql_schema_version: None,
+            ql_source_coordinates: Vec::new(),
+            ql_completeness_status: None,
             is_temporal: self.is_temporal,
             valid_from: self.valid_from.map(str::to_string),
             valid_to: self.valid_to.map(str::to_string),
             temporal_precision: self.temporal_precision.map(str::to_string),
         }
     }
+}
+
+/// Plannable local-document side of the root seed. Task 6 may dry-run these
+/// inputs before applying them; merely constructing this list performs no IO.
+pub fn root_archetypal_document_inputs(namespace: &str) -> Vec<DocumentContentInput> {
+    node_seeds()
+        .iter()
+        .map(|seed| seed.to_document_input(namespace))
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -176,7 +515,35 @@ fn ensure_root_archetypal_constellation_layout(
     root_path: &str,
     layout_mode: LayoutWriteMode,
 ) -> Result<RootArchetypalConstellationReport, String> {
-    let (constellation_id, canvas_id) = ensure_root_constellation(connection, root_path)?;
+    ensure_root_archetypal_constellation_layout_with_transaction(
+        connection,
+        root_path,
+        layout_mode,
+        false,
+    )
+}
+
+fn ensure_root_archetypal_constellation_layout_in_existing_transaction(
+    connection: &Connection,
+    root_path: &str,
+    layout_mode: LayoutWriteMode,
+) -> Result<RootArchetypalConstellationReport, String> {
+    ensure_root_archetypal_constellation_layout_with_transaction(
+        connection,
+        root_path,
+        layout_mode,
+        true,
+    )
+}
+
+fn ensure_root_archetypal_constellation_layout_with_transaction(
+    connection: &Connection,
+    root_path: &str,
+    layout_mode: LayoutWriteMode,
+    transaction_owned_by_caller: bool,
+) -> Result<RootArchetypalConstellationReport, String> {
+    let (constellation_id, canvas_id) =
+        ensure_root_constellation(connection, root_path, transaction_owned_by_caller)?;
     let constellations = constellation_seeds();
     let constellation_canvas_ids =
         ensure_constellation_canvases(connection, &constellation_id, &constellations)?;
@@ -201,6 +568,7 @@ fn ensure_root_archetypal_constellation_layout(
 fn ensure_root_constellation(
     connection: &Connection,
     root_path: &str,
+    transaction_owned_by_caller: bool,
 ) -> Result<(String, String), String> {
     if let Some((constellation_id, canvas_id)) = connection
         .query_row(
@@ -217,17 +585,31 @@ fn ensure_root_constellation(
         return Ok((constellation_id, canvas_id));
     }
 
-    let constellation = ConstellationRepository::new(connection)
-        .create(
-            ROOT_CONSTELLATION_TITLE.to_string(),
-            ROOT_CONSTELLATION_SLUG.to_string(),
-            None,
-            root_path.to_string(),
-            Some(ROOT_CONSTELLATION_SUMMARY.to_string()),
-            None,
-            serde_json::json!({ "includeResources": true, "theme": "dark" }),
-        )
-        .map_err(|e| e.to_string())?;
+    let repository = ConstellationRepository::new(connection);
+    let create = |repository: &ConstellationRepository<'_>| {
+        if transaction_owned_by_caller {
+            repository.create_in_existing_transaction(
+                ROOT_CONSTELLATION_TITLE.to_string(),
+                ROOT_CONSTELLATION_SLUG.to_string(),
+                None,
+                root_path.to_string(),
+                Some(ROOT_CONSTELLATION_SUMMARY.to_string()),
+                None,
+                serde_json::json!({ "includeResources": true, "theme": "dark" }),
+            )
+        } else {
+            repository.create(
+                ROOT_CONSTELLATION_TITLE.to_string(),
+                ROOT_CONSTELLATION_SLUG.to_string(),
+                None,
+                root_path.to_string(),
+                Some(ROOT_CONSTELLATION_SUMMARY.to_string()),
+                None,
+                serde_json::json!({ "includeResources": true, "theme": "dark" }),
+            )
+        }
+    };
+    let constellation = create(&repository).map_err(|e| e.to_string())?;
     let canvas_id = constellation
         .primary_canvas_id
         .clone()
@@ -2471,7 +2853,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-society-of-elect-quigley-1891",
-            "Source",
+            "Claim",
             "Society of the Elect constituted per Quigley",
             "Contested claim preserved as provenance rather than factual graph edge.",
             None,
@@ -2485,7 +2867,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-balfour-hidden-hand",
-            "Source",
+            "Claim",
             "Balfour hidden-hand interpretations",
             "Contested drafting-emphasis or hidden-hand interpretations preserved as provenance beyond the documented declaration.",
             None,
@@ -2499,7 +2881,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-olson-death-contested-causality",
-            "Source",
+            "Claim",
             "Frank Olson death causality remains contested",
             "Contested causality claim preserved as a claim source.",
             None,
@@ -2513,7 +2895,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-aquino-wewelsburg-self-report",
-            "Source",
+            "Claim",
             "Aquino Wewelsburg self-report",
             "Self-reported occult ritual material preserved as source provenance rather than objective historical causation.",
             None,
@@ -2527,7 +2909,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-franklin-abuse-network",
-            "Source",
+            "Claim",
             "Franklin abuse network allegations",
             "Contested allegations preserved as claim provenance.",
             None,
@@ -2541,7 +2923,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-caradori-suspicious-death",
-            "Source",
+            "Claim",
             "Gary Caradori death suspicious timing",
             "Suspicious-timing claim preserved without factual flattening.",
             None,
@@ -2555,7 +2937,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-dutroux-extended-network",
-            "Source",
+            "Claim",
             "Dutroux extended-network allegations",
             "Extended-network and suspicious-death claims separated from documented abuse and institutional failure.",
             None,
@@ -2569,7 +2951,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-epstein-intelligence-role",
-            "Source",
+            "Claim",
             "Epstein intelligence role",
             "Contested intelligence-role claim preserved as claim provenance.",
             None,
@@ -2583,7 +2965,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-epstein-blackmail-network-extent",
-            "Source",
+            "Claim",
             "Epstein blackmail-network extent",
             "Blackmail-network claims beyond documented trafficking are preserved as contested provenance.",
             None,
@@ -2597,7 +2979,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-nygard-symbolic-complement",
-            "Source",
+            "Claim",
             "Nygard symbolic complement",
             "Symbolic-complement reading of Nygard material preserved as interpretive claim, separate from documented legal events.",
             None,
@@ -2611,7 +2993,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-lifelog-facebook-direct-link",
-            "Source",
+            "Claim",
             "LifeLog and Facebook direct linkage not established",
             "Do-not-seed-as-fact claim for the LifeLog/Facebook linkage.",
             None,
@@ -2625,7 +3007,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-google-mdds-cia-origin",
-            "Source",
+            "Claim",
             "Google / MDDS / CIA direct-origin claim",
             "Documented research funding history must stay separate from direct-control or origin claims.",
             None,
@@ -2639,7 +3021,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-ben-rich-suppressed-technology",
-            "Source",
+            "Claim",
             "Ben Rich suppressed-technology quotation",
             "Suppressed-technology quotation material requires source-specific evidence before factual seeding.",
             None,
@@ -2653,7 +3035,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-inventor-suppression",
-            "Source",
+            "Claim",
             "Inventor suppression stories",
             "Ogle, Meyer, and similar inventor-suppression stories require individual source discipline before factual graph edges.",
             None,
@@ -2667,7 +3049,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "claim-occult-exoteric-parallels",
-            "Source",
+            "Claim",
             "Occult / exoteric symbolic parallels",
             "Symbolic or typological parallels preserved as interpretive vectors rather than documented historical causation.",
             None,
@@ -3065,12 +3447,54 @@ fn r(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::{
+        connection::Database,
+        repositories::{NodeDocumentMutation, NodeDocumentRepository},
+    };
 
     fn fake_canvas_ids(constellations: &[ConstellationSeed]) -> HashMap<&'static str, String> {
         constellations
             .iter()
             .map(|seed| (seed.slug, format!("canvas:{}", seed.slug)))
             .collect()
+    }
+
+    #[test]
+    fn real_root_seed_reconciliation_preserves_an_edit_between_seed_runs() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let database = Database::open(directory.path().join("seed.sqlite")).expect("database");
+        let repo = NodeDocumentRepository::new(database.connection());
+        let real_seed = root_archetypal_document_inputs("root")
+            .into_iter()
+            .next()
+            .expect("root seed");
+        assert_eq!(
+            repo.apply_reconciliation(&real_seed, None).unwrap(),
+            NodeDocumentMutation::Created
+        );
+        assert_eq!(
+            repo.apply_user_edit(
+                &real_seed.graph_node_id,
+                "authored deep reading",
+                "authored face",
+                1
+            )
+            .unwrap(),
+            NodeDocumentMutation::Updated
+        );
+        assert_eq!(
+            repo.apply_reconciliation(&real_seed, None).unwrap(),
+            NodeDocumentMutation::Preserved
+        );
+        let stored = repo
+            .get_node_document(&real_seed.graph_node_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.body, "authored deep reading");
+        assert_eq!(
+            stored.content_origin,
+            crate::db::repositories::graph::ContentOrigin::UserAuthored
+        );
     }
 
     fn canvas_sidecar(record: &NodeLayoutRecord) -> serde_json::Value {
@@ -3335,7 +3759,7 @@ mod tests {
         );
 
         for seed in claims {
-            assert_eq!(seed.entity_type, "Source");
+            assert_eq!(seed.entity_type, "Claim");
             assert_eq!(seed.source_kind, Some("claim"));
             assert!(
                 seed.evidence_tags

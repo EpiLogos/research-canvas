@@ -5,7 +5,7 @@ use research_canvas_desktop_lib::db::repositories::graph::{GraphRepository, NewG
 
 fn mk(repo: &GraphRepository, run_id: &str, title: &str, et: &str, temporal: bool) -> String {
     support::block_on(repo.create_node(NewGraphNode {
-        graph_node_id: None,
+        graph_node_id: Some(format!("{run_id}:{}", title.to_ascii_lowercase())),
         entity_type: et.into(),
         title: format!("{title} {run_id}"),
         body: "[]".into(),
@@ -22,10 +22,7 @@ fn mk(repo: &GraphRepository, run_id: &str, title: &str, et: &str, temporal: boo
 
 #[test]
 fn connect_list_and_disconnect_relationship() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph.clone(), database.clone());
     support::block_on(repo.ensure_schema()).expect("schema");
 

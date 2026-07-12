@@ -14,3 +14,4 @@ packages/*/dist
 apps/desktop/src-tauri/target
 
 .env
+.epi/

@@ -1,67 +1,16 @@
 import { z } from "zod";
 
-import type { ExportAsset, ExportBundle } from "@research-canvas/schema";
-import { projectSchema } from "@research-canvas/schema";
+import { graphNodeSchema, legacyGraphNodeInputSchema, projectSchema } from "@research-canvas/schema";
+import type { ExportAsset } from "@research-canvas/schema";
 import type {
   CanvasNodeSidecar,
   EdgeLayout,
-  GraphNode,
+  GraphExportBundle,
   GraphRelationship,
-  LitInstance,
   NodeLayout
 } from "@research-canvas/desktop-api";
 
-export interface GraphExportBundle {
-  generatedAt: string;
-  project: ExportBundle["project"];
-  canvasId: string;
-  nodes: GraphNode[];
-  relationships: GraphRelationship[];
-  nodeLayout: NodeLayout[];
-  edgeLayout: EdgeLayout[];
-  viewport: { x: number; y: number; zoom: number };
-  appState: Record<string, unknown>;
-  /** operatorGraphNodeId -> lit datable instances (precomputed for the backend-less viewer). */
-  lightingIndex: Record<string, LitInstance[]>;
-  assets: ExportAsset[];
-}
-
-const entityTypeSchema = z.enum([
-  "Figure",
-  "People",
-  "Event",
-  "Institution",
-  "Source",
-  "Place",
-  "Work",
-  "Archetype",
-  "Dynamic",
-  "Constellation",
-  "PsychoidOperator"
-]);
-
-const temporalPrecisionSchema = z
-  .enum(["year", "month", "day", "decade", "century", "millennium"])
-  .nullable();
-
-const graphNodeSchema: z.ZodType<GraphNode> = z.object({
-  graphNodeId: z.string().min(1),
-  entityType: entityTypeSchema,
-  title: z.string(),
-  body: z.string(),
-  summary: z.string(),
-  archetypalResonance: z.string().nullable(),
-  coordinate: z.string().nullable(),
-  sourceCoordinates: z.array(z.string()),
-  evidenceTags: z.array(z.string()).optional(),
-  sourceKind: z.string().nullable().optional(),
-  isTemporal: z.boolean(),
-  validFrom: z.string().nullable(),
-  validTo: z.string().nullable(),
-  temporalPrecision: temporalPrecisionSchema,
-  createdAt: z.string(),
-  updatedAt: z.string()
-});
+export type { GraphExportBundle } from "@research-canvas/desktop-api";
 
 const graphRelationshipSchema: z.ZodType<GraphRelationship> = z.object({
   id: z.string().min(1),
@@ -113,8 +62,19 @@ const nodeLayoutSchema: z.ZodType<NodeLayout> = z.object({
     bgColour: z.string().optional(),
     textColour: z.string().optional(),
     thumbnail: z.string().optional(),
-    __canvasNode: canvasNodeSidecarSchema.optional()
+    __canvasNode: canvasNodeSidecarSchema.optional(),
+    __timelineCard: z.object({
+      offsetY: z.number(),
+      width: z.number().positive().optional(),
+      height: z.number().positive().optional()
+    }).optional()
   })
+});
+
+const timelineLayoutSchema = z.object({
+  graphNodeId: z.string().min(1),
+  layout: z.object({ lane: z.string().min(1), offsetY: z.number(), width: z.number().positive(),
+    height: z.number().positive(), style: z.record(z.string(), z.unknown()), layoutRevision: z.number().int().nonnegative() }),
 });
 
 const edgeLayoutSchema: z.ZodType<EdgeLayout> = z.object({
@@ -132,7 +92,7 @@ const edgeLayoutSchema: z.ZodType<EdgeLayout> = z.object({
   })
 });
 
-const litInstanceSchema: z.ZodType<LitInstance> = z.object({
+const litInstanceSchema = z.object({
   node: graphNodeSchema,
   relType: z.enum(["INSTANTIATES", "ECHOES", "RESONATES_WITH"]),
   dominance: z.enum(["dominant", "secondary"]).nullable()
@@ -146,13 +106,14 @@ const exportAssetSchema: z.ZodType<ExportAsset> = z.object({
   mimeType: z.string().min(1)
 });
 
-export const graphExportBundleSchema: z.ZodType<GraphExportBundle> = z.object({
+export const graphExportBundleSchema = z.object({
   generatedAt: z.string(),
   project: projectSchema,
   canvasId: z.string().min(1),
   nodes: z.array(graphNodeSchema),
   relationships: z.array(graphRelationshipSchema),
   nodeLayout: z.array(nodeLayoutSchema),
+  timelineLayout: z.array(timelineLayoutSchema),
   edgeLayout: z.array(edgeLayoutSchema),
   viewport: z.object({ x: z.number(), y: z.number(), zoom: z.number() }),
   appState: z.record(z.string(), z.unknown()),
@@ -160,6 +121,17 @@ export const graphExportBundleSchema: z.ZodType<GraphExportBundle> = z.object({
   assets: z.array(exportAssetSchema)
 });
 
+const legacyLitInstanceSchema = litInstanceSchema.extend({ node: legacyGraphNodeInputSchema });
+export const legacyGraphExportBundleInputSchema = graphExportBundleSchema.extend({
+  nodes: z.array(legacyGraphNodeInputSchema),
+  lightingIndex: z.record(z.string(), z.array(legacyLitInstanceSchema)),
+  timelineLayout: z.array(timelineLayoutSchema).default([]),
+});
+
 export function parseGraphExportBundle(value: unknown): GraphExportBundle {
-  return graphExportBundleSchema.parse(value);
+  return graphExportBundleSchema.parse(value) as GraphExportBundle;
+}
+
+export function parseLegacyGraphExportBundle(value: unknown): GraphExportBundle {
+  return legacyGraphExportBundleInputSchema.parse(value) as GraphExportBundle;
 }

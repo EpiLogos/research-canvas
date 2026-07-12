@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::{
+    commands::timeline::timeline_workspace_identity,
     db::{
         connection::Database,
         repositories::{
@@ -16,7 +17,7 @@ use crate::{
             EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord, ResourceRootRecord,
             ResourceRootRepository, SavedSequenceRecord, SavedSequenceRepository,
         },
-        root_archetypal_seed::ensure_root_archetypal_constellation_workspace,
+        root_archetypal_seed::ensure_root_archetypal_local_projection,
     },
     fs::indexer::{index_directory, IndexedEntry, IndexedEntryKind},
     SharedApiState,
@@ -27,6 +28,7 @@ use crate::{
 pub struct WorkspaceBootstrap {
     pub active_constellation_id: String,
     pub database_path: String,
+    pub workspace_id: String,
     pub constellations: Vec<ConstellationTreeNodePayload>,
 }
 
@@ -329,6 +331,7 @@ pub fn bootstrap_workspace_at(
     Ok(WorkspaceBootstrap {
         active_constellation_id,
         database_path: database_path.to_string_lossy().to_string(),
+        workspace_id: timeline_workspace_identity(&database_path)?,
         constellations: constellations
             .into_iter()
             .map(constellation_tree_payload)
@@ -441,9 +444,10 @@ pub fn default_database_path(session_id: Option<&str>) -> PathBuf {
 
 fn ensure_workspace_constellations(connection: &Connection, root: &Path) -> Result<(), String> {
     let constellation_root = root_constellation_source_path(root);
-    ensure_root_archetypal_constellation_workspace(
+    ensure_root_archetypal_local_projection(
         connection,
         &constellation_root.to_string_lossy(),
+        "root-archetypal-field",
     )?;
     Ok(())
 }

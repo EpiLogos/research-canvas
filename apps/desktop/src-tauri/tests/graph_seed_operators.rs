@@ -5,14 +5,11 @@ use research_canvas_desktop_lib::db::repositories::graph::{GraphRepository, Oper
 
 #[test]
 fn seed_operators_is_idempotent_and_writes_operator_label() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph.clone(), database.clone());
     support::block_on(repo.ensure_schema()).expect("schema");
 
-    let coord = format!("#0-{run_id}");
+    let coord = format!("{run_id}:#0");
     let seeds = vec![OperatorSeed {
         coordinate: coord.clone(),
         title: "Psychoid #0".into(),

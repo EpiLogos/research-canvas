@@ -10,6 +10,7 @@ pub mod commands {
     pub mod node_document;
     pub mod search;
     pub mod terminal;
+    pub mod timeline;
 }
 pub mod db;
 pub mod export;
@@ -113,8 +114,10 @@ pub fn run() {
             commands::constellations::delete_saved_sequence_command,
             commands::layout::flush_canvas_layout_command,
             commands::graph::read_graph_node_command,
+            commands::graph::find_graph_node_command,
             commands::graph::create_graph_node_command,
             commands::graph::update_graph_node_command,
+            commands::graph::compare_and_swap_graph_node_content_command,
             commands::graph::delete_graph_node_command,
             commands::graph::connect_graph_nodes_command,
             commands::graph::disconnect_graph_nodes_command,
@@ -122,13 +125,18 @@ pub fn run() {
             commands::graph::archetypal_lighting_command,
             commands::graph::resonances_for_instance_command,
             commands::graph::load_canvas_view_command,
+            commands::timeline::load_timeline_view_command,
+            commands::timeline::upsert_timeline_layout_command,
             commands::graph::upsert_node_layout_command,
             commands::graph::upsert_node_layouts_command,
             commands::graph::upsert_edge_layout_command,
             commands::graph::upsert_canvas_app_state_command,
             commands::agent_activity::list_agent_activity_command,
             commands::node_document::read_local_node_document_command,
+            commands::node_document::list_pending_node_document_syncs_command,
             commands::node_document::upsert_local_node_document_command,
+            commands::node_document::reconcile_local_node_documents_command,
+            commands::node_document::acknowledge_local_node_document_sync_command,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Research Canvas");

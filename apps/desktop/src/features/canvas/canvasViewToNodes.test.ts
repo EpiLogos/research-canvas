@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { CanvasView } from "@research-canvas/desktop-api";
 import { nodeLayoutFromCanvasNode } from "@research-canvas/desktop-api";
 import type { CanvasNode } from "@research-canvas/schema";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 import { canvasViewToCanvasNodes } from "./canvasViewToNodes";
 
 const GRAPH_NODE_ID = "33333333-3333-4333-8333-333333333333";
@@ -26,6 +27,7 @@ function buildFixtureView(): CanvasView {
           archetypalResonance: null,
           coordinate: null,
           sourceCoordinates: [],
+          ...EMPTY_GRAPH_NODE_METADATA,
           isTemporal: true,
           validFrom: null,
           validTo: null,
@@ -121,6 +123,7 @@ function buildGraphNode(graphNodeId: string, title: string) {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: false,
     validFrom: null,
     validTo: null,
@@ -270,6 +273,7 @@ describe("canvasViewToCanvasNodes — Fix 1: node type round-trip via __canvasNo
             archetypalResonance: null,
             coordinate: "#2:L3/P4",
             sourceCoordinates: ["#2", "L3", "P4"],
+            ...EMPTY_GRAPH_NODE_METADATA,
             evidenceTags: ["ql-unit"],
             sourceKind: "constellation",
             isTemporal: true,
@@ -343,6 +347,7 @@ describe("canvasViewToCanvasNodes — Fix 2: non-UUID graphNodeId accepted", () 
             archetypalResonance: null,
             coordinate: null,
             sourceCoordinates: [],
+            ...EMPTY_GRAPH_NODE_METADATA,
             isTemporal: false,
             validFrom: null,
             validTo: null,
@@ -395,6 +400,7 @@ describe("canvasViewToCanvasNodes — lf-task-3: title falls back to sidecar whe
             archetypalResonance: null,
             coordinate: null,
             sourceCoordinates: [],
+            ...EMPTY_GRAPH_NODE_METADATA,
             isTemporal: false,
             validFrom: null,
             validTo: null,

@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { TimelineNode } from "./TimelineNode";
 import type { PlacedItem } from "./projection";
@@ -24,6 +25,7 @@ function placed(
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: true,
     validFrom: "1621-01-01",
     validTo: null,
@@ -38,22 +40,16 @@ function placed(
       startYear: 1621,
       endYear: null,
       precision: "year",
-      layout: {
-        graphNodeId: node.graphNodeId,
-        canvasId: "c1",
-        positionX: over.positionX ?? 0,
-        positionY: 0,
-        width: 320,
-        height: 120,
+      presentation: {
+        lane: "events",
+        offsetY: over.positionY ?? 0,
+        width: over.width ?? 320,
+        height: over.height ?? 120,
+        layoutRevision: 1,
         style: {
           bgColour: "#2f1d3a",
           textColour: "#f8e7ff",
           dotColour: "#d98cff",
-          __timelineCard: {
-            offsetY: over.positionY ?? 0,
-            width: over.width ?? 320,
-            height: over.height ?? 120,
-          },
         },
       },
     },

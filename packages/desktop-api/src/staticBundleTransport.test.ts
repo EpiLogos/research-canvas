@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { GraphExportBundle } from "@research-canvas/exporter";
-
-import { createStaticBundleTransport } from "./index";
+import { createStaticBundleTransport, type GraphExportBundle } from "./index";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 
 function fixtureBundle(): GraphExportBundle {
   const monopoly: GraphExportBundle["nodes"][number] = {
@@ -14,6 +13,7 @@ function fixtureBundle(): GraphExportBundle {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: false,
     validFrom: null,
     validTo: null,
@@ -30,6 +30,7 @@ function fixtureBundle(): GraphExportBundle {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: true,
     validFrom: "1621-01-01",
     validTo: "1621-12-31",
@@ -67,6 +68,7 @@ function fixtureBundle(): GraphExportBundle {
         properties: { dominance: "dominant" }
       }
     ],
+    timelineLayout: [{ graphNodeId: "node-banda", layout: { lane: "events", offsetY: 22, width: 310, height: 96, style: { dotColour: "#123456" }, layoutRevision: 3 } }],
     nodeLayout: [
       {
         graphNodeId: "node-banda",
@@ -117,6 +119,64 @@ describe("createStaticBundleTransport", () => {
     expect(view.nodes[0].node.graphNodeId).toBe("node-banda");
   });
 
+  it("loads a first-class workspace timeline without a canvas membership scope", async () => {
+    const transport = createStaticBundleTransport(fixtureBundle());
+    const view = await transport.loadTimelineView({ workspaceId: "static:11111111-1111-4111-8111-111111111111" });
+    expect(view.workspaceId).toBe("static:11111111-1111-4111-8111-111111111111");
+    expect(view.nodes.map((record) => record.node.graphNodeId)).toEqual(["node-banda"]);
+    expect(view.nodes[0].anchor).toEqual({
+      validFrom: "1621-01-01",
+      validTo: "1621-12-31",
+      precision: "year",
+    });
+    expect(view.nodes[0].layoutOverride).toEqual({ lane: "events", offsetY: 22, width: 310, height: 96, style: { dotColour: "#123456" }, layoutRevision: 3 });
+    expect(view.diagnostics).toEqual([]);
+  });
+
+  it("uses the canonical temporal grammar, interval ordering, workspace identity and filters", async () => {
+    const bundle = fixtureBundle();
+    const base = bundle.nodes[1];
+    const cases = [
+      ["bce", "-0043", null, "year", true],
+      ["month", "1945-05", null, "month", true],
+      ["leap", "2000-02-29", null, "day", true],
+      ["datetime", "2024-01-02T03:04:05Z", null, "day", true],
+      ["offset-crossing", "2024-01-01T00:30:00+01:00", "2023-12-31T23:45:00Z", "day", true],
+      ["submillisecond", "2024-01-01T00:00:00.0009Z", "2024-01-01T00:00:00.0001Z", "day", true],
+      ["nonleap", "2023-02-29", null, "day", false],
+      ["suffix", "1945-05-08garbage", null, "day", false],
+      ["plus", "+1945", null, "year", false],
+      ["overlong", "1000000", null, "year", false],
+      ["whitespace", " 1945 ", null, "year", false],
+      ["inverted", "1946", "1945", "year", false],
+      ["missing-precision", "1945", null, null, false],
+    ] as const;
+    bundle.nodes = cases.map(([id, validFrom, validTo, precision]) => ({
+      ...base,
+      graphNodeId: id,
+      validFrom,
+      validTo,
+      temporalPrecision: precision,
+      historicity: "historical",
+      temporalRole: "occurred_at",
+    }));
+    const transport = createStaticBundleTransport(bundle);
+    const workspaceId = "static:11111111-1111-4111-8111-111111111111";
+    const view = await transport.loadTimelineView({ workspaceId });
+    expect(view.nodes.map((row) => row.node.graphNodeId)).toEqual(["bce", "month", "leap", "datetime", "offset-crossing", "submillisecond"]);
+    expect(view.diagnostics).toHaveLength(7);
+    const filtered = await transport.loadTimelineView({
+      workspaceId,
+      filters: {
+        entityTypes: { include: ["Event"], exclude: ["Claim"] },
+        historicities: { include: ["historical"] },
+        temporalRoles: { include: ["occurred_at"] },
+      },
+    });
+    expect(filtered.nodes).toHaveLength(6);
+    await expect(transport.loadTimelineView({ workspaceId: "wrong" })).rejects.toThrow(/does not match/);
+  });
+
   it("scopes layouts by canvas so reused constellation portals keep per-canvas placement", async () => {
     const bundle = fixtureBundle();
     bundle.nodes.push({
@@ -128,6 +188,7 @@ describe("createStaticBundleTransport", () => {
       archetypalResonance: null,
       coordinate: null,
       sourceCoordinates: ["#0", "antichrist-vault/episodes/1/ql-units/unit-spectral-devils-chain.md"],
+      ...EMPTY_GRAPH_NODE_METADATA,
       evidenceTags: ["ql_unit", "ql_positioned"],
       sourceKind: "ql-unit",
       isTemporal: false,

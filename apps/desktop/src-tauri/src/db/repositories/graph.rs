@@ -1,11 +1,124 @@
 // apps/desktop/src-tauri/src/db/repositories/graph.rs
 use serde::{Deserialize, Serialize};
 
+macro_rules! controlled_string_enum {
+    ($name:ident { $($variant:ident => $value:literal),+ $(,)? }) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+        pub enum $name {
+            $(#[serde(rename = $value)] $variant),+
+        }
+
+        impl $name {
+            pub const ALL: &'static [Self] = &[$(Self::$variant),+];
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $value),+
+                }
+            }
+        }
+
+        impl TryFrom<String> for $name {
+            type Error = String;
+
+            fn try_from(value: String) -> Result<Self, Self::Error> {
+                match value.as_str() {
+                    $($value => Ok(Self::$variant),)+
+                    _ => Err(format!("unknown {} value: {value}", stringify!($name))),
+                }
+            }
+        }
+    };
+}
+
+controlled_string_enum!(ContentOrigin {
+    Seed => "seed",
+    CorpusCompiled => "corpus_compiled",
+    UserAuthored => "user_authored",
+    Imported => "imported",
+});
+controlled_string_enum!(Historicity {
+    Historical => "historical",
+    Mythic => "mythic",
+    Literary => "literary",
+    Theoretical => "theoretical",
+    Mixed => "mixed",
+});
+controlled_string_enum!(ClaimKind {
+    Fact => "fact",
+    Inference => "inference",
+    Interpretation => "interpretation",
+    Allegation => "allegation",
+    Hypothesis => "hypothesis",
+    SymbolicParallel => "symbolic_parallel",
+});
+controlled_string_enum!(EvidenceStatus {
+    Documented => "documented",
+    WellEvidencedInference => "well_evidenced_inference",
+    Interpretive => "interpretive",
+    Contested => "contested",
+    Alleged => "alleged",
+    Unverified => "unverified",
+    Disproven => "disproven",
+});
+controlled_string_enum!(TemporalRole {
+    OccurredAt => "occurred_at",
+    ActiveDuring => "active_during",
+    SourcePublishedAt => "source_published_at",
+    ClaimAboutTime => "claim_about_time",
+    MythLocatedAt => "myth_located_at",
+});
+controlled_string_enum!(PlaceCoverage {
+    Resolved => "resolved",
+    Unknown => "unknown",
+    NotApplicable => "not_applicable",
+});
+controlled_string_enum!(QlForm {
+    CompleteSixfold => "complete_sixfold",
+    PartialPositionalMap => "partial_positional_map",
+    Quaternity => "quaternity",
+    PositionWheel => "position_wheel",
+    DoubleHelix => "double_helix",
+    OtherExplicit => "other_explicit",
+});
+controlled_string_enum!(QlArc {
+    Day => "day",
+    Night => "night",
+    Braided => "braided",
+    NotApplicable => "not_applicable",
+});
+controlled_string_enum!(QlTopology {
+    Torus => "torus",
+    Klein => "klein",
+    Lemniscatic => "lemniscatic",
+    Composite => "composite",
+    Unspecified => "unspecified",
+});
+controlled_string_enum!(QlCompletenessStatus {
+    Complete => "complete",
+    Partial => "partial",
+    Incomplete => "incomplete",
+    NotApplicable => "not_applicable",
+});
+controlled_string_enum!(TemporalPrecision {
+    Millennium => "millennium",
+    Century => "century",
+    Decade => "decade",
+    Year => "year",
+    Month => "month",
+    Day => "day",
+});
+controlled_string_enum!(EntityType {
+    Figure => "Figure", People => "People", Event => "Event", Institution => "Institution",
+    Source => "Source", Claim => "Claim", Myth => "Myth", Interpretation => "Interpretation",
+    Place => "Place", Work => "Work", Archetype => "Archetype", Dynamic => "Dynamic",
+    Constellation => "Constellation", PsychoidOperator => "PsychoidOperator",
+});
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GraphNode {
     pub graph_node_id: String,
-    pub entity_type: String,
+    pub entity_type: EntityType,
     pub title: String,
     pub body: String,
     pub summary: String,
@@ -14,10 +127,26 @@ pub struct GraphNode {
     pub source_coordinates: Vec<String>,
     pub evidence_tags: Vec<String>,
     pub source_kind: Option<String>,
+    pub content_origin: Option<ContentOrigin>,
+    pub content_revision: Option<i64>,
+    pub seed_schema_version: Option<i64>,
+    pub body_source_coordinates: Vec<String>,
+    pub historicity: Option<Historicity>,
+    pub claim_kind: Option<ClaimKind>,
+    pub evidence_status: Option<EvidenceStatus>,
+    pub temporal_role: Option<TemporalRole>,
+    pub place_coverage: Option<PlaceCoverage>,
+    pub ql_form: Option<QlForm>,
+    pub ql_unit_id: Option<String>,
+    pub ql_arc: Option<QlArc>,
+    pub ql_topology: Option<QlTopology>,
+    pub ql_schema_version: Option<i64>,
+    pub ql_source_coordinates: Vec<String>,
+    pub ql_completeness_status: Option<QlCompletenessStatus>,
     pub is_temporal: bool,
     pub valid_from: Option<String>,
     pub valid_to: Option<String>,
-    pub temporal_precision: Option<String>,
+    pub temporal_precision: Option<TemporalPrecision>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -30,6 +159,34 @@ pub struct GraphRelationship {
     pub source_graph_node_id: String,
     pub target_graph_node_id: String,
     pub properties: serde_json::Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphContentCasInput {
+    pub graph_node_id: String,
+    pub expected_remote_revision: Option<i64>,
+    pub expected_remote_origin: Option<ContentOrigin>,
+    #[serde(default)]
+    pub allow_legacy_null: bool,
+    pub body: String,
+    pub summary: String,
+    pub content_origin: ContentOrigin,
+    pub content_revision: i64,
+    #[serde(default)]
+    pub body_source_coordinates: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum GraphContentCasMutation {
+    Updated,
+    Missing,
+    Conflict {
+        current_remote_revision: Option<i64>,
+        current_remote_origin: Option<ContentOrigin>,
+        reason: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,19 +209,105 @@ pub struct NewGraphNode {
     pub temporal_precision: Option<String>,
 }
 
+/// Typed metadata supplied by modern creation boundaries. Keeping it separate
+/// preserves the small internal `NewGraphNode` API used by existing callers,
+/// while commands and importers can write the complete contract atomically.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct NewGraphNodeMetadata {
+    #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub evidence_tags: Vec<String>,
+    #[serde(default)]
+    pub source_kind: Option<String>,
+    #[serde(default)]
+    pub content_origin: Option<ContentOrigin>,
+    #[serde(default)]
+    pub content_revision: Option<i64>,
+    #[serde(default)]
+    pub seed_schema_version: Option<i64>,
+    #[serde(default)]
+    pub body_source_coordinates: Vec<String>,
+    #[serde(default)]
+    pub historicity: Option<Historicity>,
+    #[serde(default)]
+    pub claim_kind: Option<ClaimKind>,
+    #[serde(default)]
+    pub evidence_status: Option<EvidenceStatus>,
+    #[serde(default)]
+    pub temporal_role: Option<TemporalRole>,
+    #[serde(default)]
+    pub place_coverage: Option<PlaceCoverage>,
+    #[serde(default)]
+    pub ql_form: Option<QlForm>,
+    #[serde(default)]
+    pub ql_unit_id: Option<String>,
+    #[serde(default)]
+    pub ql_arc: Option<QlArc>,
+    #[serde(default)]
+    pub ql_topology: Option<QlTopology>,
+    #[serde(default)]
+    pub ql_schema_version: Option<i64>,
+    #[serde(default)]
+    pub ql_source_coordinates: Vec<String>,
+    #[serde(default)]
+    pub ql_completeness_status: Option<QlCompletenessStatus>,
+}
+
+fn deserialize_present_nullable<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct GraphNodePatch {
     pub title: Option<String>,
-    pub body: Option<String>,
-    pub summary: Option<String>,
-    pub archetypal_resonance: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub archetypal_resonance: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
     pub coordinate: Option<Option<String>>,
     pub source_coordinates: Option<Vec<String>>,
+    pub evidence_tags: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub source_kind: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub seed_schema_version: Option<Option<i64>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub historicity: Option<Option<Historicity>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub claim_kind: Option<Option<ClaimKind>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub evidence_status: Option<Option<EvidenceStatus>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub temporal_role: Option<Option<TemporalRole>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub place_coverage: Option<Option<PlaceCoverage>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub ql_form: Option<Option<QlForm>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub ql_unit_id: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub ql_arc: Option<Option<QlArc>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub ql_topology: Option<Option<QlTopology>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub ql_schema_version: Option<Option<i64>>,
+    pub ql_source_coordinates: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub ql_completeness_status: Option<Option<QlCompletenessStatus>>,
     pub is_temporal: Option<bool>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
     pub valid_from: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
     pub valid_to: Option<Option<String>>,
-    pub temporal_precision: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub temporal_precision: Option<Option<TemporalPrecision>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,6 +348,22 @@ pub struct SeedGraphNode {
     pub source_coordinates: Vec<String>,
     pub evidence_tags: Vec<String>,
     pub source_kind: Option<String>,
+    pub content_origin: ContentOrigin,
+    pub content_revision: i64,
+    pub seed_schema_version: i64,
+    pub body_source_coordinates: Vec<String>,
+    pub historicity: Option<Historicity>,
+    pub claim_kind: Option<ClaimKind>,
+    pub evidence_status: Option<EvidenceStatus>,
+    pub temporal_role: Option<TemporalRole>,
+    pub place_coverage: Option<PlaceCoverage>,
+    pub ql_form: Option<QlForm>,
+    pub ql_unit_id: Option<String>,
+    pub ql_arc: Option<QlArc>,
+    pub ql_topology: Option<QlTopology>,
+    pub ql_schema_version: Option<i64>,
+    pub ql_source_coordinates: Vec<String>,
+    pub ql_completeness_status: Option<QlCompletenessStatus>,
     pub is_temporal: bool,
     pub valid_from: Option<String>,
     pub valid_to: Option<String>,
@@ -137,54 +396,198 @@ fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
-/// Build a GraphNode from a returned `n` node value plus its entity-type label.
-fn node_from_neo(node: neo4rs::Node) -> Result<GraphNode, String> {
-    let labels: Vec<String> = node.labels().iter().map(|s| s.to_string()).collect();
-    let entity_type = labels
-        .iter()
-        .find(|l| l.as_str() != "TheoryNode" && l.as_str() != "Operator")
-        .cloned()
-        .unwrap_or_default();
-    let source_coordinates: Vec<String> = node.get("source_coordinates").unwrap_or_default();
-    Ok(GraphNode {
-        graph_node_id: node.get("graph_node_id").map_err(|e| e.to_string())?,
-        entity_type,
-        title: node.get("title").unwrap_or_default(),
-        body: node.get("body").unwrap_or_else(|_| "[]".to_string()),
-        summary: node.get("summary").unwrap_or_default(),
-        archetypal_resonance: node.get("archetypal_resonance").ok(),
-        coordinate: node.get("coordinate").ok(),
-        source_coordinates,
-        evidence_tags: node.get("evidence_tags").unwrap_or_default(),
-        source_kind: node.get("source_kind").ok(),
-        is_temporal: node.get("is_temporal").unwrap_or(false),
-        valid_from: node.get("valid_from").ok(),
-        valid_to: node.get("valid_to").ok(),
-        temporal_precision: node.get("temporal_precision").ok(),
-        created_at: node.get("created_at").unwrap_or_default(),
-        updated_at: node.get("updated_at").unwrap_or_default(),
+/// Neo4j stores controlled values as strings. This is the sole compatibility
+/// boundary: absent properties become `None`, while present unknown values are
+/// rejected with their property name instead of leaking into the typed API.
+const JS_MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
+
+fn has_neo_property(node: &neo4rs::Node, property: &str) -> bool {
+    node.keys().contains(&property)
+}
+
+fn controlled_from_neo<T>(node: &neo4rs::Node, property: &str) -> Result<Option<T>, String>
+where
+    T: TryFrom<String, Error = String>,
+{
+    if !has_neo_property(node, property) {
+        return Ok(None);
+    }
+    let value = node
+        .get::<String>(property)
+        .map_err(|error| format!("Neo4j property `{property}` has wrong type: {error}"))?;
+    T::try_from(value)
+        .map(Some)
+        .map_err(|error| format!("invalid Neo4j property `{property}`: {error}"))
+}
+
+fn string_list_from_neo(node: &neo4rs::Node, property: &str) -> Result<Vec<String>, String> {
+    if !has_neo_property(node, property) {
+        return Ok(Vec::new());
+    }
+    node.get::<Vec<String>>(property)
+        .map_err(|error| format!("Neo4j property `{property}` has wrong type: {error}"))
+}
+
+fn optional_string_from_neo(node: &neo4rs::Node, property: &str) -> Result<Option<String>, String> {
+    if !has_neo_property(node, property) {
+        return Ok(None);
+    }
+    node.get::<String>(property)
+        .map(Some)
+        .map_err(|error| format!("Neo4j property `{property}` has wrong type: {error}"))
+}
+
+fn string_from_neo(
+    node: &neo4rs::Node,
+    property: &str,
+    absent_default: Option<&str>,
+) -> Result<String, String> {
+    if !has_neo_property(node, property) {
+        return absent_default
+            .map(str::to_string)
+            .ok_or_else(|| format!("required Neo4j property `{property}` is absent"));
+    }
+    node.get::<String>(property)
+        .map_err(|error| format!("Neo4j property `{property}` has wrong type: {error}"))
+}
+
+fn bool_from_neo(
+    node: &neo4rs::Node,
+    property: &str,
+    absent_default: bool,
+) -> Result<bool, String> {
+    if !has_neo_property(node, property) {
+        return Ok(absent_default);
+    }
+    node.get::<bool>(property)
+        .map_err(|error| format!("Neo4j property `{property}` has wrong type: {error}"))
+}
+
+fn revision_from_neo(node: &neo4rs::Node, property: &str) -> Result<Option<i64>, String> {
+    if !has_neo_property(node, property) {
+        return Ok(None);
+    }
+    // neo4rs 0.8 decodes tiny negative integers as unsigned bytes (-1 => 255),
+    // so numeric storage cannot enforce the shared signed range losslessly.
+    // Decimal strings preserve the exact token; legacy numerics fail closed.
+    let raw = node.get::<String>(property).map_err(|_| {
+        format!(
+            "Neo4j property `{property}` must use canonical decimal-string storage; legacy numeric values require migration"
+        )
+    })?;
+    let value = raw
+        .parse::<i64>()
+        .map_err(|error| format!("Neo4j property `{property}` is not a valid integer: {error}"))?;
+    validate_contract_revision(property, value)?;
+    Ok(Some(value))
+}
+
+pub fn validate_contract_revision(property: &str, value: i64) -> Result<(), String> {
+    if !(0..=JS_MAX_SAFE_INTEGER).contains(&value) {
+        return Err(format!(
+            "{property} must be a nonnegative JavaScript-safe integer (0..={JS_MAX_SAFE_INTEGER}), got {value}"
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntityLabelResolutionError {
+    pub labels: Vec<String>,
+    pub recognized: Vec<EntityType>,
+    pub unknown: Vec<String>,
+}
+
+impl std::fmt::Display for EntityLabelResolutionError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "entity labels must contain exactly one recognized semantic label; labels={:?}, recognized={:?}, unknown={:?}",
+            self.labels, self.recognized, self.unknown
+        )
+    }
+}
+
+pub fn resolve_entity_type_from_labels(
+    labels: &[String],
+) -> Result<EntityType, EntityLabelResolutionError> {
+    let mut recognized = Vec::new();
+    let mut unknown = Vec::new();
+    for label in labels {
+        if matches!(label.as_str(), "TheoryNode" | "Operator") {
+            continue;
+        }
+        match EntityType::try_from(label.clone()) {
+            Ok(entity_type) => recognized.push(entity_type),
+            Err(_) => unknown.push(label.clone()),
+        }
+    }
+    recognized.sort_by_key(|entity_type| entity_type.as_str());
+    recognized.dedup();
+    unknown.sort();
+    unknown.dedup();
+    if recognized.len() == 1 && unknown.is_empty() {
+        return Ok(recognized[0]);
+    }
+    Err(EntityLabelResolutionError {
+        labels: labels.to_vec(),
+        recognized,
+        unknown,
     })
 }
 
-const ENTITY_LABELS: &[&str] = &[
-    "Figure",
-    "People",
-    "Event",
-    "Institution",
-    "Source",
-    "Place",
-    "Work",
-    "Archetype",
-    "Dynamic",
-    "Constellation",
-];
+/// Build a GraphNode from a returned `n` node value plus its entity-type label.
+fn node_from_neo(node: neo4rs::Node) -> Result<GraphNode, String> {
+    let labels: Vec<String> = node.labels().iter().map(|s| s.to_string()).collect();
+    let entity_type =
+        resolve_entity_type_from_labels(&labels).map_err(|error| error.to_string())?;
+    let source_coordinates = string_list_from_neo(&node, "source_coordinates")?;
+    Ok(GraphNode {
+        graph_node_id: string_from_neo(&node, "graph_node_id", None)?,
+        entity_type,
+        title: string_from_neo(&node, "title", Some(""))?,
+        body: string_from_neo(&node, "body", Some("[]"))?,
+        summary: string_from_neo(&node, "summary", Some(""))?,
+        archetypal_resonance: optional_string_from_neo(&node, "archetypal_resonance")?,
+        coordinate: optional_string_from_neo(&node, "coordinate")?,
+        source_coordinates,
+        evidence_tags: string_list_from_neo(&node, "evidence_tags")?,
+        source_kind: optional_string_from_neo(&node, "source_kind")?,
+        content_origin: controlled_from_neo(&node, "content_origin")?,
+        content_revision: revision_from_neo(&node, "content_revision")?,
+        seed_schema_version: revision_from_neo(&node, "seed_schema_version")?,
+        body_source_coordinates: string_list_from_neo(&node, "body_source_coordinates")?,
+        historicity: controlled_from_neo(&node, "historicity")?,
+        claim_kind: controlled_from_neo(&node, "claim_kind")?,
+        evidence_status: controlled_from_neo(&node, "evidence_status")?,
+        temporal_role: controlled_from_neo(&node, "temporal_role")?,
+        place_coverage: controlled_from_neo(&node, "place_coverage")?,
+        ql_form: controlled_from_neo(&node, "ql_form")?,
+        ql_unit_id: optional_string_from_neo(&node, "ql_unit_id")?,
+        ql_arc: controlled_from_neo(&node, "ql_arc")?,
+        ql_topology: controlled_from_neo(&node, "ql_topology")?,
+        ql_schema_version: revision_from_neo(&node, "ql_schema_version")?,
+        ql_source_coordinates: string_list_from_neo(&node, "ql_source_coordinates")?,
+        ql_completeness_status: controlled_from_neo(&node, "ql_completeness_status")?,
+        is_temporal: bool_from_neo(&node, "is_temporal", false)?,
+        valid_from: optional_string_from_neo(&node, "valid_from")?,
+        valid_to: optional_string_from_neo(&node, "valid_to")?,
+        temporal_precision: controlled_from_neo(&node, "temporal_precision")?,
+        created_at: string_from_neo(&node, "created_at", Some(""))?,
+        updated_at: string_from_neo(&node, "updated_at", Some(""))?,
+    })
+}
 
-fn validate_entity_label(entity_type: &str) -> Result<&str, String> {
-    ENTITY_LABELS
-        .iter()
-        .find(|l| **l == entity_type)
-        .copied()
-        .ok_or_else(|| format!("unknown entity_type: {entity_type}"))
+fn validate_entity_label(entity_type: &str) -> Result<EntityType, String> {
+    let entity_type = EntityType::try_from(entity_type.to_string())?;
+    if entity_type == EntityType::PsychoidOperator {
+        return Err("PsychoidOperator is reserved for the operator seeding path".to_string());
+    }
+    Ok(entity_type)
+}
+
+pub fn semantic_relabel_entity_types() -> &'static [EntityType] {
+    EntityType::ALL
 }
 
 const REL_TYPES: &[&str] = &[
@@ -237,6 +640,27 @@ impl GraphRepository {
     }
 
     pub async fn create_node(&self, input: NewGraphNode) -> Result<GraphNode, String> {
+        self.create_node_with_metadata(input, NewGraphNodeMetadata::default())
+            .await
+    }
+
+    pub async fn create_node_with_metadata(
+        &self,
+        input: NewGraphNode,
+        metadata: NewGraphNodeMetadata,
+    ) -> Result<GraphNode, String> {
+        for (property, value) in [
+            ("contentRevision", metadata.content_revision),
+            ("seedSchemaVersion", metadata.seed_schema_version),
+            ("qlSchemaVersion", metadata.ql_schema_version),
+        ] {
+            if let Some(value) = value {
+                validate_contract_revision(property, value)?;
+            }
+        }
+        if let Some(value) = input.temporal_precision.as_ref() {
+            TemporalPrecision::try_from(value.clone())?;
+        }
         let id = input
             .graph_node_id
             .clone()
@@ -244,12 +668,22 @@ impl GraphRepository {
         let now = now_rfc3339();
         // Entity-type label is interpolated (validated against a known set) because
         // Cypher labels cannot be parameterized.
-        let label = validate_entity_label(&input.entity_type)?;
+        let label = validate_entity_label(&input.entity_type)?.as_str();
         let cypher = format!(
             "CREATE (n:TheoryNode:{label} {{
-                graph_node_id: $id, title: $title, body: $body, summary: '',
+                graph_node_id: $id, title: $title, body: $body, summary: $summary,
                 coordinate: $coordinate, source_coordinates: $source_coordinates,
-                evidence_tags: [], source_kind: null,
+                evidence_tags: $evidence_tags, source_kind: $source_kind,
+                content_origin: $content_origin, content_revision: $content_revision,
+                seed_schema_version: $seed_schema_version,
+                body_source_coordinates: $body_source_coordinates,
+                historicity: $historicity, claim_kind: $claim_kind,
+                evidence_status: $evidence_status, temporal_role: $temporal_role,
+                place_coverage: $place_coverage, ql_form: $ql_form,
+                ql_unit_id: $ql_unit_id, ql_arc: $ql_arc, ql_topology: $ql_topology,
+                ql_schema_version: $ql_schema_version,
+                ql_source_coordinates: $ql_source_coordinates,
+                ql_completeness_status: $ql_completeness_status,
                 is_temporal: $is_temporal, valid_from: $valid_from, valid_to: $valid_to,
                 temporal_precision: $temporal_precision,
                 created_at: $now, updated_at: $now
@@ -259,8 +693,76 @@ impl GraphRepository {
             .param("id", id.clone())
             .param("title", input.title)
             .param("body", input.body)
+            .param("summary", metadata.summary.unwrap_or_default())
             .param("coordinate", input.coordinate)
             .param("source_coordinates", input.source_coordinates)
+            .param("evidence_tags", metadata.evidence_tags)
+            .param("source_kind", metadata.source_kind)
+            .param(
+                "content_origin",
+                metadata
+                    .content_origin
+                    .map(|value| value.as_str().to_string()),
+            )
+            .param(
+                "content_revision",
+                metadata.content_revision.map(|v| v.to_string()),
+            )
+            .param(
+                "seed_schema_version",
+                metadata.seed_schema_version.map(|v| v.to_string()),
+            )
+            .param("body_source_coordinates", metadata.body_source_coordinates)
+            .param(
+                "historicity",
+                metadata.historicity.map(|value| value.as_str().to_string()),
+            )
+            .param(
+                "claim_kind",
+                metadata.claim_kind.map(|value| value.as_str().to_string()),
+            )
+            .param(
+                "evidence_status",
+                metadata
+                    .evidence_status
+                    .map(|value| value.as_str().to_string()),
+            )
+            .param(
+                "temporal_role",
+                metadata
+                    .temporal_role
+                    .map(|value| value.as_str().to_string()),
+            )
+            .param(
+                "place_coverage",
+                metadata
+                    .place_coverage
+                    .map(|value| value.as_str().to_string()),
+            )
+            .param(
+                "ql_form",
+                metadata.ql_form.map(|value| value.as_str().to_string()),
+            )
+            .param("ql_unit_id", metadata.ql_unit_id)
+            .param(
+                "ql_arc",
+                metadata.ql_arc.map(|value| value.as_str().to_string()),
+            )
+            .param(
+                "ql_topology",
+                metadata.ql_topology.map(|value| value.as_str().to_string()),
+            )
+            .param(
+                "ql_schema_version",
+                metadata.ql_schema_version.map(|v| v.to_string()),
+            )
+            .param("ql_source_coordinates", metadata.ql_source_coordinates)
+            .param(
+                "ql_completeness_status",
+                metadata
+                    .ql_completeness_status
+                    .map(|value| value.as_str().to_string()),
+            )
             .param("is_temporal", input.is_temporal)
             .param("valid_from", input.valid_from)
             .param("valid_to", input.valid_to)
@@ -302,15 +804,17 @@ impl GraphRepository {
         graph_node_id: &str,
         patch: GraphNodePatch,
     ) -> Result<GraphNode, String> {
+        for (property, value) in [
+            ("seedSchemaVersion", patch.seed_schema_version.flatten()),
+            ("qlSchemaVersion", patch.ql_schema_version.flatten()),
+        ] {
+            if let Some(value) = value {
+                validate_contract_revision(property, value)?;
+            }
+        }
         let mut sets: Vec<String> = vec!["n.updated_at = $now".to_string()];
         if patch.title.is_some() {
             sets.push("n.title = $title".into());
-        }
-        if patch.body.is_some() {
-            sets.push("n.body = $body".into());
-        }
-        if patch.summary.is_some() {
-            sets.push("n.summary = $summary".into());
         }
         if patch.archetypal_resonance.is_some() {
             sets.push("n.archetypal_resonance = $archetypal_resonance".into());
@@ -320,6 +824,51 @@ impl GraphRepository {
         }
         if patch.source_coordinates.is_some() {
             sets.push("n.source_coordinates = $source_coordinates".into());
+        }
+        if patch.evidence_tags.is_some() {
+            sets.push("n.evidence_tags = $evidence_tags".into());
+        }
+        if patch.source_kind.is_some() {
+            sets.push("n.source_kind = $source_kind".into());
+        }
+        if patch.seed_schema_version.is_some() {
+            sets.push("n.seed_schema_version = $seed_schema_version".into());
+        }
+        if patch.historicity.is_some() {
+            sets.push("n.historicity = $historicity".into());
+        }
+        if patch.claim_kind.is_some() {
+            sets.push("n.claim_kind = $claim_kind".into());
+        }
+        if patch.evidence_status.is_some() {
+            sets.push("n.evidence_status = $evidence_status".into());
+        }
+        if patch.temporal_role.is_some() {
+            sets.push("n.temporal_role = $temporal_role".into());
+        }
+        if patch.place_coverage.is_some() {
+            sets.push("n.place_coverage = $place_coverage".into());
+        }
+        if patch.ql_form.is_some() {
+            sets.push("n.ql_form = $ql_form".into());
+        }
+        if patch.ql_unit_id.is_some() {
+            sets.push("n.ql_unit_id = $ql_unit_id".into());
+        }
+        if patch.ql_arc.is_some() {
+            sets.push("n.ql_arc = $ql_arc".into());
+        }
+        if patch.ql_topology.is_some() {
+            sets.push("n.ql_topology = $ql_topology".into());
+        }
+        if patch.ql_schema_version.is_some() {
+            sets.push("n.ql_schema_version = $ql_schema_version".into());
+        }
+        if patch.ql_source_coordinates.is_some() {
+            sets.push("n.ql_source_coordinates = $ql_source_coordinates".into());
+        }
+        if patch.ql_completeness_status.is_some() {
+            sets.push("n.ql_completeness_status = $ql_completeness_status".into());
         }
         if patch.is_temporal.is_some() {
             sets.push("n.is_temporal = $is_temporal".into());
@@ -352,12 +901,6 @@ impl GraphRepository {
         if let Some(v) = patch.title {
             q = q.param("title", v);
         }
-        if let Some(v) = patch.body {
-            q = q.param("body", v);
-        }
-        if let Some(v) = patch.summary {
-            q = q.param("summary", v);
-        }
         if let Some(v) = patch.archetypal_resonance {
             q = q.param("archetypal_resonance", v);
         }
@@ -366,6 +909,54 @@ impl GraphRepository {
         }
         if let Some(v) = patch.source_coordinates {
             q = q.param("source_coordinates", v);
+        }
+        if let Some(v) = patch.evidence_tags {
+            q = q.param("evidence_tags", v);
+        }
+        if let Some(v) = patch.source_kind {
+            q = q.param("source_kind", v);
+        }
+        if let Some(v) = patch.seed_schema_version {
+            q = q.param("seed_schema_version", v.map(|value| value.to_string()));
+        }
+        if let Some(v) = patch.historicity {
+            q = q.param("historicity", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.claim_kind {
+            q = q.param("claim_kind", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.evidence_status {
+            q = q.param("evidence_status", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.temporal_role {
+            q = q.param("temporal_role", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.place_coverage {
+            q = q.param("place_coverage", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.ql_form {
+            q = q.param("ql_form", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.ql_unit_id {
+            q = q.param("ql_unit_id", v);
+        }
+        if let Some(v) = patch.ql_arc {
+            q = q.param("ql_arc", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.ql_topology {
+            q = q.param("ql_topology", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.ql_schema_version {
+            q = q.param("ql_schema_version", v.map(|value| value.to_string()));
+        }
+        if let Some(v) = patch.ql_source_coordinates {
+            q = q.param("ql_source_coordinates", v);
+        }
+        if let Some(v) = patch.ql_completeness_status {
+            q = q.param(
+                "ql_completeness_status",
+                v.map(|value| value.as_str().to_string()),
+            );
         }
         if let Some(v) = patch.is_temporal {
             q = q.param("is_temporal", v);
@@ -377,7 +968,10 @@ impl GraphRepository {
             q = q.param("valid_to", v);
         }
         if let Some(v) = patch.temporal_precision {
-            q = q.param("temporal_precision", v);
+            q = q.param(
+                "temporal_precision",
+                v.map(|value| value.as_str().to_string()),
+            );
         }
 
         let mut rows = self
@@ -404,25 +998,175 @@ impl GraphRepository {
         Ok(())
     }
 
+    /// Compare-and-swap boundary for body content. Generic `update_node`
+    /// remains available for non-content metadata, but editors must use this
+    /// operation so a stale client can never overwrite newer remote prose.
+    pub async fn compare_and_swap_content(
+        &self,
+        input: &GraphContentCasInput,
+    ) -> Result<GraphContentCasMutation, String> {
+        validate_contract_revision("contentRevision", input.content_revision)?;
+        let expected_condition = match (
+            input.expected_remote_revision,
+            input.expected_remote_origin,
+            input.allow_legacy_null,
+        ) {
+            (Some(revision), Some(_), false) => {
+                validate_contract_revision("expectedRemoteRevision", revision)?;
+                if input.content_revision <= revision {
+                    return Err("contentRevision must advance beyond expectedRemoteRevision".into());
+                }
+                "toString(n.content_revision) = $expected_revision AND n.content_origin = $expected_origin"
+            }
+            (None, None, true) => {
+                "n.content_revision IS NULL AND n.content_origin IS NULL"
+            }
+            (Some(_), Some(_), true) => {
+                return Err("allowLegacyNull requires both expected remote fields to be null".into())
+            }
+            _ => return Err("expectedRemoteRevision and expectedRemoteOrigin must both be supplied; legacy null requires allowLegacyNull=true".into()),
+        };
+        let cypher = format!(
+            "OPTIONAL MATCH (n:TheoryNode {{graph_node_id: $id}}) \
+             WITH n, n.content_revision AS old_revision, n.content_origin AS old_origin, \
+                  coalesce(({expected_condition}), false) AS can_update \
+             FOREACH (_ IN CASE WHEN can_update THEN [1] ELSE [] END | \
+               SET n.body=$body, n.summary=$summary, n.content_origin=$content_origin, \
+                   n.content_revision=$content_revision, n.body_source_coordinates=$body_sources, \
+                   n.updated_at=$now) \
+             RETURN n IS NOT NULL AS exists, can_update AS updated, \
+                    coalesce(toString(old_revision), '') AS current_revision, \
+                    coalesce(old_origin, '') AS current_origin"
+        );
+        let mut query = neo4rs::query(&cypher)
+            .param("id", input.graph_node_id.clone())
+            .param("body", input.body.clone())
+            .param("summary", input.summary.clone())
+            .param("content_origin", input.content_origin.as_str())
+            .param("content_revision", input.content_revision.to_string())
+            .param("body_sources", input.body_source_coordinates.clone())
+            .param("now", now_rfc3339());
+        if let (Some(revision), Some(origin)) =
+            (input.expected_remote_revision, input.expected_remote_origin)
+        {
+            query = query
+                .param("expected_revision", revision.to_string())
+                .param("expected_origin", origin.as_str());
+        }
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, query)
+            .await
+            .map_err(|error| format!("content compare-and-swap failed: {error}"))?;
+        let row = rows
+            .next()
+            .await
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "content compare-and-swap returned no status row".to_string())?;
+        let exists: bool = row.get("exists").map_err(|error| error.to_string())?;
+        if !exists {
+            return Ok(GraphContentCasMutation::Missing);
+        }
+        let updated: bool = row.get("updated").map_err(|error| error.to_string())?;
+        if updated {
+            return Ok(GraphContentCasMutation::Updated);
+        }
+        let raw_revision: String = row
+            .get("current_revision")
+            .map_err(|error| error.to_string())?;
+        let current_revision = if raw_revision.is_empty() {
+            None
+        } else {
+            Some(
+                raw_revision
+                    .parse::<i64>()
+                    .map_err(|_| format!("invalid remote content revision {raw_revision:?}"))?,
+            )
+        };
+        let raw_origin: String = row
+            .get("current_origin")
+            .map_err(|error| error.to_string())?;
+        let current_origin = if raw_origin.is_empty() {
+            None
+        } else {
+            Some(ContentOrigin::try_from(raw_origin)?)
+        };
+        Ok(GraphContentCasMutation::Conflict {
+            current_remote_revision: current_revision,
+            current_remote_origin: current_origin,
+            reason: "remote content revision or ownership no longer matches".into(),
+        })
+    }
+
     pub async fn upsert_seed_node(&self, input: &SeedGraphNode) -> Result<GraphNode, String> {
-        let label = validate_entity_label(&input.entity_type)?;
+        validate_contract_revision("contentRevision", input.content_revision)?;
+        validate_contract_revision("seedSchemaVersion", input.seed_schema_version)?;
+        if let Some(value) = input.ql_schema_version {
+            validate_contract_revision("qlSchemaVersion", value)?;
+        }
+        if let Some(value) = input.temporal_precision.as_ref() {
+            TemporalPrecision::try_from(value.clone())?;
+        }
+        let label = validate_entity_label(&input.entity_type)?.as_str();
+        let remove_labels = semantic_relabel_entity_types()
+            .iter()
+            .map(|entity_type| entity_type.as_str())
+            .collect::<Vec<_>>()
+            .join(":");
         let cypher = format!(
             "MERGE (n:TheoryNode {{graph_node_id: $id}}) \
-             SET n:{label}, \
-                 n.title = $title, \
-                 n.body = $body, \
-                 n.summary = $summary, \
+             ON CREATE SET n.title = $title, n.body = $body, n.summary = $summary, \
                  n.archetypal_resonance = $archetypal_resonance, \
                  n.coordinate = $coordinate, \
                  n.source_coordinates = $source_coordinates, \
                  n.evidence_tags = $evidence_tags, \
                  n.source_kind = $source_kind, \
+                 n.content_origin = $content_origin, \
+                 n.content_revision = $content_revision, \
+                 n.seed_schema_version = $seed_schema_version, \
+                 n.body_source_coordinates = $body_source_coordinates, \
+                 n.historicity = $historicity, \
+                 n.claim_kind = $claim_kind, \
+                 n.evidence_status = $evidence_status, \
+                 n.temporal_role = $temporal_role, \
+                 n.place_coverage = $place_coverage, \
+                 n.ql_form = $ql_form, n.ql_unit_id = $ql_unit_id, \
+                 n.ql_arc = $ql_arc, n.ql_topology = $ql_topology, \
+                 n.ql_schema_version = $ql_schema_version, \
+                 n.ql_source_coordinates = $ql_source_coordinates, \
+                 n.ql_completeness_status = $ql_completeness_status, \
                  n.is_temporal = $is_temporal, \
                  n.valid_from = $valid_from, \
                  n.valid_to = $valid_to, \
                  n.temporal_precision = $temporal_precision, \
-                 n.created_at = coalesce(n.created_at, $now), \
-                 n.updated_at = $now \
+                 n.created_at = $now, n.updated_at = $now \
+             WITH n, (n.content_origin = 'seed' AND toInteger($content_revision) > coalesce(toInteger(n.content_revision), -1)) AS newer_seed \
+             SET n.title = CASE WHEN newer_seed THEN $title ELSE n.title END, \
+                 n.body = CASE WHEN newer_seed THEN $body ELSE n.body END, n.summary = CASE WHEN newer_seed THEN $summary ELSE n.summary END, \
+                 n.archetypal_resonance = CASE WHEN newer_seed THEN $archetypal_resonance ELSE n.archetypal_resonance END, \
+                 n.coordinate = CASE WHEN newer_seed THEN $coordinate ELSE n.coordinate END, \
+                 n.source_coordinates = CASE WHEN newer_seed THEN $source_coordinates ELSE n.source_coordinates END, \
+                 n.evidence_tags = CASE WHEN newer_seed THEN $evidence_tags ELSE n.evidence_tags END, \
+                 n.source_kind = CASE WHEN newer_seed THEN $source_kind ELSE n.source_kind END, \
+                 n.body_source_coordinates = CASE WHEN newer_seed THEN $body_source_coordinates ELSE n.body_source_coordinates END, \
+                 n.historicity = CASE WHEN newer_seed THEN $historicity ELSE n.historicity END, \
+                 n.claim_kind = CASE WHEN newer_seed THEN $claim_kind ELSE n.claim_kind END, \
+                 n.evidence_status = CASE WHEN newer_seed THEN $evidence_status ELSE n.evidence_status END, \
+                 n.temporal_role = CASE WHEN newer_seed THEN $temporal_role ELSE n.temporal_role END, \
+                 n.place_coverage = CASE WHEN newer_seed THEN $place_coverage ELSE n.place_coverage END, \
+                 n.ql_form = CASE WHEN newer_seed THEN $ql_form ELSE n.ql_form END, n.ql_unit_id = CASE WHEN newer_seed THEN $ql_unit_id ELSE n.ql_unit_id END, \
+                 n.ql_arc = CASE WHEN newer_seed THEN $ql_arc ELSE n.ql_arc END, n.ql_topology = CASE WHEN newer_seed THEN $ql_topology ELSE n.ql_topology END, \
+                 n.ql_schema_version = CASE WHEN newer_seed THEN $ql_schema_version ELSE n.ql_schema_version END, \
+                 n.ql_source_coordinates = CASE WHEN newer_seed THEN $ql_source_coordinates ELSE n.ql_source_coordinates END, \
+                 n.ql_completeness_status = CASE WHEN newer_seed THEN $ql_completeness_status ELSE n.ql_completeness_status END, \
+                 n.is_temporal = CASE WHEN newer_seed THEN $is_temporal ELSE n.is_temporal END, \
+                 n.valid_from = CASE WHEN newer_seed THEN $valid_from ELSE n.valid_from END, n.valid_to = CASE WHEN newer_seed THEN $valid_to ELSE n.valid_to END, \
+                 n.temporal_precision = CASE WHEN newer_seed THEN $temporal_precision ELSE n.temporal_precision END, \
+                 n.seed_schema_version = CASE WHEN newer_seed THEN $seed_schema_version ELSE n.seed_schema_version END, \
+                 n.content_revision = CASE WHEN newer_seed THEN $content_revision ELSE n.content_revision END, \
+                 n.updated_at = CASE WHEN newer_seed THEN $now ELSE n.updated_at END \
+             REMOVE n:{remove_labels} \
+             SET n:{label} \
              RETURN n"
         );
         let q = query(&cypher)
@@ -435,6 +1179,31 @@ impl GraphRepository {
             .param("source_coordinates", input.source_coordinates.clone())
             .param("evidence_tags", input.evidence_tags.clone())
             .param("source_kind", input.source_kind.clone())
+            .param("content_origin", input.content_origin.as_str())
+            .param("content_revision", input.content_revision.to_string())
+            .param("seed_schema_version", input.seed_schema_version.to_string())
+            .param(
+                "body_source_coordinates",
+                input.body_source_coordinates.clone(),
+            )
+            .param("historicity", input.historicity.map(|v| v.as_str()))
+            .param("claim_kind", input.claim_kind.map(|v| v.as_str()))
+            .param("evidence_status", input.evidence_status.map(|v| v.as_str()))
+            .param("temporal_role", input.temporal_role.map(|v| v.as_str()))
+            .param("place_coverage", input.place_coverage.map(|v| v.as_str()))
+            .param("ql_form", input.ql_form.map(|v| v.as_str()))
+            .param("ql_unit_id", input.ql_unit_id.clone())
+            .param("ql_arc", input.ql_arc.map(|v| v.as_str()))
+            .param("ql_topology", input.ql_topology.map(|v| v.as_str()))
+            .param(
+                "ql_schema_version",
+                input.ql_schema_version.map(|v| v.to_string()),
+            )
+            .param("ql_source_coordinates", input.ql_source_coordinates.clone())
+            .param(
+                "ql_completeness_status",
+                input.ql_completeness_status.map(|v| v.as_str()),
+            )
             .param("is_temporal", input.is_temporal)
             .param("valid_from", input.valid_from.clone())
             .param("valid_to", input.valid_to.clone())

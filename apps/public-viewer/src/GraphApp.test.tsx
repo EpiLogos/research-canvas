@@ -1,9 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 
 import type { GraphExportBundle } from "@research-canvas/exporter";
 
 import { GraphApp } from "./GraphApp";
+import { readBootstrappedGraphBundle } from "./OfflineBootstrap";
 
 // A REAL in-memory GraphExportBundle. Only the *data* is a fixture — every
 // component (GraphApp, the shared <TimelineLens>/<CanvasView>) and the
@@ -19,6 +21,7 @@ function bundle(): GraphExportBundle {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: true,
     validFrom: "1621-01-01",
     validTo: "1621-12-31",
@@ -35,6 +38,7 @@ function bundle(): GraphExportBundle {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: false,
     validFrom: null,
     validTo: null,
@@ -46,7 +50,7 @@ function bundle(): GraphExportBundle {
     generatedAt: "2026-06-28T12:00:00Z",
     project: {
       coverAssetPath: null,
-      createdAt: "t",
+      createdAt: "2026-06-28T12:00:00Z",
       displayName: "Antichrist",
       id: "11111111-1111-4111-8111-111111111111",
       parentConstellationId: null,
@@ -63,6 +67,7 @@ function bundle(): GraphExportBundle {
     nodes: [monopoly, banda],
     relationships: [],
     nodeLayout: [],
+    timelineLayout: [{ graphNodeId: "node-banda", layout: { lane: "events", offsetY: 22, width: 310, height: 96, style: { dotColour: "#123456" }, layoutRevision: 3 } }],
     edgeLayout: [],
     viewport: { x: 0, y: 0, zoom: 1 },
     appState: {},
@@ -76,6 +81,13 @@ function bundle(): GraphExportBundle {
 }
 
 describe("GraphApp (mounted web entry, real static-bundle transport)", () => {
+  it("normalizes a pre-metadata bootstrapped graph bundle at the external boundary", () => {
+    const legacy = bundle();
+    delete (legacy.nodes[0] as Partial<(typeof legacy.nodes)[number]>).contentOrigin;
+    window.__RESEARCH_CANVAS_GRAPH_BUNDLE__ = legacy;
+    expect(readBootstrappedGraphBundle()?.nodes[0].contentOrigin).toBeNull();
+    delete window.__RESEARCH_CANVAS_GRAPH_BUNDLE__;
+  });
   it("shows the lens switch and defaults to the canvas lens", async () => {
     render(<GraphApp bundle={bundle()} />);
 
@@ -110,6 +122,7 @@ describe("GraphApp (mounted web entry, real static-bundle transport)", () => {
     });
     const event = await screen.findByTestId("timeline-node-node-banda");
     expect(event).toHaveTextContent("Banda genocide");
+    expect(screen.getByTestId("timeline-node-card-node-banda")).toHaveStyle({ width: "310px", height: "96px" });
     expect(screen.queryByTestId("timeline-node-node-monopoly")).toBeNull();
     expect(event.getAttribute("data-lit")).toBeNull();
 

@@ -40,9 +40,33 @@ impl<'conn> ConstellationRepository<'conn> {
         cover_asset: Option<String>,
         publish_settings: Value,
     ) -> Result<Constellation> {
+        let transaction = TransactionGuard::begin(self.connection)?;
+        let constellation = self.create_in_existing_transaction(
+            display_name,
+            slug,
+            parent_constellation_id,
+            root_path,
+            summary,
+            cover_asset,
+            publish_settings,
+        )?;
+        transaction.commit()?;
+        Ok(constellation)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn create_in_existing_transaction(
+        &self,
+        display_name: String,
+        slug: String,
+        parent_constellation_id: Option<String>,
+        root_path: String,
+        summary: Option<String>,
+        cover_asset: Option<String>,
+        publish_settings: Value,
+    ) -> Result<Constellation> {
         let constellation_id = Uuid::new_v4().to_string();
         let constellation_timestamp = current_timestamp();
-        let transaction = TransactionGuard::begin(self.connection)?;
 
         self.connection.execute(
             "INSERT INTO projects (
@@ -87,8 +111,6 @@ impl<'conn> ConstellationRepository<'conn> {
              WHERE id = ?3",
             params![primary_canvas.id, current_timestamp(), constellation_id],
         )?;
-
-        transaction.commit()?;
 
         self.get_by_id(&constellation_id)?
             .ok_or(rusqlite::Error::QueryReturnedNoRows)

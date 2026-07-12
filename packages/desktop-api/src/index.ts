@@ -1,8 +1,9 @@
-import type { GraphExportBundle } from "@research-canvas/exporter";
 import type {
   Annotation,
   CanvasEdge,
   CanvasNode,
+  ExportAsset,
+  ExportBundle,
   PublishSettings,
 } from "@research-canvas/schema";
 
@@ -15,25 +16,117 @@ export type {
   EntityType,
   GraphNode,
   GraphNodePatch,
+  ContentOrigin,
   GraphRelationship,
   JoinedCanvasNode,
   LitInstance,
+  LoadTimelineViewRequest,
   NewGraphNodeInput,
   NodeLayout,
+  TimelineView,
+  TimelineAnchor,
+  TimelineDiagnostic,
+  TimelineFilters,
+  TimelineLane,
+  TimelineLayoutOverride,
+  UpsertTimelineLayoutInput,
+  TimelineLayoutMutationResult,
+  TimelineViewNode,
+  TimelineValueFilter,
   TimelineNodeRecord,
+  TemporalPrecision,
 } from "./graph";
+
+export type NodeDocumentMutation =
+  | { kind: "created" }
+  | { kind: "updated" }
+  | { kind: "preserved" }
+  | { kind: "conflict"; current_revision: number; reason: string };
+
+export interface LocalNodeDocument {
+  graphNodeId: string;
+  body: string;
+  summary: string;
+  neo4jSynced: boolean;
+  contentOrigin: ContentOrigin;
+  contentRevision: number;
+  bodySourceCoordinates: string[];
+}
+
+export interface LocalNodeDocumentWriteResult {
+  mutation: NodeDocumentMutation;
+  document: LocalNodeDocument | null;
+}
+
+export type PendingNodeStructure = Omit<
+  NewGraphNodeInput,
+  "body" | "summary" | "contentOrigin" | "contentRevision" | "bodySourceCoordinates"
+> & { graphNodeId: string };
+
+export interface PendingNodeDocumentSync {
+  document: LocalNodeDocument;
+  structure: PendingNodeStructure;
+}
+
+export interface LocalNodeDocumentInput {
+  databasePath: string;
+  graphNodeId: string;
+  body: string;
+  summary: string;
+  neo4jSynced?: boolean;
+  contentOrigin?: ContentOrigin;
+  contentRevision?: number;
+  expectedRevision?: number;
+  bodySourceCoordinates?: string[];
+  dryRun?: boolean;
+  metadataProjection?: {
+    entityType: EntityType;
+    title: string;
+    schemaVersion: number;
+  };
+}
+
+export interface GraphContentCasInput {
+  graphNodeId: string;
+  expectedRemoteRevision: number | null;
+  expectedRemoteOrigin: ContentOrigin | null;
+  allowLegacyNull?: boolean;
+  body: string;
+  summary: string;
+  contentOrigin: ContentOrigin;
+  contentRevision: number;
+  bodySourceCoordinates: string[];
+}
+
+export type GraphContentCasMutation =
+  | { kind: "updated" }
+  | { kind: "missing" }
+  | { kind: "conflict"; current_remote_revision: number | null; current_remote_origin: ContentOrigin | null; reason: string };
+
+export type SyncAcknowledgementMutation =
+  | { kind: "updated" }
+  | { kind: "preserved" }
+  | { kind: "missing" }
+  | { kind: "conflict"; current_revision: number; current_origin: ContentOrigin; reason: string };
 import type {
   ArchetypalLighting,
   CanvasNodeSidecar,
   CanvasView,
+  ContentOrigin,
+  EntityType,
   GraphNode,
   GraphNodePatch,
   GraphRelationship,
   JoinedCanvasNode,
   LitInstance,
+  LoadTimelineViewRequest,
   NewGraphNodeInput,
   NodeLayout,
   EdgeLayout,
+  TimelineView,
+  TimelineLayoutOverride,
+  UpsertTimelineLayoutInput,
+  TimelineLayoutMutationResult,
 } from "./graph";
 
 export type IndexedEntryKind =
@@ -91,6 +184,8 @@ export interface ResourceRoot {
 export interface WorkspaceBootstrap {
   activeConstellationId: string;
   databasePath: string;
+  /** Server-derived identity of the canonical SQLite path. */
+  workspaceId: string;
   constellations: ConstellationTreeNode[];
 }
 
@@ -104,6 +199,29 @@ export interface ConstellationDocument {
   annotations: Annotation[];
   edges: CanvasEdge[];
   nodes: CanvasNode[];
+}
+
+/**
+ * The portable graph snapshot consumed by read-only transports.
+ *
+ * This contract belongs to the transport layer: the exporter produces it,
+ * while desktop and public-viewer transports consume it. Keeping the type
+ * here prevents a circular desktop-api -> exporter -> desktop-api dependency.
+ */
+export interface GraphExportBundle {
+  generatedAt: string;
+  project: ExportBundle["project"];
+  canvasId: string;
+  nodes: GraphNode[];
+  relationships: GraphRelationship[];
+  nodeLayout: NodeLayout[];
+  timelineLayout: Array<{ graphNodeId: string; layout: TimelineLayoutOverride }>;
+  edgeLayout: EdgeLayout[];
+  viewport: { x: number; y: number; zoom: number };
+  appState: Record<string, unknown>;
+  /** operatorGraphNodeId -> lit datable instances for a backend-less viewer. */
+  lightingIndex: Record<string, LitInstance[]>;
+  assets: ExportAsset[];
 }
 
 export interface PersistConstellationDocumentRequest {
@@ -391,8 +509,10 @@ export interface WorkspaceTransport {
 
   // ---- Substance (Neo4j) ----
   readGraphNode(input: { graphNodeId: string }): Promise<GraphNode>;
+  findGraphNode(input: { graphNodeId: string }): Promise<GraphNode | null>;
   createGraphNode(input: NewGraphNodeInput): Promise<GraphNode>;
   updateGraphNode(input: { graphNodeId: string; patch: GraphNodePatch }): Promise<GraphNode>;
+  compareAndSwapGraphNodeContent(input: GraphContentCasInput): Promise<GraphContentCasMutation>;
   deleteGraphNode(input: { graphNodeId: string }): Promise<void>;
   connectGraphNodes(input: {
     sourceGraphNodeId: string; targetGraphNodeId: string;
@@ -416,6 +536,8 @@ export interface WorkspaceTransport {
 
   // ---- Joined reads (both targets) ----
   loadCanvasView(input: { databasePath?: string; canvasId: string; lens: "canvas" | "timeline" }): Promise<CanvasView>;
+  loadTimelineView(input: LoadTimelineViewRequest): Promise<TimelineView>;
+  upsertTimelineLayout(input: UpsertTimelineLayoutInput): Promise<TimelineLayoutMutationResult>;
 
   // ---- Two-lens / archetypal lighting ----
   archetypalLighting(input: { operatorGraphNodeId: string }): Promise<ArchetypalLighting>;
@@ -435,14 +557,17 @@ export interface WorkspaceTransport {
   readLocalNodeDocument(input: {
     databasePath: string;
     graphNodeId: string;
-  }): Promise<{ body: string; summary: string; neo4jSynced: boolean } | null>;
-  upsertLocalNodeDocument(input: {
+  }): Promise<LocalNodeDocument | null>;
+  listPendingNodeDocumentSyncs(input: {
+    databasePath: string;
+  }): Promise<PendingNodeDocumentSync[]>;
+  upsertLocalNodeDocument(input: LocalNodeDocumentInput): Promise<LocalNodeDocumentWriteResult>;
+  acknowledgeLocalNodeDocumentSync(input: {
     databasePath: string;
     graphNodeId: string;
-    body: string;
-    summary: string;
-    neo4jSynced?: boolean;
-  }): Promise<void>;
+    expectedRevision: number;
+    expectedOrigin: ContentOrigin;
+  }): Promise<SyncAcknowledgementMutation>;
 }
 
 const DEFAULT_BRIDGE_PORT = 4789;
@@ -573,11 +698,17 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async readGraphNode(input) {
       return invokeTauri<GraphNode>("read_graph_node_command", { request: input });
     },
+    async findGraphNode(input) {
+      return invokeTauri<GraphNode | null>("find_graph_node_command", { request: input });
+    },
     async createGraphNode(input) {
       return invokeTauri<GraphNode>("create_graph_node_command", { request: input });
     },
     async updateGraphNode(input) {
       return invokeTauri<GraphNode>("update_graph_node_command", { request: input });
+    },
+    async compareAndSwapGraphNodeContent(input) {
+      return invokeTauri<GraphContentCasMutation>("compare_and_swap_graph_node_content_command", { request: input });
     },
     async deleteGraphNode(input) {
       await invokeTauri<void>("delete_graph_node_command", { request: input });
@@ -606,6 +737,12 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async loadCanvasView(input) {
       return invokeTauri<CanvasView>("load_canvas_view_command", { request: input });
     },
+    async loadTimelineView(input) {
+      return invokeTauri<TimelineView>("load_timeline_view_command", { request: input });
+    },
+    async upsertTimelineLayout(input) {
+      return invokeTauri<TimelineLayoutMutationResult>("upsert_timeline_layout_command", { request: input });
+    },
     async archetypalLighting(input) {
       return invokeTauri<ArchetypalLighting>("archetypal_lighting_command", { request: input });
     },
@@ -628,13 +765,22 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
       return rows.map(mapAgentActivityRow);
     },
     async readLocalNodeDocument(input) {
-      return invokeTauri<{ body: string; summary: string; neo4jSynced: boolean } | null>(
+      return invokeTauri<LocalNodeDocument | null>(
         "read_local_node_document_command",
         { request: input }
       );
     },
+    async listPendingNodeDocumentSyncs(input) {
+      return invokeTauri<PendingNodeDocumentSync[]>(
+        "list_pending_node_document_syncs_command",
+        { request: input }
+      );
+    },
     async upsertLocalNodeDocument(input) {
-      await invokeTauri<void>("upsert_local_node_document_command", { request: input });
+      return invokeTauri<LocalNodeDocumentWriteResult>("upsert_local_node_document_command", { request: input });
+    },
+    async acknowledgeLocalNodeDocumentSync(input) {
+      return invokeTauri<SyncAcknowledgementMutation>("acknowledge_local_node_document_sync_command", { request: input });
     },
   };
 }
@@ -744,6 +890,7 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
         `/graph/node/${encodeURIComponent(input.graphNodeId)}`,
       );
     },
+    async findGraphNode() { throw new Error("read-only web build"); },
     async searchGraph(input) {
       const params = new URLSearchParams({ query: input.query });
       if (input.limit != null) params.set("limit", String(input.limit));
@@ -753,6 +900,13 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       const params = new URLSearchParams({ canvasId: input.canvasId, lens: input.lens });
       return requestJsonWithRetry<CanvasView>(`/graph/canvas-view?${params.toString()}`);
     },
+    async loadTimelineView(input) {
+      return requestJsonWithRetry<TimelineView>("/graph/timeline-view", {
+        method: "POST",
+        body: input,
+      });
+    },
+    async upsertTimelineLayout() { throw new Error("read-only web build"); },
     async archetypalLighting(input) {
       return requestJsonWithRetry<ArchetypalLighting>(
         `/graph/lighting/${encodeURIComponent(input.operatorGraphNodeId)}`,
@@ -765,6 +919,7 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     },
     async createGraphNode() { throw new Error("read-only web build"); },
     async updateGraphNode() { throw new Error("read-only web build"); },
+    async compareAndSwapGraphNodeContent() { throw new Error("read-only web build"); },
     async deleteGraphNode() { throw new Error("read-only web build"); },
     async connectGraphNodes() { throw new Error("read-only web build"); },
     async disconnectGraphNodes() { throw new Error("read-only web build"); },
@@ -781,7 +936,9 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       return rows.map(mapAgentActivityRow);
     },
     async readLocalNodeDocument() { throw new Error("read-only web build"); },
+    async listPendingNodeDocumentSyncs() { throw new Error("read-only web build"); },
     async upsertLocalNodeDocument() { throw new Error("read-only web build"); },
+    async acknowledgeLocalNodeDocumentSync() { throw new Error("read-only web build"); },
   };
 }
 
@@ -1040,6 +1197,62 @@ function defaultLayoutFor(graphNodeId: string, canvasId: string): NodeLayout {
   };
 }
 
+type TimelineInstantKey = readonly [number, number, number, number, number, number, number];
+
+function parseStaticTimelineInstant(value: string | null): TimelineInstantKey | null {
+  if (value === null || value.trim() !== value || value.startsWith("+")) return null;
+  const trimmed = value.trim();
+  if (/^-?\d{1,6}$/u.test(trimmed)) return [Number(trimmed), 1, 1, 0, 0, 0, 0];
+  const rfc3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$/u.exec(trimmed);
+  if (rfc3339) {
+    const localYear = Number(rfc3339[1]);
+    const localMonth = Number(rfc3339[2]);
+    const localDay = Number(rfc3339[3]);
+    if (localMonth < 1 || localMonth > 12 || localDay < 1 || localDay > timelineDaysInMonth(localYear, localMonth)) return null;
+    const date = new Date(trimmed);
+    if (Number.isNaN(date.getTime())) return null;
+    return [date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds(), date.getUTCMilliseconds()];
+  }
+  const match = /^(-?\d{1,6})-(\d{2})(?:-(\d{2}))?$/u.exec(trimmed);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = match[3] === undefined ? 1 : Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > timelineDaysInMonth(year, month)) return null;
+  return [year, month, day, 0, 0, 0, 0];
+}
+
+function timelineDaysInMonth(year: number, month: number): number {
+  if ([4, 6, 9, 11].includes(month)) return 30;
+  if (month !== 2) return 31;
+  const mod = (value: number, divisor: number) => ((value % divisor) + divisor) % divisor;
+  return mod(year, 4) === 0 && (mod(year, 100) !== 0 || mod(year, 400) === 0) ? 29 : 28;
+}
+
+function compareTimelineKeys(a: TimelineInstantKey, b: TimelineInstantKey): number {
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) return a[index] - b[index];
+  }
+  return 0;
+}
+
+function staticTimelineDiagnostic(node: GraphNode): string | null {
+  if (node.temporalPrecision === null) return "temporal node is missing temporalPrecision";
+  const start = parseStaticTimelineInstant(node.validFrom);
+  if (start === null) return `invalid validFrom temporal anchor: ${node.validFrom ?? "null"}`;
+  if (node.validTo !== null) {
+    const end = parseStaticTimelineInstant(node.validTo);
+    if (end === null) return `invalid validTo temporal anchor: ${node.validTo}`;
+    if (compareTimelineKeys(end, start) < 0) return "validTo precedes validFrom";
+  }
+  return null;
+}
+
+function matchesTimelineFilter<T>(value: T | null, filter?: { include?: T[]; exclude?: T[] }): boolean {
+  const included = !filter?.include?.length || (value !== null && filter.include.includes(value));
+  return included && !(value !== null && filter?.exclude?.includes(value));
+}
+
 export function createStaticBundleTransport(bundle: GraphExportBundle): WorkspaceTransport {
   const nodeById = new Map<string, GraphNode>(
     bundle.nodes.map((node) => [node.graphNodeId, node])
@@ -1079,6 +1292,9 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
         throw new Error(`graph node not found: ${graphNodeId}`);
       }
       return node;
+    },
+    async findGraphNode({ graphNodeId }) {
+      return nodeById.get(graphNodeId) ?? null;
     },
     async searchGraph({ query, limit }) {
       const needle = query.trim().toLowerCase();
@@ -1122,6 +1338,47 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
         appState: bundle.appState
       };
     },
+    async loadTimelineView({ workspaceId, filters }) {
+      const canonicalWorkspaceId = `static:${bundle.project.id}`;
+      if (workspaceId.trim() === "" || workspaceId !== canonicalWorkspaceId) {
+        throw new Error(`workspaceId does not match static bundle: expected ${canonicalWorkspaceId}`);
+      }
+      const temporalNodes = bundle.nodes
+        .filter((node) => node.isTemporal)
+        .filter((node) => matchesTimelineFilter(node.entityType, filters?.entityTypes))
+        .filter((node) => matchesTimelineFilter(node.historicity, filters?.historicities))
+        .filter((node) => matchesTimelineFilter(node.temporalRole, filters?.temporalRoles));
+      const invalid = temporalNodes.filter((node) =>
+        staticTimelineDiagnostic(node) !== null
+      );
+      const timelineLayoutById = new Map(bundle.timelineLayout.map((record) => [record.graphNodeId, record.layout]));
+      const nodes = temporalNodes
+        .filter((node): node is GraphNode & { validFrom: string; temporalPrecision: NonNullable<GraphNode["temporalPrecision"]> } =>
+          !invalid.includes(node) && typeof node.validFrom === "string" && node.temporalPrecision !== null
+        )
+        .map((node) => ({
+          node,
+          anchor: {
+            validFrom: node.validFrom,
+            validTo: node.validTo,
+            precision: node.temporalPrecision,
+          },
+          layoutOverride: timelineLayoutById.get(node.graphNodeId) ?? null,
+        }));
+      return {
+        workspaceId: canonicalWorkspaceId,
+        nodes,
+        lanes: [],
+        diagnostics: invalid.map((node) => ({
+          graphNodeId: node.graphNodeId,
+          code: "invalid_temporal_anchor" as const,
+          message: staticTimelineDiagnostic(node) ?? "invalid temporal anchor",
+          validFrom: node.validFrom,
+          validTo: node.validTo,
+        })),
+      };
+    },
+    async upsertTimelineLayout() { throw new Error("read-only static bundle"); },
     async archetypalLighting({ operatorGraphNodeId }) {
       const operator = nodeById.get(operatorGraphNodeId);
       if (!operator) {
@@ -1151,6 +1408,7 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
     // ---- mutations: structurally forbidden on the web read-layer ----
     createGraphNode: readOnlyReject,
     updateGraphNode: readOnlyReject,
+    compareAndSwapGraphNodeContent: readOnlyReject,
     deleteGraphNode: readOnlyReject,
     connectGraphNodes: readOnlyReject,
     disconnectGraphNodes: readOnlyReject,
@@ -1168,6 +1426,8 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
 
     // ---- local node document: local-only SQLite store, not part of the static bundle ----
     readLocalNodeDocument: readOnlyReject,
-    upsertLocalNodeDocument: readOnlyReject
+    listPendingNodeDocumentSyncs: readOnlyReject,
+    upsertLocalNodeDocument: readOnlyReject,
+    acknowledgeLocalNodeDocumentSync: readOnlyReject
   };
 }

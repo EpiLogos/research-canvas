@@ -52,10 +52,39 @@ const MIGRATIONS: &[Migration] = &[
         version: "0010_node_document",
         sql: include_str!("../../migrations/0010_node_document.sql"),
     },
+    Migration {
+        version: "0011_graph_node_metadata",
+        sql: include_str!("../../migrations/0011_graph_node_metadata.sql"),
+    },
+    Migration {
+        version: "0012_timeline_layout",
+        sql: include_str!("../../migrations/0012_timeline_layout.sql"),
+    },
+    Migration {
+        version: "0013_node_document_reconciliation",
+        sql: include_str!("../../migrations/0013_node_document_reconciliation.sql"),
+    },
 ];
 
 impl MigrationRunner {
     pub fn migrate(connection: &Connection) -> Result<()> {
+        Self::migrate_selected(connection, MIGRATIONS.len())
+    }
+
+    /// Executes the real ordered migration chain through an inclusive version.
+    /// This narrow boundary exists so upgrade tests can construct authentic old
+    /// databases without copying or approximating historical schemas.
+    #[doc(hidden)]
+    pub fn migrate_through(connection: &Connection, through_version: &str) -> Result<()> {
+        let migration_count = MIGRATIONS
+            .iter()
+            .position(|migration| migration.version == through_version)
+            .map(|index| index + 1)
+            .ok_or_else(|| rusqlite::Error::InvalidParameterName(through_version.into()))?;
+        Self::migrate_selected(connection, migration_count)
+    }
+
+    fn migrate_selected(connection: &Connection, migration_count: usize) -> Result<()> {
         connection.execute_batch(
             "CREATE TABLE IF NOT EXISTS schema_migrations (
                 version TEXT PRIMARY KEY NOT NULL,
@@ -67,7 +96,7 @@ impl MigrationRunner {
         let applied_versions = applied_versions(connection)?;
         let transaction = TransactionGuard::begin(connection)?;
 
-        for migration in MIGRATIONS {
+        for migration in MIGRATIONS.iter().take(migration_count) {
             if applied_versions.contains(migration.version) {
                 continue;
             }

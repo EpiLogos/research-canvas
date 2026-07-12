@@ -14,12 +14,52 @@ fn create_graph_node_request_deserializes_camel_case() {
         "validFrom": "1621",
         "validTo": "1621",
         "temporalPrecision": "year",
-        "sourceCoordinates": ["#2"]
+        "sourceCoordinates": ["#2"],
+        "evidenceTags": ["documented"],
+        "sourceKind": "historical-event",
+        "contentOrigin": "corpus_compiled",
+        "contentRevision": 4,
+        "seedSchemaVersion": 2,
+        "bodySourceCoordinates": ["Canon/banda.md#reading"],
+        "historicity": "historical",
+        "claimKind": "fact",
+        "evidenceStatus": "documented",
+        "temporalRole": "occurred_at",
+        "placeCoverage": "resolved",
+        "qlForm": "partial_positional_map",
+        "qlUnitId": "ql-banda",
+        "qlArc": "braided",
+        "qlTopology": "composite",
+        "qlSchemaVersion": 2,
+        "qlSourceCoordinates": ["Canon/ql/banda.md#unit"],
+        "qlCompletenessStatus": "partial"
     }"##;
     let req: CreateGraphNodeRequest = serde_json::from_str(raw).expect("deserialize");
-    assert_eq!(req.entity_type, "Event");
+    assert_eq!(req.entity_type.as_str(), "Event");
     assert_eq!(req.is_temporal, true);
     assert_eq!(req.source_coordinates, vec!["#2".to_string()]);
+    assert_eq!(
+        req.content_origin.expect("content origin").as_str(),
+        "corpus_compiled"
+    );
+    assert_eq!(req.historicity.expect("historicity").as_str(), "historical");
+    assert_eq!(
+        req.ql_form.expect("QL form").as_str(),
+        "partial_positional_map"
+    );
+}
+
+#[test]
+fn create_graph_node_request_rejects_unknown_controlled_values() {
+    let raw = r#"{
+        "entityType":"Event",
+        "title":"Invalid",
+        "body":"[]",
+        "isTemporal":false,
+        "historicity":"legendary-ish"
+    }"#;
+
+    assert!(serde_json::from_str::<CreateGraphNodeRequest>(raw).is_err());
 }
 
 #[test]

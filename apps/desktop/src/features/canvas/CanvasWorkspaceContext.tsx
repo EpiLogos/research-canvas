@@ -22,8 +22,12 @@ import {
   serializeLayoutSnapshot,
   type ContentLinkingActions,
 } from "@research-canvas/canvas";
-import { buildNewGraphNodeInput, seedNoteNodeEffects } from "./nodeCreation";
-import { retryPendingGraphNodeSyncs } from "./pendingGraphNodeSync";
+import { buildNewGraphNodeInput, createPreparedNoteNode } from "./nodeCreation";
+import {
+  rehydratePendingGraphNodeSyncs,
+  retryPendingGraphNodeSyncs,
+  startDurablePendingGraphNodeSyncRetryInterval,
+} from "./pendingGraphNodeSync";
 import { canvasViewToCanvasNodes } from "./canvasViewToNodes";
 import { selectLegacyNodesNeedingImport, importLegacyCanvasNodes } from "./legacyNodeImport";
 import type { CanvasNode, CanvasEdge, Viewport } from "@research-canvas/schema";
@@ -58,6 +62,7 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   activeConstellationId: string | null;
   canvasId: string;
   databasePath: string | null;
+  workspaceId: string | null;
   entries: IndexedEntry[];
   errorMessage: string | null;
   addEdge: (input: {
@@ -137,6 +142,7 @@ export function CanvasWorkspaceProvider({
   );
   const [constellations, setConstellations] = useState<ConstellationTreeNode[]>([]);
   const [databasePath, setDatabasePath] = useState<string | null>(null);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [activeConstellation, setActiveConstellation] = useState<WorkspaceConstellation | null>(null);
   const [activeConstellationId, setActiveConstellationId] = useState<string | null>(null);
   const [activeCanvasId, setActiveCanvasId] = useState(EMPTY_CANVAS_ID);
@@ -151,8 +157,12 @@ export function CanvasWorkspaceProvider({
   const contentLinkingActions = useMemo<ContentLinkingActions>(
     () =>
       createContentLinkingActions({
+        databasePath: databasePath ?? "",
         readGraphNode: (input) => transport.readGraphNode(input),
-        updateGraphNode: (input) => transport.updateGraphNode(input),
+        readLocalNodeDocument: (input) => transport.readLocalNodeDocument(input),
+        upsertLocalNodeDocument: (input) => transport.upsertLocalNodeDocument(input),
+        compareAndSwapGraphNodeContent: (input) => transport.compareAndSwapGraphNodeContent(input),
+        acknowledgeLocalNodeDocumentSync: (input) => transport.acknowledgeLocalNodeDocumentSync(input),
         connectGraphNodes: (input) => transport.connectGraphNodes(input),
         createGraphNode: (input) => transport.createGraphNode(input),
         importNodeImage: (input) =>
@@ -162,7 +172,7 @@ export function CanvasWorkspaceProvider({
             sourceAbsolutePath: input.sourceAbsolutePath,
           }),
       }),
-    [transport, workingRoot],
+    [transport, workingRoot, databasePath],
   );
   const selectedEntryIdRef = useRef<string | null>(null);
   const selectedNodeIdRef = useRef<string | null>(null);
@@ -195,6 +205,7 @@ export function CanvasWorkspaceProvider({
 
         setConstellations(workspace.constellations);
         setDatabasePath(workspace.databasePath);
+        setWorkspaceId(workspace.workspaceId);
         setActiveConstellationId((current) =>
           current && workspace.constellations.some((constellation) => constellation.id === current)
             ? current
@@ -310,6 +321,16 @@ export function CanvasWorkspaceProvider({
         );
         setErrorMessage(null);
         setIsHydrated(true);
+        void rehydratePendingGraphNodeSyncs(databasePath, {
+          listPendingNodeDocumentSyncs: (input) => transport.listPendingNodeDocumentSyncs(input),
+          createGraphNode: (input) => transport.createGraphNode(input),
+          findGraphNode: (input) => transport.findGraphNode(input),
+          readLocalNodeDocument: (input) => transport.readLocalNodeDocument(input),
+          compareAndSwapGraphNodeContent: (input) => transport.compareAndSwapGraphNodeContent(input),
+          acknowledgeLocalNodeDocumentSync: (input) => transport.acknowledgeLocalNodeDocumentSync(input),
+        }).catch((error) => {
+          console.warn("durable pending node sync hydration failed; rows remain pending", error);
+        });
         if (isTauriRuntime()) {
           invoke("activate_canvas_command", { canvasId: primaryCanvasId }).catch(() => {});
         }
@@ -472,7 +493,13 @@ export function CanvasWorkspaceProvider({
       stores.store.getState().hydrate({ nodes, edges });
       // A successful transport round-trip is a good signal Neo4j is
       // reachable again — opportunistically retry anything pending.
-      void retryPendingGraphNodeSyncs((input) => transport.createGraphNode(input));
+      void retryPendingGraphNodeSyncs({
+        createGraphNode: (input) => transport.createGraphNode(input),
+        findGraphNode: (input) => transport.findGraphNode(input),
+        readLocalNodeDocument: (input) => transport.readLocalNodeDocument(input),
+        compareAndSwapGraphNodeContent: (input) => transport.compareAndSwapGraphNodeContent(input),
+        acknowledgeLocalNodeDocumentSync: (input) => transport.acknowledgeLocalNodeDocumentSync(input),
+      });
     } catch (error) {
       console.error("refreshCanvas: loadCanvasView failed", error);
       setErrorMessage(error instanceof Error ? error.message : "failed to refresh canvas");
@@ -498,16 +525,21 @@ export function CanvasWorkspaceProvider({
     };
   }, [refreshCanvas]);
 
-  // Reconnect/retry: nodes created while Neo4j was unreachable are recorded
-  // as "pending sync" (pendingGraphNodeSync.ts). Re-attempt them on a modest
-  // interval — simple and best-effort, never blocking the UI. A node that
-  // syncs successfully is cleared from the pending set by the helper itself.
+  // Reconnect/retry: rescan SQLite, rather than only the process-local map, so
+  // ordinary document saves made while Neo4j was unavailable are discovered
+  // without an app restart. Reconciliation remains single-flight and never
+  // blocks the UI.
   useEffect(() => {
-    const intervalId = setInterval(() => {
-      void retryPendingGraphNodeSyncs((input) => transport.createGraphNode(input));
-    }, 15_000);
-    return () => clearInterval(intervalId);
-  }, [transport]);
+    if (!databasePath) return;
+    return startDurablePendingGraphNodeSyncRetryInterval(databasePath, {
+      listPendingNodeDocumentSyncs: (input) => transport.listPendingNodeDocumentSyncs(input),
+      createGraphNode: (input) => transport.createGraphNode(input),
+      findGraphNode: (input) => transport.findGraphNode(input),
+      readLocalNodeDocument: (input) => transport.readLocalNodeDocument(input),
+      compareAndSwapGraphNodeContent: (input) => transport.compareAndSwapGraphNodeContent(input),
+      acknowledgeLocalNodeDocumentSync: (input) => transport.acknowledgeLocalNodeDocumentSync(input),
+    });
+  }, [databasePath, transport]);
 
   const flushActiveCanvas = useCallback(async () => {
     if (!databasePath || !activeConstellation) {
@@ -580,6 +612,7 @@ export function CanvasWorkspaceProvider({
       activeConstellationId,
       canvasId: activeCanvasId,
       databasePath,
+      workspaceId,
       entries,
       errorMessage,
       isHydrated,
@@ -652,31 +685,25 @@ export function CanvasWorkspaceProvider({
       },
       async createNoteNode(position) {
         const graphNodeId = crypto.randomUUID();
-        // Local-first: add the node immediately so it always appears and
-        // persists (SQLite layout), regardless of Neo4j availability.
-        const node = stores.store.getState().createNoteNode({
-          title: "Untitled note",
-          content: "",
-          id: graphNodeId,
-          graphNodeId,
-        });
-        if (position) {
-          stores.store.getState().updateNodePosition(node.id, position);
-        }
-        // Seed a local node document immediately (so the editor can open the
-        // note right away, even fully offline), then best-effort sync theory
-        // substance to Neo4j — a failure here never discards the local node;
-        // it's recorded as pending and retried later (see
-        // pendingGraphNodeSync.ts / the retry effect below).
-        void seedNoteNodeEffects({
+        await createPreparedNoteNode({
           graphNodeId,
           title: "Untitled note",
           databasePath,
           upsertLocalNodeDocument: (input) => transport.upsertLocalNodeDocument(input),
+          publishCanvasNode: () => {
+            const node = stores.store.getState().createNoteNode({
+              title: "Untitled note", content: "", id: graphNodeId, graphNodeId,
+            });
+            if (position) {
+              stores.store.getState().updateNodePosition(node.id, position);
+            }
+          },
           createGraphNode: (input) =>
             transport.createGraphNode(
               input as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string }
             ),
+          acknowledgeLocalNodeDocumentSync: (input) =>
+            transport.acknowledgeLocalNodeDocumentSync(input),
         });
       },
       async createGroupNode(position) {
@@ -911,6 +938,7 @@ export function CanvasWorkspaceProvider({
       activeCanvasId,
       contentLinkingActions,
       databasePath,
+      workspaceId,
       entries,
       errorMessage,
       isHydrated,

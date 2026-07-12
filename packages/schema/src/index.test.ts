@@ -1,18 +1,109 @@
 import { describe, expect, it } from "vitest";
+import vocabularyManifest from "../../../tests/fixtures/contracts/graph-vocabularies.json";
 
 import {
   annotationSchema,
   edgeSchema,
   exportBundleSchema,
+  graphNodeSchema,
+  normalizeLegacyGraphNode,
   noteNodeSchema,
   portalNodeSchema,
   projectSchema,
   resourceNodeSchema,
+  ENTITY_TYPES, TEMPORAL_PRECISIONS, CONTENT_ORIGINS, HISTORICITIES, CLAIM_KINDS,
+  EVIDENCE_STATUSES, TEMPORAL_ROLES, PLACE_COVERAGES, QL_FORMS, QL_ARCS,
+  QL_TOPOLOGIES, QL_COMPLETENESS_STATUSES,
 } from "./index";
 
 const now = "2026-03-30T20:00:00.000Z";
 
 describe("schema package", () => {
+  it("matches every controlled value in the shared vocabulary manifest", () => {
+    expect({
+      entityType: ENTITY_TYPES, temporalPrecision: TEMPORAL_PRECISIONS,
+      contentOrigin: CONTENT_ORIGINS, historicity: HISTORICITIES,
+      claimKind: CLAIM_KINDS, evidenceStatus: EVIDENCE_STATUSES,
+      temporalRole: TEMPORAL_ROLES, placeCoverage: PLACE_COVERAGES,
+      qlForm: QL_FORMS, qlArc: QL_ARCS, qlTopology: QL_TOPOLOGIES,
+      qlCompletenessStatus: QL_COMPLETENESS_STATUSES,
+    }).toEqual(vocabularyManifest);
+  });
+
+  it("rejects negative and non-JavaScript-safe revisions", () => {
+    const canonical = normalizeLegacyGraphNode({
+      graphNodeId: "revision-node", entityType: "Event", title: "Revision", body: "[]",
+      summary: "", archetypalResonance: null, coordinate: null, sourceCoordinates: [],
+      isTemporal: false, validFrom: null, validTo: null, temporalPrecision: null,
+      createdAt: now, updatedAt: now,
+    });
+    expect(graphNodeSchema.safeParse({ ...canonical, contentRevision: -1 }).success).toBe(false);
+    expect(graphNodeSchema.safeParse({ ...canonical, qlSchemaVersion: Number.MAX_SAFE_INTEGER + 1 }).success).toBe(false);
+  });
+  it("keeps legacy omission handling outside the canonical graph-node schema", () => {
+    const legacy = {
+      graphNodeId: "legacy-node",
+      entityType: "Event",
+      title: "Legacy event",
+      body: "[]",
+      summary: "",
+      archetypalResonance: null,
+      coordinate: null,
+      sourceCoordinates: [],
+      isTemporal: true,
+      validFrom: "1621",
+      validTo: null,
+      temporalPrecision: "year",
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    expect(graphNodeSchema.safeParse(legacy).success).toBe(false);
+    expect(normalizeLegacyGraphNode(legacy)).toMatchObject({
+      contentOrigin: null,
+      bodySourceCoordinates: [],
+      historicity: null,
+      qlSourceCoordinates: [],
+    });
+  });
+  it("rejects uncontrolled historical and QL metadata values", () => {
+    const result = graphNodeSchema.safeParse({
+      graphNodeId: "contract-invalid",
+      entityType: "Event",
+      title: "Invalid controlled value",
+      body: "[]",
+      summary: "",
+      archetypalResonance: null,
+      coordinate: null,
+      sourceCoordinates: [],
+      evidenceTags: [],
+      sourceKind: null,
+      contentOrigin: null,
+      contentRevision: null,
+      seedSchemaVersion: null,
+      bodySourceCoordinates: [],
+      historicity: "legendary-ish",
+      claimKind: null,
+      evidenceStatus: null,
+      temporalRole: null,
+      placeCoverage: "somewhere",
+      qlForm: null,
+      qlUnitId: null,
+      qlArc: null,
+      qlTopology: "mobius",
+      qlSchemaVersion: null,
+      qlSourceCoordinates: [],
+      qlCompletenessStatus: null,
+      isTemporal: false,
+      validFrom: null,
+      validTo: null,
+      temporalPrecision: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    expect(result.success).toBe(false);
+  });
   it("validates a project with publish settings", () => {
     const parsed = projectSchema.parse({
       id: "2a2edca9-e4af-4b2d-b1aa-7353f2bb20f4",
