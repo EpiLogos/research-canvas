@@ -15,7 +15,11 @@ use research_canvas_desktop_lib::commands::search::{
 };
 use research_canvas_desktop_lib::db::{
     connection::Database,
-    repositories::{layout::LayoutRepository, ConstellationRepository},
+    repositories::{
+        graph::ContentOrigin, layout::LayoutRepository, ConstellationRepository,
+        NodeDocumentMutation, NodeDocumentRepository, SyncAcknowledgementMutation,
+    },
+    root_archetypal_seed::root_archetypal_document_inputs,
 };
 use serde_json::json;
 
@@ -46,6 +50,15 @@ fn session_database_path(session_name: &str) -> PathBuf {
 
 fn session_timestamp() -> String {
     "2026-03-31T09:00:00Z".to_string()
+}
+
+fn string_set(db: &Database, sql: &str) -> std::collections::BTreeSet<String> {
+    let mut statement = db.connection().prepare(sql).expect("prepare set query");
+    statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .expect("query set")
+        .collect::<Result<_, _>>()
+        .expect("collect set")
 }
 
 fn node_with_note_text(canvas_id: &str, id: &str, title: &str, content: &str) -> CanvasNodePayload {
@@ -284,6 +297,502 @@ fn bootstrap_workspace_surfaces_root_constellation_portals_and_preserves_layout_
         preserved_x, 1234.0,
         "workspace bootstrap inserts missing constellation portals without reseeding over user layout"
     );
+}
+
+#[test]
+fn production_bootstrap_materializes_the_complete_offline_graph_projection_idempotently() {
+    let database_path = session_database_path(&format!(
+        "workspace-local-projection-{}",
+        std::process::id()
+    ));
+    cleanup_database(&database_path);
+
+    let canonical = root_archetypal_document_inputs("root-archetypal-field");
+    let first = bootstrap_workspace_at(&database_path).expect("first bootstrap");
+    let db = Database::open(&database_path).expect("sqlite after first bootstrap");
+    let metadata_count: i64 = db
+        .connection()
+        .query_row("SELECT count(*) FROM graph_node_metadata", [], |row| {
+            row.get(0)
+        })
+        .expect("metadata count");
+    let document_count: i64 = db
+        .connection()
+        .query_row("SELECT count(*) FROM node_document", [], |row| row.get(0))
+        .expect("document count");
+    assert_eq!(metadata_count as usize, canonical.len());
+    assert_eq!(document_count as usize, canonical.len());
+
+    let canonical_ids = canonical
+        .iter()
+        .map(|input| input.graph_node_id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut statement = db
+        .connection()
+        .prepare("SELECT graph_node_id FROM graph_node_metadata ORDER BY graph_node_id")
+        .expect("prepare ids");
+    let persisted_ids = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .expect("query ids")
+        .collect::<Result<std::collections::BTreeSet<_>, _>>()
+        .expect("collect ids");
+    assert_eq!(
+        persisted_ids,
+        canonical_ids
+            .into_iter()
+            .map(str::to_string)
+            .collect::<std::collections::BTreeSet<_>>()
+    );
+
+    let temporal: (String, String, String, String) = db
+        .connection()
+        .query_row(
+            "SELECT historicity, temporal_role, valid_from, temporal_precision
+             FROM graph_node_metadata
+             WHERE graph_node_id='root-archetypal-field:balfour-declaration'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .expect("typed temporal metadata");
+    assert_eq!(
+        temporal,
+        (
+            "historical".into(),
+            "occurred_at".into(),
+            "1917-11-02".into(),
+            "day".into()
+        )
+    );
+
+    let pending = NodeDocumentRepository::new(db.connection())
+        .list_pending_syncs()
+        .expect("offline bootstrap has durable pending syncs");
+    assert_eq!(pending.len(), canonical.len());
+    assert!(pending.iter().all(|item| !item.document.neo4j_synced));
+
+    let first_metadata_ids = string_set(
+        &db,
+        "SELECT graph_node_id FROM graph_node_metadata ORDER BY graph_node_id",
+    );
+    let first_document_ids = string_set(
+        &db,
+        "SELECT graph_node_id FROM node_document ORDER BY graph_node_id",
+    );
+    let first_canvas_ids = string_set(&db, "SELECT id FROM canvases ORDER BY id");
+    let first_layout_refs = string_set(
+        &db,
+        "SELECT canvas_id || '|' || graph_node_id FROM node_layout
+         ORDER BY canvas_id, graph_node_id",
+    );
+
+    let acknowledged_id = "root-archetypal-field:bank-of-england";
+    assert_eq!(
+        NodeDocumentRepository::new(db.connection())
+            .acknowledge_sync(acknowledged_id, 1, ContentOrigin::Seed)
+            .expect("acknowledge exact remote seed revision"),
+        SyncAcknowledgementMutation::Updated
+    );
+    drop(statement);
+    drop(db);
+
+    let second = bootstrap_workspace_at(&database_path).expect("idempotent second bootstrap");
+    assert_eq!(
+        second.active_constellation_id,
+        first.active_constellation_id
+    );
+    let db = Database::open(&database_path).expect("sqlite after second bootstrap");
+    let second_metadata_ids = string_set(
+        &db,
+        "SELECT graph_node_id FROM graph_node_metadata ORDER BY graph_node_id",
+    );
+    let second_document_ids = string_set(
+        &db,
+        "SELECT graph_node_id FROM node_document ORDER BY graph_node_id",
+    );
+    let second_canvas_ids = string_set(&db, "SELECT id FROM canvases ORDER BY id");
+    let second_layout_refs = string_set(
+        &db,
+        "SELECT canvas_id || '|' || graph_node_id FROM node_layout
+         ORDER BY canvas_id, graph_node_id",
+    );
+    assert_eq!(second_metadata_ids, first_metadata_ids);
+    assert_eq!(second_document_ids, first_document_ids);
+    assert_eq!(second_canvas_ids, first_canvas_ids);
+    assert_eq!(second_layout_refs, first_layout_refs);
+    assert_eq!(second_metadata_ids.len(), metadata_count as usize);
+    assert_eq!(second_document_ids.len(), document_count as usize);
+    assert_eq!(second_canvas_ids.len(), 19);
+    assert_eq!(second_layout_refs.len(), 159);
+    let acknowledgement: (i64, String, i64) = db
+        .connection()
+        .query_row(
+            "SELECT d.neo4j_synced, m.sync_state, m.remote_revision
+             FROM node_document d JOIN graph_node_metadata m USING(graph_node_id)
+             WHERE d.graph_node_id=?1",
+            [acknowledged_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("read preserved acknowledgement");
+    assert_eq!(acknowledgement, (1, "synced".into(), 1));
+
+    let edited_id = "root-archetypal-field:balfour-declaration";
+    let edited = NodeDocumentRepository::new(db.connection())
+        .apply_user_edit(edited_id, "user body", "user face", 1)
+        .expect("edit canonical body");
+    assert_eq!(edited, NodeDocumentMutation::Updated);
+    db.connection()
+        .execute(
+            "UPDATE graph_node_metadata SET ql_form='partial_positional_map',
+             ql_unit_id='reviewed-unit', ql_arc='braided', ql_topology='composite',
+             ql_schema_version=23, ql_source_coordinates_json='[\"reviewed/source.md\"]',
+             ql_completeness_status='partial'
+             WHERE graph_node_id=?1",
+            [edited_id],
+        )
+        .expect("simulate reviewed QL metadata");
+    db.connection()
+        .execute(
+            "UPDATE node_layout SET position_x=4321, width=777,
+             style_json='{\"preserve\":true}' WHERE graph_node_id=?1",
+            [edited_id],
+        )
+        .expect("edit layout");
+    drop(db);
+
+    let third = bootstrap_workspace_at(&database_path).expect("preservation bootstrap");
+    assert_eq!(third.active_constellation_id, first.active_constellation_id);
+    let reopened = Database::open(&database_path).expect("reopen");
+    let document = NodeDocumentRepository::new(reopened.connection())
+        .get_node_document(edited_id)
+        .expect("read edited document")
+        .expect("edited document exists");
+    assert_eq!(document.body, "user body");
+    assert_eq!(document.summary, "user face");
+    assert_eq!(document.content_origin, ContentOrigin::UserAuthored);
+    assert_eq!(document.content_revision, 2);
+    let retained: (
+        String,
+        String,
+        String,
+        String,
+        i64,
+        String,
+        String,
+        f64,
+        f64,
+        String,
+    ) = reopened
+        .connection()
+        .query_row(
+            "SELECT ql_form, ql_unit_id, ql_arc, ql_topology, ql_schema_version,
+                    ql_source_coordinates_json, ql_completeness_status,
+                    position_x, width, style_json
+             FROM graph_node_metadata JOIN node_layout USING(graph_node_id)
+             WHERE graph_node_id=?1 LIMIT 1",
+            [edited_id],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                    row.get(9)?,
+                ))
+            },
+        )
+        .expect("preserved metadata and layout");
+    assert_eq!(retained.0, "partial_positional_map");
+    assert_eq!(retained.1, "reviewed-unit");
+    assert_eq!(retained.2, "braided");
+    assert_eq!(retained.3, "composite");
+    assert_eq!(retained.4, 23);
+    assert_eq!(retained.5, "[\"reviewed/source.md\"]");
+    assert_eq!(retained.6, "partial");
+    assert_eq!(retained.7, 4321.0);
+    assert_eq!(retained.8, 777.0);
+    assert_eq!(retained.9, "{\"preserve\":true}");
+}
+
+#[test]
+fn production_bootstrap_rolls_back_full_projection_when_a_document_conflicts() {
+    let database_path = session_database_path(&format!(
+        "workspace-local-projection-conflict-{}",
+        std::process::id()
+    ));
+    cleanup_database(&database_path);
+    bootstrap_workspace_at(&database_path).expect("initial bootstrap");
+    let db = Database::open(&database_path).expect("sqlite");
+    let conflict_id = "root-archetypal-field:balfour-declaration";
+    let missing_id = "root-archetypal-field:bank-of-england";
+    let restored_title_id = "root-archetypal-field:opium-war";
+    let historical_canvas_id: String = db
+        .connection()
+        .query_row(
+            "SELECT id FROM canvases WHERE kind='constellation:historical-forms'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("historical forms canvas");
+    db.connection()
+        .execute(
+            "UPDATE node_document SET body='same revision divergence' WHERE graph_node_id=?1",
+            [conflict_id],
+        )
+        .expect("introduce explicit seed conflict");
+    db.connection()
+        .execute(
+            "DELETE FROM node_document WHERE graph_node_id=?1",
+            [missing_id],
+        )
+        .expect("delete document projection");
+    db.connection()
+        .execute(
+            "DELETE FROM graph_node_metadata WHERE graph_node_id=?1",
+            [missing_id],
+        )
+        .expect("delete metadata projection");
+    db.connection()
+        .execute(
+            "UPDATE graph_node_metadata SET title='sentinel before rollback' WHERE graph_node_id=?1",
+            [restored_title_id],
+        )
+        .expect("change structural projection");
+    db.connection()
+        .execute(
+            "UPDATE canvases SET name='sentinel canvas name' WHERE id=?1",
+            [&historical_canvas_id],
+        )
+        .expect("change bootstrap-managed canvas name");
+    assert_eq!(
+        db.connection()
+            .execute(
+                "DELETE FROM node_layout WHERE canvas_id=?1 AND graph_node_id=?2",
+                rusqlite::params![historical_canvas_id, missing_id],
+            )
+            .expect("remove bootstrap-managed layout"),
+        1
+    );
+    drop(db);
+
+    let error = bootstrap_workspace_at(&database_path).expect_err("conflict aborts bootstrap");
+    assert!(error.contains(conflict_id), "unexpected error: {error}");
+    let reopened = Database::open(&database_path).expect("reopen after rollback");
+    let missing_metadata: i64 = reopened
+        .connection()
+        .query_row(
+            "SELECT count(*) FROM graph_node_metadata WHERE graph_node_id=?1",
+            [missing_id],
+            |row| row.get(0),
+        )
+        .expect("missing metadata count");
+    let missing_document: i64 = reopened
+        .connection()
+        .query_row(
+            "SELECT count(*) FROM node_document WHERE graph_node_id=?1",
+            [missing_id],
+            |row| row.get(0),
+        )
+        .expect("missing document count");
+    assert_eq!((missing_metadata, missing_document), (0, 0));
+    let retained_title: String = reopened
+        .connection()
+        .query_row(
+            "SELECT title FROM graph_node_metadata WHERE graph_node_id=?1",
+            [restored_title_id],
+            |row| row.get(0),
+        )
+        .expect("title after rollback");
+    assert_eq!(retained_title, "sentinel before rollback");
+    let retained_canvas_name: String = reopened
+        .connection()
+        .query_row(
+            "SELECT name FROM canvases WHERE id=?1",
+            [&historical_canvas_id],
+            |row| row.get(0),
+        )
+        .expect("canvas name after rollback");
+    assert_eq!(retained_canvas_name, "sentinel canvas name");
+    let missing_layout: i64 = reopened
+        .connection()
+        .query_row(
+            "SELECT count(*) FROM node_layout WHERE canvas_id=?1 AND graph_node_id=?2",
+            rusqlite::params![historical_canvas_id, missing_id],
+            |row| row.get(0),
+        )
+        .expect("layout count after rollback");
+    assert_eq!(missing_layout, 0);
+}
+
+#[test]
+fn production_bootstrap_rejects_incompatible_metadata_only_rows_without_partial_writes() {
+    let database_path = session_database_path(&format!(
+        "workspace-metadata-only-conflict-{}",
+        std::process::id()
+    ));
+    cleanup_database(&database_path);
+    bootstrap_workspace_at(&database_path).expect("initial bootstrap");
+    let db = Database::open(&database_path).expect("sqlite");
+    let incompatible_id = "root-archetypal-field:bank-of-england";
+    let canvas_id: String = db
+        .connection()
+        .query_row(
+            "SELECT id FROM canvases WHERE kind='constellation:historical-forms'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("historical canvas");
+    db.connection()
+        .execute(
+            "DELETE FROM node_document WHERE graph_node_id=?1",
+            [incompatible_id],
+        )
+        .expect("remove document half");
+    db.connection()
+        .execute(
+            "UPDATE graph_node_metadata SET content_origin='user_authored', content_revision=2
+             WHERE graph_node_id=?1",
+            [incompatible_id],
+        )
+        .expect("make metadata incompatible with seed body");
+    db.connection()
+        .execute(
+            "UPDATE canvases SET name='metadata-only rollback sentinel' WHERE id=?1",
+            [&canvas_id],
+        )
+        .expect("change bootstrap-managed canvas");
+    assert_eq!(
+        db.connection()
+            .execute(
+                "DELETE FROM node_layout WHERE canvas_id=?1 AND graph_node_id=?2",
+                rusqlite::params![canvas_id, incompatible_id],
+            )
+            .expect("remove managed layout"),
+        1
+    );
+    drop(db);
+
+    let error = bootstrap_workspace_at(&database_path)
+        .expect_err("incompatible metadata-only row aborts bootstrap");
+    assert!(error.contains(incompatible_id), "unexpected error: {error}");
+    let reopened = Database::open(&database_path).expect("reopen after abort");
+    let state: (i64, String, i64, String, i64) = reopened
+        .connection()
+        .query_row(
+            "SELECT
+                (SELECT count(*) FROM node_document WHERE graph_node_id=?1),
+                m.content_origin, m.content_revision,
+                (SELECT name FROM canvases WHERE id=?2),
+                (SELECT count(*) FROM node_layout WHERE canvas_id=?2 AND graph_node_id=?1)
+             FROM graph_node_metadata m WHERE m.graph_node_id=?1",
+            rusqlite::params![incompatible_id, canvas_id],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
+        )
+        .expect("read unchanged incompatible state");
+    assert_eq!(
+        state,
+        (
+            0,
+            "user_authored".into(),
+            2,
+            "metadata-only rollback sentinel".into(),
+            0
+        )
+    );
+}
+
+#[test]
+fn production_bootstrap_rejects_synced_metadata_without_exact_remote_revision() {
+    for (label, remote_revision) in [("null", None), ("stale", Some(0_i64))] {
+        let database_path = session_database_path(&format!(
+            "workspace-synced-metadata-{label}-{}",
+            std::process::id()
+        ));
+        cleanup_database(&database_path);
+        bootstrap_workspace_at(&database_path).expect("initial bootstrap");
+        let db = Database::open(&database_path).expect("sqlite");
+        let graph_node_id = "root-archetypal-field:bank-of-england";
+        let canvas_id: String = db
+            .connection()
+            .query_row(
+                "SELECT id FROM canvases WHERE kind='constellation:historical-forms'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("historical canvas");
+        db.connection()
+            .execute(
+                "DELETE FROM node_document WHERE graph_node_id=?1",
+                [graph_node_id],
+            )
+            .expect("remove document half");
+        db.connection()
+            .execute(
+                "UPDATE graph_node_metadata SET sync_state='synced', remote_revision=?2
+                 WHERE graph_node_id=?1",
+                rusqlite::params![graph_node_id, remote_revision],
+            )
+            .expect("write invalid synced metadata");
+        db.connection()
+            .execute(
+                "UPDATE canvases SET name=?2 WHERE id=?1",
+                rusqlite::params![canvas_id, format!("{label} remote rollback sentinel")],
+            )
+            .expect("write canvas sentinel");
+        assert_eq!(
+            db.connection()
+                .execute(
+                    "DELETE FROM node_layout WHERE canvas_id=?1 AND graph_node_id=?2",
+                    rusqlite::params![canvas_id, graph_node_id],
+                )
+                .expect("remove managed layout"),
+            1
+        );
+        drop(db);
+
+        let error = bootstrap_workspace_at(&database_path)
+            .expect_err("invalid synced metadata-only row aborts bootstrap");
+        assert!(error.contains(graph_node_id), "unexpected error: {error}");
+        let reopened = Database::open(&database_path).expect("reopen after rollback");
+        let unchanged: (i64, String, Option<i64>, String, i64) = reopened
+            .connection()
+            .query_row(
+                "SELECT
+                    (SELECT count(*) FROM node_document WHERE graph_node_id=?1),
+                    m.sync_state, m.remote_revision,
+                    (SELECT name FROM canvases WHERE id=?2),
+                    (SELECT count(*) FROM node_layout WHERE canvas_id=?2 AND graph_node_id=?1)
+                 FROM graph_node_metadata m WHERE m.graph_node_id=?1",
+                rusqlite::params![graph_node_id, canvas_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .expect("read rolled back state");
+        assert_eq!(unchanged.0, 0);
+        assert_eq!(unchanged.1, "synced");
+        assert_eq!(unchanged.2, remote_revision);
+        assert_eq!(unchanged.3, format!("{label} remote rollback sentinel"));
+        assert_eq!(unchanged.4, 0);
+    }
 }
 
 #[test]

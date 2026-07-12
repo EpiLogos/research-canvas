@@ -174,6 +174,83 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
             reason: "graph metadata changed during optimistic update".into(),
         })
     }
+
+    /// Ensures the complete structural half of a canonical seed projection
+    /// while retaining the persisted content owner, revision and remote-sync
+    /// acknowledgement. Reviewed QL metadata is never erased by an older seed
+    /// that has no QL disposition yet.
+    pub fn ensure_seed_projection(
+        &self,
+        incoming: &GraphNodeMetadataRecord,
+    ) -> RepositoryResult<GraphMetadataMutation> {
+        validate_record_versions(incoming)?;
+        let Some(current) = self.get(&incoming.graph_node_id)? else {
+            return if insert_record(self.connection, incoming)? {
+                Ok(GraphMetadataMutation::Created)
+            } else {
+                Ok(GraphMetadataMutation::Conflict {
+                    current_revision: incoming.content_revision,
+                    reason: "graph node id was concurrently created".into(),
+                })
+            };
+        };
+
+        let persisted_seed_is_newer =
+            match (current.seed_schema_version, incoming.seed_schema_version) {
+                (Some(current), Some(incoming)) => current > incoming,
+                (Some(_), None) => true,
+                _ => false,
+            };
+        let mut desired = if persisted_seed_is_newer {
+            current.clone()
+        } else {
+            incoming.clone()
+        };
+        desired.content_origin = current.content_origin;
+        desired.content_revision = current.content_revision;
+        desired.body_source_coordinates = current.body_source_coordinates.clone();
+        desired.sync_state = current.sync_state;
+        desired.remote_revision = current.remote_revision;
+
+        // QL is one versioned disposition, never a bag of independently
+        // mergeable nullable fields. Equal versions deterministically accept
+        // the incoming canonical disposition; an absent incoming version
+        // preserves the persisted disposition intact.
+        let incoming_ql_wins = match (incoming.ql_schema_version, current.ql_schema_version) {
+            (Some(incoming), Some(current)) => incoming >= current,
+            (Some(_), None) => true,
+            (None, _) => false,
+        };
+        if incoming_ql_wins {
+            copy_ql_disposition(&mut desired, incoming);
+        } else {
+            copy_ql_disposition(&mut desired, &current);
+        }
+
+        if desired == current {
+            return Ok(GraphMetadataMutation::Preserved);
+        }
+        if update_record(self.connection, &desired, current.content_revision)? {
+            return Ok(GraphMetadataMutation::Updated);
+        }
+        Ok(GraphMetadataMutation::Conflict {
+            current_revision: self
+                .get(&incoming.graph_node_id)?
+                .map(|record| record.content_revision)
+                .unwrap_or(current.content_revision),
+            reason: "graph metadata changed during seed projection".into(),
+        })
+    }
+}
+
+fn copy_ql_disposition(target: &mut GraphNodeMetadataRecord, source: &GraphNodeMetadataRecord) {
+    target.ql_form = source.ql_form;
+    target.ql_unit_id = source.ql_unit_id.clone();
+    target.ql_arc = source.ql_arc;
+    target.ql_topology = source.ql_topology;
+    target.ql_schema_version = source.ql_schema_version;
+    target.ql_source_coordinates = source.ql_source_coordinates.clone();
+    target.ql_completeness_status = source.ql_completeness_status;
 }
 
 fn validate_record_versions(record: &GraphNodeMetadataRecord) -> RepositoryResult<()> {

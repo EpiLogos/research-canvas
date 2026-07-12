@@ -247,6 +247,25 @@ impl<'conn> NodeDocumentRepository<'conn> {
             return Ok(planned);
         }
         let transaction = TransactionGuard::begin(self.connection)?;
+        let fresh = self.apply_bulk_in_existing_transaction(items)?;
+        if fresh
+            .iter()
+            .any(|decision| matches!(decision.mutation, NodeDocumentMutation::Conflict { .. }))
+        {
+            return Ok(fresh);
+        }
+        transaction.commit()?;
+        Ok(fresh)
+    }
+
+    /// Applies a pre-validated batch inside a transaction owned by a higher
+    /// level projection boundary. This is crate-visible so bootstrap can make
+    /// the authoritative document and full graph metadata projection one
+    /// atomic SQLite operation rather than leaving entity/title shells behind.
+    pub(crate) fn apply_bulk_in_existing_transaction(
+        &self,
+        items: &[DocumentReconciliationItem],
+    ) -> RepositoryResult<Vec<ReconciliationDecision>> {
         let fresh = self.plan_bulk(items)?;
         if fresh
             .iter()
@@ -261,7 +280,6 @@ impl<'conn> NodeDocumentRepository<'conn> {
                 &decision.mutation,
             )?;
         }
-        transaction.commit()?;
         Ok(fresh)
     }
 

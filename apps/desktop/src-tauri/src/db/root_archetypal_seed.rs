@@ -3,10 +3,15 @@ use std::collections::HashMap;
 
 use crate::db::repositories::{
     canvas::CanvasRepository,
-    graph::{GraphRepository, SeedGraphNode},
+    graph::{EntityType, GraphRepository, SeedGraphNode, TemporalPrecision},
+    graph_metadata::{
+        GraphMetadataMutation, GraphNodeMetadataRecord, GraphNodeMetadataRepository, SyncState,
+    },
     layout::{LayoutRepository, NodeLayoutRecord},
-    ConstellationRepository, DocumentContentInput,
+    ConstellationRepository, DocumentContentInput, DocumentReconciliationItem,
+    NodeDocumentMutation, NodeDocumentRepository,
 };
+use crate::db::transaction::TransactionGuard;
 
 #[derive(Debug, Clone)]
 pub struct RootArchetypalConstellationReport {
@@ -23,6 +28,16 @@ pub struct RootArchetypalSeedReport {
     pub canvas_id: String,
     pub nodes_written: usize,
     pub relationships_written: usize,
+    pub layouts_written: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RootArchetypalLocalProjectionReport {
+    pub constellation_id: String,
+    pub canvas_id: String,
+    pub nodes_projected: usize,
+    pub documents_projected: usize,
+    pub pending_syncs: usize,
     pub layouts_written: usize,
 }
 
@@ -138,6 +153,248 @@ pub fn ensure_root_archetypal_constellation_workspace(
         root_path,
         LayoutWriteMode::PreserveExisting,
     )
+}
+
+/// Materializes the complete canonical graph/document projection in SQLite.
+/// Neo4j is deliberately not opened here: every unsynchronised row remains a
+/// durable, fully typed pending item for the independent remote sync boundary.
+pub fn ensure_root_archetypal_local_projection(
+    connection: &Connection,
+    root_path: &str,
+    namespace: &str,
+) -> Result<RootArchetypalLocalProjectionReport, String> {
+    let transaction = TransactionGuard::begin(connection).map_err(|error| error.to_string())?;
+    let layout = ensure_root_archetypal_constellation_layout_in_existing_transaction(
+        connection,
+        root_path,
+        LayoutWriteMode::PreserveExisting,
+    )?;
+    let seeds = node_seeds()
+        .iter()
+        .map(|seed| seed.to_graph_node(namespace))
+        .collect::<Vec<_>>();
+    let mut documents = root_archetypal_document_inputs(namespace);
+
+    // Preserve a prior exact remote acknowledgement. Bootstrap is not a sync
+    // attempt and must not turn an already-synced document back into pending.
+    let document_repo = NodeDocumentRepository::new(connection);
+    for incoming in &mut documents {
+        if let Some(current) = document_repo
+            .get_node_document(&incoming.graph_node_id)
+            .map_err(|error| error.to_string())?
+        {
+            let same_content = current.body == incoming.body
+                && current.summary == incoming.summary
+                && current.content_origin == incoming.content_origin
+                && current.content_revision == incoming.content_revision
+                && current.body_source_coordinates == incoming.body_source_coordinates;
+            if same_content {
+                incoming.neo4j_synced = current.neo4j_synced;
+            }
+        }
+    }
+    let mut items = documents
+        .into_iter()
+        .map(|document| {
+            let expected_revision = document_repo
+                .get_node_document(&document.graph_node_id)
+                .map_err(|error| error.to_string())?
+                .and_then(|current| {
+                    (document.content_revision > current.content_revision)
+                        .then_some(current.content_revision)
+                });
+            Ok(DocumentReconciliationItem {
+                document,
+                expected_revision,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    let metadata_repo = GraphNodeMetadataRepository::new(connection);
+    for seed in &seeds {
+        let mut metadata = metadata_record(seed)?;
+        let document = NodeDocumentRepository::new(connection)
+            .get_node_document(&seed.graph_node_id)
+            .map_err(|error| error.to_string())?;
+        let current_metadata = metadata_repo
+            .get(&seed.graph_node_id)
+            .map_err(|error| error.to_string())?;
+        if let (Some(document), Some(current_metadata)) = (&document, &current_metadata) {
+            let document_sync_state = if document.neo4j_synced {
+                SyncState::Synced
+            } else {
+                SyncState::Pending
+            };
+            if document.content_origin != current_metadata.content_origin
+                || document.content_revision != current_metadata.content_revision
+                || document.body_source_coordinates != current_metadata.body_source_coordinates
+                || document_sync_state != current_metadata.sync_state
+                || (current_metadata.sync_state == SyncState::Synced
+                    && current_metadata.remote_revision != Some(current_metadata.content_revision))
+            {
+                return Err(format!(
+                    "local document and graph metadata projection diverged for {}",
+                    seed.graph_node_id
+                ));
+            }
+        }
+        if document.is_none() {
+            if let Some(current_metadata) = &current_metadata {
+                if current_metadata.content_origin != metadata.content_origin
+                    || current_metadata.content_revision != metadata.content_revision
+                    || current_metadata.body_source_coordinates != metadata.body_source_coordinates
+                    || !matches!(
+                        current_metadata.sync_state,
+                        SyncState::Pending | SyncState::Synced
+                    )
+                    || (current_metadata.sync_state == SyncState::Synced
+                        && current_metadata.remote_revision
+                            != Some(current_metadata.content_revision))
+                {
+                    return Err(format!(
+                        "metadata-only projection is incompatible with canonical seed document for {}",
+                        seed.graph_node_id
+                    ));
+                }
+                let item = items
+                    .iter_mut()
+                    .find(|item| item.document.graph_node_id == seed.graph_node_id)
+                    .expect("every seed has one document reconciliation item");
+                item.document.neo4j_synced = current_metadata.sync_state == SyncState::Synced;
+            }
+        }
+        // A document may pre-date the graph metadata migration. Repair that
+        // one-sided legacy state from the authoritative document without
+        // transferring its ownership or revision back to the seed.
+        if current_metadata.is_none() {
+            if let Some(document) = document {
+                metadata.content_origin = document.content_origin;
+                metadata.content_revision = document.content_revision;
+                metadata.body_source_coordinates = document.body_source_coordinates;
+                metadata.sync_state = if document.neo4j_synced {
+                    SyncState::Synced
+                } else {
+                    SyncState::Pending
+                };
+                metadata.remote_revision =
+                    document.neo4j_synced.then_some(document.content_revision);
+            }
+        }
+        if matches!(
+            metadata_repo
+                .ensure_seed_projection(&metadata)
+                .map_err(|error| error.to_string())?,
+            GraphMetadataMutation::Conflict { .. }
+        ) {
+            return Err(format!(
+                "canonical graph metadata projection conflicted for {}",
+                seed.graph_node_id
+            ));
+        }
+    }
+    let decisions = NodeDocumentRepository::new(connection)
+        .apply_bulk_in_existing_transaction(&items)
+        .map_err(|error| error.to_string())?;
+    if let Some(conflict) = decisions
+        .iter()
+        .find(|decision| matches!(decision.mutation, NodeDocumentMutation::Conflict { .. }))
+    {
+        return Err(format!(
+            "canonical document projection conflicted for {}",
+            conflict.graph_node_id
+        ));
+    }
+    for seed in &seeds {
+        let document = NodeDocumentRepository::new(connection)
+            .get_node_document(&seed.graph_node_id)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| {
+                format!(
+                    "missing local document postcondition for {}",
+                    seed.graph_node_id
+                )
+            })?;
+        let metadata = metadata_repo
+            .get(&seed.graph_node_id)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| {
+                format!(
+                    "missing graph metadata postcondition for {}",
+                    seed.graph_node_id
+                )
+            })?;
+        let expected_sync_state = if document.neo4j_synced {
+            SyncState::Synced
+        } else {
+            SyncState::Pending
+        };
+        if document.content_origin != metadata.content_origin
+            || document.content_revision != metadata.content_revision
+            || document.body_source_coordinates != metadata.body_source_coordinates
+            || expected_sync_state != metadata.sync_state
+            || (metadata.sync_state == SyncState::Synced
+                && metadata.remote_revision != Some(metadata.content_revision))
+        {
+            return Err(format!(
+                "local document and graph metadata postcondition failed for {}",
+                seed.graph_node_id
+            ));
+        }
+    }
+    let pending_syncs = NodeDocumentRepository::new(connection)
+        .list_pending_syncs()
+        .map_err(|error| error.to_string())?
+        .len();
+    transaction.commit().map_err(|error| error.to_string())?;
+
+    Ok(RootArchetypalLocalProjectionReport {
+        constellation_id: layout.constellation_id,
+        canvas_id: layout.canvas_id,
+        nodes_projected: seeds.len(),
+        documents_projected: items.len(),
+        pending_syncs,
+        layouts_written: layout.layouts_written,
+    })
+}
+
+fn metadata_record(seed: &SeedGraphNode) -> Result<GraphNodeMetadataRecord, String> {
+    Ok(GraphNodeMetadataRecord {
+        graph_node_id: seed.graph_node_id.clone(),
+        entity_type: EntityType::try_from(seed.entity_type.clone())?,
+        title: seed.title.clone(),
+        archetypal_resonance: seed.archetypal_resonance.clone(),
+        coordinate: seed.coordinate.clone(),
+        source_coordinates: seed.source_coordinates.clone(),
+        evidence_tags: seed.evidence_tags.clone(),
+        source_kind: seed.source_kind.clone(),
+        content_origin: seed.content_origin,
+        content_revision: seed.content_revision,
+        seed_schema_version: Some(seed.seed_schema_version),
+        body_source_coordinates: seed.body_source_coordinates.clone(),
+        historicity: seed.historicity,
+        claim_kind: seed.claim_kind,
+        evidence_status: seed.evidence_status,
+        temporal_role: seed.temporal_role,
+        place_coverage: seed.place_coverage,
+        ql_form: seed.ql_form,
+        ql_unit_id: seed.ql_unit_id.clone(),
+        ql_arc: seed.ql_arc,
+        ql_topology: seed.ql_topology,
+        ql_schema_version: seed.ql_schema_version,
+        ql_source_coordinates: seed.ql_source_coordinates.clone(),
+        ql_completeness_status: seed.ql_completeness_status,
+        is_temporal: seed.is_temporal,
+        valid_from: seed.valid_from.clone(),
+        valid_to: seed.valid_to.clone(),
+        temporal_precision: seed
+            .temporal_precision
+            .clone()
+            .map(TemporalPrecision::try_from)
+            .transpose()?,
+        schema_version: 1,
+        sync_state: SyncState::Pending,
+        remote_revision: None,
+    })
 }
 
 impl NodeSeed {
@@ -258,7 +515,35 @@ fn ensure_root_archetypal_constellation_layout(
     root_path: &str,
     layout_mode: LayoutWriteMode,
 ) -> Result<RootArchetypalConstellationReport, String> {
-    let (constellation_id, canvas_id) = ensure_root_constellation(connection, root_path)?;
+    ensure_root_archetypal_constellation_layout_with_transaction(
+        connection,
+        root_path,
+        layout_mode,
+        false,
+    )
+}
+
+fn ensure_root_archetypal_constellation_layout_in_existing_transaction(
+    connection: &Connection,
+    root_path: &str,
+    layout_mode: LayoutWriteMode,
+) -> Result<RootArchetypalConstellationReport, String> {
+    ensure_root_archetypal_constellation_layout_with_transaction(
+        connection,
+        root_path,
+        layout_mode,
+        true,
+    )
+}
+
+fn ensure_root_archetypal_constellation_layout_with_transaction(
+    connection: &Connection,
+    root_path: &str,
+    layout_mode: LayoutWriteMode,
+    transaction_owned_by_caller: bool,
+) -> Result<RootArchetypalConstellationReport, String> {
+    let (constellation_id, canvas_id) =
+        ensure_root_constellation(connection, root_path, transaction_owned_by_caller)?;
     let constellations = constellation_seeds();
     let constellation_canvas_ids =
         ensure_constellation_canvases(connection, &constellation_id, &constellations)?;
@@ -283,6 +568,7 @@ fn ensure_root_archetypal_constellation_layout(
 fn ensure_root_constellation(
     connection: &Connection,
     root_path: &str,
+    transaction_owned_by_caller: bool,
 ) -> Result<(String, String), String> {
     if let Some((constellation_id, canvas_id)) = connection
         .query_row(
@@ -299,17 +585,31 @@ fn ensure_root_constellation(
         return Ok((constellation_id, canvas_id));
     }
 
-    let constellation = ConstellationRepository::new(connection)
-        .create(
-            ROOT_CONSTELLATION_TITLE.to_string(),
-            ROOT_CONSTELLATION_SLUG.to_string(),
-            None,
-            root_path.to_string(),
-            Some(ROOT_CONSTELLATION_SUMMARY.to_string()),
-            None,
-            serde_json::json!({ "includeResources": true, "theme": "dark" }),
-        )
-        .map_err(|e| e.to_string())?;
+    let repository = ConstellationRepository::new(connection);
+    let create = |repository: &ConstellationRepository<'_>| {
+        if transaction_owned_by_caller {
+            repository.create_in_existing_transaction(
+                ROOT_CONSTELLATION_TITLE.to_string(),
+                ROOT_CONSTELLATION_SLUG.to_string(),
+                None,
+                root_path.to_string(),
+                Some(ROOT_CONSTELLATION_SUMMARY.to_string()),
+                None,
+                serde_json::json!({ "includeResources": true, "theme": "dark" }),
+            )
+        } else {
+            repository.create(
+                ROOT_CONSTELLATION_TITLE.to_string(),
+                ROOT_CONSTELLATION_SLUG.to_string(),
+                None,
+                root_path.to_string(),
+                Some(ROOT_CONSTELLATION_SUMMARY.to_string()),
+                None,
+                serde_json::json!({ "includeResources": true, "theme": "dark" }),
+            )
+        }
+    };
+    let constellation = create(&repository).map_err(|e| e.to_string())?;
     let canvas_id = constellation
         .primary_canvas_id
         .clone()

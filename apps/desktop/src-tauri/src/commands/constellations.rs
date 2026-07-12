@@ -16,7 +16,7 @@ use crate::{
             EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord, ResourceRootRecord,
             ResourceRootRepository, SavedSequenceRecord, SavedSequenceRepository,
         },
-        root_archetypal_seed::ensure_root_archetypal_constellation_workspace,
+        root_archetypal_seed::ensure_root_archetypal_local_projection,
     },
     fs::indexer::{index_directory, IndexedEntry, IndexedEntryKind},
     SharedApiState,
@@ -441,9 +441,10 @@ pub fn default_database_path(session_id: Option<&str>) -> PathBuf {
 
 fn ensure_workspace_constellations(connection: &Connection, root: &Path) -> Result<(), String> {
     let constellation_root = root_constellation_source_path(root);
-    ensure_root_archetypal_constellation_workspace(
+    ensure_root_archetypal_local_projection(
         connection,
         &constellation_root.to_string_lossy(),
+        "root-archetypal-field",
     )?;
     Ok(())
 }

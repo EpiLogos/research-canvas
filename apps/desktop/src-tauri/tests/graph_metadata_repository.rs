@@ -254,3 +254,133 @@ fn malformed_persisted_json_returns_typed_corrupt_data() {
         Err(RepositoryError::CorruptData(_))
     ));
 }
+
+#[test]
+fn seed_projection_uses_versioned_structure_and_atomic_ql_precedence() {
+    let dir = tempdir().unwrap();
+    let db = Database::open(dir.path().join("seed-precedence.sqlite")).unwrap();
+    let repo = GraphNodeMetadataRepository::new(db.connection());
+
+    let mut persisted = record(9, ContentOrigin::UserAuthored);
+    persisted.seed_schema_version = Some(5);
+    persisted.title = "persisted seed five".into();
+    persisted.ql_schema_version = Some(7);
+    persisted.ql_form = Some(QlForm::CompleteSixfold);
+    persisted.ql_unit_id = Some("persisted-ql-seven".into());
+    persisted.ql_arc = Some(QlArc::Night);
+    persisted.ql_topology = Some(QlTopology::Klein);
+    persisted.ql_source_coordinates = vec!["ql-seven.md".into()];
+    persisted.ql_completeness_status = Some(QlCompletenessStatus::Complete);
+    assert_eq!(
+        repo.save(&persisted, None).unwrap(),
+        GraphMetadataMutation::Created
+    );
+
+    let mut older = record(1, ContentOrigin::Seed);
+    older.seed_schema_version = Some(4);
+    older.title = "older bootstrap".into();
+    older.ql_schema_version = Some(6);
+    older.ql_unit_id = Some("older-ql-six".into());
+    assert_eq!(
+        repo.ensure_seed_projection(&older).unwrap(),
+        GraphMetadataMutation::Preserved
+    );
+    assert_eq!(repo.get("event-1").unwrap().unwrap(), persisted);
+
+    let mut newer_seed_older_ql = record(1, ContentOrigin::Seed);
+    newer_seed_older_ql.seed_schema_version = Some(6);
+    newer_seed_older_ql.title = "canonical seed six".into();
+    newer_seed_older_ql.source_coordinates = vec!["seed-six.md".into()];
+    newer_seed_older_ql.ql_schema_version = Some(6);
+    newer_seed_older_ql.ql_form = Some(QlForm::Quaternity);
+    newer_seed_older_ql.ql_unit_id = Some("incoming-ql-six".into());
+    newer_seed_older_ql.ql_arc = Some(QlArc::Day);
+    newer_seed_older_ql.ql_topology = Some(QlTopology::Torus);
+    newer_seed_older_ql.ql_source_coordinates = vec!["ql-six.md".into()];
+    newer_seed_older_ql.ql_completeness_status = Some(QlCompletenessStatus::Partial);
+    assert_eq!(
+        repo.ensure_seed_projection(&newer_seed_older_ql).unwrap(),
+        GraphMetadataMutation::Updated
+    );
+    let upgraded = repo.get("event-1").unwrap().unwrap();
+    assert_eq!(upgraded.title, "canonical seed six");
+    assert_eq!(upgraded.seed_schema_version, Some(6));
+    assert_eq!(upgraded.source_coordinates, vec!["seed-six.md"]);
+    assert_eq!(upgraded.content_origin, ContentOrigin::UserAuthored);
+    assert_eq!(upgraded.content_revision, 9);
+    assert_eq!(upgraded.ql_schema_version, Some(7));
+    assert_eq!(upgraded.ql_form, Some(QlForm::CompleteSixfold));
+    assert_eq!(upgraded.ql_unit_id.as_deref(), Some("persisted-ql-seven"));
+    assert_eq!(upgraded.ql_arc, Some(QlArc::Night));
+    assert_eq!(upgraded.ql_topology, Some(QlTopology::Klein));
+    assert_eq!(upgraded.ql_source_coordinates, vec!["ql-seven.md"]);
+    assert_eq!(
+        upgraded.ql_completeness_status,
+        Some(QlCompletenessStatus::Complete)
+    );
+
+    let mut newer_ql = newer_seed_older_ql.clone();
+    newer_ql.seed_schema_version = Some(6);
+    newer_ql.ql_schema_version = Some(8);
+    newer_ql.ql_form = Some(QlForm::DoubleHelix);
+    newer_ql.ql_unit_id = None;
+    newer_ql.ql_arc = Some(QlArc::Braided);
+    newer_ql.ql_topology = Some(QlTopology::Composite);
+    newer_ql.ql_source_coordinates = vec!["ql-eight.md".into()];
+    newer_ql.ql_completeness_status = Some(QlCompletenessStatus::Incomplete);
+    repo.ensure_seed_projection(&newer_ql).unwrap();
+    let replaced = repo.get("event-1").unwrap().unwrap();
+    assert_eq!(replaced.ql_schema_version, Some(8));
+    assert_eq!(replaced.ql_form, Some(QlForm::DoubleHelix));
+    assert_eq!(replaced.ql_unit_id, None);
+    assert_eq!(replaced.ql_arc, Some(QlArc::Braided));
+    assert_eq!(replaced.ql_topology, Some(QlTopology::Composite));
+    assert_eq!(replaced.ql_source_coordinates, vec!["ql-eight.md"]);
+    assert_eq!(
+        replaced.ql_completeness_status,
+        Some(QlCompletenessStatus::Incomplete)
+    );
+
+    let mut equal_ql = newer_ql.clone();
+    equal_ql.ql_form = Some(QlForm::OtherExplicit);
+    equal_ql.ql_unit_id = Some("equal-version-incoming".into());
+    equal_ql.ql_arc = Some(QlArc::NotApplicable);
+    equal_ql.ql_topology = Some(QlTopology::Unspecified);
+    equal_ql.ql_source_coordinates = vec!["equal-eight.md".into()];
+    equal_ql.ql_completeness_status = Some(QlCompletenessStatus::NotApplicable);
+    repo.ensure_seed_projection(&equal_ql).unwrap();
+    let equal_ql_stored = repo.get("event-1").unwrap().unwrap();
+    assert_eq!(equal_ql_stored.ql_schema_version, Some(8));
+    assert_eq!(equal_ql_stored.ql_form, Some(QlForm::OtherExplicit));
+    assert_eq!(
+        equal_ql_stored.ql_unit_id.as_deref(),
+        Some("equal-version-incoming")
+    );
+    assert_eq!(equal_ql_stored.ql_arc, Some(QlArc::NotApplicable));
+    assert_eq!(equal_ql_stored.ql_topology, Some(QlTopology::Unspecified));
+    assert_eq!(
+        equal_ql_stored.ql_source_coordinates,
+        vec!["equal-eight.md"]
+    );
+    assert_eq!(
+        equal_ql_stored.ql_completeness_status,
+        Some(QlCompletenessStatus::NotApplicable)
+    );
+
+    let mut absent_ql_equal_seed = equal_ql.clone();
+    absent_ql_equal_seed.title = "equal seed deterministically incoming".into();
+    absent_ql_equal_seed.ql_schema_version = None;
+    absent_ql_equal_seed.ql_form = None;
+    absent_ql_equal_seed.ql_unit_id = None;
+    absent_ql_equal_seed.ql_arc = None;
+    absent_ql_equal_seed.ql_topology = None;
+    absent_ql_equal_seed.ql_source_coordinates.clear();
+    absent_ql_equal_seed.ql_completeness_status = None;
+    repo.ensure_seed_projection(&absent_ql_equal_seed).unwrap();
+    let equal = repo.get("event-1").unwrap().unwrap();
+    assert_eq!(equal.title, "equal seed deterministically incoming");
+    assert_eq!(equal.ql_schema_version, Some(8));
+    assert_eq!(equal.ql_form, Some(QlForm::OtherExplicit));
+    assert_eq!(equal.ql_unit_id.as_deref(), Some("equal-version-incoming"));
+    assert_eq!(equal.ql_source_coordinates, vec!["equal-eight.md"]);
+}
