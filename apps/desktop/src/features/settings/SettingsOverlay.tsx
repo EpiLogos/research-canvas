@@ -7,7 +7,7 @@ interface SettingsOverlayProps {
 
 export function SettingsOverlay({ onClose }: SettingsOverlayProps) {
   const workspace = useCanvasWorkspace();
-  const project = workspace.activeProject;
+  const constellation = workspace.activeConstellation;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -17,11 +17,11 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps) {
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  if (!project) {
+  if (!constellation) {
     return (
       <div className="settings-overlay" onClick={onClose}>
         <div className="settings-overlay__inner">
-          <p>No project selected</p>
+          <p>No constellation selected</p>
           <button onClick={onClose}>Close</button>
         </div>
       </div>
@@ -37,22 +37,22 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps) {
         </header>
 
         <section className="settings-overlay__section">
-          <h3>Project</h3>
+          <h3>Constellation</h3>
           <div className="settings-overlay__field">
             <label>Display name</label>
-            <span>{project.displayName}</span>
+            <span>{constellation.displayName}</span>
           </div>
           <div className="settings-overlay__field">
             <label>Slug</label>
-            <span>{project.slug}</span>
+            <span>{constellation.slug}</span>
           </div>
           <div className="settings-overlay__field">
             <label>Summary</label>
-            <span>{project.summary}</span>
+            <span>{constellation.summary}</span>
           </div>
           <div className="settings-overlay__field">
             <label>Root path</label>
-            <span style={{ wordBreak: "break-all" }}>{project.rootPath}</span>
+            <span style={{ wordBreak: "break-all" }}>{constellation.rootPath}</span>
           </div>
         </section>
 
@@ -60,11 +60,11 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps) {
           <h3>Publish</h3>
           <div className="settings-overlay__field">
             <label>Include resources</label>
-            <span>{project.publishSettings.includeResources ? "Yes" : "No"}</span>
+            <span>{constellation.publishSettings.includeResources ? "Yes" : "No"}</span>
           </div>
           <div className="settings-overlay__field">
             <label>Theme</label>
-            <span>{project.publishSettings.theme}</span>
+            <span>{constellation.publishSettings.theme}</span>
           </div>
         </section>
 

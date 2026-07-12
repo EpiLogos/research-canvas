@@ -1,25 +1,57 @@
 // apps/desktop/src-tauri/tests/graph_types.rs
 use research_canvas_desktop_lib::db::repositories::graph::{
-    GraphNode, GraphNodePatch, NewGraphNode,
+    resolve_entity_type_from_labels, semantic_relabel_entity_types, validate_contract_revision,
+    ClaimKind, ContentOrigin, EntityType, EvidenceStatus, GraphContentCasMutation, GraphNode,
+    GraphNodePatch, Historicity, NewGraphNode, PlaceCoverage, QlArc, QlCompletenessStatus, QlForm,
+    QlTopology, TemporalPrecision, TemporalRole,
 };
+use research_canvas_desktop_lib::db::repositories::SyncAcknowledgementMutation;
+
+#[test]
+fn graph_node_matches_the_canonical_contract_fixture() {
+    let fixture = include_str!("../../../../tests/fixtures/contracts/graph-node.json");
+    let expected: serde_json::Value = serde_json::from_str(fixture).expect("valid fixture json");
+    let node: GraphNode = serde_json::from_value(expected.clone()).expect("deserialize fixture");
+
+    assert_eq!(
+        serde_json::to_value(node).expect("serialize fixture"),
+        expected
+    );
+}
 
 #[test]
 fn graph_node_serializes_camel_case() {
     let node = GraphNode {
         graph_node_id: "id-1".into(),
-        entity_type: "Figure".into(),
+        entity_type: EntityType::Figure,
         title: "Cosimo".into(),
         body: "[]".into(),
         summary: "".into(),
         archetypal_resonance: None,
         coordinate: Some("#2".into()),
         source_coordinates: vec!["#2".into(), "L2".into()],
-        evidence_tags: vec!["archive".into(), "contested".into()],
-        source_kind: Some("archive".into()),
+        evidence_tags: vec![],
+        source_kind: None,
+        content_origin: Some(ContentOrigin::Seed),
+        content_revision: Some(1),
+        seed_schema_version: Some(1),
+        body_source_coordinates: vec!["Canon/cosimo.md#body".into()],
+        historicity: Some(Historicity::Historical),
+        claim_kind: Some(ClaimKind::Fact),
+        evidence_status: Some(EvidenceStatus::Documented),
+        temporal_role: Some(TemporalRole::ActiveDuring),
+        place_coverage: Some(PlaceCoverage::Resolved),
+        ql_form: Some(QlForm::PartialPositionalMap),
+        ql_unit_id: Some("ql-cosimo".into()),
+        ql_arc: Some(QlArc::Braided),
+        ql_topology: Some(QlTopology::Composite),
+        ql_schema_version: Some(1),
+        ql_source_coordinates: vec!["Canon/ql/cosimo.md#unit".into()],
+        ql_completeness_status: Some(QlCompletenessStatus::Partial),
         is_temporal: true,
         valid_from: Some("1389".into()),
         valid_to: Some("1464".into()),
-        temporal_precision: Some("year".into()),
+        temporal_precision: Some(TemporalPrecision::Year),
         created_at: "2026-06-28T00:00:00Z".into(),
         updated_at: "2026-06-28T00:00:00Z".into(),
     };
@@ -62,6 +94,69 @@ fn graph_node_deserializes_legacy_json_without_evidence_fields() {
 }
 
 #[test]
+fn semantic_label_resolution_is_deterministic_and_rejects_legacy_conflicts() {
+    assert_eq!(
+        resolve_entity_type_from_labels(&["Operator".into(), "PsychoidOperator".into()]),
+        Ok(EntityType::PsychoidOperator)
+    );
+    let conflict =
+        resolve_entity_type_from_labels(&["TheoryNode".into(), "Source".into(), "Claim".into()])
+            .expect_err("multiple semantic labels rejected");
+    assert_eq!(
+        conflict.recognized,
+        vec![EntityType::Claim, EntityType::Source]
+    );
+
+    let unknown = resolve_entity_type_from_labels(&["TheoryNode".into(), "LegacyThing".into()])
+        .expect_err("unknown-only label rejected");
+    assert_eq!(unknown.unknown, vec!["LegacyThing"]);
+}
+
+#[test]
+fn revision_range_matches_javascript_safe_integers() {
+    assert!(validate_contract_revision("contentRevision", 0).is_ok());
+    assert!(validate_contract_revision("contentRevision", 9_007_199_254_740_991).is_ok());
+    assert!(validate_contract_revision("contentRevision", -1).is_err());
+    assert!(validate_contract_revision("contentRevision", 9_007_199_254_740_992).is_err());
+}
+
+#[test]
+fn rust_vocabularies_and_relabel_set_match_the_shared_manifest() {
+    let manifest: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../tests/fixtures/contracts/graph-vocabularies.json"
+    ))
+    .expect("vocabulary manifest");
+    macro_rules! assert_vocab {
+        ($key:literal, $enum:ty) => {{
+            let actual = <$enum>::ALL
+                .iter()
+                .map(|value| value.as_str())
+                .collect::<Vec<_>>();
+            let expected = manifest[$key]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(actual, expected, "{} vocabulary", $key);
+        }};
+    }
+    assert_vocab!("entityType", EntityType);
+    assert_vocab!("temporalPrecision", TemporalPrecision);
+    assert_vocab!("contentOrigin", ContentOrigin);
+    assert_vocab!("historicity", Historicity);
+    assert_vocab!("claimKind", ClaimKind);
+    assert_vocab!("evidenceStatus", EvidenceStatus);
+    assert_vocab!("temporalRole", TemporalRole);
+    assert_vocab!("placeCoverage", PlaceCoverage);
+    assert_vocab!("qlForm", QlForm);
+    assert_vocab!("qlArc", QlArc);
+    assert_vocab!("qlTopology", QlTopology);
+    assert_vocab!("qlCompletenessStatus", QlCompletenessStatus);
+    assert_eq!(semantic_relabel_entity_types(), EntityType::ALL);
+}
+
+#[test]
 fn new_graph_node_and_patch_defaults() {
     let new = NewGraphNode {
         graph_node_id: None,
@@ -81,46 +176,86 @@ fn new_graph_node_and_patch_defaults() {
     // Some(None) clears coordinate; None leaves it unchanged.
     let clearing = GraphNodePatch {
         coordinate: Some(None),
-        archetypal_resonance: Some(None),
         source_kind: Some(None),
-        evidence_tags: Some(vec![]),
+        ql_form: Some(None),
         ..Default::default()
     };
     assert_eq!(clearing.coordinate, Some(None));
-    assert_eq!(clearing.archetypal_resonance, Some(None));
     assert_eq!(clearing.source_kind, Some(None));
-    assert_eq!(clearing.evidence_tags, Some(vec![]));
+    assert_eq!(clearing.ql_form, Some(None));
 }
 
 #[test]
-fn graph_node_patch_preserves_explicit_source_kind_null_from_json() {
-    let omitted: GraphNodePatch =
-        serde_json::from_value(serde_json::json!({})).expect("deserialize omitted patch");
-    assert_eq!(omitted.source_kind, None);
+fn controlled_values_reject_unknown_tokens() {
+    let mut fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../tests/fixtures/contracts/graph-node.json"
+    ))
+    .expect("valid fixture json");
+    fixture["historicity"] = serde_json::json!("legendary-ish");
 
-    let clearing: GraphNodePatch = serde_json::from_value(serde_json::json!({
-        "archetypalResonance": null,
-        "coordinate": null,
-        "sourceKind": null,
-        "validFrom": null,
-        "validTo": null,
-        "temporalPrecision": null
-    }))
-    .expect("deserialize clearing patch");
-    assert_eq!(clearing.archetypal_resonance, Some(None));
-    assert_eq!(clearing.coordinate, Some(None));
-    assert_eq!(clearing.source_kind, Some(None));
-    assert_eq!(clearing.valid_from, Some(None));
-    assert_eq!(clearing.valid_to, Some(None));
-    assert_eq!(clearing.temporal_precision, Some(None));
+    let error = serde_json::from_value::<GraphNode>(fixture).expect_err("unknown value rejected");
+    assert!(error.to_string().contains("unknown variant"));
+}
 
-    let setting: GraphNodePatch = serde_json::from_value(serde_json::json!({
-        "archetypalResonance": "echo",
-        "coordinate": "#4",
-        "sourceKind": "archive"
-    }))
-    .expect("deserialize setting patch");
-    assert_eq!(setting.archetypal_resonance, Some(Some("echo".into())));
-    assert_eq!(setting.coordinate, Some(Some("#4".into())));
-    assert_eq!(setting.source_kind, Some(Some("archive".into())));
+#[test]
+fn patch_json_distinguishes_omitted_fields_from_explicit_null() {
+    let patch: GraphNodePatch =
+        serde_json::from_str(r#"{"coordinate":null,"sourceKind":null,"qlForm":null}"#)
+            .expect("deserialize patch");
+
+    assert_eq!(patch.coordinate, Some(None));
+    assert_eq!(patch.source_kind, Some(None));
+    assert_eq!(patch.ql_form, Some(None));
+    assert_eq!(patch.valid_from, None, "omitted fields remain unchanged");
+}
+
+#[test]
+fn generic_metadata_patch_rejects_all_content_owned_fields() {
+    for field in [
+        "body",
+        "summary",
+        "contentOrigin",
+        "contentRevision",
+        "bodySourceCoordinates",
+    ] {
+        let json = format!(r#"{{"{field}":null}}"#);
+        assert!(
+            serde_json::from_str::<GraphNodePatch>(&json).is_err(),
+            "{field} must use content CAS"
+        );
+    }
+}
+
+#[test]
+fn content_cas_conflict_wire_payload_keeps_explicit_snake_case_fields() {
+    let value = serde_json::to_value(GraphContentCasMutation::Conflict {
+        current_remote_revision: Some(9),
+        current_remote_origin: Some(ContentOrigin::CorpusCompiled),
+        reason: "remote changed".into(),
+    })
+    .unwrap();
+    assert_eq!(
+        value,
+        serde_json::json!({
+            "kind": "conflict",
+            "current_remote_revision": 9,
+            "current_remote_origin": "corpus_compiled",
+            "reason": "remote changed"
+        })
+    );
+    let acknowledgement = serde_json::to_value(SyncAcknowledgementMutation::Conflict {
+        current_revision: 10,
+        current_origin: ContentOrigin::UserAuthored,
+        reason: "local changed".into(),
+    })
+    .unwrap();
+    assert_eq!(
+        acknowledgement,
+        serde_json::json!({
+            "kind": "conflict",
+            "current_revision": 10,
+            "current_origin": "user_authored",
+            "reason": "local changed"
+        })
+    );
 }

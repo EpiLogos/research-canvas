@@ -41,7 +41,7 @@ function NodeMode({ onClose }: { onClose: () => void }) {
     <div className="fullscreen-reader">
       <header className="fullscreen-reader__header">
         <nav className="fullscreen-reader__breadcrumb">
-          <span>{workspace.activeProject?.displayName ?? "Project"}</span>
+          <span>{workspace.activeConstellation?.displayName ?? "Constellation"}</span>
           <span className="fsr-sep">&rsaquo;</span>
           <span>Canvas</span>
           <span className="fsr-sep">&rsaquo;</span>
@@ -73,7 +73,7 @@ function SequenceMode({ onClose }: { onClose: () => void }) {
       onNavigateToNode={(nodeId, viewport) => {
         workspace.flyToNode(nodeId, viewport ?? undefined);
       }}
-      projectName={workspace.activeProject?.displayName}
+      constellationName={workspace.activeConstellation?.displayName}
     />
   );
 }

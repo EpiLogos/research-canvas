@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { CanvasView, TimelineLens } from "@research-canvas/canvas";
 import type { GraphExportBundle } from "@research-canvas/exporter";
-import { parseGraphExportBundle } from "@research-canvas/exporter";
+import { parseLegacyGraphExportBundle } from "@research-canvas/exporter";
 import { createStaticBundleTransport } from "@research-canvas/desktop-api";
 import type { CanvasView as CanvasViewData, WorkspaceTransport } from "@research-canvas/desktop-api";
 import type { CanvasEdge, CanvasNode } from "@research-canvas/schema";
@@ -151,8 +151,8 @@ function TimelineLensPane({
   onOpenNode: (graphNodeId: string) => void;
 }) {
   const dataSource = useMemo(
-    () => createTimelineDataSource({ transport, canvasId: bundle.canvasId }),
-    [transport, bundle.canvasId]
+    () => createTimelineDataSource({ transport, workspaceId: `static:${bundle.project.id}` }),
+    [transport, bundle.project.id]
   );
 
   return (
@@ -185,7 +185,7 @@ function useGraphBundle(bundle: GraphExportBundle | null) {
         if (!response.ok) {
           throw new Error(`graph-bundle.json request failed with status ${response.status}`);
         }
-        return parseGraphExportBundle(await response.json());
+        return parseLegacyGraphExportBundle(await response.json());
       })
       .then((next) => {
         if (!cancelled) {

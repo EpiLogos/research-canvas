@@ -129,7 +129,7 @@ export function useSearch(query: string, options: UseSearchOptions = {}) {
     let cancelled = false;
 
     void workspace
-      .searchProject(deferredQuery, 8)
+      .searchConstellation(deferredQuery, 8)
       .then((hits) => {
         if (cancelled) {
           return;
@@ -155,8 +155,8 @@ export function useSearch(query: string, options: UseSearchOptions = {}) {
                 summary: hit.relativePath ?? hit.summary ?? hit.snippet,
                 title: hit.title,
                 onSelect: () => {
-                  if (hit.projectId !== workspace.projectId) {
-                    workspace.selectProject(hit.projectId);
+                  if (hit.constellationId !== workspace.constellationId) {
+                    workspace.selectConstellation(hit.constellationId);
                     return;
                   }
 
@@ -189,11 +189,11 @@ export function useSearch(query: string, options: UseSearchOptions = {}) {
   }, [
     deferredQuery,
     workspace.entries,
-    workspace.projectId,
-    workspace.searchProject,
+    workspace.constellationId,
+    workspace.searchConstellation,
     workspace.selectEntry,
     workspace.selectNode,
-    workspace.selectProject
+    workspace.selectConstellation
   ]);
 
   const items = useMemo(() => {

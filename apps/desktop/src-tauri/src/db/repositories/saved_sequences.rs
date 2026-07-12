@@ -6,7 +6,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, PartialEq)]
 pub struct SavedSequenceRecord {
     pub id: String,
-    pub project_id: String,
+    pub constellation_id: String,
     pub canvas_id: String,
     pub name: String,
     pub root_node_id: Option<String>,
@@ -26,7 +26,7 @@ impl<'conn> SavedSequenceRepository<'conn> {
 
     pub fn create(
         &self,
-        project_id: &str,
+        constellation_id: &str,
         canvas_id: &str,
         name: &str,
     ) -> Result<SavedSequenceRecord> {
@@ -35,7 +35,7 @@ impl<'conn> SavedSequenceRepository<'conn> {
         self.connection.execute(
             "INSERT INTO saved_sequences (id, project_id, canvas_id, name, edge_ids_json, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, '[]', ?5, ?5)",
-            params![id, project_id, canvas_id, name, now],
+            params![id, constellation_id, canvas_id, name, now],
         )?;
         self.get_by_id(&id)?
             .ok_or(rusqlite::Error::QueryReturnedNoRows)
@@ -102,7 +102,7 @@ fn record_from_row(row: &rusqlite::Row<'_>) -> Result<SavedSequenceRecord> {
 
     Ok(SavedSequenceRecord {
         id: row.get(0)?,
-        project_id: row.get(1)?,
+        constellation_id: row.get(1)?,
         canvas_id: row.get(2)?,
         name: row.get(3)?,
         root_node_id: row.get(4)?,

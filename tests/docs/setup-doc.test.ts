@@ -19,7 +19,7 @@ describe("docs/setup.md", () => {
       "gemini-2.5-flash",
       "Graphiti MCP",
       "research-canvas",
-      "7687"
+      "17687"
     ]) {
       expect(content).toContain(token);
     }

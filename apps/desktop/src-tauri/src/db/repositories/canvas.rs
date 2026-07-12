@@ -6,7 +6,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Canvas {
     pub id: String,
-    pub project_id: String,
+    pub constellation_id: String,
     pub name: String,
     pub kind: String,
     pub summary: Option<String>,
@@ -85,9 +85,9 @@ impl<'conn> CanvasRepository<'conn> {
         Self { connection }
     }
 
-    pub fn create_for_project(
+    pub fn create_for_constellation(
         &self,
-        project_id: &str,
+        constellation_id: &str,
         name: &str,
         kind: &str,
         summary: Option<String>,
@@ -108,7 +108,7 @@ impl<'conn> CanvasRepository<'conn> {
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 id,
-                project_id,
+                constellation_id,
                 name,
                 kind,
                 summary.as_deref(),
@@ -133,14 +133,14 @@ impl<'conn> CanvasRepository<'conn> {
             .optional()
     }
 
-    pub fn list_for_project(&self, project_id: &str) -> Result<Vec<Canvas>> {
+    pub fn list_for_constellation(&self, constellation_id: &str) -> Result<Vec<Canvas>> {
         let mut statement = self.connection.prepare(
             "SELECT id, project_id, name, kind, summary, is_primary, created_at, updated_at
              FROM canvases
              WHERE project_id = ?1
              ORDER BY is_primary DESC, created_at ASC, name COLLATE NOCASE ASC",
         )?;
-        let rows = statement.query_map([project_id], canvas_from_row)?;
+        let rows = statement.query_map([constellation_id], canvas_from_row)?;
         rows.collect()
     }
 
@@ -617,7 +617,7 @@ impl<'conn> CanvasGraphRepository<'conn> {
 fn canvas_from_row(row: &rusqlite::Row<'_>) -> Result<Canvas> {
     Ok(Canvas {
         id: row.get(0)?,
-        project_id: row.get(1)?,
+        constellation_id: row.get(1)?,
         name: row.get(2)?,
         kind: row.get(3)?,
         summary: row.get(4)?,

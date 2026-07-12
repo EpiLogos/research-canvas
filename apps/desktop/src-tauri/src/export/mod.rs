@@ -14,7 +14,7 @@ use thiserror::Error;
 use crate::{
     db::repositories::{
         AnnotationRecord, AnnotationRepository, CanvasGraphRepository, CanvasRepository,
-        ProjectRepository,
+        ConstellationRepository,
     },
     fs::indexer::{index_directory, IndexedEntryKind},
 };
@@ -27,8 +27,8 @@ pub enum ExportError {
     Db(#[from] rusqlite::Error),
     #[error("{0}")]
     Serialization(#[from] serde_json::Error),
-    #[error("project not found: {0}")]
-    ProjectNotFound(String),
+    #[error("constellation not found: {0}")]
+    ConstellationNotFound(String),
     #[error("{0}")]
     Profile(String),
 }
@@ -47,7 +47,7 @@ pub struct PublishProfile {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportResult {
-    pub project_id: String,
+    pub constellation_id: String,
     pub output_dir: String,
     pub node_page_count: usize,
     pub asset_count: usize,
@@ -57,7 +57,8 @@ pub struct ExportResult {
 #[serde(rename_all = "camelCase")]
 struct ExportBundle {
     generated_at: String,
-    project: ProjectExport,
+    #[serde(rename = "project")]
+    constellation: ConstellationExport,
     canvases: Vec<CanvasExport>,
     nodes: Vec<NodeExport>,
     edges: Vec<EdgeExport>,
@@ -67,11 +68,11 @@ struct ExportBundle {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ProjectExport {
+struct ConstellationExport {
     id: String,
     display_name: String,
     slug: String,
-    parent_project_id: Option<String>,
+    parent_constellation_id: Option<String>,
     root_path: String,
     primary_canvas_id: String,
     summary: String,
@@ -85,7 +86,8 @@ struct ProjectExport {
 #[serde(rename_all = "camelCase")]
 struct CanvasExport {
     id: String,
-    project_id: String,
+    #[serde(rename = "projectId")]
+    constellation_id: String,
     name: String,
     kind: String,
     created_at: String,
@@ -231,37 +233,37 @@ pub fn resolve_publish_profile(value: Value) -> Result<PublishProfile, ExportErr
     Ok(profile)
 }
 
-pub fn export_project_bundle(
+pub fn export_constellation_bundle(
     connection: &Connection,
-    project_id: &str,
+    constellation_id: &str,
     output_dir: impl AsRef<Path>,
 ) -> Result<ExportResult, ExportError> {
-    let project_repository = ProjectRepository::new(connection);
+    let constellation_repository = ConstellationRepository::new(connection);
     let canvas_repository = CanvasRepository::new(connection);
     let graph_repository = CanvasGraphRepository::new(connection);
     let annotation_repository = AnnotationRepository::new(connection);
 
-    let project = project_repository
-        .get_by_id(project_id)?
-        .ok_or_else(|| ExportError::ProjectNotFound(project_id.to_string()))?;
-    let primary_canvas_id = project
+    let constellation = constellation_repository
+        .get_by_id(constellation_id)?
+        .ok_or_else(|| ExportError::ConstellationNotFound(constellation_id.to_string()))?;
+    let primary_canvas_id = constellation
         .primary_canvas_id
         .clone()
-        .ok_or_else(|| ExportError::ProjectNotFound(project_id.to_string()))?;
+        .ok_or_else(|| ExportError::ConstellationNotFound(constellation_id.to_string()))?;
     let canvas = canvas_repository
         .get_by_id(&primary_canvas_id)?
-        .ok_or_else(|| ExportError::ProjectNotFound(primary_canvas_id.clone()))?;
+        .ok_or_else(|| ExportError::ConstellationNotFound(primary_canvas_id.clone()))?;
     let snapshot = graph_repository.load_canvas_snapshot(&primary_canvas_id)?;
     let annotations = annotation_repository.list_for_canvas(&primary_canvas_id)?;
-    let profile = resolve_publish_profile(parse_json_value(&project.publish_settings)?)?;
+    let profile = resolve_publish_profile(parse_json_value(&constellation.publish_settings)?)?;
 
-    let project_root = resolve_project_root(&project.root_path);
+    let constellation_root = resolve_constellation_root(&constellation.root_path);
     let indexed_entries = if profile.include_resources {
-        index_directory(&project_root)?
+        index_directory(&constellation_root)?
     } else {
         Vec::new()
     };
-    let assets = build_assets(&indexed_entries, &snapshot.nodes, &project_root);
+    let assets = build_assets(&indexed_entries, &snapshot.nodes, &constellation_root);
     let bundle = ExportBundle {
         annotations: annotations.into_iter().map(annotation_to_export).collect(),
         assets: assets.clone(),
@@ -269,7 +271,11 @@ pub fn export_project_bundle(
         edges: snapshot.edges.iter().map(edge_to_export).collect(),
         generated_at: current_timestamp(),
         nodes: snapshot.nodes.iter().map(node_to_export).collect(),
-        project: project_to_export(project, primary_canvas_id.clone(), profile.clone()),
+        constellation: constellation_to_export(
+            constellation,
+            primary_canvas_id.clone(),
+            profile.clone(),
+        ),
     };
 
     let output_dir = output_dir.as_ref();
@@ -310,7 +316,7 @@ pub fn export_project_bundle(
         asset_count: bundle.assets.len(),
         node_page_count: build_node_pages(&bundle.nodes).len(),
         output_dir: output_dir.display().to_string(),
-        project_id: bundle.project.id,
+        constellation_id: bundle.constellation.id,
     })
 }
 
@@ -318,30 +324,30 @@ fn parse_json_value(value: &str) -> Result<Value, ExportError> {
     Ok(serde_json::from_str(value)?)
 }
 
-fn project_to_export(
-    project: crate::db::repositories::Project,
+fn constellation_to_export(
+    constellation: crate::db::repositories::Constellation,
     primary_canvas_id: String,
     profile: PublishProfile,
-) -> ProjectExport {
-    ProjectExport {
-        id: project.id,
-        display_name: project.display_name,
-        slug: project.slug,
-        parent_project_id: project.parent_project_id,
-        root_path: project.root_path,
+) -> ConstellationExport {
+    ConstellationExport {
+        id: constellation.id,
+        display_name: constellation.display_name,
+        slug: constellation.slug,
+        parent_constellation_id: constellation.parent_constellation_id,
+        root_path: constellation.root_path,
         primary_canvas_id,
-        summary: project.summary.unwrap_or_default(),
-        cover_asset_path: project.cover_asset,
+        summary: constellation.summary.unwrap_or_default(),
+        cover_asset_path: constellation.cover_asset,
         publish_settings: profile,
-        created_at: project.created_at,
-        updated_at: project.updated_at,
+        created_at: constellation.created_at,
+        updated_at: constellation.updated_at,
     }
 }
 
 fn canvas_to_export(canvas: crate::db::repositories::Canvas) -> CanvasExport {
     CanvasExport {
         id: canvas.id,
-        project_id: canvas.project_id,
+        constellation_id: canvas.constellation_id,
         name: canvas.name,
         kind: canvas.kind,
         created_at: canvas.created_at,
@@ -583,10 +589,10 @@ fn render_index_page(bundle: &ExportBundle, profile: &PublishProfile) -> String 
 
     format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /><title>{}</title><style>{}</style></head><body><main class=\"viewer\"><section class=\"viewer__hero\"><p class=\"eyebrow\">Static export</p><h1>{}</h1><p>{}</p></section><section class=\"viewer__desktop\"><section class=\"viewer-section\"><header><p class=\"eyebrow\">Map</p><h2>Canvas nodes</h2></header><div class=\"card-grid\">{}</div></section>{}<section class=\"viewer-section\"><header><p class=\"eyebrow\">Downloads</p><h2>Published resources</h2></header><ul class=\"download-list\">{}</ul></section></section></main></body></html>",
-        escape_html(&bundle.project.display_name),
+        escape_html(&bundle.constellation.display_name),
         viewer_styles(&profile.theme),
-        escape_html(&bundle.project.display_name),
-        escape_html(&bundle.project.summary),
+        escape_html(&bundle.constellation.display_name),
+        escape_html(&bundle.constellation.summary),
         node_cards,
         featured_note,
         downloads,
@@ -667,9 +673,9 @@ fn render_node_page(bundle: &ExportBundle, node: &NodeExport, page: &NodePage) -
         .join("");
 
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /><title>{} - {}</title><style>{}</style></head><body><main class=\"viewer viewer--node\"><a class=\"back-link\" href=\"../index.html\">Back to project</a><section class=\"viewer__hero\"><p class=\"eyebrow\">Node page</p><h1>{}</h1><p>{}</p></section>{}<section class=\"viewer-section\"><header><p class=\"eyebrow\">Relations</p><h2>Related nodes</h2></header><ul class=\"relation-list\">{}</ul></section><section class=\"viewer-section\"><header><p class=\"eyebrow\">Downloads</p><h2>Source files</h2></header><ul class=\"download-list\">{}</ul></section></main></body></html>",
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /><title>{} - {}</title><style>{}</style></head><body><main class=\"viewer viewer--node\"><a class=\"back-link\" href=\"../index.html\">Back to constellation</a><section class=\"viewer__hero\"><p class=\"eyebrow\">Node page</p><h1>{}</h1><p>{}</p></section>{}<section class=\"viewer-section\"><header><p class=\"eyebrow\">Relations</p><h2>Related nodes</h2></header><ul class=\"relation-list\">{}</ul></section><section class=\"viewer-section\"><header><p class=\"eyebrow\">Downloads</p><h2>Source files</h2></header><ul class=\"download-list\">{}</ul></section></main></body></html>",
         escape_html(&node_title(node)),
-        escape_html(&bundle.project.display_name),
+        escape_html(&bundle.constellation.display_name),
         viewer_styles("paper"),
         escape_html(&node_title(node)),
         escape_html(&node_summary(node)),
@@ -849,7 +855,7 @@ fn current_timestamp() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
-fn resolve_project_root(root_path: &str) -> PathBuf {
+fn resolve_constellation_root(root_path: &str) -> PathBuf {
     let candidate = PathBuf::from(root_path);
     if candidate.is_absolute() && candidate.exists() {
         return candidate;
@@ -886,13 +892,13 @@ fn build_search_index(bundle: &ExportBundle) -> Vec<SearchIndexEntry> {
 
     let mut entries = Vec::new();
     entries.push(SearchIndexEntry {
-        id: bundle.project.id.clone(),
-        title: bundle.project.display_name.clone(),
-        kind: "project".to_string(),
+        id: bundle.constellation.id.clone(),
+        title: bundle.constellation.display_name.clone(),
+        kind: "constellation".to_string(),
         href: "index.html".to_string(),
         content: format!(
             "{}\n{}",
-            bundle.project.display_name, bundle.project.summary
+            bundle.constellation.display_name, bundle.constellation.summary
         ),
     });
 

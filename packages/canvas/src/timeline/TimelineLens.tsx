@@ -2,15 +2,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useStore } from "zustand";
 
-import type { ArchetypalLighting, GraphNode, LitInstance } from "./contracts";
-import { createTimelineStore } from "./timelineStore";
-import { placeItems } from "./projection";
+import type { ArchetypalLighting, LitInstance, TimelineLayoutMutationResult, TimelineView } from "./contracts";
+import { createTimelineStore, type TimelineCardGeometryUpdate } from "./timelineStore";
+import { placeItems, type TimelinePresentation } from "./projection";
 import { generateTicks } from "./ticks";
 import { TimelineAxis } from "./TimelineAxis";
 import { TimelineNode } from "./TimelineNode";
 import { ResonancePopover } from "./ResonancePopover";
 import { TimelineTransport } from "./TimelineTransport";
 import { pixelToYear, yearToPixel } from "./viewport";
+import { deriveTimelineCategory, TIMELINE_CATEGORIES, type TimelineCategory } from "./categories";
 
 function clamp01(value: number): number {
   if (value < 0) return 0;
@@ -19,9 +20,13 @@ function clamp01(value: number): number {
 }
 
 export interface TimelineDataSource {
-  loadTimelineNodes(): Promise<GraphNode[]>;
+  loadTimelineView(): Promise<TimelineView>;
   archetypalLighting(operatorGraphNodeId: string): Promise<ArchetypalLighting>;
   resonancesForInstance(graphNodeId: string): Promise<LitInstance[]>;
+  saveTimelineLayout?(input: {
+    graphNodeId: string; lane: string; offsetY: number; width: number; height: number;
+    style: Record<string, unknown>; expectedRevision: number | null;
+  }): Promise<TimelineLayoutMutationResult>;
 }
 
 export interface TimelineLensProps {
@@ -36,18 +41,48 @@ const AXIS_HEIGHT = 48;
 // deltaY (scroll up / pinch out) zooms in.
 const WHEEL_ZOOM_BASE = 1.003;
 
-export function TimelineLens({ dataSource, onOpenNode, onPlaySequence }: TimelineLensProps): JSX.Element {
+export function TimelineLens({
+  dataSource,
+  onOpenNode,
+  onPlaySequence,
+}: TimelineLensProps): JSX.Element {
   const store = useMemo(() => createTimelineStore(), []);
   const state = useStore(store);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [resonances, setResonances] = useState<LitInstance[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
+  const saveQueues = useRef(new Map<string, Promise<void>>());
+  const saveVersions = useRef(new Map<string, number>());
+  const knownRevisions = useRef(new Map<string, number>());
+  const dataSourceEpoch = useRef(0);
+  const [visibleCategories, setVisibleCategories] = useState<Record<TimelineCategory, boolean>>(() =>
+    Object.fromEntries(TIMELINE_CATEGORIES.map((category) => [category.id, true])) as Record<TimelineCategory, boolean>,
+  );
 
   // Load timeline nodes once on mount.
   useEffect(() => {
     let cancelled = false;
-    void dataSource.loadTimelineNodes().then((nodes) => {
-      if (!cancelled) store.getState().hydrate(nodes);
-    });
+    dataSourceEpoch.current += 1;
+    saveQueues.current.clear();
+    saveVersions.current.clear();
+    knownRevisions.current.clear();
+    setSaveErrors({});
+    setLoaded(false);
+    setLoadError(null);
+    void dataSource.loadTimelineView()
+      .then((view) => {
+        if (!cancelled) store.getState().hydrate(view);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : String(error));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -70,10 +105,15 @@ export function TimelineLens({ dataSource, onOpenNode, onPlaySequence }: Timelin
 
   const viewport = state.viewport();
   const tier = state.tier();
-  const placed = placeItems(state.items, viewport);
+  const allPlaced = placeItems(state.items, viewport, state.lanes);
+  const placed = allPlaced.filter((p) => visibleCategories[deriveTimelineCategory(p.item.node)]);
   const ticks = generateTicks(viewport, tier);
   const lighting = state.litMap;
   const lightingActive = state.lightingOperatorId !== null;
+  const showEmptyState = loaded && !loadError && placed.length === 0;
+  const activeCategories = TIMELINE_CATEGORIES.filter((category) =>
+    state.items.some((item) => deriveTimelineCategory(item.node) === category.id),
+  );
 
   const minYear = pixelToYear(viewport, 0);
   const maxYear = pixelToYear(viewport, viewport.widthPx);
@@ -131,6 +171,53 @@ export function TimelineLens({ dataSource, onOpenNode, onPlaySequence }: Timelin
     });
   };
 
+  const handleResizeNode = (graphNodeId: string, size: TimelineCardGeometryUpdate) => {
+    if (!dataSource.saveTimelineLayout) return;
+    store.getState().updateCardSize(graphNodeId, size);
+  };
+
+  const handleColorTag = (graphNodeId: string, style: Partial<TimelinePresentation["style"]>) => {
+    if (!dataSource.saveTimelineLayout) return;
+    store.getState().updateCardStyle(graphNodeId, style);
+    commitTimelineLayout(graphNodeId);
+  };
+
+  const commitTimelineLayout = (graphNodeId: string) => {
+    if (!dataSource.saveTimelineLayout) return;
+    const item = store.getState().items.find((candidate) => candidate.graphNodeId === graphNodeId);
+    if (!item) return;
+    const snapshot = { ...item.presentation, style: { ...item.presentation.style } };
+    const epoch = dataSourceEpoch.current;
+    const version = (saveVersions.current.get(graphNodeId) ?? 0) + 1;
+    saveVersions.current.set(graphNodeId, version);
+    const prior = saveQueues.current.get(graphNodeId) ?? Promise.resolve();
+    const next = prior.then(async () => {
+      if (dataSourceEpoch.current !== epoch) return;
+      const expectedRevision = knownRevisions.current.get(graphNodeId) ?? snapshot.layoutRevision;
+      try {
+        const result = await dataSource.saveTimelineLayout!({
+          graphNodeId, lane: snapshot.lane ?? "events", offsetY: snapshot.offsetY,
+          width: snapshot.width, height: snapshot.height, style: snapshot.style, expectedRevision,
+        });
+        if (dataSourceEpoch.current !== epoch) return;
+        if (result.status === "conflict") {
+          if (result.layout) knownRevisions.current.set(graphNodeId, result.layout.layoutRevision);
+          setSaveErrors((current) => ({ ...current, [graphNodeId]: `Pending timeline edit: ${result.reason}` }));
+          return;
+        }
+        knownRevisions.current.set(graphNodeId, result.layout.layoutRevision);
+        if (saveVersions.current.get(graphNodeId) === version) {
+          store.getState().applyPersistedLayout(graphNodeId, result.layout);
+        }
+        setSaveErrors((current) => { const copy = { ...current }; delete copy[graphNodeId]; return copy; });
+      } catch (error) {
+        if (dataSourceEpoch.current !== epoch) return;
+        setSaveErrors((current) => ({ ...current, [graphNodeId]: `Pending timeline edit: ${error instanceof Error ? error.message : String(error)}` }));
+      }
+    });
+    saveQueues.current.set(graphNodeId, next);
+  };
+
   const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
     const rect = trackRef.current?.getBoundingClientRect();
@@ -159,6 +246,31 @@ export function TimelineLens({ dataSource, onOpenNode, onPlaySequence }: Timelin
     <div className="timeline-lens" data-testid="timeline-lens">
       <div className="timeline-toolbar" data-testid="timeline-toolbar">
         <span className="timeline-tier" data-testid="timeline-tier">{tier}</span>
+        {activeCategories.length > 0 && (
+          <div className="timeline-filters" aria-label="Timeline card filters">
+            {activeCategories.map((category) => {
+              const visible = visibleCategories[category.id];
+              return (
+                <button
+                  key={category.id}
+                  type="button"
+                  className="timeline-filter"
+                  data-active={visible ? "true" : "false"}
+                  aria-label={`${visible ? "Hide" : "Show"} ${category.id.replaceAll("-", " ")}`}
+                  onClick={() =>
+                    setVisibleCategories((current) => ({
+                      ...current,
+                      [category.id]: !current[category.id],
+                    }))
+                  }
+                >
+                  <span className="timeline-filter__swatch" style={{ backgroundColor: category.color }} />
+                  <span>{category.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
         {lightingActive && (
           <button
             type="button"
@@ -181,7 +293,34 @@ export function TimelineLens({ dataSource, onOpenNode, onPlaySequence }: Timelin
         onPointerLeave={handlePointerUp}
       >
         <TimelineAxis ticks={ticks} height={AXIS_HEIGHT} />
-        <div className="timeline-nodes" style={{ position: "relative" }}>
+        {loadError && (
+          <div className="timeline-load-state timeline-load-state--error" data-testid="timeline-load-error">
+            Timeline data unavailable: {loadError}
+          </div>
+        )}
+        {Object.entries(saveErrors).map(([nodeId, message]) => (
+          <div key={nodeId} role="alert" data-testid={`timeline-save-error-${nodeId}`}>
+            {message} <button type="button" onClick={() => commitTimelineLayout(nodeId)}>Retry</button>
+          </div>
+        ))}
+        {state.diagnostics.length > 0 && (
+          <aside className="timeline-diagnostics" data-testid="timeline-diagnostics" aria-label="Timeline diagnostics">
+            <strong>{state.diagnostics.length} timeline {state.diagnostics.length === 1 ? "issue" : "issues"}</strong>
+            <ul>
+              {state.diagnostics.map((diagnostic) => (
+                <li key={`${diagnostic.graphNodeId}:${diagnostic.code}`}>
+                  {diagnostic.graphNodeId}: {diagnostic.message}
+                </li>
+              ))}
+            </ul>
+          </aside>
+        )}
+        {showEmptyState && (
+          <div className="timeline-load-state" data-testid="timeline-empty-state">
+            No temporal nodes loaded
+          </div>
+        )}
+        <div className="timeline-nodes">
           {placed.map((p) => {
             const lit = lighting.get(p.item.graphNodeId) ?? null;
             const dimmed = lightingActive && lit === null;
@@ -192,8 +331,14 @@ export function TimelineLens({ dataSource, onOpenNode, onPlaySequence }: Timelin
                 lit={lit}
                 selected={state.selectedNodeId === p.item.graphNodeId}
                 dimmed={dimmed}
+                filtered={false}
+                viewportWidth={viewport.widthPx}
                 onSelect={handleSelect}
                 onOpen={onOpenNode}
+                onResize={handleResizeNode}
+                onCommit={commitTimelineLayout}
+                onColorTag={handleColorTag}
+                readOnly={!dataSource.saveTimelineLayout}
               />
             );
           })}

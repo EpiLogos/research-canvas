@@ -8,7 +8,7 @@ use research_canvas_desktop_lib::db::{
     connection::Database,
     repositories::{
         graph::{GraphRepository, NewGraphNode},
-        ProjectRepository,
+        ConstellationRepository,
     },
 };
 use research_canvas_desktop_lib::export::graph_bundle::build_graph_bundle;
@@ -16,16 +16,13 @@ use tempfile::tempdir;
 
 #[test]
 fn build_graph_bundle_populates_lighting_index_for_seeded_operator() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
 
     // SQLite layout in a temp dir + a real canvas row (WS2 Task 13 pattern).
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("t.db");
     let db = Database::open(&db_path).unwrap();
-    let project = ProjectRepository::new(db.connection())
+    let project = ConstellationRepository::new(db.connection())
         .create(
             "P".into(),
             "p".into(),
@@ -42,7 +39,7 @@ fn build_graph_bundle_populates_lighting_index_for_seeded_operator() {
     let repo = GraphRepository::new(graph.clone(), database.clone());
     support::block_on(repo.ensure_schema()).expect("schema");
     let operator = support::block_on(repo.create_node(NewGraphNode {
-        graph_node_id: None,
+        graph_node_id: Some(format!("{run_id}:operator")),
         entity_type: "Dynamic".into(),
         title: format!("Monopoly mechanism {run_id}"),
         body: "[]".into(),
@@ -58,7 +55,7 @@ fn build_graph_bundle_populates_lighting_index_for_seeded_operator() {
     let mut instance_ids = Vec::new();
     for (i, year) in ["1602", "1621", "1799"].iter().enumerate() {
         let event = support::block_on(repo.create_node(NewGraphNode {
-            graph_node_id: None,
+            graph_node_id: Some(format!("{run_id}:instance-{i}")),
             entity_type: "Event".into(),
             title: format!("Instance {i} {run_id}"),
             body: "[]".into(),

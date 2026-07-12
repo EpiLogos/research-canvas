@@ -3,7 +3,7 @@
  *
  * Pure mapper: CanvasView (from loadCanvasView) → { nodes: CanvasNode[]; edges: CanvasEdge[] }
  * Used in CanvasWorkspaceContext to hydrate the canvas store from Neo4j-joined data
- * instead of from the legacy loadProjectDocument nodes/edges fields.
+ * instead of from the legacy loadConstellationDocument nodes/edges fields.
  */
 
 import { nodeSchema, edgeSchema } from "@research-canvas/schema";
@@ -48,6 +48,7 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
         bgColour: layout.style.bgColour ?? null,
         textColour: layout.style.textColour ?? null,
         thumbnail: layout.style.thumbnail ?? null,
+        timelineCard: layout.style.__timelineCard ?? null,
         resourceKind: sidecar.resourceKind,
         absolutePath: sidecar.absolutePath,
         relativePath: sidecar.relativePath,
@@ -72,6 +73,7 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
         bgColour: layout.style.bgColour ?? null,
         textColour: layout.style.textColour ?? null,
         thumbnail: layout.style.thumbnail ?? null,
+        timelineCard: layout.style.__timelineCard ?? null,
         color: sidecar.color,
         childNodeIds: sidecar.childNodeIds,
         sequenceCaption: null,
@@ -93,7 +95,9 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
         bgColour: layout.style.bgColour ?? null,
         textColour: layout.style.textColour ?? null,
         thumbnail: layout.style.thumbnail ?? null,
+        timelineCard: layout.style.__timelineCard ?? null,
         targetCanvasId: sidecar.targetCanvasId,
+        constellationKind: sidecar.constellationKind ?? "standard",
         sequenceCaption: null,
         sequenceViewport: null,
         createdAt: node.createdAt,
@@ -115,6 +119,7 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
         bgColour: layout.style.bgColour ?? null,
         textColour: layout.style.textColour ?? null,
         thumbnail: layout.style.thumbnail ?? null,
+        timelineCard: layout.style.__timelineCard ?? null,
         tags: sidecar?.type === "note" ? sidecar.tags : [],
         sequenceCaption: null,
         sequenceViewport: null,

@@ -43,11 +43,45 @@
   color: #9a9aa8;
 }
 
+.timeline-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.timeline-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border: 1px solid #243246;
+  border-radius: 6px;
+  background: #111823;
+  color: #aab5c4;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.timeline-filter[data-active="false"] {
+  opacity: 0.45;
+}
+
+.timeline-filter__swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
 .timeline-track {
   position: relative;
   flex: 1;
   cursor: grab;
   touch-action: none;
+  min-height: 480px;
 }
 
 .timeline-track:active {
@@ -55,7 +89,33 @@
 }
 
 .timeline-axis {
-  border-bottom: 1px solid #1d1d24;
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  border-top: 1px solid #263142;
+  transform: translateY(-50%);
+}
+
+.timeline-load-state {
+  position: absolute;
+  top: 72px;
+  left: 16px;
+  z-index: 6;
+  max-width: min(560px, calc(100% - 32px));
+  padding: 8px 10px;
+  border: 1px solid #2a2a32;
+  border-radius: 6px;
+  background: #15151b;
+  color: #c9c9d4;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.timeline-load-state--error {
+  border-color: #7d3030;
+  color: #ffd0d0;
 }
 
 .timeline-axis-tick {
@@ -67,49 +127,239 @@
 .timeline-axis-tick-line {
   width: 1px;
   height: 12px;
-  background: #2a2a32;
+  background: #344256;
 }
 
 .timeline-axis-tick-label {
   font-size: 10px;
-  color: #6f6f7d;
+  color: #788397;
   white-space: nowrap;
   transform: translateX(4px);
 }
 
+.timeline-nodes {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
 .timeline-node {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
+  width: 0;
+  height: 0;
   transition: opacity 120ms ease;
   cursor: pointer;
-  white-space: nowrap;
+  pointer-events: auto;
+  --lane-offset: 68px;
 }
 
 .timeline-node-span {
   position: absolute;
-  top: 50%;
+  top: -1px;
   left: 0;
   height: 2px;
-  background: #3a3a46;
+  background: rgba(121, 192, 212, 0.38);
+  pointer-events: none;
 }
 
 .timeline-node-dot {
+  position: absolute;
+  top: -4px;
+  left: -4px;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #6f6f7d;
+  background: #9aa6b8;
+  box-shadow: 0 0 0 3px rgba(121, 192, 212, 0.1);
+}
+
+.timeline-node-connector {
+  position: absolute;
+  left: 0;
+  width: 1px;
+  background: rgba(121, 192, 212, 0.32);
+  pointer-events: none;
+}
+
+.timeline-node--above .timeline-node-connector {
+  bottom: 8px;
+  height: calc(var(--lane-offset) - 16px);
+}
+
+.timeline-node--below .timeline-node-connector {
+  top: 8px;
+  height: calc(var(--lane-offset) - 16px);
+}
+
+.timeline-node-card {
+  position: absolute;
+  width: 240px;
+  min-width: 180px;
+  min-height: 72px;
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 4px 7px;
+  padding: 9px 10px 10px;
+  border: 1px solid #2a3446;
+  border-radius: 6px;
+  background: rgba(18, 22, 30, 0.94);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
+  overflow: clip;
+  white-space: normal;
+  --timeline-edge-fade-left: 0;
+  --timeline-edge-fade-right: 0;
+}
+
+.timeline-node-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(13, 13, 17, calc(var(--timeline-edge-fade-left) * 0.38)), rgba(13, 13, 17, 0) 34px),
+    linear-gradient(270deg, rgba(13, 13, 17, calc(var(--timeline-edge-fade-right) * 0.38)), rgba(13, 13, 17, 0) 34px);
+}
+
+.timeline-node-category {
+  grid-row: 1 / 4;
+  width: 8px;
+  border-radius: 4px;
+  opacity: 0.95;
+}
+
+.timeline-node-date {
+  grid-column: 2;
+  font-family: var(--ob-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10px;
+  line-height: 1;
+  color: #79c0d4;
 }
 
 .timeline-node-title {
+  grid-column: 2 / 4;
+  display: block;
+  overflow: hidden;
+  color: #d8dde7;
   font-size: 12px;
-  color: #c9c9d4;
+  font-weight: 650;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-node-summary {
+  grid-column: 2 / 4;
+  display: block;
+  overflow: hidden;
+  color: #96a0b2;
+  font-size: 11px;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.timeline-node-color {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 5px;
+  background: rgba(0,0,0,0.18);
+  color: rgba(232,238,247,0.72);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.timeline-node-color__swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.timeline-node-resize {
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  z-index: 3;
+}
+
+.timeline-node-resize--nw {
+  top: 2px;
+  left: 2px;
+  cursor: nwse-resize;
+}
+
+.timeline-node-resize--ne {
+  top: 2px;
+  right: 2px;
+  cursor: nesw-resize;
+}
+
+.timeline-node-resize--sw {
+  bottom: 2px;
+  left: 2px;
+  cursor: nesw-resize;
+}
+
+.timeline-node-resize--se {
+  right: 2px;
+  bottom: 2px;
+  cursor: nwse-resize;
+}
+
+.timeline-node-resize::after {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  opacity: 0.76;
+}
+
+.timeline-node-resize--nw::after {
+  top: 2px;
+  left: 2px;
+  border-top: 1px solid rgba(232,238,247,0.45);
+  border-left: 1px solid rgba(232,238,247,0.45);
+}
+
+.timeline-node-resize--ne::after {
+  top: 2px;
+  right: 2px;
+  border-top: 1px solid rgba(232,238,247,0.45);
+  border-right: 1px solid rgba(232,238,247,0.45);
+}
+
+.timeline-node-resize--sw::after {
+  left: 2px;
+  bottom: 2px;
+  border-left: 1px solid rgba(232,238,247,0.45);
+  border-bottom: 1px solid rgba(232,238,247,0.45);
+}
+
+.timeline-node-resize--se::after {
+  right: 2px;
+  bottom: 2px;
+  border-right: 1px solid rgba(232,238,247,0.45);
+  border-bottom: 1px solid rgba(232,238,247,0.45);
 }
 
 .timeline-node[data-selected="true"] .timeline-node-title {
   color: #f0b45a;
   font-weight: 600;
+}
+
+.timeline-node[data-selected="true"] .timeline-node-card {
+  border-color: #f0b45a;
 }
 
 .timeline-node[data-lit="dominant"] .timeline-node-dot {

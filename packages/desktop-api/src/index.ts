@@ -1,8 +1,9 @@
-import type { GraphExportBundle } from "@research-canvas/exporter";
 import type {
   Annotation,
   CanvasEdge,
   CanvasNode,
+  ExportAsset,
+  ExportBundle,
   PublishSettings,
 } from "@research-canvas/schema";
 
@@ -15,24 +16,117 @@ export type {
   EntityType,
   GraphNode,
   GraphNodePatch,
+  ContentOrigin,
   GraphRelationship,
   JoinedCanvasNode,
   LitInstance,
+  LoadTimelineViewRequest,
   NewGraphNodeInput,
   NodeLayout,
+  TimelineView,
+  TimelineAnchor,
+  TimelineDiagnostic,
+  TimelineFilters,
+  TimelineLane,
+  TimelineLayoutOverride,
+  UpsertTimelineLayoutInput,
+  TimelineLayoutMutationResult,
+  TimelineViewNode,
+  TimelineValueFilter,
+  TimelineNodeRecord,
+  TemporalPrecision,
 } from "./graph";
+
+export type NodeDocumentMutation =
+  | { kind: "created" }
+  | { kind: "updated" }
+  | { kind: "preserved" }
+  | { kind: "conflict"; current_revision: number; reason: string };
+
+export interface LocalNodeDocument {
+  graphNodeId: string;
+  body: string;
+  summary: string;
+  neo4jSynced: boolean;
+  contentOrigin: ContentOrigin;
+  contentRevision: number;
+  bodySourceCoordinates: string[];
+}
+
+export interface LocalNodeDocumentWriteResult {
+  mutation: NodeDocumentMutation;
+  document: LocalNodeDocument | null;
+}
+
+export type PendingNodeStructure = Omit<
+  NewGraphNodeInput,
+  "body" | "summary" | "contentOrigin" | "contentRevision" | "bodySourceCoordinates"
+> & { graphNodeId: string };
+
+export interface PendingNodeDocumentSync {
+  document: LocalNodeDocument;
+  structure: PendingNodeStructure;
+}
+
+export interface LocalNodeDocumentInput {
+  databasePath: string;
+  graphNodeId: string;
+  body: string;
+  summary: string;
+  neo4jSynced?: boolean;
+  contentOrigin?: ContentOrigin;
+  contentRevision?: number;
+  expectedRevision?: number;
+  bodySourceCoordinates?: string[];
+  dryRun?: boolean;
+  metadataProjection?: {
+    entityType: EntityType;
+    title: string;
+    schemaVersion: number;
+  };
+}
+
+export interface GraphContentCasInput {
+  graphNodeId: string;
+  expectedRemoteRevision: number | null;
+  expectedRemoteOrigin: ContentOrigin | null;
+  allowLegacyNull?: boolean;
+  body: string;
+  summary: string;
+  contentOrigin: ContentOrigin;
+  contentRevision: number;
+  bodySourceCoordinates: string[];
+}
+
+export type GraphContentCasMutation =
+  | { kind: "updated" }
+  | { kind: "missing" }
+  | { kind: "conflict"; current_remote_revision: number | null; current_remote_origin: ContentOrigin | null; reason: string };
+
+export type SyncAcknowledgementMutation =
+  | { kind: "updated" }
+  | { kind: "preserved" }
+  | { kind: "missing" }
+  | { kind: "conflict"; current_revision: number; current_origin: ContentOrigin; reason: string };
 import type {
   ArchetypalLighting,
   CanvasNodeSidecar,
   CanvasView,
+  ContentOrigin,
+  EntityType,
   GraphNode,
   GraphNodePatch,
   GraphRelationship,
   JoinedCanvasNode,
   LitInstance,
+  LoadTimelineViewRequest,
   NewGraphNodeInput,
   NodeLayout,
   EdgeLayout,
+  TimelineView,
+  TimelineLayoutOverride,
+  UpsertTimelineLayoutInput,
+  TimelineLayoutMutationResult,
 } from "./graph";
 
 export type IndexedEntryKind =
@@ -54,21 +148,21 @@ export interface IndexedEntry {
   sizeBytes: number;
 }
 
-export interface ProjectTreeNode {
+export interface ConstellationTreeNode {
   id: string;
   name: string;
   slug: string;
   rootPath: string;
   summary: string;
   parentId: string | null;
-  children: ProjectTreeNode[];
+  children: ConstellationTreeNode[];
 }
 
-export interface WorkspaceProject {
+export interface WorkspaceConstellation {
   id: string;
   displayName: string;
   slug: string;
-  parentProjectId: string | null;
+  parentConstellationId: string | null;
   rootPath: string;
   primaryCanvasId: string;
   summary: string;
@@ -80,7 +174,7 @@ export interface WorkspaceProject {
 
 export interface ResourceRoot {
   id: string;
-  projectId: string;
+  constellationId: string;
   rootPath: string;
   displayName: string;
   createdAt: string;
@@ -88,16 +182,18 @@ export interface ResourceRoot {
 }
 
 export interface WorkspaceBootstrap {
-  activeProjectId: string;
+  activeConstellationId: string;
   databasePath: string;
-  projects: ProjectTreeNode[];
+  /** Server-derived identity of the canonical SQLite path. */
+  workspaceId: string;
+  constellations: ConstellationTreeNode[];
 }
 
-export interface ProjectDocument {
+export interface ConstellationDocument {
   canvasId: string;
   databasePath: string;
   entries: IndexedEntry[];
-  project: WorkspaceProject;
+  constellation: WorkspaceConstellation;
   resourceRoots: ResourceRoot[];
   workingRoot: string;
   annotations: Annotation[];
@@ -105,21 +201,44 @@ export interface ProjectDocument {
   nodes: CanvasNode[];
 }
 
-export interface PersistProjectDocumentRequest {
+/**
+ * The portable graph snapshot consumed by read-only transports.
+ *
+ * This contract belongs to the transport layer: the exporter produces it,
+ * while desktop and public-viewer transports consume it. Keeping the type
+ * here prevents a circular desktop-api -> exporter -> desktop-api dependency.
+ */
+export interface GraphExportBundle {
+  generatedAt: string;
+  project: ExportBundle["project"];
+  canvasId: string;
+  nodes: GraphNode[];
+  relationships: GraphRelationship[];
+  nodeLayout: NodeLayout[];
+  timelineLayout: Array<{ graphNodeId: string; layout: TimelineLayoutOverride }>;
+  edgeLayout: EdgeLayout[];
+  viewport: { x: number; y: number; zoom: number };
+  appState: Record<string, unknown>;
+  /** operatorGraphNodeId -> lit datable instances for a backend-less viewer. */
+  lightingIndex: Record<string, LitInstance[]>;
+  assets: ExportAsset[];
+}
+
+export interface PersistConstellationDocumentRequest {
   annotations: Annotation[];
   canvasId: string;
   databasePath: string;
   edges: CanvasEdge[];
   nodes: CanvasNode[];
-  projectId: string;
+  constellationId: string;
 }
 
 export interface SearchHit {
   documentKey: string;
-  scopeProjectId: string;
-  projectId: string;
-  projectDisplayName: string;
-  projectSlug: string;
+  scopeConstellationId: string;
+  constellationId: string;
+  constellationDisplayName: string;
+  constellationSlug: string;
   canvasId: string | null;
   entityType: string;
   entityId: string;
@@ -133,17 +252,17 @@ export interface SearchHit {
   score: number;
 }
 
-export interface SearchProjectRequest {
+export interface SearchConstellationRequest {
   databasePath: string;
   limit?: number;
-  projectId: string;
+  constellationId: string;
   query: string;
 }
 
 export interface ResourceRootMutationRequest {
   databasePath: string;
   displayName?: string;
-  projectId: string;
+  constellationId: string;
   rootPath: string;
 }
 
@@ -155,7 +274,7 @@ export interface DirectoryEntry {
 
 export interface SavedSequence {
   id: string;
-  projectId: string;
+  constellationId: string;
   canvasId: string;
   name: string;
   rootNodeId: string | null;
@@ -192,6 +311,7 @@ export function nodeLayoutFromCanvasNode(node: CanvasNode): NodeLayout {
       type: "portal",
       title: node.title,
       targetCanvasId: node.targetCanvasId,
+      constellationKind: node.constellationKind,
     };
   } else {
     canvasNode = {
@@ -203,7 +323,7 @@ export function nodeLayoutFromCanvasNode(node: CanvasNode): NodeLayout {
   }
 
   return {
-    graphNodeId: node.id,
+    graphNodeId: node.graphNodeId ?? node.id,
     canvasId: node.canvasId,
     positionX: node.position.x,
     positionY: node.position.y,
@@ -214,6 +334,7 @@ export function nodeLayoutFromCanvasNode(node: CanvasNode): NodeLayout {
       bgColour: node.bgColour ?? undefined,
       textColour: node.textColour ?? undefined,
       thumbnail: node.thumbnail ?? undefined,
+      __timelineCard: node.timelineCard ?? undefined,
       __canvasNode: canvasNode,
     },
   };
@@ -350,24 +471,24 @@ export function mapAgentActivityRow(row: RawAgentActivityRow): AgentActivity {
 }
 
 export interface WorkspaceTransport {
-  attachProjectResourceRoot(
+  attachConstellationResourceRoot(
     request: ResourceRootMutationRequest
   ): Promise<ResourceRoot>;
   bootstrapWorkspace(): Promise<WorkspaceBootstrap>;
-  detachProjectResourceRoot(request: {
+  detachConstellationResourceRoot(request: {
     databasePath: string;
-    projectId: string;
+    constellationId: string;
     rootPath: string;
   }): Promise<void>;
-  listProjectResourceRoots(input: {
+  listConstellationResourceRoots(input: {
     databasePath: string;
-    projectId: string;
+    constellationId: string;
   }): Promise<ResourceRoot[]>;
-  loadProjectDocument(input: {
+  loadConstellationDocument(input: {
     databasePath: string;
-    projectId: string;
-  }): Promise<ProjectDocument>;
-  flushProjectDocument(request: PersistProjectDocumentRequest): boolean | Promise<boolean>;
+    constellationId: string;
+  }): Promise<ConstellationDocument>;
+  flushConstellationDocument(request: PersistConstellationDocumentRequest): boolean | Promise<boolean>;
   flushCanvasLayout(input: {
     databasePath?: string;
     canvasId: string;
@@ -376,20 +497,22 @@ export interface WorkspaceTransport {
     viewport: { x: number; y: number; zoom: number };
     appState: Record<string, unknown>;
   }): boolean | Promise<boolean>;
-  persistProjectDocument(
-    request: PersistProjectDocumentRequest
-  ): Promise<ProjectDocument>;
-  searchProject(request: SearchProjectRequest): Promise<SearchHit[]>;
+  persistConstellationDocument(
+    request: PersistConstellationDocumentRequest
+  ): Promise<ConstellationDocument>;
+  searchConstellation(request: SearchConstellationRequest): Promise<SearchHit[]>;
   listDirectories(): Promise<DirectoryEntry[]>;
-  listSavedSequences(input: { databasePath: string; projectId: string; canvasId: string }): Promise<SavedSequence[]>;
-  createSavedSequence(input: { databasePath: string; projectId: string; canvasId: string; name: string }): Promise<SavedSequence>;
+  listSavedSequences(input: { databasePath: string; constellationId: string; canvasId: string }): Promise<SavedSequence[]>;
+  createSavedSequence(input: { databasePath: string; constellationId: string; canvasId: string; name: string }): Promise<SavedSequence>;
   updateSavedSequence(input: { databasePath: string; id: string; name: string; rootNodeId: string | null; edgeIds: string[] }): Promise<SavedSequence>;
   deleteSavedSequence(input: { databasePath: string; id: string }): Promise<void>;
 
   // ---- Substance (Neo4j) ----
   readGraphNode(input: { graphNodeId: string }): Promise<GraphNode>;
+  findGraphNode(input: { graphNodeId: string }): Promise<GraphNode | null>;
   createGraphNode(input: NewGraphNodeInput): Promise<GraphNode>;
   updateGraphNode(input: { graphNodeId: string; patch: GraphNodePatch }): Promise<GraphNode>;
+  compareAndSwapGraphNodeContent(input: GraphContentCasInput): Promise<GraphContentCasMutation>;
   deleteGraphNode(input: { graphNodeId: string }): Promise<void>;
   connectGraphNodes(input: {
     sourceGraphNodeId: string; targetGraphNodeId: string;
@@ -413,6 +536,8 @@ export interface WorkspaceTransport {
 
   // ---- Joined reads (both targets) ----
   loadCanvasView(input: { databasePath?: string; canvasId: string; lens: "canvas" | "timeline" }): Promise<CanvasView>;
+  loadTimelineView(input: LoadTimelineViewRequest): Promise<TimelineView>;
+  upsertTimelineLayout(input: UpsertTimelineLayoutInput): Promise<TimelineLayoutMutationResult>;
 
   // ---- Two-lens / archetypal lighting ----
   archetypalLighting(input: { operatorGraphNodeId: string }): Promise<ArchetypalLighting>;
@@ -432,14 +557,17 @@ export interface WorkspaceTransport {
   readLocalNodeDocument(input: {
     databasePath: string;
     graphNodeId: string;
-  }): Promise<{ body: string; summary: string; neo4jSynced: boolean } | null>;
-  upsertLocalNodeDocument(input: {
+  }): Promise<LocalNodeDocument | null>;
+  listPendingNodeDocumentSyncs(input: {
+    databasePath: string;
+  }): Promise<PendingNodeDocumentSync[]>;
+  upsertLocalNodeDocument(input: LocalNodeDocumentInput): Promise<LocalNodeDocumentWriteResult>;
+  acknowledgeLocalNodeDocumentSync(input: {
     databasePath: string;
     graphNodeId: string;
-    body: string;
-    summary: string;
-    neo4jSynced?: boolean;
-  }): Promise<void>;
+    expectedRevision: number;
+    expectedOrigin: ContentOrigin;
+  }): Promise<SyncAcknowledgementMutation>;
 }
 
 const DEFAULT_BRIDGE_PORT = 4789;
@@ -484,8 +612,8 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
   let activeDatabasePath: string | undefined;
 
   return {
-    async attachProjectResourceRoot(request) {
-      return invokeTauri<ResourceRoot>("attach_project_resource_root_command", {
+    async attachConstellationResourceRoot(request) {
+      return invokeTauri<ResourceRoot>("attach_constellation_resource_root_command", {
         request
       });
     },
@@ -494,27 +622,27 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
       activeDatabasePath = result.databasePath;
       return result;
     },
-    async detachProjectResourceRoot(request) {
-      await invokeTauri<void>("detach_project_resource_root_command", {
+    async detachConstellationResourceRoot(request) {
+      await invokeTauri<void>("detach_constellation_resource_root_command", {
         request
       });
     },
-    async listProjectResourceRoots(request) {
+    async listConstellationResourceRoots(request) {
       return invokeTauri<ResourceRoot[]>(
-        "list_project_resource_roots_command",
+        "list_constellation_resource_roots_command",
         {
           request
         }
       );
     },
-    async loadProjectDocument({ databasePath, projectId }) {
-      return invokeTauri<ProjectDocument>("load_project_document_command", {
-        request: { databasePath, projectId }
+    async loadConstellationDocument({ databasePath, constellationId }) {
+      return invokeTauri<ConstellationDocument>("load_constellation_document_command", {
+        request: { databasePath, constellationId }
       });
     },
-    async flushProjectDocument(request) {
+    async flushConstellationDocument(request) {
       try {
-        await invokeTauri<ProjectDocument>("persist_project_document_command", {
+        await invokeTauri<ConstellationDocument>("persist_constellation_document_command", {
           request
         });
         return true;
@@ -542,13 +670,13 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
       );
       return true;
     },
-    async persistProjectDocument(request) {
-      return invokeTauri<ProjectDocument>("persist_project_document_command", {
+    async persistConstellationDocument(request) {
+      return invokeTauri<ConstellationDocument>("persist_constellation_document_command", {
         request
       });
     },
-    async searchProject(request) {
-      return invokeTauri<SearchHit[]>("search_project_command", {
+    async searchConstellation(request) {
+      return invokeTauri<SearchHit[]>("search_constellation_command", {
         request
       });
     },
@@ -570,11 +698,17 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async readGraphNode(input) {
       return invokeTauri<GraphNode>("read_graph_node_command", { request: input });
     },
+    async findGraphNode(input) {
+      return invokeTauri<GraphNode | null>("find_graph_node_command", { request: input });
+    },
     async createGraphNode(input) {
       return invokeTauri<GraphNode>("create_graph_node_command", { request: input });
     },
     async updateGraphNode(input) {
       return invokeTauri<GraphNode>("update_graph_node_command", { request: input });
+    },
+    async compareAndSwapGraphNodeContent(input) {
+      return invokeTauri<GraphContentCasMutation>("compare_and_swap_graph_node_content_command", { request: input });
     },
     async deleteGraphNode(input) {
       await invokeTauri<void>("delete_graph_node_command", { request: input });
@@ -603,6 +737,12 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async loadCanvasView(input) {
       return invokeTauri<CanvasView>("load_canvas_view_command", { request: input });
     },
+    async loadTimelineView(input) {
+      return invokeTauri<TimelineView>("load_timeline_view_command", { request: input });
+    },
+    async upsertTimelineLayout(input) {
+      return invokeTauri<TimelineLayoutMutationResult>("upsert_timeline_layout_command", { request: input });
+    },
     async archetypalLighting(input) {
       return invokeTauri<ArchetypalLighting>("archetypal_lighting_command", { request: input });
     },
@@ -625,22 +765,31 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
       return rows.map(mapAgentActivityRow);
     },
     async readLocalNodeDocument(input) {
-      return invokeTauri<{ body: string; summary: string; neo4jSynced: boolean } | null>(
+      return invokeTauri<LocalNodeDocument | null>(
         "read_local_node_document_command",
         { request: input }
       );
     },
+    async listPendingNodeDocumentSyncs(input) {
+      return invokeTauri<PendingNodeDocumentSync[]>(
+        "list_pending_node_document_syncs_command",
+        { request: input }
+      );
+    },
     async upsertLocalNodeDocument(input) {
-      await invokeTauri<void>("upsert_local_node_document_command", { request: input });
+      return invokeTauri<LocalNodeDocumentWriteResult>("upsert_local_node_document_command", { request: input });
+    },
+    async acknowledgeLocalNodeDocumentSync(input) {
+      return invokeTauri<SyncAcknowledgementMutation>("acknowledge_local_node_document_sync_command", { request: input });
     },
   };
 }
 
 export function createBrowserBridgeTransport(): WorkspaceTransport {
   return {
-    async attachProjectResourceRoot(request) {
+    async attachConstellationResourceRoot(request) {
       return requestJsonWithRetry<ResourceRoot>(
-        `/workspace/project/${request.projectId}/resource-roots`,
+        `/workspace/constellation/${request.constellationId}/resource-roots`,
         {
           body: {
             displayName: request.displayName ?? null,
@@ -653,46 +802,46 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     async bootstrapWorkspace() {
       return requestJsonWithRetry<WorkspaceBootstrap>("/workspace/bootstrap");
     },
-    async detachProjectResourceRoot({ projectId, rootPath }) {
+    async detachConstellationResourceRoot({ constellationId, rootPath }) {
       await requestJsonWithRetry<void>(
-        `/workspace/project/${projectId}/resource-roots`,
+        `/workspace/constellation/${constellationId}/resource-roots`,
         {
           body: { rootPath },
           method: "DELETE"
         }
       );
     },
-    async listProjectResourceRoots({ projectId }) {
+    async listConstellationResourceRoots({ constellationId }) {
       return requestJsonWithRetry<ResourceRoot[]>(
-        `/workspace/project/${projectId}/resource-roots`
+        `/workspace/constellation/${constellationId}/resource-roots`
       );
     },
-    async loadProjectDocument({ projectId }) {
-      return requestJsonWithRetry<ProjectDocument>(`/workspace/project/${projectId}`);
+    async loadConstellationDocument({ constellationId }) {
+      return requestJsonWithRetry<ConstellationDocument>(`/workspace/constellation/${constellationId}`);
     },
-    flushProjectDocument(request) {
+    flushConstellationDocument(request) {
       if (typeof navigator === "undefined" || typeof navigator.sendBeacon !== "function") {
         return false;
       }
 
-      const beaconPath = `${BRIDGE_BASE_URL}/workspace/project/${request.projectId}/persist?sessionId=${encodeURIComponent(browserSessionId())}`;
+      const beaconPath = `${BRIDGE_BASE_URL}/workspace/constellation/${request.constellationId}/persist?sessionId=${encodeURIComponent(browserSessionId())}`;
       return navigator.sendBeacon(beaconPath, JSON.stringify(request));
     },
     flushCanvasLayout() {
       throw new Error("read-only web build");
     },
-    async persistProjectDocument(request) {
-      return requestJsonWithRetry<ProjectDocument>(
-        `/workspace/project/${request.projectId}/persist`,
+    async persistConstellationDocument(request) {
+      return requestJsonWithRetry<ConstellationDocument>(
+        `/workspace/constellation/${request.constellationId}/persist`,
         {
           method: "POST",
           body: request
         }
       );
     },
-    async searchProject({ limit, projectId, query }) {
+    async searchConstellation({ limit, constellationId, query }) {
       const params = new URLSearchParams({
-        projectId,
+        constellationId,
         q: query
       });
 
@@ -707,14 +856,14 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     async listDirectories() {
       return requestJsonWithRetry<DirectoryEntry[]>("/workspace/directories");
     },
-    async listSavedSequences({ databasePath: _, projectId, canvasId }) {
+    async listSavedSequences({ databasePath: _, constellationId, canvasId }) {
       return requestJsonWithRetry<SavedSequence[]>(
-        `/workspace/project/${projectId}/sequences?canvasId=${encodeURIComponent(canvasId)}`
+        `/workspace/constellation/${constellationId}/sequences?canvasId=${encodeURIComponent(canvasId)}`
       );
     },
-    async createSavedSequence({ databasePath: _, projectId, canvasId, name }) {
+    async createSavedSequence({ databasePath: _, constellationId, canvasId, name }) {
       return requestJsonWithRetry<SavedSequence>(
-        `/workspace/project/${projectId}/sequences`,
+        `/workspace/constellation/${constellationId}/sequences`,
         {
           method: "POST",
           body: { canvasId, name }
@@ -723,7 +872,7 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     },
     async updateSavedSequence({ databasePath: _, id, name, rootNodeId, edgeIds }) {
       return requestJsonWithRetry<SavedSequence>(
-        `/workspace/project/sequences/${id}`,
+        `/workspace/constellation/sequences/${id}`,
         {
           method: "PUT",
           body: { id, name, rootNodeId, edgeIds }
@@ -732,7 +881,7 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     },
     async deleteSavedSequence({ databasePath: _, id }) {
       await requestJsonWithRetry<void>(
-        `/workspace/project/sequences/${id}`,
+        `/workspace/constellation/sequences/${id}`,
         { method: "DELETE" }
       );
     },
@@ -741,6 +890,7 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
         `/graph/node/${encodeURIComponent(input.graphNodeId)}`,
       );
     },
+    async findGraphNode() { throw new Error("read-only web build"); },
     async searchGraph(input) {
       const params = new URLSearchParams({ query: input.query });
       if (input.limit != null) params.set("limit", String(input.limit));
@@ -750,6 +900,13 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       const params = new URLSearchParams({ canvasId: input.canvasId, lens: input.lens });
       return requestJsonWithRetry<CanvasView>(`/graph/canvas-view?${params.toString()}`);
     },
+    async loadTimelineView(input) {
+      return requestJsonWithRetry<TimelineView>("/graph/timeline-view", {
+        method: "POST",
+        body: input,
+      });
+    },
+    async upsertTimelineLayout() { throw new Error("read-only web build"); },
     async archetypalLighting(input) {
       return requestJsonWithRetry<ArchetypalLighting>(
         `/graph/lighting/${encodeURIComponent(input.operatorGraphNodeId)}`,
@@ -762,6 +919,7 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     },
     async createGraphNode() { throw new Error("read-only web build"); },
     async updateGraphNode() { throw new Error("read-only web build"); },
+    async compareAndSwapGraphNodeContent() { throw new Error("read-only web build"); },
     async deleteGraphNode() { throw new Error("read-only web build"); },
     async connectGraphNodes() { throw new Error("read-only web build"); },
     async disconnectGraphNodes() { throw new Error("read-only web build"); },
@@ -778,7 +936,9 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       return rows.map(mapAgentActivityRow);
     },
     async readLocalNodeDocument() { throw new Error("read-only web build"); },
+    async listPendingNodeDocumentSyncs() { throw new Error("read-only web build"); },
     async upsertLocalNodeDocument() { throw new Error("read-only web build"); },
+    async acknowledgeLocalNodeDocumentSync() { throw new Error("read-only web build"); },
   };
 }
 
@@ -911,26 +1071,26 @@ interface TreeRecord<T> {
   children: TreeRecord<T>[];
 }
 
-export function buildProjectTree(projects: ProjectTreeNode[]): ProjectTreeNode[] {
-  const records = new Map<string, TreeRecord<ProjectTreeNode>>();
+export function buildConstellationTree(constellations: ConstellationTreeNode[]): ConstellationTreeNode[] {
+  const records = new Map<string, TreeRecord<ConstellationTreeNode>>();
 
-  for (const project of projects) {
-    records.set(project.id, {
-      item: { ...project, children: [] },
+  for (const constellation of constellations) {
+    records.set(constellation.id, {
+      item: { ...constellation, children: [] },
       children: []
     });
   }
 
-  const roots: TreeRecord<ProjectTreeNode>[] = [];
+  const roots: TreeRecord<ConstellationTreeNode>[] = [];
 
-  for (const project of projects) {
-    const record = records.get(project.id);
+  for (const constellation of constellations) {
+    const record = records.get(constellation.id);
     if (!record) {
       continue;
     }
 
-    if (project.parentId) {
-      const parent = records.get(project.parentId);
+    if (constellation.parentId) {
+      const parent = records.get(constellation.parentId);
       if (parent) {
         parent.children.push(record);
       }
@@ -940,7 +1100,7 @@ export function buildProjectTree(projects: ProjectTreeNode[]): ProjectTreeNode[]
     roots.push(record);
   }
 
-  const toNode = (record: TreeRecord<ProjectTreeNode>): ProjectTreeNode => ({
+  const toNode = (record: TreeRecord<ConstellationTreeNode>): ConstellationTreeNode => ({
     ...record.item,
     children: record.children
       .slice()
@@ -1037,13 +1197,72 @@ function defaultLayoutFor(graphNodeId: string, canvasId: string): NodeLayout {
   };
 }
 
+type TimelineInstantKey = readonly [number, number, number, number, number, number, number];
+
+function parseStaticTimelineInstant(value: string | null): TimelineInstantKey | null {
+  if (value === null || value.trim() !== value || value.startsWith("+")) return null;
+  const trimmed = value.trim();
+  if (/^-?\d{1,6}$/u.test(trimmed)) return [Number(trimmed), 1, 1, 0, 0, 0, 0];
+  const rfc3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$/u.exec(trimmed);
+  if (rfc3339) {
+    const localYear = Number(rfc3339[1]);
+    const localMonth = Number(rfc3339[2]);
+    const localDay = Number(rfc3339[3]);
+    if (localMonth < 1 || localMonth > 12 || localDay < 1 || localDay > timelineDaysInMonth(localYear, localMonth)) return null;
+    const date = new Date(trimmed);
+    if (Number.isNaN(date.getTime())) return null;
+    return [date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds(), date.getUTCMilliseconds()];
+  }
+  const match = /^(-?\d{1,6})-(\d{2})(?:-(\d{2}))?$/u.exec(trimmed);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = match[3] === undefined ? 1 : Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > timelineDaysInMonth(year, month)) return null;
+  return [year, month, day, 0, 0, 0, 0];
+}
+
+function timelineDaysInMonth(year: number, month: number): number {
+  if ([4, 6, 9, 11].includes(month)) return 30;
+  if (month !== 2) return 31;
+  const mod = (value: number, divisor: number) => ((value % divisor) + divisor) % divisor;
+  return mod(year, 4) === 0 && (mod(year, 100) !== 0 || mod(year, 400) === 0) ? 29 : 28;
+}
+
+function compareTimelineKeys(a: TimelineInstantKey, b: TimelineInstantKey): number {
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) return a[index] - b[index];
+  }
+  return 0;
+}
+
+function staticTimelineDiagnostic(node: GraphNode): string | null {
+  if (node.temporalPrecision === null) return "temporal node is missing temporalPrecision";
+  const start = parseStaticTimelineInstant(node.validFrom);
+  if (start === null) return `invalid validFrom temporal anchor: ${node.validFrom ?? "null"}`;
+  if (node.validTo !== null) {
+    const end = parseStaticTimelineInstant(node.validTo);
+    if (end === null) return `invalid validTo temporal anchor: ${node.validTo}`;
+    if (compareTimelineKeys(end, start) < 0) return "validTo precedes validFrom";
+  }
+  return null;
+}
+
+function matchesTimelineFilter<T>(value: T | null, filter?: { include?: T[]; exclude?: T[] }): boolean {
+  const included = !filter?.include?.length || (value !== null && filter.include.includes(value));
+  return included && !(value !== null && filter?.exclude?.includes(value));
+}
+
 export function createStaticBundleTransport(bundle: GraphExportBundle): WorkspaceTransport {
   const nodeById = new Map<string, GraphNode>(
     bundle.nodes.map((node) => [node.graphNodeId, node])
   );
-  const layoutById = new Map<string, NodeLayout>(
-    bundle.nodeLayout.map((layout) => [layout.graphNodeId, layout])
-  );
+  const layoutsByCanvas = new Map<string, NodeLayout[]>();
+  for (const layout of bundle.nodeLayout) {
+    const layouts = layoutsByCanvas.get(layout.canvasId) ?? [];
+    layouts.push(layout);
+    layoutsByCanvas.set(layout.canvasId, layouts);
+  }
 
   const readOnlyReject = () => Promise.reject(new Error(READ_ONLY_MESSAGE));
   const readOnlyThrow = (): never => {
@@ -1051,15 +1270,15 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
   };
 
   return {
-    // ---- existing project/file/annotation methods: not served by the static bundle ----
-    attachProjectResourceRoot: readOnlyReject,
+    // ---- existing constellation/file/annotation methods: not served by the static bundle ----
+    attachConstellationResourceRoot: readOnlyReject,
     bootstrapWorkspace: readOnlyReject,
-    detachProjectResourceRoot: readOnlyReject,
-    listProjectResourceRoots: readOnlyReject,
-    loadProjectDocument: readOnlyReject,
-    flushProjectDocument: readOnlyThrow,
-    persistProjectDocument: readOnlyReject,
-    searchProject: readOnlyReject,
+    detachConstellationResourceRoot: readOnlyReject,
+    listConstellationResourceRoots: readOnlyReject,
+    loadConstellationDocument: readOnlyReject,
+    flushConstellationDocument: readOnlyThrow,
+    persistConstellationDocument: readOnlyReject,
+    searchConstellation: readOnlyReject,
     listDirectories: readOnlyReject,
     listSavedSequences: readOnlyReject,
     createSavedSequence: readOnlyReject,
@@ -1074,6 +1293,9 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
       }
       return node;
     },
+    async findGraphNode({ graphNodeId }) {
+      return nodeById.get(graphNodeId) ?? null;
+    },
     async searchGraph({ query, limit }) {
       const needle = query.trim().toLowerCase();
       if (needle === "") {
@@ -1087,23 +1309,76 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
       return typeof limit === "number" ? hits.slice(0, limit) : hits;
     },
     async loadCanvasView({ canvasId, lens }) {
-      const visible =
+      const canvasLayouts = layoutsByCanvas.get(canvasId) ?? [];
+      const layoutById = new Map<string, NodeLayout>(
+        canvasLayouts.map((layout) => [layout.graphNodeId, layout])
+      );
+      const canvasNodeIds = new Set(canvasLayouts.map((layout) => layout.graphNodeId));
+      const visibleNodes =
         lens === "timeline"
           ? bundle.nodes.filter((node) => node.isTemporal)
           : bundle.nodes;
-      const joined: JoinedCanvasNode[] = visible.map((node) => ({
-        node,
-        layout: layoutById.get(node.graphNodeId) ?? defaultLayoutFor(node.graphNodeId, canvasId)
-      }));
+      const visible =
+        canvasId === bundle.canvasId
+          ? visibleNodes
+          : visibleNodes.filter((node) => canvasNodeIds.has(node.graphNodeId));
+      const joined: JoinedCanvasNode[] = visible.map((node) => {
+        const layout = layoutById.get(node.graphNodeId);
+        return {
+          node,
+          layout: layout ?? defaultLayoutFor(node.graphNodeId, canvasId)
+        };
+      });
       return {
         canvasId,
         nodes: joined,
-        edges: bundle.edgeLayout,
+        edges: bundle.edgeLayout.filter((edge) => edge.canvasId === canvasId),
         relationships: bundle.relationships,
         viewport: bundle.viewport,
         appState: bundle.appState
       };
     },
+    async loadTimelineView({ workspaceId, filters }) {
+      const canonicalWorkspaceId = `static:${bundle.project.id}`;
+      if (workspaceId.trim() === "" || workspaceId !== canonicalWorkspaceId) {
+        throw new Error(`workspaceId does not match static bundle: expected ${canonicalWorkspaceId}`);
+      }
+      const temporalNodes = bundle.nodes
+        .filter((node) => node.isTemporal)
+        .filter((node) => matchesTimelineFilter(node.entityType, filters?.entityTypes))
+        .filter((node) => matchesTimelineFilter(node.historicity, filters?.historicities))
+        .filter((node) => matchesTimelineFilter(node.temporalRole, filters?.temporalRoles));
+      const invalid = temporalNodes.filter((node) =>
+        staticTimelineDiagnostic(node) !== null
+      );
+      const timelineLayoutById = new Map(bundle.timelineLayout.map((record) => [record.graphNodeId, record.layout]));
+      const nodes = temporalNodes
+        .filter((node): node is GraphNode & { validFrom: string; temporalPrecision: NonNullable<GraphNode["temporalPrecision"]> } =>
+          !invalid.includes(node) && typeof node.validFrom === "string" && node.temporalPrecision !== null
+        )
+        .map((node) => ({
+          node,
+          anchor: {
+            validFrom: node.validFrom,
+            validTo: node.validTo,
+            precision: node.temporalPrecision,
+          },
+          layoutOverride: timelineLayoutById.get(node.graphNodeId) ?? null,
+        }));
+      return {
+        workspaceId: canonicalWorkspaceId,
+        nodes,
+        lanes: [],
+        diagnostics: invalid.map((node) => ({
+          graphNodeId: node.graphNodeId,
+          code: "invalid_temporal_anchor" as const,
+          message: staticTimelineDiagnostic(node) ?? "invalid temporal anchor",
+          validFrom: node.validFrom,
+          validTo: node.validTo,
+        })),
+      };
+    },
+    async upsertTimelineLayout() { throw new Error("read-only static bundle"); },
     async archetypalLighting({ operatorGraphNodeId }) {
       const operator = nodeById.get(operatorGraphNodeId);
       if (!operator) {
@@ -1133,6 +1408,7 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
     // ---- mutations: structurally forbidden on the web read-layer ----
     createGraphNode: readOnlyReject,
     updateGraphNode: readOnlyReject,
+    compareAndSwapGraphNodeContent: readOnlyReject,
     deleteGraphNode: readOnlyReject,
     connectGraphNodes: readOnlyReject,
     disconnectGraphNodes: readOnlyReject,
@@ -1150,6 +1426,8 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
 
     // ---- local node document: local-only SQLite store, not part of the static bundle ----
     readLocalNodeDocument: readOnlyReject,
-    upsertLocalNodeDocument: readOnlyReject
+    listPendingNodeDocumentSyncs: readOnlyReject,
+    upsertLocalNodeDocument: readOnlyReject,
+    acknowledgeLocalNodeDocumentSync: readOnlyReject
   };
 }

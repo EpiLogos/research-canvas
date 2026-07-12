@@ -1,23 +1,115 @@
 import { describe, expect, it } from "vitest";
+import vocabularyManifest from "../../../tests/fixtures/contracts/graph-vocabularies.json";
 
 import {
   annotationSchema,
   edgeSchema,
   exportBundleSchema,
+  graphNodeSchema,
+  normalizeLegacyGraphNode,
   noteNodeSchema,
+  portalNodeSchema,
   projectSchema,
   resourceNodeSchema,
+  ENTITY_TYPES, TEMPORAL_PRECISIONS, CONTENT_ORIGINS, HISTORICITIES, CLAIM_KINDS,
+  EVIDENCE_STATUSES, TEMPORAL_ROLES, PLACE_COVERAGES, QL_FORMS, QL_ARCS,
+  QL_TOPOLOGIES, QL_COMPLETENESS_STATUSES,
 } from "./index";
 
 const now = "2026-03-30T20:00:00.000Z";
 
 describe("schema package", () => {
+  it("matches every controlled value in the shared vocabulary manifest", () => {
+    expect({
+      entityType: ENTITY_TYPES, temporalPrecision: TEMPORAL_PRECISIONS,
+      contentOrigin: CONTENT_ORIGINS, historicity: HISTORICITIES,
+      claimKind: CLAIM_KINDS, evidenceStatus: EVIDENCE_STATUSES,
+      temporalRole: TEMPORAL_ROLES, placeCoverage: PLACE_COVERAGES,
+      qlForm: QL_FORMS, qlArc: QL_ARCS, qlTopology: QL_TOPOLOGIES,
+      qlCompletenessStatus: QL_COMPLETENESS_STATUSES,
+    }).toEqual(vocabularyManifest);
+  });
+
+  it("rejects negative and non-JavaScript-safe revisions", () => {
+    const canonical = normalizeLegacyGraphNode({
+      graphNodeId: "revision-node", entityType: "Event", title: "Revision", body: "[]",
+      summary: "", archetypalResonance: null, coordinate: null, sourceCoordinates: [],
+      isTemporal: false, validFrom: null, validTo: null, temporalPrecision: null,
+      createdAt: now, updatedAt: now,
+    });
+    expect(graphNodeSchema.safeParse({ ...canonical, contentRevision: -1 }).success).toBe(false);
+    expect(graphNodeSchema.safeParse({ ...canonical, qlSchemaVersion: Number.MAX_SAFE_INTEGER + 1 }).success).toBe(false);
+  });
+  it("keeps legacy omission handling outside the canonical graph-node schema", () => {
+    const legacy = {
+      graphNodeId: "legacy-node",
+      entityType: "Event",
+      title: "Legacy event",
+      body: "[]",
+      summary: "",
+      archetypalResonance: null,
+      coordinate: null,
+      sourceCoordinates: [],
+      isTemporal: true,
+      validFrom: "1621",
+      validTo: null,
+      temporalPrecision: "year",
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    expect(graphNodeSchema.safeParse(legacy).success).toBe(false);
+    expect(normalizeLegacyGraphNode(legacy)).toMatchObject({
+      contentOrigin: null,
+      bodySourceCoordinates: [],
+      historicity: null,
+      qlSourceCoordinates: [],
+    });
+  });
+  it("rejects uncontrolled historical and QL metadata values", () => {
+    const result = graphNodeSchema.safeParse({
+      graphNodeId: "contract-invalid",
+      entityType: "Event",
+      title: "Invalid controlled value",
+      body: "[]",
+      summary: "",
+      archetypalResonance: null,
+      coordinate: null,
+      sourceCoordinates: [],
+      evidenceTags: [],
+      sourceKind: null,
+      contentOrigin: null,
+      contentRevision: null,
+      seedSchemaVersion: null,
+      bodySourceCoordinates: [],
+      historicity: "legendary-ish",
+      claimKind: null,
+      evidenceStatus: null,
+      temporalRole: null,
+      placeCoverage: "somewhere",
+      qlForm: null,
+      qlUnitId: null,
+      qlArc: null,
+      qlTopology: "mobius",
+      qlSchemaVersion: null,
+      qlSourceCoordinates: [],
+      qlCompletenessStatus: null,
+      isTemporal: false,
+      validFrom: null,
+      validTo: null,
+      temporalPrecision: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    expect(result.success).toBe(false);
+  });
   it("validates a project with publish settings", () => {
     const parsed = projectSchema.parse({
       id: "2a2edca9-e4af-4b2d-b1aa-7353f2bb20f4",
       displayName: "Episode 0.2",
       slug: "episode-0-2",
-      parentProjectId: null,
+      parentConstellationId: null,
       rootPath: "/tmp/episode-0-2",
       primaryCanvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
       summary: "Research-driven pilot episode.",
@@ -73,6 +165,44 @@ describe("schema package", () => {
 
     expect(parsed.type).toBe("note");
     expect(parsed.tags).toContain("thesis");
+  });
+
+  it("validates constellation portal nodes with a QL unit marker", () => {
+    const parsed = portalNodeSchema.parse({
+      id: "f83d047c-9fca-4dfe-b8d6-3f763e20da1c",
+      graphNodeId: "constellation-root-ql-unit",
+      canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
+      type: "portal",
+      title: "QL Reading Unit",
+      position: { x: 320, y: 180 },
+      size: { width: 320, height: 240 },
+      summary: "A nested constellation surface aligned to a QL reading.",
+      targetCanvasId: "2a2edca9-e4af-4b2d-b1aa-7353f2bb20f4",
+      constellationKind: "ql-unit",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    expect(parsed.type).toBe("portal");
+    expect(parsed.constellationKind).toBe("ql-unit");
+  });
+
+  it("normalizes null note content from persisted canvas state", () => {
+    const parsed = noteNodeSchema.parse({
+      id: "f83d047c-9fca-4dfe-b8d6-3f763e20da1a",
+      canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
+      type: "note",
+      title: "Recovered note",
+      position: { x: 320, y: 180 },
+      size: { width: 320, height: 240 },
+      summary: "Working summary",
+      content: null,
+      tags: ["episode", "thesis"],
+      createdAt: now,
+      updatedAt: now
+    });
+
+    expect(parsed.content).toBe("");
   });
 
   it("accepts nullable node style fields and nullable edge handles from persisted payloads", () => {
@@ -187,6 +317,25 @@ describe("schema package", () => {
     expect(edge.sequencePriority).toBe(0);
   });
 
+  it("accepts graph-backed edge and endpoint identifiers", () => {
+    const edge = edgeSchema.parse({
+      id: "root-edge-mk-ultra-instantiates-hypnosis",
+      canvasId: crypto.randomUUID(),
+      sourceNodeId: "root-archetypal-field:mk-ultra-midnight-climax",
+      targetNodeId: "root-archetypal-field:mind-control-hypnosis",
+      relationKind: "INSTANTIATES",
+      directionality: "forward",
+      label: "INSTANTIATES",
+      note: "",
+      style: { stroke: "#7db7a5", width: 2, dashed: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    expect(edge.id).toBe("root-edge-mk-ultra-instantiates-hypnosis");
+    expect(edge.sourceNodeId).toBe("root-archetypal-field:mk-ultra-midnight-climax");
+  });
+
   it("validates node with optional sequence caption and viewport", () => {
     const node = noteNodeSchema.parse({
       id: crypto.randomUUID(),
@@ -286,7 +435,7 @@ describe("schema package", () => {
         id: "2a2edca9-e4af-4b2d-b1aa-7353f2bb20f4",
         displayName: "Episode 0.2",
         slug: "episode-0-2",
-        parentProjectId: null,
+        parentConstellationId: null,
         rootPath: "/tmp/episode-0-2",
         primaryCanvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
         summary: "Research-driven pilot episode.",

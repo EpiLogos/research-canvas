@@ -3,14 +3,14 @@ import { shouldWriteSubstanceOnLayoutFlush } from "./persistPolicy";
 
 describe("shouldWriteSubstanceOnLayoutFlush", () => {
   /**
-   * Invariant: after WS4a Task 6 cutover, the legacy persistProjectDocument
+   * Invariant: after WS4a Task 6 cutover, the legacy persistConstellationDocument
    * substance double-write (nodes + edges) is retired. Node substance is owned
-   * by Neo4j (createGraphNode / updateGraphNode). This flag must remain false
+   * by explicit graph creation, metadata updates, and revision-aware content CAS. This flag must remain false
    * permanently.
    *
-   * This function is wired directly into the persist effect and selectProject in
+   * This function is wired directly into the persist effect and selectConstellation in
    * CanvasWorkspaceContext.tsx — the nodes/edges arrays passed to
-   * persistProjectDocument are gated on this return value
+   * persistConstellationDocument are gated on this return value
    * (`writeSubstance ? serialized.nodes : []`). If this reverts to true, both
    * callers will write substance rows again, AND this test will fail red,
    * surfacing the regression immediately.

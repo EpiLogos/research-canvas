@@ -1,6 +1,10 @@
 import { useState } from "react";
 
-import type { GraphNode, GraphNodePatch } from "@research-canvas/desktop-api";
+import type {
+  GraphNode,
+  LocalNodeDocumentInput,
+  LocalNodeDocumentWriteResult,
+} from "@research-canvas/desktop-api";
 import { NodeDocumentPane } from "./NodeDocumentPane";
 import { NodeContentDropSurface } from "../canvas/NodeContentDropSurface";
 import { LinkFilePicker } from "../canvas/LinkFilePicker";
@@ -10,21 +14,11 @@ import { pickAndInsertImage, pickAndAttachFile } from "../canvas/insertMedia";
 
 interface GraphDocumentTransport {
   readGraphNode(input: { graphNodeId: string }): Promise<GraphNode>;
-  updateGraphNode(input: {
-    graphNodeId: string;
-    patch: GraphNodePatch;
-  }): Promise<GraphNode>;
   readLocalNodeDocument(input: {
     databasePath: string;
     graphNodeId: string;
-  }): Promise<{ body: string; summary: string; neo4jSynced: boolean } | null>;
-  upsertLocalNodeDocument(input: {
-    databasePath: string;
-    graphNodeId: string;
-    body: string;
-    summary: string;
-    neo4jSynced?: boolean;
-  }): Promise<void>;
+  }): Promise<{ body: string; summary: string; neo4jSynced: boolean; contentRevision?: number; bodySourceCoordinates?: string[] } | null>;
+  upsertLocalNodeDocument(input: LocalNodeDocumentInput): Promise<LocalNodeDocumentWriteResult>;
 }
 
 export function GraphDocumentContent({

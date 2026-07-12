@@ -20,7 +20,7 @@ export function SequencesManager({ onClose, onPlaySequence }: SequencesManagerPr
     try {
       const list = await workspace.listSavedSequences({
         databasePath: workspace.databasePath,
-        projectId: workspace.activeProject?.id ?? "",
+        constellationId: workspace.activeConstellation?.id ?? "",
         canvasId: workspace.canvasId,
       });
       setSequences(list);
@@ -30,11 +30,11 @@ export function SequencesManager({ onClose, onPlaySequence }: SequencesManagerPr
   useEffect(() => { void refresh(); }, [refresh]);
 
   const handleCreate = useCallback(async () => {
-    if (!workspace.databasePath || !workspace.activeProject) return;
+    if (!workspace.databasePath || !workspace.activeConstellation) return;
     try {
       const seq = await workspace.createSavedSequence({
         databasePath: workspace.databasePath,
-        projectId: workspace.activeProject.id,
+        constellationId: workspace.activeConstellation.id,
         canvasId: workspace.canvasId,
         name: `Sequence ${sequences.length + 1}`,
       });

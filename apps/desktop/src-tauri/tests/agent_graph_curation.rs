@@ -3,7 +3,7 @@ mod support;
 use neo4rs::query;
 use research_canvas_desktop_lib::{
     agent::curation::{add_node_tag, attach_evidence},
-    db::repositories::graph::{GraphNodePatch, GraphRepository, NewGraphNode},
+    db::repositories::graph::{EntityType, GraphNodePatch, GraphRepository, NewGraphNode},
 };
 use std::fs;
 use tempfile::TempDir;
@@ -72,10 +72,7 @@ fn source_id_for_coordinate(
 
 #[test]
 fn add_node_tag_appends_validated_tag_and_is_idempotent() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph, database);
     support::block_on(repo.ensure_schema()).expect("schema");
 
@@ -115,10 +112,7 @@ fn add_node_tag_appends_validated_tag_and_is_idempotent() {
 
 #[test]
 fn concurrent_node_tag_additions_do_not_overwrite_each_other() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph.clone(), database.clone());
     support::block_on(repo.ensure_schema()).expect("schema");
 
@@ -145,10 +139,7 @@ fn concurrent_node_tag_additions_do_not_overwrite_each_other() {
 
 #[test]
 fn add_node_tag_rejects_invalid_tags_without_mutating_node() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph, database);
     support::block_on(repo.ensure_schema()).expect("schema");
 
@@ -173,10 +164,7 @@ fn add_node_tag_rejects_invalid_tags_without_mutating_node() {
 
 #[test]
 fn attach_evidence_creates_source_and_sourced_from_once_for_canonical_file_path() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph.clone(), database.clone());
     support::block_on(repo.ensure_schema()).expect("schema");
 
@@ -215,7 +203,7 @@ fn attach_evidence_creates_source_and_sourced_from_once_for_canonical_file_path(
     let source_node = support::block_on(repo.get_node(&source_node_id))
         .expect("read source node")
         .expect("source node exists");
-    assert_eq!(source_node.entity_type, "Source");
+    assert_eq!(source_node.entity_type, EntityType::Source);
     assert_eq!(source_node.title, "fragment.md");
     assert_eq!(source_node.source_kind.as_deref(), Some("vault-file"));
 
@@ -310,10 +298,7 @@ fn attach_evidence_creates_source_and_sourced_from_once_for_canonical_file_path(
 
 #[test]
 fn concurrent_evidence_attachments_reuse_one_source_node_for_canonical_path() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph.clone(), database.clone());
     support::block_on(repo.ensure_schema()).expect("schema");
 
@@ -380,10 +365,7 @@ fn concurrent_evidence_attachments_reuse_one_source_node_for_canonical_path() {
 
 #[test]
 fn concurrent_duplicate_evidence_attachment_creates_one_relationship() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph.clone(), database.clone());
     support::block_on(repo.ensure_schema()).expect("schema");
 
@@ -451,10 +433,7 @@ fn concurrent_duplicate_evidence_attachment_creates_one_relationship() {
 #[cfg(unix)]
 #[test]
 fn attach_evidence_uses_canonical_file_basename_for_source_title() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph, database);
     support::block_on(repo.ensure_schema()).expect("schema");
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { parseGraphExportBundle } from "@research-canvas/exporter";
+import { parseLegacyGraphExportBundle } from "@research-canvas/exporter";
 import type { GraphExportBundle } from "@research-canvas/exporter";
 
 import { App } from "./App";
@@ -36,7 +36,7 @@ export function EntryChooser() {
         if (!response.ok) {
           throw new Error(`graph-bundle.json request failed with status ${response.status}`);
         }
-        return parseGraphExportBundle(await response.json());
+        return parseLegacyGraphExportBundle(await response.json());
       })
       .then((bundle) => {
         if (!cancelled) {

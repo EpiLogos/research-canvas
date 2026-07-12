@@ -26,7 +26,7 @@ cp .env.example .env
 
 | Env var | Default | Used by |
 |---|---|---|
-| `NEO4J_URI` | `bolt://127.0.0.1:7687` | Rust app (`neo4rs`), Graphiti MCP |
+| `NEO4J_URI` | `bolt://127.0.0.1:17687` | Rust app (`neo4rs`), Graphiti MCP |
 | `NEO4J_USER` | `neo4j` | both |
 | `NEO4J_PASSWORD` | (required, set your own) | both |
 | `NEO4J_DATABASE` | `neo4j` | both |
@@ -37,6 +37,22 @@ cp .env.example .env
 
 Both the Tauri app and the Graphiti MCP server load this same `.env`.
 
+### Real graph integration tests
+
+Run `pnpm test:graph:integration` for the Neo4j-backed Rust suite. The command
+starts a digest-pinned Neo4j Community container on a dynamically assigned
+loopback Bolt port with a random per-run password, waits for its health check,
+writes a random server sentinel, runs every graph integration target against a
+unique run namespace, and removes the container and its anonymous data on
+success or failure. The fixture reads the sentinel back before any test schema
+or graph mutation. It does not use the persistent development service on port
+`17687` or its `neo4j_data` volume.
+
+Graph integration targets fail when the required test configuration is absent,
+when it identifies the development endpoint/database, or when Docker cannot
+start the disposable dependency. Pure Rust and SQLite tests remain runnable
+through ordinary `cargo test` target selection without Neo4j.
+
 ## 3. Start Neo4j (Docker)
 
 The repo ships a single-service `docker-compose.yml` at its root:
@@ -45,7 +61,7 @@ The repo ships a single-service `docker-compose.yml` at its root:
 docker compose up -d neo4j
 ```
 
-This starts `neo4j:5.26-community` with APOC enabled, exposing the browser UI on `http://127.0.0.1:7474` and the bolt protocol on `127.0.0.1:7687`. Graphiti requires Neo4j 5.26+.
+This starts `neo4j:5.26-community` with APOC enabled, exposing the browser UI on `http://127.0.0.1:17474` and the bolt protocol on `127.0.0.1:17687`. Graphiti requires Neo4j 5.26+.
 
 ## 4. Run the desktop app
 

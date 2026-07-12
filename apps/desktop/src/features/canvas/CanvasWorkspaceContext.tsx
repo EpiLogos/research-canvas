@@ -22,8 +22,12 @@ import {
   serializeLayoutSnapshot,
   type ContentLinkingActions,
 } from "@research-canvas/canvas";
-import { buildNewGraphNodeInput, seedNoteNodeEffects } from "./nodeCreation";
-import { retryPendingGraphNodeSyncs } from "./pendingGraphNodeSync";
+import { buildNewGraphNodeInput, createPreparedNoteNode } from "./nodeCreation";
+import {
+  rehydratePendingGraphNodeSyncs,
+  retryPendingGraphNodeSyncs,
+  startDurablePendingGraphNodeSyncRetryInterval,
+} from "./pendingGraphNodeSync";
 import { canvasViewToCanvasNodes } from "./canvasViewToNodes";
 import { selectLegacyNodesNeedingImport, importLegacyCanvasNodes } from "./legacyNodeImport";
 import type { CanvasNode, CanvasEdge, Viewport } from "@research-canvas/schema";
@@ -31,12 +35,12 @@ import {
   createWorkspaceTransport,
   type DirectoryEntry,
   type IndexedEntry,
-  type ProjectDocument,
-  type ProjectTreeNode,
+  type ConstellationDocument,
+  type ConstellationTreeNode,
   type ResourceRoot,
   type SavedSequence,
   type SearchHit,
-  type WorkspaceProject
+  type WorkspaceConstellation
 } from "@research-canvas/desktop-api";
 type WorkspaceTransport = ReturnType<typeof createWorkspaceTransport>;
 import {
@@ -46,7 +50,7 @@ import {
 import { shouldWriteSubstanceOnLayoutFlush } from "./persistPolicy";
 
 const EMPTY_CANVAS_ID = "00000000-0000-4000-8000-000000000001";
-const EMPTY_PROJECT_ID = "00000000-0000-4000-8000-000000000002";
+const EMPTY_CONSTELLATION_ID = "00000000-0000-4000-8000-000000000002";
 
 interface WorkspaceStores {
   annotationStore: ReturnType<typeof createAnnotationStore>;
@@ -54,10 +58,11 @@ interface WorkspaceStores {
 }
 
 interface CanvasWorkspaceContextValue extends WorkspaceStores {
-  activeProject: WorkspaceProject | null;
-  activeProjectId: string | null;
+  activeConstellation: WorkspaceConstellation | null;
+  activeConstellationId: string | null;
   canvasId: string;
   databasePath: string | null;
+  workspaceId: string | null;
   entries: IndexedEntry[];
   errorMessage: string | null;
   addEdge: (input: {
@@ -78,26 +83,37 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   detachResourceRoot: (rootPath: string) => Promise<void>;
   duplicateNode: (nodeId: string) => Promise<void>;
   isHydrated: boolean;
-  projectId: string;
-  projects: ProjectTreeNode[];
+  constellationId: string;
+  constellations: ConstellationTreeNode[];
   resourceRoots: ResourceRoot[];
   listDirectories: () => Promise<DirectoryEntry[]>;
-  searchProject: (query: string, limit?: number) => Promise<SearchHit[]>;
-  listSavedSequences: (input: { databasePath: string; projectId: string; canvasId: string }) => Promise<SavedSequence[]>;
-  createSavedSequence: (input: { databasePath: string; projectId: string; canvasId: string; name: string }) => Promise<SavedSequence>;
+  searchConstellation: (query: string, limit?: number) => Promise<SearchHit[]>;
+  listSavedSequences: (input: { databasePath: string; constellationId: string; canvasId: string }) => Promise<SavedSequence[]>;
+  createSavedSequence: (input: { databasePath: string; constellationId: string; canvasId: string; name: string }) => Promise<SavedSequence>;
   updateSavedSequence: (input: { databasePath: string; id: string; name: string; rootNodeId: string | null; edgeIds: string[] }) => Promise<SavedSequence>;
   deleteSavedSequence: (input: { databasePath: string; id: string }) => Promise<void>;
+  openCanvas: (canvasId: string) => Promise<void>;
   selectEntry: (entryId: string | null) => void;
   selectEdge: (edgeId: string | null) => void;
   selectNode: (nodeId: string | null) => void;
-  selectProject: (projectId: string) => void | Promise<void>;
+  selectConstellation: (constellationId: string) => void | Promise<void>;
   selectedEntryId: string | null;
   selectedEdgeId: string | null;
   selectedNodeId: string | null;
-  resizeNode: (nodeId: string, width: number, height: number) => void;
+  resizeNode: (
+    nodeId: string,
+    width: number,
+    height: number,
+    position?: { x?: number; y?: number },
+  ) => void;
   updateNodeContent: (nodeId: string, content: string) => void;
   setNodeThumbnailFromAbsolutePath: (nodeId: string, absolutePath: string) => Promise<void>;
   updateNodeStyle: (nodeId: string, style: { dotColour?: string; bgColour?: string; textColour?: string; thumbnail?: string }) => void;
+  updateNodeTags: (nodeId: string, tags: string[]) => void;
+  updateNodeTimelineCard: (
+    nodeId: string,
+    timelineCard: { offsetY: number; width?: number; height?: number },
+  ) => void;
   workingRoot: string | null;
   flyToNode: (nodeId: string, viewport?: { x: number; y: number; zoom: number }) => void;
   flyToEdge: (edgeId: string, viewport?: { x: number; y: number; zoom: number }) => void;
@@ -122,12 +138,14 @@ export function CanvasWorkspaceProvider({
 }) {
   const transport = useMemo(() => createWorkspaceTransport(), []);
   const [stores, setStores] = useState<WorkspaceStores>(() =>
-    createWorkspaceStores(EMPTY_CANVAS_ID, EMPTY_PROJECT_ID)
+    createWorkspaceStores(EMPTY_CANVAS_ID, EMPTY_CONSTELLATION_ID)
   );
-  const [projects, setProjects] = useState<ProjectTreeNode[]>([]);
+  const [constellations, setConstellations] = useState<ConstellationTreeNode[]>([]);
   const [databasePath, setDatabasePath] = useState<string | null>(null);
-  const [activeProject, setActiveProject] = useState<WorkspaceProject | null>(null);
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [activeConstellation, setActiveConstellation] = useState<WorkspaceConstellation | null>(null);
+  const [activeConstellationId, setActiveConstellationId] = useState<string | null>(null);
+  const [activeCanvasId, setActiveCanvasId] = useState(EMPTY_CANVAS_ID);
   const [entries, setEntries] = useState<IndexedEntry[]>([]);
   const [resourceRoots, setResourceRoots] = useState<ResourceRoot[]>([]);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
@@ -139,8 +157,12 @@ export function CanvasWorkspaceProvider({
   const contentLinkingActions = useMemo<ContentLinkingActions>(
     () =>
       createContentLinkingActions({
+        databasePath: databasePath ?? "",
         readGraphNode: (input) => transport.readGraphNode(input),
-        updateGraphNode: (input) => transport.updateGraphNode(input),
+        readLocalNodeDocument: (input) => transport.readLocalNodeDocument(input),
+        upsertLocalNodeDocument: (input) => transport.upsertLocalNodeDocument(input),
+        compareAndSwapGraphNodeContent: (input) => transport.compareAndSwapGraphNodeContent(input),
+        acknowledgeLocalNodeDocumentSync: (input) => transport.acknowledgeLocalNodeDocumentSync(input),
         connectGraphNodes: (input) => transport.connectGraphNodes(input),
         createGraphNode: (input) => transport.createGraphNode(input),
         importNodeImage: (input) =>
@@ -150,7 +172,7 @@ export function CanvasWorkspaceProvider({
             sourceAbsolutePath: input.sourceAbsolutePath,
           }),
       }),
-    [transport, workingRoot],
+    [transport, workingRoot, databasePath],
   );
   const selectedEntryIdRef = useRef<string | null>(null);
   const selectedNodeIdRef = useRef<string | null>(null);
@@ -181,12 +203,13 @@ export function CanvasWorkspaceProvider({
           return;
         }
 
-        setProjects(workspace.projects);
+        setConstellations(workspace.constellations);
         setDatabasePath(workspace.databasePath);
-        setActiveProjectId((current) =>
-          current && workspace.projects.some((project) => project.id === current)
+        setWorkspaceId(workspace.workspaceId);
+        setActiveConstellationId((current) =>
+          current && workspace.constellations.some((constellation) => constellation.id === current)
             ? current
-            : workspace.activeProjectId
+            : workspace.activeConstellationId
         );
         setErrorMessage(null);
       })
@@ -204,7 +227,7 @@ export function CanvasWorkspaceProvider({
   }, [transport]);
 
   useEffect(() => {
-    if (!databasePath || !activeProjectId) {
+    if (!databasePath || !activeConstellationId) {
       return;
     }
 
@@ -213,9 +236,9 @@ export function CanvasWorkspaceProvider({
 
     void (async () => {
       try {
-        const document = await transport.loadProjectDocument({
+        const document = await transport.loadConstellationDocument({
           databasePath,
-          projectId: activeProjectId
+          constellationId: activeConstellationId
         });
 
         if (cancelled) return;
@@ -226,14 +249,15 @@ export function CanvasWorkspaceProvider({
         // canvas hydrates from it directly — no union with document.nodes
         // needed. Only fall back to the local document nodes if the call
         // itself fails (e.g. transport/backend error), for resilience.
-        let graphNodes = document.nodes;
-        let graphEdges = document.edges;
-        try {
-          let view = await transport.loadCanvasView({
-            databasePath,
-            canvasId: document.project.primaryCanvasId,
-            lens: "canvas",
-          });
+          const primaryCanvasId = document.constellation.primaryCanvasId;
+          let graphNodes = document.nodes;
+          let graphEdges = document.edges;
+          try {
+            let view = await transport.loadCanvasView({
+              databasePath,
+              canvasId: primaryCanvasId,
+              lens: "canvas",
+            });
           if (cancelled) return;
 
           // lf-task-4: one-time import of any legacy canvas_nodes rows (the
@@ -257,7 +281,7 @@ export function CanvasWorkspaceProvider({
               // instead of only after the next reload.
               view = await transport.loadCanvasView({
                 databasePath,
-                canvasId: document.project.primaryCanvasId,
+                canvasId: primaryCanvasId,
                 lens: "canvas",
               });
               if (cancelled) return;
@@ -285,18 +309,30 @@ export function CanvasWorkspaceProvider({
             selectedNodeId: selectedNodeIdRef.current
           },
           setStores,
-          setActiveProject,
+          setActiveConstellation,
           setEntries,
           setResourceRoots,
           setSelectedEntryId,
           setSelectedEdgeId,
           setSelectedNodeId,
-          setWorkingRoot
+          setWorkingRoot,
+          setActiveCanvasId,
+          primaryCanvasId
         );
         setErrorMessage(null);
         setIsHydrated(true);
+        void rehydratePendingGraphNodeSyncs(databasePath, {
+          listPendingNodeDocumentSyncs: (input) => transport.listPendingNodeDocumentSyncs(input),
+          createGraphNode: (input) => transport.createGraphNode(input),
+          findGraphNode: (input) => transport.findGraphNode(input),
+          readLocalNodeDocument: (input) => transport.readLocalNodeDocument(input),
+          compareAndSwapGraphNodeContent: (input) => transport.compareAndSwapGraphNodeContent(input),
+          acknowledgeLocalNodeDocumentSync: (input) => transport.acknowledgeLocalNodeDocumentSync(input),
+        }).catch((error) => {
+          console.warn("durable pending node sync hydration failed; rows remain pending", error);
+        });
         if (isTauriRuntime()) {
-          invoke("activate_canvas_command", { canvasId: document.canvasId }).catch(() => {});
+          invoke("activate_canvas_command", { canvasId: primaryCanvasId }).catch(() => {});
         }
       } catch (error) {
         if (cancelled) return;
@@ -307,10 +343,10 @@ export function CanvasWorkspaceProvider({
     return () => {
       cancelled = true;
     };
-  }, [activeProjectId, databasePath, transport]);
+  }, [activeConstellationId, databasePath, transport]);
 
   useEffect(() => {
-    if (!isHydrated || !databasePath || !activeProject) {
+    if (!isHydrated || !databasePath || !activeConstellation) {
       return;
     }
 
@@ -335,7 +371,7 @@ export function CanvasWorkspaceProvider({
           const viewport = captureViewportRef.current();
           const result = await transport.flushCanvasLayout({
             databasePath,
-            canvasId: activeProject.primaryCanvasId,
+            canvasId: activeCanvasId,
             layouts: snapshot.layouts,
             edges: snapshot.edges,
             viewport,
@@ -358,13 +394,13 @@ export function CanvasWorkspaceProvider({
             // independently of whether any node rows exist.
             const writeSubstance = shouldWriteSubstanceOnLayoutFlush();
             const serialized = stores.store.getState().serialize();
-            await transport.persistProjectDocument({
+            await transport.persistConstellationDocument({
               annotations: stores.annotationStore.getState().serialize(),
-              canvasId: activeProject.primaryCanvasId,
+              canvasId: activeCanvasId,
               databasePath,
               edges: writeSubstance ? serialized.edges : [],
               nodes: writeSubstance ? serialized.nodes : [],
-              projectId: activeProject.id,
+              constellationId: activeConstellation.id,
             });
           }
         } catch (error) {
@@ -407,10 +443,10 @@ export function CanvasWorkspaceProvider({
       unsubscribeCanvas();
       unsubscribeAnnotations();
     };
-  }, [activeProject, databasePath, isHydrated, stores, transport]);
+  }, [activeCanvasId, activeConstellation, databasePath, isHydrated, stores, transport]);
 
   useEffect(() => {
-    if (!isHydrated || !databasePath || !activeProject) {
+    if (!isHydrated || !databasePath || !activeConstellation) {
       return;
     }
 
@@ -419,7 +455,7 @@ export function CanvasWorkspaceProvider({
       const viewport = captureViewportRef.current();
       const result = transport.flushCanvasLayout({
         databasePath,
-        canvasId: activeProject.primaryCanvasId,
+        canvasId: activeCanvasId,
         layouts: snapshot.layouts,
         edges: snapshot.edges,
         viewport,
@@ -442,14 +478,14 @@ export function CanvasWorkspaceProvider({
       window.removeEventListener("beforeunload", flushLatest);
       window.removeEventListener("pagehide", flushLatest);
     };
-  }, [activeProject, databasePath, isHydrated, stores, transport]);
+  }, [activeCanvasId, activeConstellation, databasePath, isHydrated, stores, transport]);
 
   const refreshCanvas = useCallback(async () => {
-    if (!databasePath || !activeProject) return;
+    if (!databasePath || !activeConstellation) return;
     try {
       const view = await transport.loadCanvasView({
         databasePath,
-        canvasId: activeProject.primaryCanvasId,
+        canvasId: activeCanvasId,
         lens: "canvas",
       });
       const { nodes, edges } = canvasViewToCanvasNodes(view);
@@ -457,12 +493,18 @@ export function CanvasWorkspaceProvider({
       stores.store.getState().hydrate({ nodes, edges });
       // A successful transport round-trip is a good signal Neo4j is
       // reachable again — opportunistically retry anything pending.
-      void retryPendingGraphNodeSyncs((input) => transport.createGraphNode(input));
+      void retryPendingGraphNodeSyncs({
+        createGraphNode: (input) => transport.createGraphNode(input),
+        findGraphNode: (input) => transport.findGraphNode(input),
+        readLocalNodeDocument: (input) => transport.readLocalNodeDocument(input),
+        compareAndSwapGraphNodeContent: (input) => transport.compareAndSwapGraphNodeContent(input),
+        acknowledgeLocalNodeDocumentSync: (input) => transport.acknowledgeLocalNodeDocumentSync(input),
+      });
     } catch (error) {
       console.error("refreshCanvas: loadCanvasView failed", error);
       setErrorMessage(error instanceof Error ? error.message : "failed to refresh canvas");
     }
-  }, [databasePath, activeProject, stores.store, transport]);
+  }, [activeCanvasId, databasePath, activeConstellation, stores.store, transport]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -483,40 +525,110 @@ export function CanvasWorkspaceProvider({
     };
   }, [refreshCanvas]);
 
-  // Reconnect/retry: nodes created while Neo4j was unreachable are recorded
-  // as "pending sync" (pendingGraphNodeSync.ts). Re-attempt them on a modest
-  // interval — simple and best-effort, never blocking the UI. A node that
-  // syncs successfully is cleared from the pending set by the helper itself.
+  // Reconnect/retry: rescan SQLite, rather than only the process-local map, so
+  // ordinary document saves made while Neo4j was unavailable are discovered
+  // without an app restart. Reconciliation remains single-flight and never
+  // blocks the UI.
   useEffect(() => {
-    const intervalId = setInterval(() => {
-      void retryPendingGraphNodeSyncs((input) => transport.createGraphNode(input));
-    }, 15_000);
-    return () => clearInterval(intervalId);
-  }, [transport]);
+    if (!databasePath) return;
+    return startDurablePendingGraphNodeSyncRetryInterval(databasePath, {
+      listPendingNodeDocumentSyncs: (input) => transport.listPendingNodeDocumentSyncs(input),
+      createGraphNode: (input) => transport.createGraphNode(input),
+      findGraphNode: (input) => transport.findGraphNode(input),
+      readLocalNodeDocument: (input) => transport.readLocalNodeDocument(input),
+      compareAndSwapGraphNodeContent: (input) => transport.compareAndSwapGraphNodeContent(input),
+      acknowledgeLocalNodeDocumentSync: (input) => transport.acknowledgeLocalNodeDocumentSync(input),
+    });
+  }, [databasePath, transport]);
+
+  const flushActiveCanvas = useCallback(async () => {
+    if (!databasePath || !activeConstellation) {
+      return;
+    }
+
+    const snapshot = serializeLayoutSnapshot(stores.store.getState().serialize());
+    const viewport = captureViewportRef.current();
+    const result = await transport.flushCanvasLayout({
+      databasePath,
+      canvasId: activeCanvasId,
+      layouts: snapshot.layouts,
+      edges: snapshot.edges,
+      viewport,
+      appState: {},
+    });
+    if (result === false) {
+      setErrorMessage("failed to persist canvas layout");
+      return;
+    }
+
+    const writeSubstance = shouldWriteSubstanceOnLayoutFlush();
+    const serialized = stores.store.getState().serialize();
+    await transport.persistConstellationDocument({
+      annotations: stores.annotationStore.getState().serialize(),
+      canvasId: activeCanvasId,
+      databasePath,
+      edges: writeSubstance ? serialized.edges : [],
+      nodes: writeSubstance ? serialized.nodes : [],
+      constellationId: activeConstellation.id,
+    });
+  }, [activeCanvasId, activeConstellation, databasePath, stores, transport]);
+
+  const openCanvas = useCallback(
+    async (canvasId: string) => {
+      if (!databasePath || !activeConstellation) {
+        return;
+      }
+
+      try {
+        await flushActiveCanvas();
+        const view = await transport.loadCanvasView({
+          databasePath,
+          canvasId,
+          lens: "canvas",
+        });
+        const { nodes, edges } = canvasViewToCanvasNodes(view);
+        const nextStores = createWorkspaceStores(canvasId, activeConstellation.id);
+        nextStores.store.getState().hydrate({ nodes, edges });
+
+        setStores(nextStores);
+        setActiveCanvasId(canvasId);
+        setSelectedEdgeId(null);
+        setSelectedNodeId(nodes[0]?.id ?? null);
+        setErrorMessage(null);
+        if (isTauriRuntime()) {
+          invoke("activate_canvas_command", { canvasId }).catch(() => {});
+        }
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "failed to open canvas");
+      }
+    },
+    [activeConstellation, databasePath, flushActiveCanvas, transport],
+  );
 
   const contextValue = useMemo<CanvasWorkspaceContextValue>(
     () => ({
       ...stores,
-      activeProject,
-      activeProjectId,
-      canvasId: activeProject?.primaryCanvasId ?? EMPTY_CANVAS_ID,
+      activeConstellation,
+      activeConstellationId,
+      canvasId: activeCanvasId,
       databasePath,
+      workspaceId,
       entries,
       errorMessage,
       isHydrated,
-      projectId: activeProject?.id ?? EMPTY_PROJECT_ID,
-      projects,
+      constellationId: activeConstellation?.id ?? EMPTY_CONSTELLATION_ID,
+      constellations,
       resourceRoots,
       workingRoot,
       async attachResourceRoot(rootPath, displayName) {
-        if (!databasePath || !activeProject) {
+        if (!databasePath || !activeConstellation) {
           return;
         }
 
-        const nextRoots = await transport.attachProjectResourceRoot({
+        const nextRoots = await transport.attachConstellationResourceRoot({
           databasePath,
           displayName,
-          projectId: activeProject.id,
+          constellationId: activeConstellation.id,
           rootPath
         });
         setResourceRoots((current) => {
@@ -525,33 +637,33 @@ export function CanvasWorkspaceProvider({
         });
       },
       async detachResourceRoot(rootPath) {
-        if (!databasePath || !activeProject) {
+        if (!databasePath || !activeConstellation) {
           return;
         }
 
-        await transport.detachProjectResourceRoot({
+        await transport.detachConstellationResourceRoot({
           databasePath,
-          projectId: activeProject.id,
+          constellationId: activeConstellation.id,
           rootPath
         });
-        const nextRoots = await transport.listProjectResourceRoots({
+        const nextRoots = await transport.listConstellationResourceRoots({
           databasePath,
-          projectId: activeProject.id
+          constellationId: activeConstellation.id
         });
         setResourceRoots(nextRoots);
       },
       async listDirectories() {
         return transport.listDirectories();
       },
-      async searchProject(query, limit = 20) {
-        if (!databasePath || !activeProject) {
+      async searchConstellation(query, limit = 20) {
+        if (!databasePath || !activeConstellation) {
           return [];
         }
 
-        return transport.searchProject({
+        return transport.searchConstellation({
           databasePath,
           limit,
-          projectId: activeProject.id,
+          constellationId: activeConstellation.id,
           query
         });
       },
@@ -567,36 +679,31 @@ export function CanvasWorkspaceProvider({
       async deleteSavedSequence(input) {
         return transport.deleteSavedSequence(input);
       },
+      openCanvas,
       addEdge: (input) => {
         stores.store.getState().connectNodes(input);
       },
       async createNoteNode(position) {
         const graphNodeId = crypto.randomUUID();
-        // Local-first: add the node immediately so it always appears and
-        // persists (SQLite layout), regardless of Neo4j availability.
-        const node = stores.store.getState().createNoteNode({
-          title: "Untitled note",
-          content: "",
-          id: graphNodeId,
-          graphNodeId,
-        });
-        if (position) {
-          stores.store.getState().updateNodePosition(node.id, position);
-        }
-        // Seed a local node document immediately (so the editor can open the
-        // note right away, even fully offline), then best-effort sync theory
-        // substance to Neo4j — a failure here never discards the local node;
-        // it's recorded as pending and retried later (see
-        // pendingGraphNodeSync.ts / the retry effect below).
-        void seedNoteNodeEffects({
+        await createPreparedNoteNode({
           graphNodeId,
           title: "Untitled note",
           databasePath,
           upsertLocalNodeDocument: (input) => transport.upsertLocalNodeDocument(input),
+          publishCanvasNode: () => {
+            const node = stores.store.getState().createNoteNode({
+              title: "Untitled note", content: "", id: graphNodeId, graphNodeId,
+            });
+            if (position) {
+              stores.store.getState().updateNodePosition(node.id, position);
+            }
+          },
           createGraphNode: (input) =>
             transport.createGraphNode(
               input as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string }
             ),
+          acknowledgeLocalNodeDocumentSync: (input) =>
+            transport.acknowledgeLocalNodeDocumentSync(input),
         });
       },
       async createGroupNode(position) {
@@ -626,7 +733,7 @@ export function CanvasWorkspaceProvider({
           title: entry.name,
           absolutePath,
           relativePath,
-          resourceKind: kind === "directory" ? "binary" : kind,
+          resourceKind: kind,
           id: graphNodeId,
           graphNodeId,
         });
@@ -644,10 +751,10 @@ export function CanvasWorkspaceProvider({
           resourceRoots: resourceRoots.map((root) => root.rootPath),
         });
 
-        if (plan.shouldAttachRoot && databasePath && activeProject) {
-          const nextRoot = await transport.attachProjectResourceRoot({
+        if (plan.shouldAttachRoot && databasePath && activeConstellation) {
+          const nextRoot = await transport.attachConstellationResourceRoot({
             databasePath,
-            projectId: activeProject.id,
+            constellationId: activeConstellation.id,
             rootPath: plan.rootPath,
           });
           setResourceRoots((current) => {
@@ -728,8 +835,8 @@ export function CanvasWorkspaceProvider({
       selectEntry: setSelectedEntryId,
       selectEdge: setSelectedEdgeId,
       selectNode: setSelectedNodeId,
-      selectProject: async (projectId: string) => {
-        if (activeProject && databasePath) {
+      selectConstellation: async (constellationId: string) => {
+        if (activeConstellation && databasePath) {
           // Flush layout of the outgoing canvas so positions are saved.
           // Mirror the unload handler pattern: capture the result and attach
           // .catch() so a rejection does not become an unhandled promise rejection.
@@ -737,7 +844,7 @@ export function CanvasWorkspaceProvider({
           const viewport = captureViewportRef.current();
           const flushResult = transport.flushCanvasLayout({
             databasePath,
-            canvasId: activeProject.primaryCanvasId,
+            canvasId: activeCanvasId,
             layouts: snapshot.layouts,
             edges: snapshot.edges,
             viewport,
@@ -745,34 +852,44 @@ export function CanvasWorkspaceProvider({
           });
           if (flushResult instanceof Promise) {
             flushResult.catch((error: unknown) => {
-              console.error("canvas layout flush failed on project switch", error);
+              console.error("canvas layout flush failed on constellation switch", error);
             });
           } else if (flushResult === false) {
-            console.error("canvas layout flush returned false on project switch");
+            console.error("canvas layout flush returned false on constellation switch");
           }
           // Annotations-only write: node/edge substance lives in Neo4j
           // (WS4a Task 6 cutover). shouldWriteSubstanceOnLayoutFlush() returns
           // false (permanently), so nodes/edges are always empty here.
           const writeSubstance = shouldWriteSubstanceOnLayoutFlush();
           const serialized = stores.store.getState().serialize();
-          await transport.persistProjectDocument({
+          await transport.persistConstellationDocument({
             annotations: stores.annotationStore.getState().serialize(),
-            canvasId: activeProject.primaryCanvasId,
+            canvasId: activeCanvasId,
             databasePath,
             edges: writeSubstance ? serialized.edges : [],
             nodes: writeSubstance ? serialized.nodes : [],
-            projectId: activeProject.id,
+            constellationId: activeConstellation.id,
           });
         }
         setSelectedEdgeId(null);
         setSelectedNodeId(null);
-        setActiveProjectId(projectId);
+        setActiveConstellationId(constellationId);
       },
       selectedEntryId,
       selectedEdgeId,
       selectedNodeId,
-      resizeNode: (nodeId, width, height) => {
-        stores.store.getState().updateNodeSize(nodeId, { width, height });
+      resizeNode: (nodeId, width, height, position) => {
+        const store = stores.store.getState();
+        if (position && (position.x !== undefined || position.y !== undefined)) {
+          const node = store.nodes.find((candidate) => candidate.id === nodeId);
+          if (node) {
+            store.updateNodePosition(nodeId, {
+              x: position.x ?? node.position.x,
+              y: position.y ?? node.position.y,
+            });
+          }
+        }
+        store.updateNodeSize(nodeId, { width, height });
       },
       updateNodeContent: (nodeId, content) => {
         stores.store.getState().updateNodeContent(nodeId, content);
@@ -783,10 +900,10 @@ export function CanvasWorkspaceProvider({
           resourceRoots: resourceRoots.map((root) => root.rootPath),
         });
 
-        if (plan.shouldAttachRoot && databasePath && activeProject) {
-          const nextRoot = await transport.attachProjectResourceRoot({
+        if (plan.shouldAttachRoot && databasePath && activeConstellation) {
+          const nextRoot = await transport.attachConstellationResourceRoot({
             databasePath,
-            projectId: activeProject.id,
+            constellationId: activeConstellation.id,
             rootPath: plan.rootPath,
           });
           setResourceRoots((current) => {
@@ -800,6 +917,12 @@ export function CanvasWorkspaceProvider({
       updateNodeStyle: (nodeId, style) => {
         stores.store.getState().updateNodeStyle(nodeId, style);
       },
+      updateNodeTags: (nodeId, tags) => {
+        stores.store.getState().updateNodeTags(nodeId, tags);
+      },
+      updateNodeTimelineCard: (nodeId, timelineCard) => {
+        stores.store.getState().updateNodeTimelineCard(nodeId, timelineCard);
+      },
       flyToNode: (nodeId, viewport) => flyToNodeRef.current(nodeId, viewport),
       flyToEdge: (edgeId, viewport) => flyToEdgeRef.current(edgeId, viewport),
       registerFlyToNode: (fn) => { flyToNodeRef.current = fn; },
@@ -810,18 +933,21 @@ export function CanvasWorkspaceProvider({
       contentLinkingActions,
     }),
     [
-      activeProject,
-      activeProjectId,
+      activeConstellation,
+      activeConstellationId,
+      activeCanvasId,
       contentLinkingActions,
       databasePath,
+      workspaceId,
       entries,
       errorMessage,
       isHydrated,
-      projects,
+      constellations,
       resourceRoots,
       selectedEntryId,
       selectedEdgeId,
       selectedNodeId,
+      openCanvas,
       stores,
       transport,
       workingRoot
@@ -859,7 +985,7 @@ export function useCanvasWorkspace() {
   };
 }
 
-function createWorkspaceStores(canvasId: string, _projectId: string): WorkspaceStores {
+function createWorkspaceStores(canvasId: string, _constellationId: string): WorkspaceStores {
   return {
     annotationStore: createAnnotationStore({ canvasId }),
     store: createCanvasStore({ canvasId })
@@ -867,7 +993,7 @@ function createWorkspaceStores(canvasId: string, _projectId: string): WorkspaceS
 }
 
 function hydrateWorkspaceDocument(
-  document: ProjectDocument,
+  document: ConstellationDocument,
   nodes: CanvasNode[],
   edges: CanvasEdge[],
   selection: {
@@ -876,26 +1002,29 @@ function hydrateWorkspaceDocument(
     selectedNodeId: string | null;
   },
   setStores: (stores: WorkspaceStores) => void,
-  setActiveProject: (project: WorkspaceProject) => void,
+  setActiveConstellation: (constellation: WorkspaceConstellation) => void,
   setEntries: (entries: IndexedEntry[]) => void,
   setResourceRoots: (resourceRoots: ResourceRoot[]) => void,
   setSelectedEntryId: (entryId: string | null) => void,
   setSelectedEdgeId: (edgeId: string | null) => void,
   setSelectedNodeId: (nodeId: string | null) => void,
-  setWorkingRoot: (workingRoot: string) => void
+  setWorkingRoot: (workingRoot: string) => void,
+  setActiveCanvasId: (canvasId: string) => void,
+  canvasId: string
 ) {
   const nextStores = createWorkspaceStores(
-    document.canvasId,
-    document.project.id
+    canvasId,
+    document.constellation.id
   );
   nextStores.store.getState().hydrate({ nodes, edges });
   nextStores.annotationStore.getState().hydrate(document.annotations);
 
   setStores(nextStores);
-  setActiveProject(document.project);
+  setActiveConstellation(document.constellation);
   setEntries(document.entries);
   setResourceRoots(document.resourceRoots ?? []);
-  setWorkingRoot(document.workingRoot ?? document.project.rootPath);
+  setWorkingRoot(document.workingRoot ?? document.constellation.rootPath);
+  setActiveCanvasId(canvasId);
   setSelectedEntryId(
     selection.selectedEntryId &&
       document.entries.some((entry) => entry.id === selection.selectedEntryId)

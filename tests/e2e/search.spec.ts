@@ -18,9 +18,9 @@ test("opens the command palette and finds files, nodes, sequences, and commands"
 
   const searchbox = palette.getByRole("textbox", { name: "Search workspace" });
 
-  await searchbox.fill("outline");
+  await searchbox.fill("resonance");
   await expect(
-    palette.getByRole("button", { name: /outline\.md file/i })
+    palette.getByRole("button", { name: /episode-1-2-archetypal-resonance\.md file/i })
   ).toBeVisible();
 
   await searchbox.fill("opening");
@@ -33,8 +33,8 @@ test("opens the command palette and finds files, nodes, sequences, and commands"
     palette.getByRole("button", { name: /Episode flow sequence/i })
   ).toBeVisible();
 
-  await searchbox.fill("export");
+  await searchbox.fill("timeline");
   await expect(
-    palette.getByRole("button", { name: /Export project command/i })
+    palette.getByRole("button", { name: /Go to Timeline command/i })
   ).toBeVisible();
 });

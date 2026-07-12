@@ -1,14 +1,14 @@
 import type { TimelineDataSource } from "@research-canvas/canvas";
 import type {
   ArchetypalLighting,
-  GraphNode,
   LitInstance,
+  TimelineView,
   WorkspaceTransport,
 } from "@research-canvas/desktop-api";
 
 type TimelineTransport = Pick<
   WorkspaceTransport,
-  "loadCanvasView" | "archetypalLighting" | "resonancesForInstance"
+  "loadTimelineView" | "archetypalLighting" | "resonancesForInstance"
 >;
 
 /**
@@ -18,18 +18,16 @@ type TimelineTransport = Pick<
  * narrow TimelineDataSource port the SHARED <TimelineLens> needs, so the web
  * timeline lens runs the exact same view code as the desktop — only the data
  * source differs (static bundle vs. live backend). loadTimelineNodes asks the
- * transport for the server-filtered "timeline" lens (isTemporal === true) and
- * returns the GraphNode substance from each JoinedCanvasNode.
+ * transport for the bundle's workspace-level timeline view.
  */
 export function createTimelineDataSource(input: {
   transport: TimelineTransport;
-  canvasId: string;
+  workspaceId: string;
 }): TimelineDataSource {
-  const { transport, canvasId } = input;
+  const { transport, workspaceId } = input;
   return {
-    async loadTimelineNodes(): Promise<GraphNode[]> {
-      const view = await transport.loadCanvasView({ canvasId, lens: "timeline" });
-      return view.nodes.map((joined) => joined.node);
+    async loadTimelineView(): Promise<TimelineView> {
+      return transport.loadTimelineView({ workspaceId });
     },
     async archetypalLighting(operatorGraphNodeId: string): Promise<ArchetypalLighting> {
       return transport.archetypalLighting({ operatorGraphNodeId });

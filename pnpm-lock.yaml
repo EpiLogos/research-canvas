@@ -99,6 +99,9 @@ importers:
 
   apps/public-viewer:
     dependencies:
+      '@research-canvas/canvas':
+        specifier: workspace:*
+        version: link:../../packages/canvas
       '@research-canvas/desktop-api':
         specifier: workspace:*
         version: link:../../packages/desktop-api
@@ -150,9 +153,6 @@ importers:
 
   packages/desktop-api:
     dependencies:
-      '@research-canvas/exporter':
-        specifier: workspace:*
-        version: link:../exporter
       '@research-canvas/schema':
         specifier: workspace:*
         version: link:../schema

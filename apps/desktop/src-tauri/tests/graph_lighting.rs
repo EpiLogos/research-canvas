@@ -5,15 +5,12 @@ use research_canvas_desktop_lib::db::repositories::graph::{GraphRepository, NewG
 
 #[test]
 fn archetypal_lighting_returns_datable_instances() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph.clone(), database.clone());
     support::block_on(repo.ensure_schema()).expect("schema");
 
     let operator = support::block_on(repo.create_node(NewGraphNode {
-        graph_node_id: None,
+        graph_node_id: Some(format!("{run_id}:operator")),
         entity_type: "Dynamic".into(),
         title: format!("Monopoly mechanism {run_id}"),
         body: "[]".into(),
@@ -26,7 +23,7 @@ fn archetypal_lighting_returns_datable_instances() {
     }))
     .expect("operator");
     let event = support::block_on(repo.create_node(NewGraphNode {
-        graph_node_id: None,
+        graph_node_id: Some(format!("{run_id}:event")),
         entity_type: "Event".into(),
         title: format!("VOC charter {run_id}"),
         body: "[]".into(),

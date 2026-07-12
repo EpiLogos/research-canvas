@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import graphNodeFixture from "../../../tests/fixtures/contracts/graph-node.json";
+import { EMPTY_GRAPH_NODE_METADATA, graphNodeSchema } from "@research-canvas/schema";
+
 import type {
   ArchetypalLighting,
   CanvasView,
@@ -15,6 +18,12 @@ import type {
 } from "./index";
 
 describe("graph shared types", () => {
+  it("matches the canonical graph-node contract fixture", () => {
+    const node: GraphNode = graphNodeSchema.parse(graphNodeFixture);
+
+    expect(graphNodeSchema.parse(node)).toEqual(graphNodeFixture);
+    expect(Object.keys(node)).toEqual(Object.keys(graphNodeFixture));
+  });
   it("constructs a GraphNode and a JoinedCanvasNode matching contracts section 5.1", () => {
     const entityType: EntityType = "Event";
     const node: GraphNode = {
@@ -26,8 +35,7 @@ describe("graph shared types", () => {
       archetypalResonance: null,
       coordinate: null,
       sourceCoordinates: [],
-      evidenceTags: ["archive", "contested"],
-      sourceKind: "archive",
+      ...EMPTY_GRAPH_NODE_METADATA,
       isTemporal: true,
       validFrom: "1621-01-01",
       validTo: "1621-12-31",
@@ -77,8 +85,7 @@ describe("graph shared types", () => {
         archetypalResonance: null,
         coordinate: null,
         sourceCoordinates: [],
-        evidenceTags: [],
-        sourceKind: null,
+        ...EMPTY_GRAPH_NODE_METADATA,
         isTemporal: true,
         validFrom: null,
         validTo: null,

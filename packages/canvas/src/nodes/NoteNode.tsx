@@ -4,6 +4,7 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
+import type { CSSProperties } from "react";
 import { useEffect, useRef } from "react";
 
 import type { AdaptiveNodeStyle } from "./AdaptiveNode";
@@ -18,6 +19,7 @@ interface NoteNodeData {
   title: string;
   summary?: string;
   style?: AdaptiveNodeStyle;
+  tags?: string[];
   content?: string;
   isEditing?: boolean;
   onContentChange?: (content: string) => void;
@@ -30,6 +32,11 @@ export type NoteNodeType = Node<NoteNodeData, "note">;
 
 export function NoteNode({ data, selected }: NodeProps<NoteNodeType>) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const noteStyle = {
+    backgroundColor: data.style?.bgColour,
+    color: data.style?.textColour,
+    "--node-accent": data.style?.dotColour,
+  } as CSSProperties;
 
   useEffect(() => {
     if (data.isEditing) {
@@ -47,7 +54,34 @@ export function NoteNode({ data, selected }: NodeProps<NoteNodeType>) {
         minWidth={120}
         minHeight={60}
         position="bottom-right"
-        className="node-resize-control"
+        className="node-resize-control node-resize-control--bottom-right"
+        style={{ display: selected ? "flex" : "none" }}
+      >
+        <div className="node-resize-grip" />
+      </NodeResizeControl>
+      <NodeResizeControl
+        minWidth={120}
+        minHeight={60}
+        position="bottom-left"
+        className="node-resize-control node-resize-control--bottom-left"
+        style={{ display: selected ? "flex" : "none" }}
+      >
+        <div className="node-resize-grip" />
+      </NodeResizeControl>
+      <NodeResizeControl
+        minWidth={120}
+        minHeight={60}
+        position="top-right"
+        className="node-resize-control node-resize-control--top-right"
+        style={{ display: selected ? "flex" : "none" }}
+      >
+        <div className="node-resize-grip" />
+      </NodeResizeControl>
+      <NodeResizeControl
+        minWidth={120}
+        minHeight={60}
+        position="top-left"
+        className="node-resize-control node-resize-control--top-left"
         style={{ display: selected ? "flex" : "none" }}
       >
         <div className="node-resize-grip" />
@@ -64,13 +98,10 @@ export function NoteNode({ data, selected }: NodeProps<NoteNodeType>) {
         ))}
         <div
           className="note-node"
+          data-testid="note-node-surface"
           data-editing={data.isEditing ? "true" : "false"}
           data-selected={selected ? "true" : "false"}
-          onDoubleClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            data.onStartEditing?.();
-          }}
+          style={noteStyle}
         >
           {data.isEditing ? (
             <textarea
@@ -89,8 +120,28 @@ export function NoteNode({ data, selected }: NodeProps<NoteNodeType>) {
               value={data.content ?? ""}
             />
           ) : (
-            <div className="note-node__preview">
+            <div
+              className="note-node__preview"
+              style={{ color: data.style?.textColour } as CSSProperties}
+            >
+              {data.style?.thumbnail ? (
+                <img
+                  className="note-node__thumbnail"
+                  src={data.style.thumbnail}
+                  alt={data.title}
+                  draggable={false}
+                />
+              ) : null}
               {data.content ?? ""}
+              {data.tags && data.tags.length > 0 ? (
+                <div className="note-node__tags" aria-label="Note tags">
+                  {data.tags.map((tag) => (
+                    <span className="note-node__tag" key={tag}>
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
           )}
         </div>

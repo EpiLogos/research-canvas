@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 import { buildLitMap, dominantResonance } from "./lighting";
 import type { ArchetypalLighting, GraphNode, LitInstance } from "./contracts";
 
@@ -12,6 +13,7 @@ function gnode(id: string): GraphNode {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: true,
     validFrom: "1600-01-01",
     validTo: null,

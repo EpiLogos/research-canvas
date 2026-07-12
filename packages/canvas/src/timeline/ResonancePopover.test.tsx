@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { ResonancePopover } from "./ResonancePopover";
 import type { GraphNode, LitInstance } from "./contracts";
@@ -13,6 +14,7 @@ function op(id: string, title: string): GraphNode {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: false,
     validFrom: null,
     validTo: null,

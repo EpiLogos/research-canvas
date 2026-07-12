@@ -5,6 +5,7 @@ coverage
 playwright-report
 test-results
 .turbo
+.pnpm-store/
 target
 .worktrees
 worktrees
@@ -13,3 +14,4 @@ packages/*/dist
 apps/desktop/src-tauri/target
 
 .env
+.epi/

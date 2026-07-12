@@ -1,6 +1,7 @@
 // packages/desktop-api/src/graph.test.ts
 import { describe, expect, it } from "vitest";
 import { createBrowserBridgeTransport } from "./index";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 import type { CanvasView, GraphNode } from "./graph";
 
 describe("graph transport", () => {
@@ -18,8 +19,7 @@ describe("graph transport", () => {
       archetypalResonance: null,
       coordinate: null,
       sourceCoordinates: [],
-      evidenceTags: [],
-      sourceKind: null,
+      ...EMPTY_GRAPH_NODE_METADATA,
       isTemporal: true,
       validFrom: null,
       validTo: null,

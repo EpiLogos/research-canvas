@@ -10,7 +10,7 @@ use research_canvas_desktop_lib::db::{
     repositories::{
         graph::{GraphRepository, NewGraphNode},
         layout::{EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord},
-        ProjectRepository,
+        ConstellationRepository,
     },
 };
 use serde_json::json;
@@ -34,7 +34,7 @@ fn write_file(root: &Path, relative_path: &str, contents: &str) -> PathBuf {
 
 fn create_project(database_path: &str, display_name: &str, root_path: &Path) -> String {
     let database = Database::open(database_path).expect("database");
-    let project = ProjectRepository::new(database.connection())
+    let project = ConstellationRepository::new(database.connection())
         .create(
             display_name.to_string(),
             display_name.to_lowercase().replace(' ', "-"),
@@ -50,7 +50,7 @@ fn create_project(database_path: &str, display_name: &str, root_path: &Path) -> 
 
 fn primary_canvas_id(database_path: &str, project_id: &str) -> String {
     let database = Database::open(database_path).expect("database");
-    ProjectRepository::new(database.connection())
+    ConstellationRepository::new(database.connection())
         .get_by_id(project_id)
         .expect("load project")
         .expect("project exists")
@@ -286,10 +286,7 @@ fn builds_file_only_context_pack_from_real_sqlite_search_and_vault_documents() {
 
 #[test]
 fn graph_context_pack_includes_selected_node_relationships_without_global_relationships() {
-    let Some((graph, run_id, database_name)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database_name) = support::neo4j_test_graph();
     support::block_on(async {
         graph
             .run_on(
@@ -444,10 +441,7 @@ fn graph_context_pack_includes_selected_node_relationships_without_global_relati
 
 #[test]
 fn graph_context_pack_does_not_include_matches_when_canvas_has_no_layout_nodes() {
-    let Some((graph, run_id, database_name)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database_name) = support::neo4j_test_graph();
 
     let (temp_dir, database_path) = open_temp_database();
     let vault_root = temp_dir.path().join("vault");

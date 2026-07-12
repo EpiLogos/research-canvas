@@ -7,8 +7,11 @@ use crate::db::{
     neo4j::SharedGraph,
     repositories::{
         graph::{
-            ArchetypalLightingResult, GraphNode, GraphNodePatch, GraphRelationship,
-            GraphRepository, LitInstance, NewGraphNode,
+            ArchetypalLightingResult, ClaimKind, ContentOrigin, EntityType, EvidenceStatus,
+            GraphContentCasInput, GraphContentCasMutation, GraphNode, GraphNodePatch,
+            GraphRelationship, GraphRepository, Historicity, LitInstance, NewGraphNode,
+            NewGraphNodeMetadata, PlaceCoverage, QlArc, QlCompletenessStatus, QlForm, QlTopology,
+            TemporalPrecision, TemporalRole,
         },
         layout::{CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord},
     },
@@ -49,20 +52,58 @@ pub struct CreateGraphNodeRequest {
     /// the repository mints a fresh UUIDv4 (existing callers unaffected).
     #[serde(default)]
     pub graph_node_id: Option<String>,
-    pub entity_type: String,
+    pub entity_type: EntityType,
     pub title: String,
     pub body: String,
+    #[serde(default)]
+    pub summary: Option<String>,
     #[serde(default)]
     pub coordinate: Option<String>,
     #[serde(default)]
     pub source_coordinates: Vec<String>,
+    #[serde(default)]
+    pub evidence_tags: Vec<String>,
+    #[serde(default)]
+    pub source_kind: Option<String>,
+    #[serde(default)]
+    pub content_origin: Option<ContentOrigin>,
+    #[serde(default)]
+    pub content_revision: Option<i64>,
+    #[serde(default)]
+    pub seed_schema_version: Option<i64>,
+    #[serde(default)]
+    pub body_source_coordinates: Vec<String>,
+    #[serde(default)]
+    pub historicity: Option<Historicity>,
+    #[serde(default)]
+    pub claim_kind: Option<ClaimKind>,
+    #[serde(default)]
+    pub evidence_status: Option<EvidenceStatus>,
+    #[serde(default)]
+    pub temporal_role: Option<TemporalRole>,
+    #[serde(default)]
+    pub place_coverage: Option<PlaceCoverage>,
+    #[serde(default)]
+    pub ql_form: Option<QlForm>,
+    #[serde(default)]
+    pub ql_unit_id: Option<String>,
+    #[serde(default)]
+    pub ql_arc: Option<QlArc>,
+    #[serde(default)]
+    pub ql_topology: Option<QlTopology>,
+    #[serde(default)]
+    pub ql_schema_version: Option<i64>,
+    #[serde(default)]
+    pub ql_source_coordinates: Vec<String>,
+    #[serde(default)]
+    pub ql_completeness_status: Option<QlCompletenessStatus>,
     pub is_temporal: bool,
     #[serde(default)]
     pub valid_from: Option<String>,
     #[serde(default)]
     pub valid_to: Option<String>,
     #[serde(default)]
-    pub temporal_precision: Option<String>,
+    pub temporal_precision: Option<TemporalPrecision>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -209,7 +250,7 @@ fn layout_record(payload: &LayoutPayload) -> NodeLayoutRecord {
 /// Resolve the SQLite database path: prefer an explicit `databasePath` from the
 /// request, otherwise fall back to the bootstrapped `SharedApiState.db_path`.
 /// This lets WS3/WS4/WS5/WS6 callers omit `databasePath` (the `#[serde(default)]`
-/// Option keeps deserialize from failing) and still hit the active project DB.
+/// Option keeps deserialize from failing) and still hit the active constellation DB.
 pub(crate) fn resolve_db_path(
     explicit: &Option<String>,
     api_state: &tauri::State<SharedApiState>,
@@ -239,23 +280,56 @@ pub async fn read_graph_node_command(
 }
 
 #[tauri::command]
+pub async fn find_graph_node_command(
+    request: ReadGraphNodeRequest,
+    graph_state: tauri::State<'_, SharedGraphState>,
+) -> Result<Option<GraphNode>, String> {
+    repo(&graph_state).get_node(&request.graph_node_id).await
+}
+
+#[tauri::command]
 pub async fn create_graph_node_command(
     request: CreateGraphNodeRequest,
     graph_state: tauri::State<'_, SharedGraphState>,
 ) -> Result<GraphNode, String> {
     repo(&graph_state)
-        .create_node(NewGraphNode {
-            graph_node_id: request.graph_node_id,
-            entity_type: request.entity_type,
-            title: request.title,
-            body: request.body,
-            coordinate: request.coordinate,
-            source_coordinates: request.source_coordinates,
-            is_temporal: request.is_temporal,
-            valid_from: request.valid_from,
-            valid_to: request.valid_to,
-            temporal_precision: request.temporal_precision,
-        })
+        .create_node_with_metadata(
+            NewGraphNode {
+                graph_node_id: request.graph_node_id,
+                entity_type: request.entity_type.as_str().to_string(),
+                title: request.title,
+                body: request.body,
+                coordinate: request.coordinate,
+                source_coordinates: request.source_coordinates,
+                is_temporal: request.is_temporal,
+                valid_from: request.valid_from,
+                valid_to: request.valid_to,
+                temporal_precision: request
+                    .temporal_precision
+                    .map(|value| value.as_str().to_string()),
+            },
+            NewGraphNodeMetadata {
+                summary: request.summary,
+                evidence_tags: request.evidence_tags,
+                source_kind: request.source_kind,
+                content_origin: request.content_origin,
+                content_revision: request.content_revision,
+                seed_schema_version: request.seed_schema_version,
+                body_source_coordinates: request.body_source_coordinates,
+                historicity: request.historicity,
+                claim_kind: request.claim_kind,
+                evidence_status: request.evidence_status,
+                temporal_role: request.temporal_role,
+                place_coverage: request.place_coverage,
+                ql_form: request.ql_form,
+                ql_unit_id: request.ql_unit_id,
+                ql_arc: request.ql_arc,
+                ql_topology: request.ql_topology,
+                ql_schema_version: request.ql_schema_version,
+                ql_source_coordinates: request.ql_source_coordinates,
+                ql_completeness_status: request.ql_completeness_status,
+            },
+        )
         .await
 }
 
@@ -267,6 +341,14 @@ pub async fn update_graph_node_command(
     repo(&graph_state)
         .update_node(&request.graph_node_id, request.patch)
         .await
+}
+
+#[tauri::command]
+pub async fn compare_and_swap_graph_node_content_command(
+    request: GraphContentCasInput,
+    graph_state: tauri::State<'_, SharedGraphState>,
+) -> Result<GraphContentCasMutation, String> {
+    repo(&graph_state).compare_and_swap_content(&request).await
 }
 
 #[tauri::command]

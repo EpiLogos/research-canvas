@@ -5,13 +5,16 @@
     "declaration": true,
     "emitDeclarationOnly": true,
     "outDir": "./dist",
-    "rootDir": "../.."
+    "rootDir": "src"
   },
   "references": [
     {
       "path": "../schema"
+    },
+    {
+      "path": "../desktop-api"
     }
   ],
-  "include": ["src/**/*.ts"],
+  "include": ["src"],
   "exclude": ["src/**/*.test.ts"]
 }

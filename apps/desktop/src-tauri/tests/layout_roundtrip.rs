@@ -3,7 +3,7 @@ use research_canvas_desktop_lib::commands::layout::{
 };
 use research_canvas_desktop_lib::db::{
     connection::Database,
-    repositories::{LayoutRepository, ProjectRepository},
+    repositories::{ConstellationRepository, LayoutRepository},
 };
 use tempfile::tempdir;
 
@@ -25,7 +25,7 @@ fn second_flush_updates_in_place_and_survives_reopen() {
     let db_path = dir.path().join("roundtrip.sqlite");
     let canvas_id = {
         let database = Database::open(&db_path).expect("open");
-        let projects = ProjectRepository::new(database.connection());
+        let projects = ConstellationRepository::new(database.connection());
         projects
             .create(
                 "WS1".to_string(),

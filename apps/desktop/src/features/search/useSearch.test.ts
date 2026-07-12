@@ -35,9 +35,9 @@ vi.mock("../canvas/CanvasWorkspaceContext", () => ({
     createNoteNode: workspaceMock.createNoteNode,
     selectEntry: vi.fn(),
     selectNode: vi.fn(),
-    selectProject: vi.fn(),
-    searchProject: workspaceMock.searchProject,
-    projectId: "p1",
+    selectConstellation: vi.fn(),
+    searchConstellation: vi.fn().mockResolvedValue([]),
+    constellationId: "p1",
   }),
 }));
 

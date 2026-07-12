@@ -9,7 +9,7 @@ interface SequencePresenterProps {
   onClose: () => void;
   renderNodeContent: (node: CanvasNode) => React.ReactNode;
   onNavigateToNode?: (nodeId: string, viewport?: { x: number; y: number; zoom: number } | null) => void;
-  projectName?: string;
+  constellationName?: string;
 }
 
 export function SequencePresenter({
@@ -166,4 +166,3 @@ export function SequencePresenter({
     </div>
   );
 }
-

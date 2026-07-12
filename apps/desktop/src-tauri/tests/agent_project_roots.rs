@@ -6,7 +6,7 @@ use research_canvas_desktop_lib::agent::project::{
 };
 use research_canvas_desktop_lib::db::{
     connection::Database,
-    repositories::{ProjectRepository, ResourceRootRepository},
+    repositories::{ConstellationRepository, ResourceRootRepository},
 };
 use tempfile::{tempdir, TempDir};
 
@@ -24,7 +24,7 @@ fn open_temp_database() -> (TempDir, String) {
 
 fn create_project(database_path: &str, display_name: &str, root_path: impl Into<String>) -> String {
     let database = Database::open(database_path).expect("database");
-    let project = ProjectRepository::new(database.connection())
+    let project = ConstellationRepository::new(database.connection())
         .create(
             display_name.to_string(),
             display_name.to_lowercase().replace(' ', "-"),
@@ -63,6 +63,9 @@ fn loads_project_root_and_attached_resource_roots_from_real_sqlite() {
     let roots = load_project_roots(&database_path, &project_id).expect("load roots");
 
     assert_eq!(roots.project_id, project_id);
+    let serialized = serde_json::to_value(&roots).expect("serialize constellation roots");
+    assert_eq!(serialized["constellationId"], project_id);
+    assert!(serialized.get("projectId").is_none());
     assert_eq!(roots.display_name, "Agent Project");
     assert!(roots.primary_canvas_id.is_some());
     assert!(roots.warnings.is_empty());

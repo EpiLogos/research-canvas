@@ -2,19 +2,26 @@ use std::sync::Arc;
 
 use research_canvas_desktop_lib::{
     commands::{
-        projects::{
-            attach_project_resource_root_at, bootstrap_workspace_at, create_saved_sequence_command,
-            default_database_path, delete_saved_sequence_command, detach_project_resource_root_at,
-            list_directories_at, list_project_resource_roots_at, list_saved_sequences_command,
-            load_project_document_at, persist_project_document_at, update_saved_sequence_command,
+        constellations::{
+            attach_constellation_resource_root_at, bootstrap_workspace_at,
+            create_saved_sequence_command, default_database_path, delete_saved_sequence_command,
+            detach_constellation_resource_root_at, list_constellation_resource_roots_at,
+            list_directories_at, list_saved_sequences_command, load_constellation_document_at,
+            persist_constellation_document_at, update_saved_sequence_command,
             CreateSavedSequenceRequest, DeleteSavedSequenceRequest, ListSavedSequencesRequest,
-            PersistProjectDocumentRequest, ResourceRootLookupRequest, ResourceRootMutationRequest,
-            UpdateSavedSequenceRequest,
+            PersistConstellationDocumentRequest, ResourceRootLookupRequest,
+            ResourceRootMutationRequest, UpdateSavedSequenceRequest,
         },
         search::{
-            rebuild_project_search_index_command, search_project_command,
-            RebuildProjectSearchIndexRequest, SearchProjectRequest,
+            rebuild_constellation_search_index_command, search_constellation_command,
+            RebuildConstellationSearchIndexRequest, SearchConstellationRequest,
         },
+        timeline::{load_timeline_view_at_path, LoadTimelineViewRequest},
+    },
+    db::{
+        canvas_service::CanvasService,
+        neo4j::{self, config::Neo4jConfig},
+        repositories::graph::GraphRepository,
     },
     pty::TerminalManager,
 };
@@ -57,18 +64,46 @@ struct BrowserResourceRootDelete {
     root_path: String,
 }
 
+#[derive(Clone)]
+struct BridgeGraphState {
+    graph: neo4j::SharedGraph,
+    database: String,
+    runtime: Arc<tokio::runtime::Runtime>,
+}
+
 fn main() {
     let port = terminal_bridge_port().expect("terminal bridge port");
     let server = Server::http((HOST, port)).expect("terminal bridge server");
     let manager = Arc::new(TerminalManager::new());
+    let graph_state = Arc::new(init_graph_state());
     eprintln!("[terminal-bridge] listening on http://{HOST}:{port}");
 
     for request in server.incoming_requests() {
         let manager = Arc::clone(&manager);
-        if let Err(error) = handle_request(request, manager) {
+        let graph_state = Arc::clone(&graph_state);
+        if let Err(error) = handle_request(request, manager, graph_state) {
             eprintln!("[terminal-bridge] request failed: {error}");
         }
     }
+}
+
+fn init_graph_state() -> Option<BridgeGraphState> {
+    let runtime = Arc::new(
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .ok()?,
+    );
+    let config = Neo4jConfig::from_env().ok()?;
+    let database = config.database.clone();
+    let graph = runtime.block_on(neo4j::connect(&config)).ok()?;
+    let repo = GraphRepository::new(graph.clone(), database.clone());
+    let _ = runtime.block_on(repo.ensure_schema());
+    Some(BridgeGraphState {
+        graph,
+        database,
+        runtime,
+    })
 }
 
 fn terminal_bridge_port() -> Result<u16, String> {
@@ -86,6 +121,7 @@ fn terminal_bridge_port() -> Result<u16, String> {
 fn handle_request(
     mut request: tiny_http::Request,
     manager: Arc<TerminalManager>,
+    graph_state: Arc<Option<BridgeGraphState>>,
 ) -> Result<(), String> {
     let url = request.url().to_string();
     let path = url.split('?').next().unwrap_or(&url).to_string();
@@ -109,7 +145,7 @@ fn handle_request(
         return respond_json(request, StatusCode(200), json!({ "content": content }));
     }
 
-    // Non-project-scoped routes
+    // Non-constellation-scoped routes
     if method == Method::Get && path == "/workspace/directories" {
         let dirs = list_directories_at()?;
         return respond_json(request, StatusCode(200), dirs);
@@ -118,34 +154,127 @@ fn handle_request(
     if method == Method::Get && path == "/workspace/search" {
         let database_path = session_database_path(&request);
         let database_path = database_path.to_string_lossy().to_string();
-        let project_id = query_param(&url, "projectId")
-            .ok_or_else(|| "missing projectId query parameter".to_string())?;
+        let constellation_id = query_param(&url, "constellationId")
+            .ok_or_else(|| "missing constellationId query parameter".to_string())?;
         let query = query_param(&url, "q").unwrap_or_default();
         let limit = query_param(&url, "limit").and_then(|value| value.parse::<u32>().ok());
 
-        rebuild_project_search_index_command(RebuildProjectSearchIndexRequest {
+        rebuild_constellation_search_index_command(RebuildConstellationSearchIndexRequest {
             database_path: database_path.clone(),
-            project_id: project_id.clone(),
+            constellation_id: constellation_id.clone(),
         })?;
 
-        let hits = search_project_command(SearchProjectRequest {
+        let hits = search_constellation_command(SearchConstellationRequest {
             database_path,
-            project_id,
+            constellation_id,
             query,
             limit,
         })?;
         return respond_json(request, StatusCode(200), hits);
     }
 
-    if let Some(project_id) = path.strip_prefix("/workspace/project/") {
-        let (project_id, action) = match project_id.split_once('/') {
+    if method == Method::Get && path == "/graph/canvas-view" {
+        let graph_state = match graph_state.as_ref() {
+            Some(state) => state,
+            None => return respond_error(request, StatusCode(503), "Neo4j is not configured"),
+        };
+        let canvas_id = query_param(&url, "canvasId")
+            .ok_or_else(|| "missing canvasId query parameter".to_string())?;
+        let lens = query_param(&url, "lens").unwrap_or_else(|| "canvas".to_string());
+        let database_path = session_database_path(&request)
+            .to_string_lossy()
+            .to_string();
+        let repo = GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
+        let service = CanvasService::new(repo, database_path);
+        let payload = graph_state
+            .runtime
+            .block_on(service.load_canvas_view(&canvas_id, &lens))?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/graph/timeline-view" {
+        let body = read_body(&mut request)?;
+        let input: LoadTimelineViewRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let payload = load_timeline_view_at_path(session_database_path(&request), input)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Get && path == "/graph/search" {
+        let graph_state = match graph_state.as_ref() {
+            Some(state) => state,
+            None => return respond_error(request, StatusCode(503), "Neo4j is not configured"),
+        };
+        let query = query_param(&url, "query").unwrap_or_default();
+        let limit = query_param(&url, "limit")
+            .and_then(|value| value.parse::<i64>().ok())
+            .unwrap_or(25);
+        let repo = GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
+        let payload = graph_state.runtime.block_on(repo.search(&query, limit))?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if let Some(graph_node_id) = path.strip_prefix("/graph/node/") {
+        if method == Method::Get {
+            let graph_state = match graph_state.as_ref() {
+                Some(state) => state,
+                None => return respond_error(request, StatusCode(503), "Neo4j is not configured"),
+            };
+            let decoded =
+                decode_query_component(graph_node_id).unwrap_or_else(|| graph_node_id.to_string());
+            let repo =
+                GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
+            let payload = graph_state
+                .runtime
+                .block_on(repo.get_node(&decoded))?
+                .ok_or_else(|| format!("graph node not found: {decoded}"))?;
+            return respond_json(request, StatusCode(200), payload);
+        }
+    }
+
+    if let Some(operator_graph_node_id) = path.strip_prefix("/graph/lighting/") {
+        if method == Method::Get {
+            let graph_state = match graph_state.as_ref() {
+                Some(state) => state,
+                None => return respond_error(request, StatusCode(503), "Neo4j is not configured"),
+            };
+            let decoded = decode_query_component(operator_graph_node_id)
+                .unwrap_or_else(|| operator_graph_node_id.to_string());
+            let repo =
+                GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
+            let payload = graph_state
+                .runtime
+                .block_on(repo.archetypal_lighting(&decoded))?;
+            return respond_json(request, StatusCode(200), payload);
+        }
+    }
+
+    if let Some(graph_node_id) = path.strip_prefix("/graph/resonances/") {
+        if method == Method::Get {
+            let graph_state = match graph_state.as_ref() {
+                Some(state) => state,
+                None => return respond_error(request, StatusCode(503), "Neo4j is not configured"),
+            };
+            let decoded =
+                decode_query_component(graph_node_id).unwrap_or_else(|| graph_node_id.to_string());
+            let repo =
+                GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
+            let payload = graph_state
+                .runtime
+                .block_on(repo.resonances_for_instance(&decoded))?;
+            return respond_json(request, StatusCode(200), payload);
+        }
+    }
+
+    if let Some(constellation_id) = path.strip_prefix("/workspace/constellation/") {
+        let (constellation_id, action) = match constellation_id.split_once('/') {
             Some((id, action)) => (id.to_string(), action.to_string()),
-            None => (project_id.to_string(), String::new()),
+            None => (constellation_id.to_string(), String::new()),
         };
 
         if method == Method::Get && action.is_empty() {
             let database_path = session_database_path(&request);
-            let payload = load_project_document_at(&database_path, &project_id)?;
+            let payload = load_constellation_document_at(&database_path, &constellation_id)?;
             return respond_json(request, StatusCode(200), payload);
         }
 
@@ -153,9 +282,9 @@ fn handle_request(
             let database_path = session_database_path(&request)
                 .to_string_lossy()
                 .to_string();
-            let payload = list_project_resource_roots_at(ResourceRootLookupRequest {
+            let payload = list_constellation_resource_roots_at(ResourceRootLookupRequest {
                 database_path,
-                project_id,
+                constellation_id,
             })?;
             return respond_json(request, StatusCode(200), payload);
         }
@@ -168,14 +297,15 @@ fn handle_request(
                 Ok(body) => body,
                 Err(error) => return respond_error(request, StatusCode(400), &error),
             };
-            let mut payload: PersistProjectDocumentRequest = match serde_json::from_str(&body) {
+            let mut payload: PersistConstellationDocumentRequest = match serde_json::from_str(&body)
+            {
                 Ok(payload) => payload,
                 Err(error) => return respond_error(request, StatusCode(400), &error.to_string()),
             };
             payload.database_path = database_path;
-            payload.project_id = project_id;
+            payload.constellation_id = constellation_id;
 
-            return match persist_project_document_at(payload) {
+            return match persist_constellation_document_at(payload) {
                 Ok(persisted) => respond_json(request, StatusCode(200), persisted),
                 Err(error) => respond_error(request, StatusCode(500), &error),
             };
@@ -188,9 +318,9 @@ fn handle_request(
             let body = read_body(&mut request)?;
             let payload: BrowserResourceRootMutation =
                 serde_json::from_str(&body).map_err(|error| error.to_string())?;
-            let attached = attach_project_resource_root_at(ResourceRootMutationRequest {
+            let attached = attach_constellation_resource_root_at(ResourceRootMutationRequest {
                 database_path,
-                project_id,
+                constellation_id,
                 root_path: payload.root_path,
                 display_name: payload.display_name,
             })?;
@@ -204,9 +334,9 @@ fn handle_request(
             let body = read_body(&mut request)?;
             let payload: BrowserResourceRootDelete =
                 serde_json::from_str(&body).map_err(|error| error.to_string())?;
-            detach_project_resource_root_at(ResourceRootMutationRequest {
+            detach_constellation_resource_root_at(ResourceRootMutationRequest {
                 database_path,
-                project_id,
+                constellation_id,
                 root_path: payload.root_path,
                 display_name: None,
             })?;
@@ -234,7 +364,7 @@ fn handle_request(
                 serde_json::from_str(&body).map_err(|e| e.to_string())?;
             let payload = create_saved_sequence_command(CreateSavedSequenceRequest {
                 database_path,
-                project_id: project_id.clone(),
+                constellation_id: constellation_id.clone(),
                 canvas_id: input["canvasId"].as_str().unwrap_or_default().to_string(),
                 name: input["name"].as_str().unwrap_or("Untitled").to_string(),
             })
@@ -243,7 +373,7 @@ fn handle_request(
         }
     }
 
-    if let Some(sequence_id) = path.strip_prefix("/workspace/project/sequences/") {
+    if let Some(sequence_id) = path.strip_prefix("/workspace/constellation/sequences/") {
         let sequence_id = sequence_id.to_string();
 
         if method == Method::Put {

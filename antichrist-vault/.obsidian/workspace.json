@@ -1,0 +1,242 @@
+{
+  "main": {
+    "id": "59fc0b4c0f1a00b9",
+    "type": "split",
+    "children": [
+      {
+        "id": "3fdc59e5fe7e2f51",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "63c91f8395fe5315",
+            "type": "leaf",
+            "state": {
+              "type": "canvas",
+              "state": {
+                "file": "episodes/1/ep-1.1/ql-units/QL Master Canvas.canvas",
+                "viewState": {
+                  "x": 30.562057894206195,
+                  "y": 4618.230780144393,
+                  "zoom": -4
+                }
+              },
+              "icon": "lucide-layout-dashboard",
+              "title": "QL Master Canvas"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "b94d14ee7526d265",
+    "type": "split",
+    "children": [
+      {
+        "id": "59ef366b91ffa1e8",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "3f6a3fd7ea0c0073",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "60e8b8acc349fff7",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "f7d24034012769cc",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "9c9918bf216985f8",
+    "type": "split",
+    "children": [
+      {
+        "id": "9bf2cd71d4a12bd5",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "dca4172ed6cf9867",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "episodes/1/ep-1.1/ql-units/unit-social-power.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for unit-social-power"
+            }
+          },
+          {
+            "id": "9815f57836dd5ecd",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "episodes/1/ep-1.1/ql-units/unit-social-power.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from unit-social-power"
+            }
+          },
+          {
+            "id": "67b3f12ab4feb695",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "3ef305930ae209bc",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "558328e3813d360d",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "episodes/1/ep-1.1/ql-units/unit-social-power.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of unit-social-power"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "63c91f8395fe5315",
+  "lastOpenFiles": [
+    "episodes/1/ep-1.1/ql-units/position-4.md",
+    "supporting-bits/epi-logos/resources/sixfold-ql-thinking/references/position-details.md",
+    "supporting-bits/epi-logos/resources/pedagogy/deep/09-dialogical-knowing-human-ai-and-operative-practice.md",
+    "supporting-bits/epi-logos/resources/sixfold-ql-thinking/references/theoretical-foundations.md",
+    "supporting-bits/epi-logos/resources/sixfold-ql-thinking/references/advanced-techniques.md",
+    "supporting-bits/epi-logos/resources/pedagogy/deep/08-symbol-mathematics-and-topological-demonstration.md",
+    "supporting-bits/epi-logos/resources/pedagogy/deep/07-evolution-of-knowledge-and-consciousness.md",
+    "supporting-bits/epi-logos/resources/pedagogy/deep/06-pedagogical-paths-and-worked-openings.md",
+    "supporting-bits/epi-logos/resources/pedagogy/deep/05-coordinate-system-passes-squares-and-runtime.md",
+    "supporting-bits/epi-logos/resources/pedagogy/deep/04-psychoid-bridge-atom-archetype-and-quantity-quality.md",
+    "supporting-bits/epi-logos/resources/pedagogy/deep/03-mef-lenses-cmea-and-telos.md",
+    "supporting-bits/epi-logos/resources/pedagogy/lenses/README.md",
+    "supporting-bits/epi-logos/resources/pedagogy/deep/00-throughline-and-argument-tree.md",
+    "supporting-bits/epi-logos/resources/pedagogy/deep/02-ql-modeling-question-shaping-and-tetralemma.md",
+    "supporting-bits/epi-logos/resources/pedagogy/lenses/05-l4-l4-prime-encounter-science-and-situated-knowing.md",
+    "supporting-bits/epi-logos/resources/pedagogy/deep/01-source-paradox-and-topological-necessity.md",
+    "supporting-bits/epi-logos/resources/pedagogy/lenses/06-l5-l5-prime-speech-logos-and-incarnation.md",
+    "supporting-bits/epi-logos/resources/pedagogy/lenses/04-l3-l3-prime-process-history-and-creative-advance.md",
+    "supporting-bits/epi-logos/resources/pedagogy/lenses/02-l1-l1-prime-causation-and-phenomenality.md",
+    "supporting-bits/epi-logos/resources/pedagogy/lenses/01-l0-l0-prime-archetypal-number-and-questioning.md",
+    "supporting-bits/epi-logos/resources/pedagogy/lenses/03-l2-l2-prime-logic-and-alchemical-transformation.md",
+    "supporting-bits/epi-logos/skills/choose-modality/SKILL.md",
+    "supporting-bits/epi-logos/skills/using-epi-logos/SKILL.md",
+    "supporting-bits/epi-logos/skills/converse-pedagogically/SKILL.md",
+    "supporting-bits/epi-logos/skills/run-positional-coherence/SKILL.md",
+    "supporting-bits/epi-logos/skills/run-l4-prime-loop/SKILL.md",
+    "supporting-bits/epi-logos/scripts/__pycache__/validate_scaffold.cpython-313.pyc",
+    "supporting-bits/epi-logos/resources/sixfold-ql-thinking/references",
+    "supporting-bits/epi-logos/resources/pedagogy/lenses",
+    "supporting-bits/epi-logos/resources/pedagogy/deep",
+    "supporting-bits/epi-logos/tests/run-scaffold-checks.sh",
+    "supporting-bits/epi-logos/skills/using-epi-logos",
+    "supporting-bits/epi-logos/skills/run-positional-coherence",
+    "supporting-bits/epi-logos/skills/run-l4-prime-loop",
+    "supporting-bits/epi-logos/skills/manage-thought-artifacts",
+    "supporting-bits/epi-logos/skills/engage-encounter-axis",
+    "episodes/1/ep-1.1/ql-units/QL Master Canvas.canvas",
+    "episodes/1/assets/artworks/dore_paradise_lost/gustave-dore-satan-s-despair-002.jpg",
+    "episodes/1/assets/artworks/dore_paradise_lost/joan-of-arc-003.jpg",
+    "episodes/1/assets/artworks/dore_paradise_lost/oedipus-and-the-sphinx-001.jpg",
+    "episodes/1/assets/artworks/dore_paradise_lost/oedipus-and-the-sphinx-003.jpg",
+    "episodes/1/assets/artworks/dore_paradise_lost/paradise-lost-4-001.jpg",
+    "episodes/1/assets/artworks/dore_paradise_lost/paradise-lost-10-005.jpg",
+    "episodes/1/assets/artworks/dore_paradise_lost/paradise-lost-12-000.jpg",
+    "episodes/1/assets/artworks/dore_paradise_lost/paradise-lost-16-007.jpg",
+    "episodes/1/assets/artworks/dore_paradise_lost/paradise-lost-12-006.jpg",
+    "episodes/1/ep-1.1/handover/ql-units/QL Master Canvas.canvas",
+    "episodes/1/ep-1.1/ql-units/ql-units/QL Master Canvas.canvas",
+    "ql-units/QL Master Canvas.canvas",
+    "episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/NotebookLM Mind Map (1).png"
+  ]
+}

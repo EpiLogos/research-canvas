@@ -2,25 +2,25 @@
   "files": [],
   "references": [
     {
-      "path": "./packages/canvas"
+      "path": "./packages/schema"
+    },
+    {
+      "path": "./packages/desktop-api"
     },
     {
       "path": "./packages/exporter"
     },
     {
-      "path": "./packages/desktop-api"
+      "path": "./packages/canvas"
+    },
+    {
+      "path": "./packages/node-document"
     },
     {
       "path": "./packages/search"
     },
     {
       "path": "./packages/viewers"
-    },
-    {
-      "path": "./packages/schema"
-    },
-    {
-      "path": "./packages/node-document"
     },
     {
       "path": "./apps/desktop"

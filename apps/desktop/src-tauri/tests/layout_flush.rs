@@ -3,7 +3,7 @@ use research_canvas_desktop_lib::commands::layout::{
 };
 use research_canvas_desktop_lib::db::{
     connection::Database,
-    repositories::{LayoutRepository, ProjectRepository},
+    repositories::{ConstellationRepository, LayoutRepository},
 };
 use tempfile::tempdir;
 
@@ -25,7 +25,7 @@ fn flush_canvas_layout_persists_nodes_edges_and_viewport_in_one_transaction() {
     let db_path = dir.path().join("flush.sqlite");
     let canvas_id = {
         let database = Database::open(&db_path).expect("open");
-        let projects = ProjectRepository::new(database.connection());
+        let projects = ConstellationRepository::new(database.connection());
         let project = projects
             .create(
                 "WS1".to_string(),
@@ -79,7 +79,7 @@ fn flush_canvas_layout_rolls_back_when_a_node_violates_the_canvas_foreign_key() 
     let db_path = dir.path().join("rollback.sqlite");
     let canvas_id = {
         let database = Database::open(&db_path).expect("open");
-        let projects = ProjectRepository::new(database.connection());
+        let projects = ConstellationRepository::new(database.connection());
         let project = projects
             .create(
                 "WS1".to_string(),

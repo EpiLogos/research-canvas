@@ -2,7 +2,7 @@ use std::{fs, process::Command};
 
 use research_canvas_desktop_lib::db::{
     connection::Database,
-    repositories::{ProjectRepository, ResourceRootRepository},
+    repositories::{ConstellationRepository, ResourceRootRepository},
 };
 use serde_json::Value;
 use tempfile::{tempdir, TempDir};
@@ -16,7 +16,7 @@ fn open_temp_database() -> (TempDir, String) {
 
 fn create_project(database_path: &str, root_path: &std::path::Path) -> String {
     let database = Database::open(database_path).expect("database");
-    ProjectRepository::new(database.connection())
+    ConstellationRepository::new(database.connection())
         .create(
             "CLI Study".to_string(),
             "cli-study".to_string(),
@@ -102,7 +102,7 @@ fn search_context_and_note_skeleton_work_against_real_sqlite_project() {
         "search",
         "--database",
         &database_path,
-        "--project",
+        "--constellation",
         &project_id,
         "--query",
         "bull sacrifice",
@@ -118,6 +118,8 @@ fn search_context_and_note_skeleton_work_against_real_sqlite_project() {
     let search_json = stdout_json(&search);
     assert_eq!(search_json["ok"], true);
     assert_eq!(search_json["command"], "search");
+    assert_eq!(search_json["data"]["constellationId"], project_id);
+    assert!(search_json["data"].get("projectId").is_none());
     assert_eq!(search_json["data"]["hits"][0]["title"], "mithras.md");
 
     let context = run_agent(&[
@@ -311,7 +313,7 @@ fn node_context_is_graph_backed_and_fails_clearly_without_neo4j_config() {
     fs::create_dir_all(&root).expect("create vault");
     let project_id = create_project(&database_path, &root);
     let database = Database::open(&database_path).expect("database");
-    let canvas_id = ProjectRepository::new(database.connection())
+    let canvas_id = ConstellationRepository::new(database.connection())
         .get_by_id(&project_id)
         .expect("project lookup")
         .expect("project exists")

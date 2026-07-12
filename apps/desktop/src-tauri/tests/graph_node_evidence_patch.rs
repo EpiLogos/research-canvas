@@ -7,10 +7,7 @@ use research_canvas_desktop_lib::db::repositories::graph::{
 
 #[test]
 fn update_node_patches_evidence_tags_and_clears_source_kind() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph, database);
     support::block_on(repo.ensure_schema()).expect("schema");
 

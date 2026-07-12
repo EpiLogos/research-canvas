@@ -7,13 +7,14 @@ use serde::{Deserialize, Serialize};
 use crate::agent::types::AgentWarning;
 use crate::db::connection::Database;
 use crate::db::repositories::{
-    ProjectRepository, ResourceRootRecord, ResourceRootRepository, SearchHit, SearchIndexSummary,
-    SearchRepository,
+    ConstellationRepository, ResourceRootRecord, ResourceRootRepository, SearchHit,
+    SearchIndexSummary, SearchRepository,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentProjectRoots {
+    #[serde(rename = "constellationId", alias = "projectId")]
     pub project_id: String,
     pub display_name: String,
     pub root_path: String,
@@ -28,6 +29,7 @@ pub struct AgentProjectRoots {
 #[serde(rename_all = "camelCase")]
 pub struct AgentProjectRoot {
     pub id: String,
+    #[serde(rename = "constellationId", alias = "projectId")]
     pub project_id: String,
     pub display_name: String,
     pub path: String,
@@ -46,6 +48,7 @@ pub enum AgentRootKind {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentProjectSearchResults {
+    #[serde(rename = "constellationId", alias = "projectId")]
     pub project_id: String,
     pub query: String,
     pub index_summary: SearchIndexSummary,
@@ -61,7 +64,9 @@ pub struct AgentProjectSearchResults {
 #[serde(rename_all = "camelCase")]
 pub struct AgentProjectSearchHit {
     pub document_key: String,
+    #[serde(rename = "constellationId", alias = "projectId")]
     pub project_id: String,
+    #[serde(rename = "constellationDisplayName", alias = "projectDisplayName")]
     pub project_display_name: String,
     pub canvas_id: Option<String>,
     pub entity_type: String,
@@ -96,10 +101,10 @@ pub fn search_project_files(
     let root_set = load_project_roots_from_connection(database.connection(), project_id)?;
     let search = SearchRepository::new(database.connection());
     let index_summary = search
-        .rebuild_project_index(project_id)
+        .rebuild_constellation_index(project_id)
         .map_err(|error| error.to_string())?;
     let hits = search
-        .search_project(project_id, query, limit)
+        .search_constellation(project_id, query, limit)
         .map_err(|error| error.to_string())?
         .into_iter()
         .map(|hit| enrich_search_hit(hit, &root_set.roots))
@@ -119,13 +124,13 @@ pub(crate) fn load_project_roots_from_connection(
     connection: &Connection,
     project_id: &str,
 ) -> Result<AgentProjectRoots, String> {
-    let projects = ProjectRepository::new(connection);
-    let project = projects
+    let constellations = ConstellationRepository::new(connection);
+    let project = constellations
         .get_by_id(project_id)
         .map_err(|error| error.to_string())?
-        .ok_or_else(|| format!("project not found: {project_id}"))?;
+        .ok_or_else(|| format!("constellation not found: {project_id}"))?;
     let resource_roots = ResourceRootRepository::new(connection)
-        .list_for_project(project_id)
+        .list_for_constellation(project_id)
         .map_err(|error| error.to_string())?;
 
     let mut warnings = Vec::new();
@@ -179,7 +184,7 @@ fn push_resource_root(
         warnings,
         AgentProjectRootInput {
             id: root.id,
-            project_id: root.project_id,
+            project_id: root.constellation_id,
             display_name: root.display_name,
             path: root.root_path,
             kind: AgentRootKind::Resource,
@@ -255,8 +260,8 @@ fn enrich_search_hit(hit: SearchHit, roots: &[AgentProjectRoot]) -> AgentProject
 
     AgentProjectSearchHit {
         document_key: hit.document_key,
-        project_id: hit.project_id,
-        project_display_name: hit.project_display_name,
+        project_id: hit.constellation_id,
+        project_display_name: hit.constellation_display_name,
         canvas_id: hit.canvas_id,
         entity_type: hit.entity_type,
         entity_id: hit.entity_id,

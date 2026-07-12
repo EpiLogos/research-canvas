@@ -5,6 +5,7 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
+import type { CSSProperties } from "react";
 import type { AdaptiveNodeStyle } from "./AdaptiveNode";
 import {
   HANDLE_POSITIONS,
@@ -35,7 +36,34 @@ export function ResourceNode({ data, selected }: NodeProps<ResourceNodeType>) {
         minWidth={120}
         minHeight={60}
         position="bottom-right"
-        className="node-resize-control"
+        className="node-resize-control node-resize-control--bottom-right"
+        style={{ display: selected ? "flex" : "none" }}
+      >
+        <div className="node-resize-grip" />
+      </NodeResizeControl>
+      <NodeResizeControl
+        minWidth={120}
+        minHeight={60}
+        position="bottom-left"
+        className="node-resize-control node-resize-control--bottom-left"
+        style={{ display: selected ? "flex" : "none" }}
+      >
+        <div className="node-resize-grip" />
+      </NodeResizeControl>
+      <NodeResizeControl
+        minWidth={120}
+        minHeight={60}
+        position="top-right"
+        className="node-resize-control node-resize-control--top-right"
+        style={{ display: selected ? "flex" : "none" }}
+      >
+        <div className="node-resize-grip" />
+      </NodeResizeControl>
+      <NodeResizeControl
+        minWidth={120}
+        minHeight={60}
+        position="top-left"
+        className="node-resize-control node-resize-control--top-left"
         style={{ display: selected ? "flex" : "none" }}
       >
         <div className="node-resize-grip" />
@@ -52,7 +80,7 @@ export function ResourceNode({ data, selected }: NodeProps<ResourceNodeType>) {
         ))}
         {isDot ? (
           <div className="resource-node resource-node--dot" data-selected={selected ? "true" : undefined}>
-            <span className="an-dot" style={{ "--dot-colour": data.style?.dotColour ?? "#4a4aff" } as React.CSSProperties} />
+            <span className="an-dot" style={{ "--dot-colour": data.style?.dotColour ?? "#4a4aff" } as CSSProperties} />
           </div>
         ) : (
           <div
@@ -62,16 +90,23 @@ export function ResourceNode({ data, selected }: NodeProps<ResourceNodeType>) {
             style={{
               "--node-bg": data.style?.bgColour,
               "--node-text": data.style?.textColour,
-            } as React.CSSProperties}
+              "--node-accent": data.style?.dotColour,
+            } as CSSProperties}
           >
             <ResourceFace
               resourceKind={data.resourceKind}
               absolutePath={data.absolutePath}
               content={data.content}
+              thumbnail={data.style?.thumbnail}
               title={data.title}
             />
             <div className="resource-node__title-bar">
-              <span className="resource-node__title">{data.title}</span>
+              <span
+                className="resource-node__title"
+                style={{ color: data.style?.textColour } as CSSProperties}
+              >
+                {data.title}
+              </span>
             </div>
           </div>
         )}
@@ -89,12 +124,24 @@ export function ResourceNode({ data, selected }: NodeProps<ResourceNodeType>) {
   );
 }
 
-function ResourceFace({ resourceKind, absolutePath, content, title }: {
+function ResourceFace({ resourceKind, absolutePath, content, thumbnail, title }: {
   resourceKind?: string;
   absolutePath?: string;
   content?: string;
+  thumbnail?: string;
   title: string;
 }) {
+  if (thumbnail) {
+    return (
+      <img
+        className="resource-node__image"
+        src={thumbnail}
+        alt={title}
+        draggable={false}
+      />
+    );
+  }
+
   if (resourceKind === "image" && absolutePath) {
     return (
       <img

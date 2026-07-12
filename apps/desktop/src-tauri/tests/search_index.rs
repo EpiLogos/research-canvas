@@ -2,12 +2,12 @@ use std::{fs, path::PathBuf};
 
 use research_canvas_desktop_lib::{
     commands::search::{
-        rebuild_project_search_index_command, search_project_command,
-        RebuildProjectSearchIndexRequest, SearchProjectRequest,
+        rebuild_constellation_search_index_command, search_constellation_command,
+        RebuildConstellationSearchIndexRequest, SearchConstellationRequest,
     },
     db::{
         connection::Database,
-        repositories::{CanvasGraphRepository, ProjectRepository},
+        repositories::{CanvasGraphRepository, ConstellationRepository},
     },
 };
 use tempfile::{tempdir, TempDir};
@@ -37,10 +37,10 @@ fn rebuilds_and_queries_a_real_search_index_from_files_notes_sequences_and_neste
     )
     .expect("write child chapter");
 
-    let root_project_id = {
+    let root_constellation_id = {
         let database = Database::open(temp_dir.path().join("research-canvas.sqlite"))
             .expect("re-open database");
-        let projects = ProjectRepository::new(database.connection());
+        let projects = ConstellationRepository::new(database.connection());
 
         let root_project = projects
             .create(
@@ -84,7 +84,7 @@ fn rebuilds_and_queries_a_real_search_index_from_files_notes_sequences_and_neste
 
         let child_project = projects
             .create(
-                "Nested Project".to_string(),
+                "Nested Constellation".to_string(),
                 "nested-project".to_string(),
                 Some(root_project.id.clone()),
                 child_fixture.to_string_lossy().to_string(),
@@ -98,20 +98,21 @@ fn rebuilds_and_queries_a_real_search_index_from_files_notes_sequences_and_neste
         root_project.id
     };
 
-    let summary = rebuild_project_search_index_command(RebuildProjectSearchIndexRequest {
-        database_path: database_path.clone(),
-        project_id: root_project_id.clone(),
-    })
-    .expect("rebuild search index");
+    let summary =
+        rebuild_constellation_search_index_command(RebuildConstellationSearchIndexRequest {
+            database_path: database_path.clone(),
+            constellation_id: root_constellation_id.clone(),
+        })
+        .expect("rebuild search index");
 
-    assert_eq!(summary.scope_project_id, root_project_id);
-    assert_eq!(summary.projects_indexed, 2);
+    assert_eq!(summary.scope_constellation_id, root_constellation_id);
+    assert_eq!(summary.constellations_indexed, 2);
     assert!(summary.file_entries_indexed >= 6);
     assert!(summary.documents_indexed > 0);
 
-    let file_hits = search_project_command(SearchProjectRequest {
+    let file_hits = search_constellation_command(SearchConstellationRequest {
         database_path: database_path.clone(),
-        project_id: root_project_id.clone(),
+        constellation_id: root_constellation_id.clone(),
         query: "nested notes".to_string(),
         limit: Some(10),
     })
@@ -123,9 +124,9 @@ fn rebuilds_and_queries_a_real_search_index_from_files_notes_sequences_and_neste
             && hit.snippet.contains("notes")
     }));
 
-    let node_hits = search_project_command(SearchProjectRequest {
+    let node_hits = search_constellation_command(SearchConstellationRequest {
         database_path: database_path.clone(),
-        project_id: root_project_id.clone(),
+        constellation_id: root_constellation_id.clone(),
         query: "thesis starts here".to_string(),
         limit: Some(10),
     })
@@ -134,16 +135,16 @@ fn rebuilds_and_queries_a_real_search_index_from_files_notes_sequences_and_neste
         .iter()
         .any(|hit| hit.entity_type == "node" && hit.title == "Opening note"));
 
-    let child_hits = search_project_command(SearchProjectRequest {
+    let child_hits = search_constellation_command(SearchConstellationRequest {
         database_path: database_path.clone(),
-        project_id: root_project_id,
+        constellation_id: root_constellation_id,
         query: "follow-up angle".to_string(),
         limit: Some(10),
     })
     .expect("search child project");
     assert!(child_hits.iter().any(|hit| {
         hit.entity_type == "file"
-            && hit.project_display_name == "Nested Project"
+            && hit.constellation_display_name == "Nested Constellation"
             && hit.relative_path.as_deref() == Some("chapter.md")
     }));
 }

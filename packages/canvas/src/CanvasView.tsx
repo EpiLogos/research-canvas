@@ -353,8 +353,10 @@ function CanvasViewInner({
           : node.type === "note"
             ? node.content
             : node.summary,
+      nodeType: node.type === "portal" ? "portal" : node.type === "group" ? "group" : undefined,
       title: node.title,
       content: node.type === "note" ? node.content : node.type === "resource" ? node.relativePath : undefined,
+      tags: node.type === "note" ? node.tags : undefined,
       resourceKind: node.type === "resource" ? node.resourceKind : undefined,
       absolutePath: node.type === "resource" ? node.absolutePath : undefined,
       isEditing: node.type === "note" ? node.id === editingNodeId : false,
@@ -425,6 +427,19 @@ function CanvasViewInner({
       },
       { type: "separator" as const },
       { type: "item" as const, label: "Open content", shortcut: "↵", onClick: () => onNodeDoubleClick?.(nodeId) },
+      ...(nodes.find((candidate) => candidate.id === nodeId)?.type === "note"
+        ? [
+            {
+              type: "item" as const,
+              label: "Edit note",
+              onClick: () => {
+                onSelectNode?.(nodeId);
+                onSelectEdge?.(null);
+                setEditingNodeId(nodeId);
+              },
+            },
+          ]
+        : []),
       { type: "item" as const, label: "Draw edge →", onClick: () => {} },
       { type: "separator" as const },
       { type: "item" as const, label: "Duplicate", shortcut: "⌘D", onClick: () => onDuplicateNode?.(nodeId) },
@@ -433,7 +448,16 @@ function CanvasViewInner({
       { type: "separator" as const },
       { type: "item" as const, label: "Delete", shortcut: "⌫", danger: true, onClick: () => onDeleteNode?.(nodeId) },
     ];
-  }, [contextMenu, flowNodes, onNodeDoubleClick, onDuplicateNode, onDeleteNode]);
+  }, [
+    contextMenu,
+    flowNodes,
+    nodes,
+    onNodeDoubleClick,
+    onDuplicateNode,
+    onDeleteNode,
+    onSelectEdge,
+    onSelectNode,
+  ]);
 
   return (
     <div
@@ -449,21 +473,40 @@ function CanvasViewInner({
         nodesDraggable
         nodesFocusable
         onDragOver={(e: React.DragEvent) => {
-          if (e.dataTransfer.types.includes("application/x-canvas-entry")) {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "copy";
-          }
+          // Always prevent default to allow drops; validate content in onDrop
+          // (WKWebView may not reliably support custom MIME types in DataTransfer)
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
         }}
         onDrop={(e: React.DragEvent) => {
-          const raw = e.dataTransfer.getData("application/x-canvas-entry");
-          if (!raw) return;
           e.preventDefault();
+          // Try custom type first, fall back to text/plain (WKWebView compatibility)
+          const raw = e.dataTransfer.getData("application/x-canvas-entry")
+            || e.dataTransfer.getData("text/plain");
+          if (!raw) return;
           try {
-            const entry = JSON.parse(raw) as { id: string; name: string; relativePath: string; kind: string };
+            const entry = JSON.parse(raw) as {
+              absolutePath?: string;
+              id: string;
+              kind: string;
+              name: string;
+              relativePath: string;
+            };
+            if (!entry.id || !entry.name || !entry.relativePath) return;
             const canvasPos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-            onCreateResourceFromFile?.({ id: entry.id, name: entry.name, path: entry.relativePath, kind: entry.kind }, canvasPos);
+            onCreateResourceFromFile?.(
+              {
+                absolutePath: entry.absolutePath,
+                id: entry.id,
+                kind: entry.kind,
+                name: entry.name,
+                path: entry.relativePath,
+                relativePath: entry.relativePath,
+              },
+              canvasPos
+            );
           } catch {
-            // malformed drag data
+            // not a canvas entry payload
           }
         }}
         onPaneClick={() => {
@@ -483,9 +526,8 @@ function CanvasViewInner({
           onMoveNode?.(node.id, node.position);
         }}
         onNodeDoubleClick={(_e, node) => {
-          if (nodes.find((candidate) => candidate.id === node.id)?.type !== "note") {
-            onNodeDoubleClick?.(node.id);
-          }
+          setEditingNodeId(null);
+          onNodeDoubleClick?.(node.id);
         }}
         onEdgeClick={(_event, edge) => {
           setEditingNodeId(null);

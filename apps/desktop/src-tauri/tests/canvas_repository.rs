@@ -1,6 +1,6 @@
 use research_canvas_desktop_lib::db::{
     connection::Database,
-    repositories::{CanvasGraphRepository, ProjectRepository},
+    repositories::{CanvasGraphRepository, ConstellationRepository},
 };
 use tempfile::{tempdir, TempDir};
 
@@ -14,7 +14,7 @@ fn open_temp_database() -> (TempDir, Database) {
 #[test]
 fn persists_nodes_edges_and_edge_notes_for_a_canvas_snapshot() {
     let (_dir, database) = open_temp_database();
-    let projects = ProjectRepository::new(database.connection());
+    let projects = ConstellationRepository::new(database.connection());
     let project = projects
         .create(
             "Episode 0.2".to_string(),
@@ -110,7 +110,7 @@ fn style_fields_round_trip() {
     let db = Database::open(dir.path().join("test.db")).unwrap();
     let conn = db.connection();
 
-    let project_repo = ProjectRepository::new(conn);
+    let project_repo = ConstellationRepository::new(conn);
     let project = project_repo
         .create(
             "Test".to_string(),
@@ -148,7 +148,7 @@ fn style_fields_round_trip() {
 fn make_test_canvas(dir: &tempfile::TempDir) -> (Database, String, String) {
     let db = Database::open(dir.path().join("test.db")).unwrap();
     let conn = db.connection();
-    let project_repo = ProjectRepository::new(conn);
+    let project_repo = ConstellationRepository::new(conn);
     let project = project_repo
         .create(
             "Test".to_string(),

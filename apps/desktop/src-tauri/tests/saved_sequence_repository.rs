@@ -1,6 +1,6 @@
 use research_canvas_desktop_lib::db::{
     connection::Database,
-    repositories::{ProjectRepository, SavedSequenceRepository},
+    repositories::{ConstellationRepository, SavedSequenceRepository},
 };
 use tempfile::{tempdir, TempDir};
 
@@ -14,10 +14,10 @@ fn open_temp_database() -> (TempDir, Database) {
 fn make_test_canvas(dir: &TempDir) -> (Database, String, String) {
     let path = dir.path().join("research-canvas.sqlite");
     let database = Database::open(&path).expect("database open");
-    let projects = ProjectRepository::new(database.connection());
+    let projects = ConstellationRepository::new(database.connection());
     let project = projects
         .create(
-            "Test Project".to_string(),
+            "Test Constellation".to_string(),
             "test-project".to_string(),
             None,
             dir.path().to_str().unwrap().to_string(),
@@ -41,7 +41,7 @@ fn create_returns_record_matching_inputs() {
         .expect("create sequence");
 
     assert!(!record.id.is_empty());
-    assert_eq!(record.project_id, project_id);
+    assert_eq!(record.constellation_id, project_id);
     assert_eq!(record.canvas_id, canvas_id);
     assert_eq!(record.name, "My Sequence");
     assert_eq!(record.root_node_id, None);

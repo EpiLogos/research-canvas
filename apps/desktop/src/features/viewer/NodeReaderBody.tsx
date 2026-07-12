@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import type { CanvasNode } from "@research-canvas/schema";
 import { createWorkspaceTransport, readWorkspaceTextFile } from "@research-canvas/desktop-api";
-import type { GraphNode, GraphNodePatch } from "@research-canvas/desktop-api";
+import type {
+  GraphNode,
+  LocalNodeDocumentInput,
+  LocalNodeDocumentWriteResult,
+} from "@research-canvas/desktop-api";
 import { useCanvasWorkspace } from "../canvas/CanvasWorkspaceContext";
 import { NodeContentPane } from "./NodeContentPane";
 import { GraphDocumentContent } from "./GraphDocumentContent";
@@ -24,29 +28,50 @@ export function NodeReaderBody({
   const [textContent, setTextContent] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     setTextContent(null);
-    if (!textResourceNode) return;
+    if (!textResourceNode) {
+      return () => {
+        cancelled = true;
+      };
+    }
     readWorkspaceTextFile(textResourceNode.absolutePath)
-      .then(setTextContent)
-      .catch(() => setTextContent(null));
+      .then((content) => {
+        if (!cancelled) {
+          setTextContent(content);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTextContent(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [textResourceNode]);
+
+  if (node.type === "resource") {
+    return (
+      <NodeContentPane
+        node={node}
+        textContent={textContent}
+        onFullScreen={() => {}}
+        onNoteContentChange={(content) => workspace.updateNodeContent(node.id, content)}
+        showToolbar={false}
+      />
+    );
+  }
 
   const graphNodeId = (node as unknown as { graphNodeId?: string }).graphNodeId ?? null;
   if (graphNodeId) {
     const transport = createWorkspaceTransport() as unknown as {
       readGraphNode: (input: { graphNodeId: string }) => Promise<GraphNode>;
-      updateGraphNode: (input: { graphNodeId: string; patch: GraphNodePatch }) => Promise<GraphNode>;
       readLocalNodeDocument: (input: {
         databasePath: string;
         graphNodeId: string;
-      }) => Promise<{ body: string; summary: string; neo4jSynced: boolean } | null>;
-      upsertLocalNodeDocument: (input: {
-        databasePath: string;
-        graphNodeId: string;
-        body: string;
-        summary: string;
-        neo4jSynced?: boolean;
-      }) => Promise<void>;
+      }) => Promise<{ body: string; summary: string; neo4jSynced: boolean; contentRevision?: number; bodySourceCoordinates?: string[] } | null>;
+      upsertLocalNodeDocument: (input: LocalNodeDocumentInput) => Promise<LocalNodeDocumentWriteResult>;
     };
     const databasePath = workspace.databasePath ?? null;
     return affordances ? (

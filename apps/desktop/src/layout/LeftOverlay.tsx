@@ -51,27 +51,32 @@ export function LeftOverlay({ open, mode, onResizeStart, onClose, drawingMode, o
 
         {mode === "files" && (
           <>
-            {/* Project selector — always visible in files mode, regardless
+            {/* Constellation selector — always visible in files mode, regardless
                 of the Graph/Files sub-view, so it doesn't look buried behind
                 the segmented control below. */}
             <div className="lo-section">
               <div className="lo-section__header">
-                <span className="lo-label">Projects</span>
+                <span className="lo-label">Constellations</span>
               </div>
-              <div className="lo-project-list" data-testid="lo-projects">
-                {workspace.projects.map((project) => (
+              <div className="lo-constellation-list" data-testid="lo-constellations">
+                {workspace.constellations.map((constellation) => (
                   <button
-                    key={project.id}
-                    className="lo-project-item"
-                    data-active={workspace.activeProjectId === project.id ? "true" : "false"}
-                    onClick={() => workspace.selectProject(project.id)}
-                    title={project.rootPath}
+                    key={constellation.id}
+                    className="lo-constellation-item"
+                    data-active={workspace.activeConstellationId === constellation.id ? "true" : "false"}
+                    onClick={() => workspace.selectConstellation(constellation.id)}
+                    title={constellation.summary || constellation.rootPath}
                   >
-                    {project.name}
+                    <span className="lo-constellation-item__name">
+                      {constellation.name}
+                    </span>
+                    {constellation.summary && (
+                      <span className="lo-constellation-item__summary">{constellation.summary}</span>
+                    )}
                   </button>
                 ))}
-                {workspace.projects.length === 0 && (
-                  <div className="lo-empty">No projects</div>
+                {workspace.constellations.length === 0 && (
+                  <div className="lo-empty">No constellations</div>
                 )}
               </div>
             </div>
@@ -218,6 +223,7 @@ export function LeftOverlay({ open, mode, onResizeStart, onClose, drawingMode, o
                             return;
                           }
                           const payload = JSON.stringify({
+                            absolutePath: entry.absolutePath,
                             id: entry.id,
                             name: entry.name,
                             relativePath: entry.relativePath,

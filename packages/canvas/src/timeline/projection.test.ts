@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { placeItems, projectNodes } from "./projection";
-import type { GraphNode } from "./contracts";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
+import { computeCardViewportFade, placeItems, projectNodes } from "./projection";
+import type { GraphNode, TimelineViewNode } from "./contracts";
 import type { TimelineViewport } from "./viewport";
 
 function node(over: Partial<GraphNode>): GraphNode {
@@ -13,6 +14,7 @@ function node(over: Partial<GraphNode>): GraphNode {
     archetypalResonance: null,
     coordinate: null,
     sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
     isTemporal: over.isTemporal ?? true,
     validFrom: over.validFrom ?? null,
     validTo: over.validTo ?? null,
@@ -22,26 +24,46 @@ function node(over: Partial<GraphNode>): GraphNode {
   };
 }
 
+function record(over: Partial<GraphNode> & { width?: number; height?: number }): TimelineViewNode {
+  const graphNode = node(over);
+  return {
+    node: graphNode,
+    anchor: {
+      validFrom: graphNode.validFrom ?? "invalid",
+      validTo: graphNode.validTo,
+      precision: graphNode.temporalPrecision ?? "year",
+    },
+    layoutOverride: {
+      lane: "events",
+      offsetY: 0,
+      width: over.width ?? 240,
+      height: over.height ?? 72,
+      style: {},
+      layoutRevision: 1,
+    },
+  };
+}
+
 describe("projectNodes", () => {
   test("drops trans-temporal nodes (isTemporal === false)", () => {
     const out = projectNodes([
-      node({ graphNodeId: "arch", isTemporal: false, validFrom: "1600-01-01" }),
+      record({ graphNodeId: "arch", isTemporal: false, validFrom: "1600-01-01" }),
     ]);
     expect(out).toEqual([]);
   });
 
   test("drops temporal nodes with no parseable validFrom", () => {
     const out = projectNodes([
-      node({ graphNodeId: "x", isTemporal: true, validFrom: null }),
-      node({ graphNodeId: "y", isTemporal: true, validFrom: "garbage" }),
+      record({ graphNodeId: "x", isTemporal: true, validFrom: null }),
+      record({ graphNodeId: "y", isTemporal: true, validFrom: "garbage" }),
     ]);
     expect(out).toEqual([]);
   });
 
   test("projects an event with start and end, sorted ascending", () => {
     const out = projectNodes([
-      node({ graphNodeId: "b", validFrom: "1917-01-01", temporalPrecision: "year" }),
-      node({
+      record({ graphNodeId: "b", validFrom: "1917-01-01", temporalPrecision: "year" }),
+      record({
         graphNodeId: "a",
         validFrom: "1621-01-01",
         validTo: "1621-12-31",
@@ -55,7 +77,7 @@ describe("projectNodes", () => {
   });
 
   test("precision defaults to year when absent", () => {
-    const out = projectNodes([node({ validFrom: "1953-01-01", temporalPrecision: null })]);
+    const out = projectNodes([record({ validFrom: "1953-01-01", temporalPrecision: null })]);
     expect(out[0].precision).toBe("year");
   });
 });
@@ -65,13 +87,13 @@ describe("placeItems", () => {
 
   test("places start/end at projected pixels; ongoing has endPx === startPx", () => {
     const items = projectNodes([
-      node({
+      record({
         graphNodeId: "a",
         validFrom: "1700-01-01",
         validTo: "1710-01-01",
         temporalPrecision: "year",
       }),
-      node({ graphNodeId: "b", validFrom: "1700-01-01", temporalPrecision: "year" }),
+      record({ graphNodeId: "b", validFrom: "1700-01-01", temporalPrecision: "year" }),
     ]);
     const placed = placeItems(items, viewport);
     const a = placed.find((p) => p.item.graphNodeId === "a")!;
@@ -80,5 +102,68 @@ describe("placeItems", () => {
     expect(a.endPx).toBeCloseTo(510, 3);
     expect(b.startPx).toBeCloseTo(500, 3);
     expect(b.endPx).toBeCloseTo(500, 3); // ongoing
+  });
+
+  test("persisted lane ids retain stable grouping across reload while unassigned nodes use later auto lanes", () => {
+    const items = projectNodes([
+      { ...record({ graphNodeId: "explicit-a", validFrom: "1700-01-01" }), layoutOverride: { lane: "sources", offsetY: 0, width: 240, height: 72, style: {}, layoutRevision: 2 } },
+      { ...record({ graphNodeId: "auto", validFrom: "1700-01-01" }), layoutOverride: null },
+      { ...record({ graphNodeId: "explicit-b", validFrom: "1710-01-01" }), layoutOverride: { lane: "sources", offsetY: 0, width: 240, height: 72, style: {}, layoutRevision: 3 } },
+    ]);
+    const lanes = [{ id: "events" }, { id: "sources" }];
+    const first = placeItems(items, viewport, lanes);
+    const reloaded = placeItems([...items], viewport, lanes);
+    const laneShape = (placed: typeof first) => Object.fromEntries(placed.map((p) => [p.item.graphNodeId, [p.laneIndex, p.laneSide]]));
+    expect(laneShape(reloaded)).toEqual(laneShape(first));
+    expect(laneShape(first)["explicit-a"]).toEqual(laneShape(first)["explicit-b"]);
+    expect(first.find((p) => p.item.graphNodeId === "auto")!.laneIndex).toBeGreaterThanOrEqual(1);
+  });
+
+  test("assigns nearby events to alternating above/below lanes", () => {
+    const items = projectNodes([
+      { ...record({ graphNodeId: "a", validFrom: "1953-01-01" }), layoutOverride: null },
+      { ...record({ graphNodeId: "b", validFrom: "1954-01-01" }), layoutOverride: null },
+      { ...record({ graphNodeId: "c", validFrom: "1955-01-01" }), layoutOverride: null },
+    ]);
+    const placed = placeItems(items, { centerYear: 1954, pixelsPerYear: 10, widthPx: 1000 });
+
+    expect(placed.map((p) => `${p.laneSide}:${p.laneIndex}`)).toEqual([
+      "above:0",
+      "below:0",
+      "above:1",
+    ]);
+  });
+});
+
+describe("computeCardViewportFade", () => {
+  test("uses rendered card position to fade cards near the left or right viewport edge", () => {
+    expect(
+      computeCardViewportFade({
+        startPx: 500,
+        positionX: 0,
+        width: 240,
+        viewportWidth: 1000,
+      }),
+    ).toEqual({ left: 0, right: 0, edge: "none" });
+
+    const left = computeCardViewportFade({
+      startPx: 32,
+      positionX: 0,
+      width: 240,
+      viewportWidth: 1000,
+    });
+    expect(left.edge).toBe("left");
+    expect(left.left).toBeGreaterThan(0);
+    expect(left.right).toBe(0);
+
+    const right = computeCardViewportFade({
+      startPx: 968,
+      positionX: 0,
+      width: 240,
+      viewportWidth: 1000,
+    });
+    expect(right.edge).toBe("right");
+    expect(right.right).toBeGreaterThan(0);
+    expect(right.left).toBe(0);
   });
 });

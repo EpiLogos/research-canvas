@@ -35,11 +35,11 @@ test("renders markdown resources in the content panel", async ({
   await waitForWorkspace(page);
 
   await page.getByRole("button", { name: "Add resource node" }).click();
-  await page.locator(".fuzzy-picker-item", { hasText: "README.md" }).click();
-  await selectCanvasNode(page, "README.md");
+  await page.locator(".fuzzy-picker-item", { hasText: "episode-1-2-archetypal-resonance.md" }).click();
+  await selectCanvasNode(page, "episode-1-2-archetypal-resonance.md");
   await openRightTab(page, "Content");
 
-  await expect(page.getByRole("heading", { name: "Sample Project" })).toBeVisible();
-  await expect(page.getByText("This fixture mirrors a small research workspace")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Episode 1-2 Archetypal Resonance Ledger" })).toBeVisible();
+  await expect(page.getByText("This is not a timeline.")).toBeVisible();
   await expectNoCanvasError(page);
 });

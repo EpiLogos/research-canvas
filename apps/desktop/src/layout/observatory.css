@@ -161,6 +161,15 @@
   box-shadow: 0 22px 50px -20px rgba(0,0,0,0.9);
   z-index: var(--z-panel);
   overflow: hidden;
+  pointer-events: none;
+  transform: translateX(calc(-100% - 20px));
+  transition: transform 180ms ease-out, opacity 180ms ease-out;
+  opacity: 0;
+}
+.ishell-stage .left-overlay[data-open="true"] {
+  pointer-events: auto;
+  transform: translateX(0);
+  opacity: 1;
 }
 .lo-browser-controls { display: flex; flex-direction: column; gap: 6px; padding: 10px 10px 6px; }
 .lo-seg { display: flex; background: var(--ob-panel); border: 1px solid var(--ob-line-2); border-radius: 7px; padding: 2px; }
@@ -291,4 +300,32 @@
   color: var(--ob-faint);
   font-family: var(--ob-serif);
   font-size: 15px;
+}
+
+.ishell-reading--overlay {
+  inset: 22px max(24px, 9vw) 56px;
+  z-index: var(--z-modal);
+  width: min(920px, calc(100% - 48px));
+  margin: 0 auto;
+  border: 1px solid var(--ob-line-3);
+  border-radius: 10px;
+  background: rgba(12, 17, 25, 0.96);
+  box-shadow: 0 30px 80px -25px rgba(0,0,0,0.92);
+}
+
+.ishell-reading--overlay::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: rgba(5, 8, 12, 0.46);
+  pointer-events: none;
+}
+
+.ishell-reading--overlay .ishell-reading__bar {
+  height: 40px;
+}
+
+.ishell-reading--overlay .ishell-reading__col > * {
+  width: min(760px, 92%);
 }

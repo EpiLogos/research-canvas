@@ -21,7 +21,7 @@ export function SearchPanel() {
     }
     setSearching(true);
     try {
-      const hits = await workspace.searchProject(q.trim(), 20);
+      const hits = await workspace.searchConstellation(q.trim(), 20);
       setResults(hits);
     } catch {
       setResults([]);

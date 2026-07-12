@@ -4,10 +4,7 @@ use research_canvas_desktop_lib::db::repositories::graph::{GraphRepository, NewG
 
 #[test]
 fn context_search_finds_terms_inside_blocknote_body_without_widening_ui_search() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
     let repo = GraphRepository::new(graph, database);
     support::block_on(repo.ensure_schema()).expect("schema");
 

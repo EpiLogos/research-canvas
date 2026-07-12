@@ -2,19 +2,19 @@ use std::path::PathBuf;
 
 use serde_json::Value;
 
-use crate::export::{export_project_bundle, resolve_publish_profile, ExportResult};
+use crate::export::{export_constellation_bundle, resolve_publish_profile, ExportResult};
 
 #[tauri::command]
-pub fn export_project_bundle_command(
+pub fn export_constellation_bundle_command(
     database_path: String,
-    project_id: String,
+    constellation_id: String,
     output_dir: String,
 ) -> Result<ExportResult, String> {
     let database =
         crate::db::connection::Database::open(&database_path).map_err(|error| error.to_string())?;
-    export_project_bundle(
+    export_constellation_bundle(
         database.connection(),
-        &project_id,
+        &constellation_id,
         PathBuf::from(output_dir),
     )
     .map_err(|error| error.to_string())

@@ -24,7 +24,7 @@ test("edits an edge relation label and restores it after reload", async ({ page,
     const bootstrap = await fetch(`${bridgeBaseUrl}/workspace/bootstrap`, { headers }).then(
       (response) => response.json(),
     );
-    const doc = await fetch(`${bridgeBaseUrl}/workspace/project/${bootstrap.activeProjectId}`, {
+    const doc = await fetch(`${bridgeBaseUrl}/workspace/constellation/${bootstrap.activeConstellationId}`, {
       headers,
     }).then((response) => response.json());
     const readme = doc.entries.find(
@@ -46,7 +46,7 @@ test("edits an edge relation label and restores it after reload", async ({ page,
     const resourceId = crypto.randomUUID();
     const edgeId = crypto.randomUUID();
 
-    const response = await fetch(`${bridgeBaseUrl}/workspace/project/${bootstrap.activeProjectId}/persist`, {
+    const response = await fetch(`${bridgeBaseUrl}/workspace/constellation/${bootstrap.activeConstellationId}/persist`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -110,7 +110,7 @@ test("edits an edge relation label and restores it after reload", async ({ page,
             updatedAt: now,
           },
         ],
-        projectId: bootstrap.activeProjectId,
+        constellationId: bootstrap.activeConstellationId,
         sequenceSteps: doc.sequenceSteps,
         sequences: doc.sequences,
       }),

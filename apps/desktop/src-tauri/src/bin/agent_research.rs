@@ -68,7 +68,7 @@ fn dispatch(command: &str, options: &Options) -> Result<serde_json::Value, Strin
         "search" => {
             let result = search_project_files(
                 required(options, "database")?,
-                required(options, "project")?,
+                required_constellation(options)?,
                 required(options, "query")?,
                 limit(options),
             )?;
@@ -77,7 +77,7 @@ fn dispatch(command: &str, options: &Options) -> Result<serde_json::Value, Strin
         "context" => {
             let pack = build_context_pack(
                 required(options, "database")?,
-                required(options, "project")?,
+                required_constellation(options)?,
                 required(options, "query")?,
                 limit(options),
             )?;
@@ -91,7 +91,7 @@ fn dispatch(command: &str, options: &Options) -> Result<serde_json::Value, Strin
         "constellation-context" => {
             let pack = build_context_pack(
                 required(options, "database")?,
-                required(options, "project")?,
+                required_constellation(options)?,
                 options.value("query").unwrap_or(""),
                 limit(options),
             )?;
@@ -133,7 +133,7 @@ fn dispatch(command: &str, options: &Options) -> Result<serde_json::Value, Strin
         "note-skeleton" => {
             let pack = build_context_pack(
                 required(options, "database")?,
-                required(options, "project")?,
+                required_constellation(options)?,
                 required(options, "query")?,
                 limit(options),
             )?;
@@ -360,7 +360,7 @@ fn render_node_context(value: &serde_json::Value) -> String {
 fn render_constellation(value: &serde_json::Value) -> String {
     format!(
         "# Constellation\n\nProject: {}\nCanvas: {}\nNodes: {}\nRelationships: {}\n",
-        value["projectId"].as_str().unwrap_or(""),
+        value["constellationId"].as_str().unwrap_or(""),
         value["canvasId"].as_str().unwrap_or(""),
         value["nodeCount"].as_u64().unwrap_or_default(),
         value["relationshipCount"].as_u64().unwrap_or_default()
@@ -409,6 +409,16 @@ fn required<'a>(options: &'a Options, name: &str) -> Result<&'a str, String> {
     options
         .value(name)
         .ok_or_else(|| format!("missing required --{name}"))
+}
+
+/// `--constellation` is the canonical scope selector.  `--project` remains a
+/// read-compatible spelling for existing automation while the domain migration
+/// settles.
+fn required_constellation<'a>(options: &'a Options) -> Result<&'a str, String> {
+    options
+        .value("constellation")
+        .or_else(|| options.value("project"))
+        .ok_or_else(|| "missing required --constellation".to_string())
 }
 
 fn limit(options: &Options) -> usize {
@@ -465,6 +475,6 @@ fn parse_options(args: Vec<String>) -> Options {
 
 fn print_help() {
     println!(
-        "agent_research <command> [--json]\n\nCommands: search, context, node-context, constellation-context, wikilinks, backlinks, tag-file, tag-node, attach-evidence, note-skeleton"
+        "agent_research <command> [--json]\n\nConstellation-scoped commands require --constellation <id> (--project remains a compatibility alias).\n\nCommands: search, context, node-context, constellation-context, wikilinks, backlinks, tag-file, tag-node, attach-evidence, note-skeleton"
     );
 }

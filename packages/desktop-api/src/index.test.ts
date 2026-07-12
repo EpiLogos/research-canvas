@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildConstellationTree,
   buildIndexedEntryTree,
-  buildProjectTree,
   createWorkspaceTransport,
   mapAgentActivityRow,
   type AgentActivity,
+  type ConstellationTreeNode,
   type IndexedEntry,
-  type ProjectTreeNode
 } from "./index";
 
 describe("desktop api tree helpers", () => {
-  it("builds nested project trees from parent links", () => {
-    const projects: ProjectTreeNode[] = [
+  it("builds nested constellation trees from parent links", () => {
+    const constellations: ConstellationTreeNode[] = [
       {
         id: "sample-project",
         name: "sample-project",
@@ -33,7 +33,7 @@ describe("desktop api tree helpers", () => {
       }
     ];
 
-    const tree = buildProjectTree(projects);
+    const tree = buildConstellationTree(constellations);
 
     expect(tree).toHaveLength(1);
     expect(tree[0].children).toHaveLength(1);

@@ -74,9 +74,84 @@ describe("updateNodeStyle", () => {
   it("updates style fields on the node", () => {
     const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
     const node = store.getState().createNoteNode({ title: "t", content: "" });
-    store.getState().updateNodeStyle(node.id, { dotColour: "#ff0000" });
+    store.getState().updateNodeStyle(node.id, {
+      dotColour: "#ff0000",
+      bgColour: "#102436",
+      textColour: "#f5fbff",
+      thumbnail: "asset://localhost/thumb.png",
+    });
     const updated = store.getState().nodes.find((n) => n.id === node.id);
     expect(updated?.dotColour).toBe("#ff0000");
+    expect(updated?.bgColour).toBe("#102436");
+    expect(updated?.textColour).toBe("#f5fbff");
+    expect(updated?.thumbnail).toBe("asset://localhost/thumb.png");
+  });
+});
+
+describe("updateNodeTags", () => {
+  it("updates note tags through the canvas store state", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const node = store.getState().createNoteNode({ title: "t", content: "" });
+
+    store.getState().updateNodeTags(node.id, ["ql", "shadow"]);
+
+    const updated = store.getState().nodes.find((n) => n.id === node.id);
+    expect(updated?.type).toBe("note");
+    if (updated?.type !== "note") throw new Error("not a note");
+    expect(updated.tags).toEqual(["ql", "shadow"]);
+  });
+
+  it("ignores tag updates for non-note nodes rather than writing fake tag fields", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const node = store.getState().createResourceNode({
+      title: "Source report",
+      absolutePath: "/tmp/report.md",
+      relativePath: "report.md",
+      resourceKind: "markdown",
+    });
+
+    store.getState().updateNodeTags(node.id, ["ql"]);
+
+    const updated = store.getState().nodes.find((n) => n.id === node.id);
+    expect(updated?.type).toBe("resource");
+    expect("tags" in (updated ?? {})).toBe(false);
+  });
+});
+
+describe("updateNodeTimelineCard", () => {
+  it("updates timeline-only card geometry without changing canvas size or position", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const node = store.getState().createNoteNode({ title: "t", content: "" });
+
+    store.getState().updateNodeTimelineCard(node.id, { offsetY: 42, width: 310, height: 118 });
+
+    const updated = store.getState().nodes.find((n) => n.id === node.id);
+    expect(updated?.position).toEqual(node.position);
+    expect(updated?.size).toEqual(node.size);
+    expect(updated?.timelineCard).toEqual({ offsetY: 42, width: 310, height: 118 });
+  });
+});
+
+describe("createPortalNode", () => {
+  it("creates a constellation portal node with a target canvas and QL unit kind", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const node = store.getState().createPortalNode({
+      title: "QL Unit",
+      targetCanvasId: "2a2edca9-e4af-4b2d-b1aa-7353f2bb20f4",
+      constellationKind: "ql-unit",
+      id: "constellation-ql-unit",
+      graphNodeId: "constellation-ql-unit",
+      x: 144,
+      y: 192,
+    });
+
+    expect(node.type).toBe("portal");
+    if (node.type !== "portal") throw new Error("not portal");
+    expect(node.targetCanvasId).toBe("2a2edca9-e4af-4b2d-b1aa-7353f2bb20f4");
+    expect(node.constellationKind).toBe("ql-unit");
+    expect(node.id).toBe("constellation-ql-unit");
+    expect(node.graphNodeId).toBe("constellation-ql-unit");
+    expect(node.position).toEqual({ x: 144, y: 192 });
   });
 });
 
@@ -359,7 +434,7 @@ describe("entityTypeForNodeType", () => {
     expect(entityTypeForNodeType("group")).toBe("Work");
   });
 
-  it("maps portal to Work", () => {
-    expect(entityTypeForNodeType("portal")).toBe("Work");
+  it("maps portal to Constellation", () => {
+    expect(entityTypeForNodeType("portal")).toBe("Constellation");
   });
 });

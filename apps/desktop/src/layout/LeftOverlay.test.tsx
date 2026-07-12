@@ -1,15 +1,35 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LeftOverlay } from "./LeftOverlay";
 
 const selectNode = vi.fn();
+const selectConstellation = vi.fn();
 
 vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
   useCanvasWorkspace: () => ({
-    projects: [],
-    activeProjectId: null,
-    selectProject: vi.fn(),
+    constellations: [
+      {
+        id: "main",
+        name: "Root Ecology",
+        slug: "root-ecology",
+        rootPath: "/workspace",
+        summary: "Completed constellations nested as portal cards.",
+        parentId: null,
+        children: [],
+      },
+      {
+        id: "constellation-a",
+        name: "Prometheus fire",
+        slug: "prometheus-fire",
+        rootPath: "/workspace/constellations/prometheus-fire",
+        summary: "Nodes gathered around theft of fire.",
+        parentId: "main",
+        children: [],
+      },
+    ],
+    activeConstellationId: "main",
+    selectConstellation,
     resourceRoots: [],
     listDirectories: vi.fn().mockResolvedValue([]),
     attachResourceRoot: vi.fn(),
@@ -33,6 +53,11 @@ function renderFiles(onClose = vi.fn()) {
 }
 
 describe("LeftOverlay browser", () => {
+  beforeEach(() => {
+    selectNode.mockClear();
+    selectConstellation.mockClear();
+  });
+
   it("defaults to the Graph view and groups nodes by type", () => {
     renderFiles();
     expect(screen.getByTestId("browser-graph")).toHaveAttribute("data-active", "true");
@@ -71,11 +96,20 @@ describe("LeftOverlay browser", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("shows the Projects section in files mode even when browserView is the default Graph view", () => {
+  it("shows the Constellations section in files mode even when browserView is the default Graph view", () => {
     renderFiles();
     // Default browserView is "graph" — no click on the Files sub-tab.
     expect(screen.getByTestId("browser-graph")).toHaveAttribute("data-active", "true");
-    // Projects must be visible regardless — assert via the projects marker.
-    expect(screen.getByTestId("lo-projects")).toBeInTheDocument();
+    // Constellations must be visible regardless — assert via the real selector marker.
+    expect(screen.getByTestId("lo-constellations")).toBeInTheDocument();
+    expect(screen.getByText("Root Ecology")).toBeInTheDocument();
+    expect(screen.queryByText("Single historical timeline")).not.toBeInTheDocument();
+    expect(screen.getByText("Prometheus fire")).toBeInTheDocument();
+  });
+
+  it("selects a constellation through the constellation selection path", () => {
+    renderFiles();
+    fireEvent.click(screen.getByRole("button", { name: /Prometheus fire/ }));
+    expect(selectConstellation).toHaveBeenCalledWith("constellation-a");
   });
 });

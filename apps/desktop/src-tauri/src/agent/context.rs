@@ -128,6 +128,7 @@ pub struct ContextTimelineNode {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ContextConstellation {
+    #[serde(rename = "constellationId", alias = "projectId")]
     pub project_id: String,
     pub canvas_id: Option<String>,
     pub node_count: usize,
@@ -500,14 +501,16 @@ fn context_nodes_from_graph(
             });
             ContextNode {
                 graph_node_id: node.graph_node_id,
-                entity_type: node.entity_type,
+                entity_type: node.entity_type.as_str().to_string(),
                 title: node.title,
                 summary: node.summary,
                 temporal: ContextTemporal {
                     is_temporal: node.is_temporal,
                     valid_from: node.valid_from,
                     valid_to: node.valid_to,
-                    precision: node.temporal_precision,
+                    precision: node
+                        .temporal_precision
+                        .map(|value| value.as_str().to_string()),
                 },
                 evidence_tags: node.evidence_tags,
                 source_kind: node.source_kind,

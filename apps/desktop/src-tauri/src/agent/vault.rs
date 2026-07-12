@@ -1,6 +1,6 @@
 use crate::agent::markdown::{parse_markdown_source, MarkdownHeading};
 use crate::agent::types::{VaultDocument, WikiLink};
-use crate::fs::indexer::{index_directory, is_text_like_extension, IndexedEntry, IndexedEntryKind};
+use crate::fs::indexer::{index_directory, IndexedEntry, IndexedEntryKind};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::HashSet;
@@ -192,6 +192,13 @@ fn is_indexable_file(entry: &IndexedEntry) -> bool {
             .map(is_text_like_extension)
             .unwrap_or(false),
     }
+}
+
+fn is_text_like_extension(extension: &str) -> bool {
+    matches!(
+        extension.to_ascii_lowercase().as_str(),
+        "txt" | "rst" | "csv" | "json" | "yaml" | "yml" | "toml" | "xml" | "html" | "htm"
+    )
 }
 
 fn build_document(

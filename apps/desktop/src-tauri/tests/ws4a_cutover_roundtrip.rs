@@ -9,9 +9,12 @@ use research_canvas_desktop_lib::db::{
     canvas_service::CanvasService,
     connection::Database,
     repositories::{
-        graph::{GraphNodePatch, GraphRepository, NewGraphNode},
+        graph::{
+            ContentOrigin, GraphContentCasInput, GraphContentCasMutation, GraphRepository,
+            NewGraphNode, NewGraphNodeMetadata,
+        },
         layout::{LayoutRepository, NodeLayoutRecord},
-        ProjectRepository,
+        ConstellationRepository,
     },
 };
 use tempfile::tempdir;
@@ -22,16 +25,13 @@ fn now() -> String {
 
 #[test]
 fn created_node_roundtrips_body_through_neo4j() {
-    let Some((graph, run_id, database)) = support::neo4j_test_graph() else {
-        eprintln!("skipping: NEO4J_TEST_URI unset");
-        return;
-    };
+    let (graph, run_id, database) = support::neo4j_test_graph();
 
     // --- SQLite: temp dir + real project + canvas_id ---
     let dir = tempdir().unwrap();
     let db_path = dir.path().join("roundtrip.db");
     let db = Database::open(&db_path).unwrap();
-    let project = ProjectRepository::new(db.connection())
+    let project = ConstellationRepository::new(db.connection())
         .create(
             "RoundtripProject".into(),
             "roundtrip-project".into(),
@@ -45,22 +45,29 @@ fn created_node_roundtrips_body_through_neo4j() {
     let canvas_id = project.primary_canvas_id.unwrap();
 
     // --- Neo4j: mint id, ensure schema, create node ---
-    let id = format!("ws4a-rt-{run_id}");
+    let id = format!("{run_id}:roundtrip");
     let repo = GraphRepository::new(graph.clone(), database.clone());
     support::block_on(repo.ensure_schema()).expect("ensure_schema");
 
-    support::block_on(repo.create_node(NewGraphNode {
-        graph_node_id: Some(id.clone()),
-        entity_type: "Work".into(),
-        title: format!("RT {run_id}"),
-        body: "[]".into(),
-        coordinate: None,
-        source_coordinates: vec![],
-        is_temporal: false,
-        valid_from: None,
-        valid_to: None,
-        temporal_precision: None,
-    }))
+    support::block_on(repo.create_node_with_metadata(
+        NewGraphNode {
+            graph_node_id: Some(id.clone()),
+            entity_type: "Work".into(),
+            title: format!("RT {run_id}"),
+            body: "[]".into(),
+            coordinate: None,
+            source_coordinates: vec![],
+            is_temporal: false,
+            valid_from: None,
+            valid_to: None,
+            temporal_precision: None,
+        },
+        NewGraphNodeMetadata {
+            content_origin: Some(ContentOrigin::UserAuthored),
+            content_revision: Some(0),
+            ..Default::default()
+        },
+    ))
     .expect("create_node");
 
     // --- SQLite: upsert a layout row using the same id ---
@@ -78,15 +85,24 @@ fn created_node_roundtrips_body_through_neo4j() {
         })
         .expect("upsert_node_layout");
 
-    // --- Neo4j: edit the body via update_node ---
-    support::block_on(repo.update_node(
-        &id,
-        GraphNodePatch {
-            body: Some("[{\"type\":\"paragraph\"}]".into()),
-            ..Default::default()
-        },
-    ))
-    .expect("update_node");
+    let current = support::block_on(repo.get_node(&id)).unwrap().unwrap();
+    let expected_revision = current.content_revision.expect("created revision");
+    let expected_origin = current.content_origin.expect("created origin");
+    assert_eq!(
+        support::block_on(repo.compare_and_swap_content(&GraphContentCasInput {
+            graph_node_id: id.clone(),
+            expected_remote_revision: Some(expected_revision),
+            expected_remote_origin: Some(expected_origin),
+            allow_legacy_null: false,
+            body: "[{\"type\":\"paragraph\"}]".into(),
+            summary: current.summary,
+            content_origin: ContentOrigin::UserAuthored,
+            content_revision: expected_revision + 1,
+            body_source_coordinates: current.body_source_coordinates,
+        }))
+        .expect("content CAS"),
+        GraphContentCasMutation::Updated
+    );
 
     // --- Load via CanvasService::load_canvas_view ---
     let service = CanvasService::new(

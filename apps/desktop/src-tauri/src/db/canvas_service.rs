@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::db::{
     connection::Database,
     repositories::{
-        graph::{GraphNode, GraphRelationship, GraphRepository},
+        graph::{EntityType, GraphNode, GraphRelationship, GraphRepository},
         layout::{EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord},
     },
 };
@@ -101,19 +101,22 @@ impl CanvasService {
 
         let relationships = self.graph.list_relationships().await?;
 
-        // 2. Substance from Neo4j, batch-fetched for exactly the layout
-        // rows' ids (best-effort — a lookup failure degrades to "no node
-        // found", which synthesizes substance below rather than erroring).
+        // 2. Substance from Neo4j, batch-fetched for exactly the layout rows'
+        // ids. Contract/decoding failures are fatal: synthesizing on a batch
+        // error would silently turn temporal nodes into non-temporal fallbacks.
         let ids: Vec<String> = layout_rows
             .iter()
             .map(|r| r.graph_node_id.clone())
             .collect();
         let mut nodes_by_id: std::collections::HashMap<String, GraphNode> =
             std::collections::HashMap::new();
-        if let Ok(found) = self.graph.get_nodes(&ids).await {
-            for node in found {
-                nodes_by_id.insert(node.graph_node_id.clone(), node);
-            }
+        let found = self
+            .graph
+            .get_nodes(&ids)
+            .await
+            .map_err(|error| format!("load_canvas_view graph contract failed: {error}"))?;
+        for node in found {
+            nodes_by_id.insert(node.graph_node_id.clone(), node);
         }
 
         // 3. For each layout row: use the real Neo4j node if present, else
@@ -194,12 +197,12 @@ struct StyleWithSidecar {
 /// Maps a `__canvasNode.type` to the Neo4j entity label a synced version of
 /// that node would carry, mirroring the frontend's `entityTypeForNodeType`
 /// (packages/canvas/src/state/canvasStore.ts): "resource" -> Source,
-/// everything else (note/group/portal) -> Work.
-fn entity_type_for_sidecar_type(node_type: &str) -> &'static str {
-    if node_type == "resource" {
-        "Source"
-    } else {
-        "Work"
+/// "portal" -> Constellation, everything else (note/group) -> Work.
+fn entity_type_for_sidecar_type(node_type: &str) -> EntityType {
+    match node_type {
+        "resource" => EntityType::Source,
+        "portal" => EntityType::Constellation,
+        _ => EntityType::Work,
     }
 }
 
@@ -223,8 +226,7 @@ fn synthesize_node_from_layout(row: &NodeLayoutRecord) -> GraphNode {
         .as_ref()
         .and_then(|s| s.node_type.as_deref())
         .map(entity_type_for_sidecar_type)
-        .unwrap_or("Work")
-        .to_string();
+        .unwrap_or(EntityType::Work);
 
     GraphNode {
         graph_node_id: row.graph_node_id.clone(),
@@ -237,6 +239,22 @@ fn synthesize_node_from_layout(row: &NodeLayoutRecord) -> GraphNode {
         source_coordinates: Vec::new(),
         evidence_tags: Vec::new(),
         source_kind: None,
+        content_origin: None,
+        content_revision: None,
+        seed_schema_version: None,
+        body_source_coordinates: Vec::new(),
+        historicity: None,
+        claim_kind: None,
+        evidence_status: None,
+        temporal_role: None,
+        place_coverage: None,
+        ql_form: None,
+        ql_unit_id: None,
+        ql_arc: None,
+        ql_topology: None,
+        ql_schema_version: None,
+        ql_source_coordinates: Vec::new(),
+        ql_completeness_status: None,
         is_temporal: false,
         valid_from: None,
         valid_to: None,
