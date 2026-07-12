@@ -61,6 +61,33 @@ vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
         viewport: { x: 0, y: 0, zoom: 1 },
         appState: {},
       }),
+      loadTimelineView: async () => ({
+        workspaceId: "sqlite:/canonical/workspace.sqlite",
+        nodes: [
+          {
+            node: {
+              graphNodeId: "node-a",
+              entityType: "Event",
+              title: "Node A",
+              body: "[]",
+              summary: "A temporal node.",
+              archetypalResonance: null,
+              coordinate: null,
+              sourceCoordinates: [],
+              isTemporal: true,
+              validFrom: "1621-01-01",
+              validTo: null,
+              temporalPrecision: "year",
+              createdAt: "2026-01-01T00:00:00Z",
+              updatedAt: "2026-01-01T00:00:00Z",
+            },
+            anchor: { validFrom: "1621-01-01", validTo: null, precision: "year" },
+            layoutOverride: null,
+          },
+        ],
+        lanes: [],
+        diagnostics: [],
+      }),
       archetypalLighting: async () => ({ operator: {}, instances: [] }),
       resonancesForInstance: async () => [],
     }),
@@ -185,8 +212,9 @@ function FakeWorkspaceProvider({
       isHydrated: true,
       errorMessage: null,
       canvasId: CANVAS_ID,
+      workspaceId: "sqlite:/canonical/workspace.sqlite",
       constellationId: "11111111-1111-4111-8111-111111111111",
-      databasePath: null,
+      databasePath: "/canonical/workspace.sqlite",
       activeConstellation: null,
       activeConstellationId: null,
       constellations: [],
@@ -276,7 +304,7 @@ describe("Shell frame", () => {
   });
 
   it("switches the stage surface when a lens is chosen", async () => {
-    renderShell();
+    renderShellWithNodes([]);
     expect(screen.queryByTestId("lens-reading")).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("lens-timeline"));
     expect(screen.getByTestId("timeline-pane")).toBeVisible();

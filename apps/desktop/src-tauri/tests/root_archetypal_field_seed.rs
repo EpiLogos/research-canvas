@@ -82,6 +82,15 @@ fn root_archetypal_field_seed_writes_real_graph_constellation_layout_and_timelin
     assert_eq!(constellation.display_name, "Root Archetypal Field");
     assert_eq!(constellation.slug, "root-archetypal-field");
 
+    let child_constellations = ConstellationRepository::new(db.connection())
+        .list_children(&first.constellation_id)
+        .expect("root child constellations");
+    assert_eq!(
+        child_constellations.len(),
+        18,
+        "every seeded portal is a first-class child constellation, not merely a canvas under root",
+    );
+
     let layouts = LayoutRepository::new(db.connection())
         .list_node_layout(&first.canvas_id)
         .expect("layouts");
@@ -99,8 +108,18 @@ fn root_archetypal_field_seed_writes_real_graph_constellation_layout_and_timelin
         .expect("portal target canvas id")
         .to_string();
 
+    let devil_constellation = child_constellations
+        .iter()
+        .find(|child| child.slug == "devil-sixfold-lineage")
+        .expect("devil lineage child constellation");
+    assert_eq!(
+        devil_constellation.primary_canvas_id.as_deref(),
+        Some(devil_canvas_id.as_str()),
+        "the root portal targets the child constellation's primary canvas",
+    );
+
     let child_canvases = CanvasRepository::new(db.connection())
-        .list_for_constellation(&first.constellation_id)
+        .list_for_constellation(&devil_constellation.id)
         .expect("child canvases");
     assert!(
         child_canvases

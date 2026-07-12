@@ -63,6 +63,14 @@ vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
     createWorkspaceTransport: () => ({
       loadTimelineView,
       upsertTimelineLayout,
+      readLocalNodeDocument: async () => ({
+        body: "[]",
+        summary: "",
+        neo4jSynced: true,
+        contentRevision: 1,
+        contentOrigin: "seed",
+        bodySourceCoordinates: [],
+      }),
       archetypalLighting: async () => ({ operator: {}, instances: [] }),
       resonancesForInstance: async () => [],
     }),
@@ -106,12 +114,15 @@ describe("Shell timeline lens", () => {
     }));
   });
 
-  test("opening a timeline node routes through workspace.selectNode (same document)", async () => {
+  test("opening a timeline node presents its deep reader even when it is not on the active canvas", async () => {
     render(<Shell />);
     fireEvent.click(screen.getByTestId("lens-timeline"));
     const node = await screen.findByTestId("timeline-node-banda");
     fireEvent.doubleClick(node);
     expect(selectNode).toHaveBeenCalledWith("banda");
+    expect(await screen.findByTestId("reading-overlay")).toHaveTextContent("Banda genocide");
+    fireEvent.click(screen.getByRole("button", { name: "Close reading" }));
+    expect(screen.queryByTestId("reading-overlay")).not.toBeInTheDocument();
   });
 
   test("timeline card geometry persists through timeline storage and never mutates canvas state", async () => {

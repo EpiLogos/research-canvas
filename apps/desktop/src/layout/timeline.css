@@ -173,6 +173,27 @@
   box-shadow: 0 0 0 3px rgba(121, 192, 212, 0.1);
 }
 
+.timeline-node-marker {
+  position: absolute;
+  left: 8px;
+  top: -12px;
+  max-width: 11rem;
+  overflow: hidden;
+  font-family: var(--ob-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+}
+
+.timeline-node-card[data-lod="label"] {
+  height: 46px !important;
+  min-height: 46px;
+  grid-template-rows: auto 1fr;
+}
+
 .timeline-node-connector {
   position: absolute;
   left: 0;

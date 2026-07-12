@@ -101,6 +101,27 @@ describe("TimelineNode", () => {
     );
   });
 
+  test("uses marker LOD at broad zoom without mounting full-size cards", () => {
+    render(
+      <TimelineNode
+        placed={placed({ title: "Banda genocide" })}
+        lod="marker"
+        lit={null}
+        selected={false}
+        dimmed={false}
+        filtered={false}
+        onSelect={() => {}}
+        onOpen={() => {}}
+        onResize={() => {}}
+        onColorTag={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("timeline-node-n1").dataset.lod).toBe("marker");
+    expect(screen.queryByTestId("timeline-node-card-n1")).not.toBeInTheDocument();
+    expect(screen.getByTestId("timeline-node-marker-n1")).toHaveTextContent("Banda genocide");
+  });
+
   test("single click selects, double click opens", () => {
     const onSelect = vi.fn();
     const onOpen = vi.fn();
@@ -121,7 +142,7 @@ describe("TimelineNode", () => {
     fireEvent.click(el);
     expect(onSelect).toHaveBeenCalledWith("n1");
     fireEvent.doubleClick(el);
-    expect(onOpen).toHaveBeenCalledWith("n1");
+    expect(onOpen).toHaveBeenCalledWith("n1", expect.objectContaining({ graphNodeId: "n1" }));
   });
 
   test("lit dominant node carries the lit-dominant data attribute", () => {

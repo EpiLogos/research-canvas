@@ -91,6 +91,18 @@ describe("timelineStore", () => {
     expect(store.getState().viewport().widthPx).toBe(1234);
   });
 
+  test("hydrating a reopened timeline preserves its remembered camera instead of refitting the full history", () => {
+    const store = createTimelineStore({ initialCenterYear: 1917, initialPixelsPerYear: 24 });
+    store.getState().hydrate(view([
+      record({ graphNodeId: "early", validFrom: "1500-01-01" }),
+      record({ graphNodeId: "late", validFrom: "2000-01-01" }),
+    ]));
+
+    const viewport = store.getState().viewport();
+    expect(viewport.centerYear).toBe(1917);
+    expect(viewport.pixelsPerYear).toBe(24);
+  });
+
   test("tier() derives from current pixelsPerYear", () => {
     const store = createTimelineStore({ initialPixelsPerYear: 0.05 });
     expect(store.getState().tier()).toBe("millennium");

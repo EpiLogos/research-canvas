@@ -149,7 +149,10 @@ describe("TimelineLens", () => {
     render(<TimelineLens dataSource={makeDataSource()} onOpenNode={onOpenNode} />);
     const node = await screen.findByTestId("timeline-node-banda");
     fireEvent.doubleClick(node);
-    expect(onOpenNode).toHaveBeenCalledWith("banda");
+    expect(onOpenNode).toHaveBeenCalledWith(
+      "banda",
+      expect.objectContaining({ graphNodeId: "banda" }),
+    );
   });
 
   test("selecting an event fetches and shows its resonant archetypes", async () => {

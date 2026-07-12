@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { CSSProperties, JSX, PointerEvent as ReactPointerEvent } from "react";
 import { computeCardViewportFade, type PlacedItem } from "./projection";
 import type { LitNodeState } from "./lighting";
+import type { GraphNode } from "./contracts";
 import { categoryDefinition, deriveTimelineCategory } from "./categories";
 import { DEFAULT_TIMELINE_CARD_HEIGHT_PX, DEFAULT_TIMELINE_CARD_WIDTH_PX } from "./projection";
 
@@ -11,6 +12,7 @@ const MIN_CARD_HEIGHT = 72;
 const MAX_CARD_HEIGHT = 260;
 
 type ResizeCorner = "nw" | "ne" | "sw" | "se";
+export type TimelineNodeLod = "marker" | "label" | "detail";
 
 interface TimelineCardGeometry {
   positionX: number;
@@ -21,13 +23,14 @@ interface TimelineCardGeometry {
 
 export interface TimelineNodeProps {
   placed: PlacedItem;
+  lod?: TimelineNodeLod;
   lit: LitNodeState | null;
   selected: boolean;
   dimmed: boolean;
   filtered: boolean;
   viewportWidth?: number;
   onSelect: (nodeId: string) => void;
-  onOpen: (nodeId: string) => void;
+  onOpen: (nodeId: string, node: GraphNode) => void;
   onResize: (nodeId: string, size: TimelineCardGeometry) => void;
   onCommit?: (nodeId: string) => void;
   onColorTag: (nodeId: string, style: { dotColour: string; bgColour: string; textColour?: string }) => void;
@@ -36,6 +39,7 @@ export interface TimelineNodeProps {
 
 export function TimelineNode({
   placed,
+  lod = "detail",
   lit,
   selected,
   dimmed,
@@ -160,6 +164,7 @@ export function TimelineNode({
       data-dimmed={dimmed ? "true" : undefined}
       data-filtered={filtered ? "true" : undefined}
       data-category={category}
+      data-lod={lod}
       className={`timeline-node timeline-node--${placed.laneSide}`}
       style={style}
       onClick={(event) => {
@@ -171,7 +176,7 @@ export function TimelineNode({
         }
         onSelect(item.graphNodeId);
       }}
-      onDoubleClick={() => onOpen(item.graphNodeId)}
+      onDoubleClick={() => onOpen(item.graphNodeId, item.node)}
     >
       {spanWidth > 1 && (
         <div
@@ -182,8 +187,18 @@ export function TimelineNode({
       )}
       <span className="timeline-node-dot" />
       <span className="timeline-node-connector" />
+      {lod === "marker" ? (
+        <span
+          className="timeline-node-marker"
+          data-testid={`timeline-node-marker-${item.graphNodeId}`}
+          style={{ color: item.presentation.style.dotColour ?? categoryStyle.color }}
+        >
+          {item.node.title}
+        </span>
+      ) : (
       <div
         className="timeline-node-card"
+        data-lod={lod}
         data-testid={`timeline-node-card-${item.graphNodeId}`}
         data-edge-fade={edgeFade.edge}
         onPointerDown={(event) => {
@@ -214,7 +229,7 @@ export function TimelineNode({
         />
         <span className="timeline-node-date">{formatItemDate(item)}</span>
         <span className="timeline-node-title">{item.node.title}</span>
-        {summary && (
+        {lod === "detail" && summary && (
           <span
             className="timeline-node-summary"
             data-testid={`timeline-node-summary-${item.graphNodeId}`}
@@ -251,6 +266,7 @@ export function TimelineNode({
           />
         ))}
       </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import type { CanvasNode } from "@research-canvas/schema";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { NodeReaderBody } from "../features/viewer/NodeReaderBody";
 
@@ -6,13 +7,15 @@ export function ReadingLens({
   onFullScreen,
   onExitToCanvas,
   variant = "lens",
+  nodeOverride = null,
 }: {
   onFullScreen: () => void;
   onExitToCanvas: () => void;
   variant?: "lens" | "overlay";
+  nodeOverride?: CanvasNode | null;
 }) {
   const workspace = useCanvasWorkspace();
-  const node = workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
+  const node = nodeOverride ?? workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
 
   useEffect(() => {
     if (variant !== "overlay") return;

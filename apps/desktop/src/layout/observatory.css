@@ -230,7 +230,7 @@
 .ishell-dock__bar { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-bottom: 1px solid var(--ob-line); }
 .ishell-dock__title { font-family: var(--ob-mono); font-size: 10px; letter-spacing: 0.06em; color: var(--ob-dim); }
 .ishell-dock__close { margin-left: auto; background: transparent; border: 0; color: var(--ob-faint); font-size: 11px; cursor: pointer; }
-.ishell-dock__body { flex: 1; min-height: 0; overflow: hidden; }
+.ishell-dock__body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 .ishell-dock__resize { position: absolute; background: transparent; }
 .ishell-dock__resize--height { left: 0; right: 0; top: 0; height: 5px; cursor: ns-resize; }
 .ishell-dock__resize--width { top: 0; right: 0; bottom: 0; width: 6px; cursor: ew-resize; }

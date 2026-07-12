@@ -61,6 +61,8 @@ interface CreateTimelineStoreOptions {
 export function createTimelineStore(
   options: CreateTimelineStoreOptions = {},
 ): StoreApi<TimelineStoreState> {
+  const hasRememberedViewport =
+    options.initialCenterYear !== undefined && options.initialPixelsPerYear !== undefined;
   return createStore<TimelineStoreState>((set, get) => ({
     centerYear: options.initialCenterYear ?? 1700,
     pixelsPerYear: clampPixelsPerYear(options.initialPixelsPerYear ?? 2),
@@ -73,7 +75,7 @@ export function createTimelineStore(
     lightingOperatorId: null,
     cursorYear: null,
     playing: false,
-    manualViewport: false,
+    manualViewport: hasRememberedViewport,
 
     viewport: () => {
       const s = get();
@@ -95,12 +97,15 @@ export function createTimelineStore(
     },
     hydrate: (view) => {
       const items = projectNodes(view.nodes);
+      const preserveViewport = get().manualViewport;
       set({
         items,
         lanes: view.lanes,
         diagnostics: view.diagnostics,
-        manualViewport: false,
-        ...(items.length > 0 ? fitViewportToItems(items, get().widthPx) : {}),
+        manualViewport: preserveViewport,
+        ...(!preserveViewport && items.length > 0
+          ? fitViewportToItems(items, get().widthPx)
+          : {}),
       });
     },
     pan: (deltaPx) => {

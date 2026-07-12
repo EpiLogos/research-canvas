@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useStore } from "zustand";
 
-import type { ArchetypalLighting, LitInstance, TimelineLayoutMutationResult, TimelineView } from "./contracts";
+import type { ArchetypalLighting, GraphNode, LitInstance, TimelineLayoutMutationResult, TimelineView } from "./contracts";
 import { createTimelineStore, type TimelineCardGeometryUpdate } from "./timelineStore";
 import { placeItems, type TimelinePresentation } from "./projection";
 import { generateTicks } from "./ticks";
@@ -31,8 +31,10 @@ export interface TimelineDataSource {
 
 export interface TimelineLensProps {
   dataSource: TimelineDataSource;
-  onOpenNode: (graphNodeId: string) => void;
+  onOpenNode: (graphNodeId: string, node: GraphNode) => void;
   onPlaySequence?: () => void;
+  initialViewport?: { centerYear: number; pixelsPerYear: number };
+  onViewportChange?: (viewport: { centerYear: number; pixelsPerYear: number }) => void;
 }
 
 const AXIS_HEIGHT = 48;
@@ -45,8 +47,20 @@ export function TimelineLens({
   dataSource,
   onOpenNode,
   onPlaySequence,
+  initialViewport,
+  onViewportChange,
 }: TimelineLensProps): JSX.Element {
-  const store = useMemo(() => createTimelineStore(), []);
+  const store = useMemo(
+    () => createTimelineStore(
+      initialViewport
+        ? {
+            initialCenterYear: initialViewport.centerYear,
+            initialPixelsPerYear: initialViewport.pixelsPerYear,
+          }
+        : {},
+    ),
+    [],
+  );
   const state = useStore(store);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [resonances, setResonances] = useState<LitInstance[]>([]);
@@ -104,7 +118,22 @@ export function TimelineLens({
   }, [store]);
 
   const viewport = state.viewport();
+  useEffect(() => {
+    onViewportChange?.({
+      centerYear: viewport.centerYear,
+      pixelsPerYear: viewport.pixelsPerYear,
+    });
+  }, [onViewportChange, viewport.centerYear, viewport.pixelsPerYear]);
   const tier = state.tier();
+  // Preserve direct manipulation at the normal working scale.  Only the
+  // genuinely panoramic millennium view collapses nodes to markers; century
+  // view remains a compact, readable card so a user never loses the controls
+  // simply by opening the timeline.
+  const lod = tier === "millennium"
+    ? "marker"
+    : tier === "century"
+      ? "label"
+      : "detail";
   const allPlaced = placeItems(state.items, viewport, state.lanes);
   const placed = allPlaced.filter((p) => visibleCategories[deriveTimelineCategory(p.item.node)]);
   const ticks = generateTicks(viewport, tier);
@@ -328,6 +357,7 @@ export function TimelineLens({
               <TimelineNode
                 key={p.item.graphNodeId}
                 placed={p}
+                lod={lod}
                 lit={lit}
                 selected={state.selectedNodeId === p.item.graphNodeId}
                 dimmed={dimmed}

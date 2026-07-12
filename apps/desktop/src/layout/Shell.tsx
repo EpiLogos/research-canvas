@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CanvasNode } from "@research-canvas/schema";
 import { CanvasPane } from "./CanvasPane";
 import { FullScreenReader } from "./FullScreenReader";
 import { IconStrip } from "./IconStrip";
@@ -17,7 +18,7 @@ import { SequencesManager } from "../features/sequences/SequencesManager";
 import { SettingsOverlay } from "../features/settings/SettingsOverlay";
 import { CommandPalette } from "../features/search/CommandPalette";
 import { TimelineLens } from "@research-canvas/canvas";
-import { createWorkspaceTransport } from "@research-canvas/desktop-api";
+import { createWorkspaceTransport, type GraphNode } from "@research-canvas/desktop-api";
 import { createTimelineDataSource } from "../features/timeline/createTimelineDataSource";
 
 export function Shell() {
@@ -29,8 +30,10 @@ export function Shell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [readingOverlayOpen, setReadingOverlayOpen] = useState(false);
+  const [readingNode, setReadingNode] = useState<CanvasNode | null>(null);
   const [drawingMode, setDrawingMode] = useState(false);
   const [strokeColour, setStrokeColour] = useState("#f97316");
+  const timelineViewports = useRef(new Map<string, { centerYear: number; pixelsPerYear: number }>());
 
   const { lens, setLens } = useLensMode();
   const closeFullScreen = useCallback(() => {
@@ -44,10 +47,26 @@ export function Shell() {
       }) : null,
     [workspace.workspaceId],
   );
+  const rememberedTimelineViewport = workspace.workspaceId
+    ? timelineViewports.current.get(workspace.workspaceId)
+    : undefined;
+  const rememberTimelineViewport = useCallback(
+    (viewport: { centerYear: number; pixelsPerYear: number }) => {
+      if (workspace.workspaceId) {
+        timelineViewports.current.set(workspace.workspaceId, viewport);
+      }
+    },
+    [workspace.workspaceId],
+  );
 
   const openNodeDocument = useCallback(
-    (graphNodeId: string) => {
+    (graphNodeId: string, timelineNode?: GraphNode) => {
       workspace.selectNode(graphNodeId);
+      setReadingNode(
+        timelineNode && !workspace.nodes.some((node) => node.id === graphNodeId)
+          ? readerNodeFromTimeline(timelineNode, workspace.canvasId)
+          : null,
+      );
       setReadingOverlayOpen(true);
     },
     [workspace],
@@ -60,6 +79,7 @@ export function Shell() {
         return;
       }
       setReadingOverlayOpen(false);
+      setReadingNode(null);
       setLens(mode);
     },
     [setLens],
@@ -83,6 +103,7 @@ export function Shell() {
     setSettingsOpen(false);
     setFullScreenMode("closed");
     setReadingOverlayOpen(false);
+    setReadingNode(null);
   }, []);
 
   const openPalette = useCallback(() => {
@@ -161,11 +182,13 @@ export function Shell() {
       const node = workspace.nodes.find((candidate) => candidate.id === nodeId);
       if (node?.type === "portal") {
         setReadingOverlayOpen(false);
+        setReadingNode(null);
         void workspace.openCanvas(node.targetCanvasId);
         return;
       }
 
       workspace.selectNode(nodeId);
+      setReadingNode(null);
       setReadingOverlayOpen(true);
     },
     [workspace],
@@ -242,6 +265,8 @@ export function Shell() {
                 dataSource={timelineDataSource}
                 onOpenNode={openNodeDocument}
                 onPlaySequence={handlePlaySequence}
+                initialViewport={rememberedTimelineViewport}
+                onViewportChange={rememberTimelineViewport}
               />
             </section>
           )}
@@ -260,7 +285,11 @@ export function Shell() {
             <ReadingLens
               variant="overlay"
               onFullScreen={() => enterFullScreen("node")}
-              onExitToCanvas={() => setReadingOverlayOpen(false)}
+              onExitToCanvas={() => {
+                setReadingOverlayOpen(false);
+                setReadingNode(null);
+              }}
+              nodeOverride={readingNode}
             />
           )}
 
@@ -317,4 +346,23 @@ export function Shell() {
       />
     </div>
   );
+}
+
+function readerNodeFromTimeline(node: GraphNode, canvasId: string): CanvasNode {
+  return {
+    type: "note",
+    id: node.graphNodeId,
+    graphNodeId: node.graphNodeId,
+    canvasId,
+    title: node.title,
+    content: node.body,
+    summary: node.summary,
+    tags: node.evidenceTags,
+    position: { x: 0, y: 0 },
+    size: { width: 360, height: 220 },
+    sequenceCaption: null,
+    sequenceViewport: null,
+    createdAt: node.createdAt,
+    updatedAt: node.updatedAt,
+  };
 }

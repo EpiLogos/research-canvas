@@ -545,8 +545,12 @@ fn ensure_root_archetypal_constellation_layout_with_transaction(
     let (constellation_id, canvas_id) =
         ensure_root_constellation(connection, root_path, transaction_owned_by_caller)?;
     let constellations = constellation_seeds();
-    let constellation_canvas_ids =
-        ensure_constellation_canvases(connection, &constellation_id, &constellations)?;
+    let constellation_canvas_ids = ensure_constellation_canvases(
+        connection,
+        &constellation_id,
+        root_path,
+        &constellations,
+    )?;
     let nodes = node_seeds();
     let layouts = layout_records(
         ROOT_CONSTELLATION_SLUG,
@@ -629,44 +633,111 @@ fn ensure_root_constellation(
 
 fn ensure_constellation_canvases(
     connection: &Connection,
-    constellation_id: &str,
+    root_constellation_id: &str,
+    root_path: &str,
     constellations: &[ConstellationSeed],
 ) -> Result<HashMap<&'static str, String>, String> {
     let canvas_repo = CanvasRepository::new(connection);
     let mut out = HashMap::with_capacity(constellations.len());
     for seed in constellations {
-        let kind = constellation_canvas_kind(seed.slug);
-        let existing = connection
+        let legacy_canvas_id = connection
             .query_row(
                 "SELECT id FROM canvases WHERE project_id = ?1 AND kind = ?2",
-                params![constellation_id, kind],
+                params![root_constellation_id, constellation_canvas_kind(seed.slug)],
                 |row| row.get::<_, String>(0),
             )
             .optional()
             .map_err(|e| e.to_string())?;
 
-        let canvas_id = match existing {
-            Some(id) => {
-                connection
-                    .execute(
-                        "UPDATE canvases SET name = ?1, summary = ?2 WHERE id = ?3",
-                        params![seed.canvas_name, seed.canvas_summary, id],
-                    )
-                    .map_err(|e| e.to_string())?;
-                id
+        let child = connection
+            .query_row(
+                "SELECT id, parent_project_id, primary_canvas_id FROM projects WHERE slug = ?1",
+                [seed.slug],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+
+        let (child_constellation_id, generated_primary_canvas_id) = match child {
+            Some((id, parent_id, primary_canvas_id)) => {
+                if parent_id.as_deref() != Some(root_constellation_id) {
+                    return Err(format!(
+                        "seeded constellation slug `{}` belongs to a different parent",
+                        seed.slug,
+                    ));
+                }
+                let primary_canvas_id = primary_canvas_id.ok_or_else(|| {
+                    format!("seeded constellation `{}` has no primary canvas", seed.slug)
+                })?;
+                (id, primary_canvas_id)
             }
             None => {
-                canvas_repo
-                    .create_for_constellation(
-                        constellation_id,
-                        seed.canvas_name,
-                        &kind,
+                let child = ConstellationRepository::new(connection)
+                    .create_in_existing_transaction(
+                        seed.canvas_name.to_string(),
+                        seed.slug.to_string(),
+                        Some(root_constellation_id.to_string()),
+                        root_path.to_string(),
                         Some(seed.canvas_summary.to_string()),
-                        false,
+                        None,
+                        serde_json::json!({
+                            "includeResources": true,
+                            "constellationKind": seed.constellation_kind,
+                            "theme": "dark",
+                        }),
                     )
-                    .map_err(|e| e.to_string())?
-                    .id
+                    .map_err(|error| error.to_string())?;
+                let primary_canvas_id = child.primary_canvas_id.ok_or_else(|| {
+                    format!("created constellation `{}` has no primary canvas", seed.slug)
+                })?;
+                (child.id, primary_canvas_id)
             }
+        };
+
+        let canvas_id = if let Some(legacy_canvas_id) = legacy_canvas_id {
+            // Earlier seed versions created target canvases under the root
+            // constellation only. Preserve those layouts by promoting the
+            // existing canvas to the new child's primary canvas, rather than
+            // creating another empty surface and stranding user placement.
+            canvas_repo
+                .delete_by_id(&generated_primary_canvas_id)
+                .map_err(|error| error.to_string())?;
+            connection
+                .execute(
+                    "UPDATE canvases
+                     SET project_id = ?1, kind = 'primary', is_primary = 1,
+                         name = ?2, summary = ?3, updated_at = ?4
+                     WHERE id = ?5",
+                    params![
+                        child_constellation_id,
+                        seed.canvas_name,
+                        seed.canvas_summary,
+                        chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                        legacy_canvas_id,
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+            connection
+                .execute(
+                    "UPDATE projects SET primary_canvas_id = ?1 WHERE id = ?2",
+                    params![legacy_canvas_id, child_constellation_id],
+                )
+                .map_err(|error| error.to_string())?;
+            legacy_canvas_id
+        } else {
+            connection
+                .execute(
+                    "UPDATE canvases SET name = ?1, summary = ?2, kind = 'primary', is_primary = 1 WHERE id = ?3",
+                    params![seed.canvas_name, seed.canvas_summary, generated_primary_canvas_id],
+                )
+                .map_err(|error| error.to_string())?;
+            generated_primary_canvas_id
         };
         out.insert(seed.slug, canvas_id);
     }
@@ -3449,7 +3520,7 @@ mod tests {
     use super::*;
     use crate::db::{
         connection::Database,
-        repositories::{NodeDocumentMutation, NodeDocumentRepository},
+        repositories::{ConstellationRepository, NodeDocumentMutation, NodeDocumentRepository},
     };
 
     fn fake_canvas_ids(constellations: &[ConstellationSeed]) -> HashMap<&'static str, String> {
@@ -3495,6 +3566,32 @@ mod tests {
             stored.content_origin,
             crate::db::repositories::graph::ContentOrigin::UserAuthored
         );
+    }
+
+    #[test]
+    fn root_seed_materializes_portals_as_real_child_constellations() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let database = Database::open(directory.path().join("seed.sqlite")).expect("database");
+
+        let root = ensure_root_archetypal_constellation_workspace(
+            database.connection(),
+            directory.path().to_str().expect("root path"),
+        )
+        .expect("root workspace");
+        let children = ConstellationRepository::new(database.connection())
+            .list_children(&root.constellation_id)
+            .expect("child constellations");
+
+        assert_eq!(
+            children.len(),
+            constellation_seeds().len(),
+            "each portal target is a first-class constellation rather than an orphan canvas",
+        );
+        let devil = children
+            .iter()
+            .find(|child| child.slug == "devil-sixfold-lineage")
+            .expect("devil lineage constellation");
+        assert!(devil.primary_canvas_id.is_some());
     }
 
     fn canvas_sidecar(record: &NodeLayoutRecord) -> serde_json::Value {
