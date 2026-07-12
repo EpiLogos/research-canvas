@@ -26,6 +26,7 @@ pub use graph::{
 };
 pub use graph_metadata::{
     GraphMetadataMutation, GraphNodeMetadataRecord, GraphNodeMetadataRepository, SyncState,
+    TemporalGraphNodeMetadataRecord,
 };
 pub use layout::{CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord};
 pub use node_document::{

@@ -45,40 +45,20 @@ impl<'conn> TimelineLayoutRepository<'conn> {
                         layout_revision, created_at, updated_at
                  FROM timeline_layout WHERE graph_node_id=?1",
                 [graph_node_id],
-                |row| {
-                    let style: String = row.get(5)?;
-                    let style_json: Value = serde_json::from_str(&style).map_err(|error| {
-                        rusqlite::Error::FromSqlConversionFailure(
-                            5,
-                            rusqlite::types::Type::Text,
-                            Box::new(error),
-                        )
-                    })?;
-                    if !style_json.is_object() {
-                        return Err(rusqlite::Error::FromSqlConversionFailure(
-                            5,
-                            rusqlite::types::Type::Text,
-                            Box::new(std::io::Error::new(
-                                std::io::ErrorKind::InvalidData,
-                                "timeline style JSON must be an object",
-                            )),
-                        ));
-                    }
-                    Ok(TimelineLayoutRecord {
-                        graph_node_id: row.get(0)?,
-                        lane: row.get(1)?,
-                        offset_y: row.get(2)?,
-                        width: row.get(3)?,
-                        height: row.get(4)?,
-                        style_json,
-                        layout_revision: row.get(6)?,
-                        created_at: row.get(7)?,
-                        updated_at: row.get(8)?,
-                    })
-                },
+                timeline_layout_from_row,
             )
             .optional()
             .map_err(Into::into)
+    }
+
+    pub fn list(&self) -> RepositoryResult<Vec<TimelineLayoutRecord>> {
+        let mut statement = self.connection.prepare(
+            "SELECT graph_node_id, lane, offset_y, width, height, style_json,
+                    layout_revision, created_at, updated_at
+             FROM timeline_layout ORDER BY lane, graph_node_id",
+        )?;
+        let rows = statement.query_map([], timeline_layout_from_row)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     pub fn save(
@@ -157,6 +137,34 @@ impl<'conn> TimelineLayoutRepository<'conn> {
             reason: "layout changed during optimistic update".into(),
         })
     }
+}
+
+fn timeline_layout_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TimelineLayoutRecord> {
+    let style: String = row.get(5)?;
+    let style_json: Value = serde_json::from_str(&style).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(5, rusqlite::types::Type::Text, Box::new(error))
+    })?;
+    if !style_json.is_object() {
+        return Err(rusqlite::Error::FromSqlConversionFailure(
+            5,
+            rusqlite::types::Type::Text,
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "timeline style JSON must be an object",
+            )),
+        ));
+    }
+    Ok(TimelineLayoutRecord {
+        graph_node_id: row.get(0)?,
+        lane: row.get(1)?,
+        offset_y: row.get(2)?,
+        width: row.get(3)?,
+        height: row.get(4)?,
+        style_json,
+        layout_revision: row.get(6)?,
+        created_at: row.get(7)?,
+        updated_at: row.get(8)?,
+    })
 }
 
 fn validate_layout(layout: &TimelineLayoutRecord) -> RepositoryResult<()> {

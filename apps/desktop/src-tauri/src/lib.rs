@@ -10,6 +10,7 @@ pub mod commands {
     pub mod node_document;
     pub mod search;
     pub mod terminal;
+    pub mod timeline;
 }
 pub mod db;
 pub mod export;
@@ -124,6 +125,7 @@ pub fn run() {
             commands::graph::archetypal_lighting_command,
             commands::graph::resonances_for_instance_command,
             commands::graph::load_canvas_view_command,
+            commands::timeline::load_timeline_view_command,
             commands::graph::upsert_node_layout_command,
             commands::graph::upsert_node_layouts_command,
             commands::graph::upsert_edge_layout_command,

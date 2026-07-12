@@ -16,6 +16,7 @@ use research_canvas_desktop_lib::{
             rebuild_constellation_search_index_command, search_constellation_command,
             RebuildConstellationSearchIndexRequest, SearchConstellationRequest,
         },
+        timeline::{load_timeline_view_at_path, LoadTimelineViewRequest},
     },
     db::{
         canvas_service::CanvasService,
@@ -188,6 +189,14 @@ fn handle_request(
         let payload = graph_state
             .runtime
             .block_on(service.load_canvas_view(&canvas_id, &lens))?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/graph/timeline-view" {
+        let body = read_body(&mut request)?;
+        let input: LoadTimelineViewRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let payload = load_timeline_view_at_path(session_database_path(&request), input)?;
         return respond_json(request, StatusCode(200), payload);
     }
 

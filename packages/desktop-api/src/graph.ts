@@ -101,6 +101,56 @@ export interface TimelineNodeRecord {
   layout: NodeLayout;
 }
 
+export interface TimelineFilters {
+  entityTypes?: TimelineValueFilter<EntityType>;
+  historicities?: TimelineValueFilter<Historicity>;
+  temporalRoles?: TimelineValueFilter<TemporalRole>;
+}
+export interface TimelineValueFilter<T> { include?: T[]; exclude?: T[] }
+
+export interface LoadTimelineViewRequest {
+  workspaceId: string;
+  filters?: TimelineFilters;
+}
+
+export interface TimelineAnchor {
+  validFrom: string;
+  validTo: string | null;
+  precision: NonNullable<GraphNode["temporalPrecision"]>;
+}
+
+export interface TimelineLayoutOverride {
+  lane: string;
+  offsetY: number;
+  width: number;
+  height: number;
+  style: Record<string, unknown>;
+  layoutRevision: number;
+}
+
+export interface TimelineViewNode {
+  node: GraphNode;
+  anchor: TimelineAnchor;
+  layoutOverride: TimelineLayoutOverride | null;
+}
+
+export interface TimelineLane { id: string }
+
+export interface TimelineDiagnostic {
+  graphNodeId: string;
+  code: "invalid_temporal_anchor" | "missing_authoritative_document";
+  message: string;
+  validFrom: string | null;
+  validTo: string | null;
+}
+
+export interface TimelineView {
+  workspaceId: string;
+  nodes: TimelineViewNode[];
+  lanes: TimelineLane[];
+  diagnostics: TimelineDiagnostic[];
+}
+
 export interface CanvasView {
   canvasId: string;
   nodes: JoinedCanvasNode[];

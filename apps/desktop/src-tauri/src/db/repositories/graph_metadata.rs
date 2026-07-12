@@ -76,6 +76,13 @@ pub struct GraphNodeMetadataRecord {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TemporalGraphNodeMetadataRecord {
+    pub metadata: GraphNodeMetadataRecord,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GraphMetadataMutation {
     Created,
     Updated,
@@ -111,6 +118,27 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
             )
             .optional()
             .map_err(Into::into)
+    }
+
+    pub fn list_temporal(&self) -> RepositoryResult<Vec<TemporalGraphNodeMetadataRecord>> {
+        let mut statement = self.connection.prepare(
+            "SELECT graph_node_id, entity_type, title, archetypal_resonance, coordinate,
+             source_coordinates_json, evidence_tags_json, source_kind, content_origin,
+             content_revision, seed_schema_version, body_source_coordinates_json, historicity,
+             claim_kind, evidence_status, temporal_role, place_coverage, ql_form, ql_unit_id,
+             ql_arc, ql_topology, ql_schema_version, ql_source_coordinates_json,
+             ql_completeness_status, is_temporal, valid_from, valid_to, temporal_precision,
+             schema_version, sync_state, remote_revision, created_at, updated_at
+             FROM graph_node_metadata WHERE is_temporal=1 ORDER BY graph_node_id",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(TemporalGraphNodeMetadataRecord {
+                metadata: record_from_row(row)?,
+                created_at: row.get(31)?,
+                updated_at: row.get(32)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     /// Optimistic, ownership-aware persistence. `expected_revision` is required

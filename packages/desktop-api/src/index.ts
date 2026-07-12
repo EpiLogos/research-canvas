@@ -20,8 +20,17 @@ export type {
   GraphRelationship,
   JoinedCanvasNode,
   LitInstance,
+  LoadTimelineViewRequest,
   NewGraphNodeInput,
   NodeLayout,
+  TimelineView,
+  TimelineAnchor,
+  TimelineDiagnostic,
+  TimelineFilters,
+  TimelineLane,
+  TimelineLayoutOverride,
+  TimelineViewNode,
+  TimelineValueFilter,
   TimelineNodeRecord,
   TemporalPrecision,
 } from "./graph";
@@ -108,9 +117,11 @@ import type {
   GraphRelationship,
   JoinedCanvasNode,
   LitInstance,
+  LoadTimelineViewRequest,
   NewGraphNodeInput,
   NodeLayout,
   EdgeLayout,
+  TimelineView,
 } from "./graph";
 
 export type IndexedEntryKind =
@@ -517,6 +528,7 @@ export interface WorkspaceTransport {
 
   // ---- Joined reads (both targets) ----
   loadCanvasView(input: { databasePath?: string; canvasId: string; lens: "canvas" | "timeline" }): Promise<CanvasView>;
+  loadTimelineView(input: LoadTimelineViewRequest): Promise<TimelineView>;
 
   // ---- Two-lens / archetypal lighting ----
   archetypalLighting(input: { operatorGraphNodeId: string }): Promise<ArchetypalLighting>;
@@ -716,6 +728,9 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async loadCanvasView(input) {
       return invokeTauri<CanvasView>("load_canvas_view_command", { request: input });
     },
+    async loadTimelineView(input) {
+      return invokeTauri<TimelineView>("load_timeline_view_command", { request: input });
+    },
     async archetypalLighting(input) {
       return invokeTauri<ArchetypalLighting>("archetypal_lighting_command", { request: input });
     },
@@ -872,6 +887,12 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     async loadCanvasView(input) {
       const params = new URLSearchParams({ canvasId: input.canvasId, lens: input.lens });
       return requestJsonWithRetry<CanvasView>(`/graph/canvas-view?${params.toString()}`);
+    },
+    async loadTimelineView(input) {
+      return requestJsonWithRetry<TimelineView>("/graph/timeline-view", {
+        method: "POST",
+        body: input,
+      });
     },
     async archetypalLighting(input) {
       return requestJsonWithRetry<ArchetypalLighting>(
@@ -1163,6 +1184,62 @@ function defaultLayoutFor(graphNodeId: string, canvasId: string): NodeLayout {
   };
 }
 
+type TimelineInstantKey = readonly [number, number, number, number, number, number, number];
+
+function parseStaticTimelineInstant(value: string | null): TimelineInstantKey | null {
+  if (value === null || value.trim() !== value || value.startsWith("+")) return null;
+  const trimmed = value.trim();
+  if (/^-?\d{1,6}$/u.test(trimmed)) return [Number(trimmed), 1, 1, 0, 0, 0, 0];
+  const rfc3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$/u.exec(trimmed);
+  if (rfc3339) {
+    const localYear = Number(rfc3339[1]);
+    const localMonth = Number(rfc3339[2]);
+    const localDay = Number(rfc3339[3]);
+    if (localMonth < 1 || localMonth > 12 || localDay < 1 || localDay > timelineDaysInMonth(localYear, localMonth)) return null;
+    const date = new Date(trimmed);
+    if (Number.isNaN(date.getTime())) return null;
+    return [date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds(), date.getUTCMilliseconds()];
+  }
+  const match = /^(-?\d{1,6})-(\d{2})(?:-(\d{2}))?$/u.exec(trimmed);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = match[3] === undefined ? 1 : Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > timelineDaysInMonth(year, month)) return null;
+  return [year, month, day, 0, 0, 0, 0];
+}
+
+function timelineDaysInMonth(year: number, month: number): number {
+  if ([4, 6, 9, 11].includes(month)) return 30;
+  if (month !== 2) return 31;
+  const mod = (value: number, divisor: number) => ((value % divisor) + divisor) % divisor;
+  return mod(year, 4) === 0 && (mod(year, 100) !== 0 || mod(year, 400) === 0) ? 29 : 28;
+}
+
+function compareTimelineKeys(a: TimelineInstantKey, b: TimelineInstantKey): number {
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) return a[index] - b[index];
+  }
+  return 0;
+}
+
+function staticTimelineDiagnostic(node: GraphNode): string | null {
+  if (node.temporalPrecision === null) return "temporal node is missing temporalPrecision";
+  const start = parseStaticTimelineInstant(node.validFrom);
+  if (start === null) return `invalid validFrom temporal anchor: ${node.validFrom ?? "null"}`;
+  if (node.validTo !== null) {
+    const end = parseStaticTimelineInstant(node.validTo);
+    if (end === null) return `invalid validTo temporal anchor: ${node.validTo}`;
+    if (compareTimelineKeys(end, start) < 0) return "validTo precedes validFrom";
+  }
+  return null;
+}
+
+function matchesTimelineFilter<T>(value: T | null, filter?: { include?: T[]; exclude?: T[] }): boolean {
+  const included = !filter?.include?.length || (value !== null && filter.include.includes(value));
+  return included && !(value !== null && filter?.exclude?.includes(value));
+}
+
 export function createStaticBundleTransport(bundle: GraphExportBundle): WorkspaceTransport {
   const nodeById = new Map<string, GraphNode>(
     bundle.nodes.map((node) => [node.graphNodeId, node])
@@ -1246,6 +1323,45 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
         relationships: bundle.relationships,
         viewport: bundle.viewport,
         appState: bundle.appState
+      };
+    },
+    async loadTimelineView({ workspaceId, filters }) {
+      const canonicalWorkspaceId = `static:${bundle.project.id}`;
+      if (workspaceId.trim() === "" || workspaceId !== canonicalWorkspaceId) {
+        throw new Error(`workspaceId does not match static bundle: expected ${canonicalWorkspaceId}`);
+      }
+      const temporalNodes = bundle.nodes
+        .filter((node) => node.isTemporal)
+        .filter((node) => matchesTimelineFilter(node.entityType, filters?.entityTypes))
+        .filter((node) => matchesTimelineFilter(node.historicity, filters?.historicities))
+        .filter((node) => matchesTimelineFilter(node.temporalRole, filters?.temporalRoles));
+      const invalid = temporalNodes.filter((node) =>
+        staticTimelineDiagnostic(node) !== null
+      );
+      const nodes = temporalNodes
+        .filter((node): node is GraphNode & { validFrom: string; temporalPrecision: NonNullable<GraphNode["temporalPrecision"]> } =>
+          !invalid.includes(node) && typeof node.validFrom === "string" && node.temporalPrecision !== null
+        )
+        .map((node) => ({
+          node,
+          anchor: {
+            validFrom: node.validFrom,
+            validTo: node.validTo,
+            precision: node.temporalPrecision,
+          },
+          layoutOverride: null,
+        }));
+      return {
+        workspaceId: canonicalWorkspaceId,
+        nodes,
+        lanes: [],
+        diagnostics: invalid.map((node) => ({
+          graphNodeId: node.graphNodeId,
+          code: "invalid_temporal_anchor" as const,
+          message: staticTimelineDiagnostic(node) ?? "invalid temporal anchor",
+          validFrom: node.validFrom,
+          validTo: node.validTo,
+        })),
       };
     },
     async archetypalLighting({ operatorGraphNodeId }) {
