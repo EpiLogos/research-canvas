@@ -1,12 +1,17 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
+use tauri::Manager;
 
 use crate::{
+    commands::graph::SharedGraphState,
     db::{
         connection::Database,
         repositories::{
-            graph::{EntityType, GraphNode, Historicity, TemporalPrecision, TemporalRole},
+            graph::{
+                EntityType, GraphNode, GraphRelationship, Historicity, TemporalPrecision,
+                TemporalRole,
+            },
             GraphNodeMetadataRepository, NodeDocumentRepository, TimelineLayoutMutation,
             TimelineLayoutRecord, TimelineLayoutRepository,
         },
@@ -225,6 +230,7 @@ pub enum TimelineDiagnosticCode {
 pub struct TimelineView {
     pub workspace_id: String,
     pub nodes: Vec<TimelineNode>,
+    pub relationships: Vec<GraphRelationship>,
     pub lanes: Vec<TimelineLane>,
     pub diagnostics: Vec<TimelineDiagnostic>,
 }
@@ -350,6 +356,9 @@ pub fn load_timeline_view_at_path(
     Ok(TimelineView {
         workspace_id,
         nodes,
+        // The local-only terminal bridge deliberately has no Neo4j handle.
+        // The desktop command fills this with canonical temporal links below.
+        relationships: Vec::new(),
         lanes: lane_ids.into_iter().map(|id| TimelineLane { id }).collect(),
         diagnostics,
     })
@@ -476,6 +485,7 @@ fn is_leap(year: i32) -> bool {
 pub async fn load_timeline_view_command(
     request: LoadTimelineViewRequest,
     api_state: tauri::State<'_, SharedApiState>,
+    app_handle: tauri::AppHandle,
 ) -> Result<TimelineView, String> {
     let path = api_state
         .lock()
@@ -483,7 +493,32 @@ pub async fn load_timeline_view_command(
         .db_path
         .clone()
         .ok_or_else(|| "App not bootstrapped yet".to_string())?;
-    load_timeline_view_at_path(path, request)
+    let mut view = load_timeline_view_at_path(path, request)?;
+    // Keep the timeline usable in a local/offline bootstrap, but when the
+    // canonical graph is available carry the real temporal links with the
+    // temporal nodes. This keeps the timeline its own first-class lens rather
+    // than treating it as a constellation canvas.
+    if let Some(graph_state) = app_handle.try_state::<SharedGraphState>() {
+        let graph = crate::db::repositories::graph::GraphRepository::new(
+            graph_state.graph.clone(),
+            graph_state.database.clone(),
+        );
+        let temporal_ids = view
+            .nodes
+            .iter()
+            .map(|node| node.node.graph_node_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        view.relationships = graph
+            .list_relationships()
+            .await?
+            .into_iter()
+            .filter(|relationship| {
+                temporal_ids.contains(relationship.source_graph_node_id.as_str())
+                    && temporal_ids.contains(relationship.target_graph_node_id.as_str())
+            })
+            .collect();
+    }
+    Ok(view)
 }
 
 #[tauri::command]

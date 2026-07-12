@@ -136,50 +136,53 @@ export function useSearch(query: string, options: UseSearchOptions = {}) {
         }
 
         startTransition(() => {
-          setBackendItems(
-            hits
-              .filter((hit) =>
-                hit.entityType === "file" ||
-                hit.entityType === "node" ||
-                hit.entityType === "sequence" ||
-                hit.entityType === "sequence_step"
-              )
-              .map((hit) => ({
-                id: `backend:${hit.entityType}:${hit.entityId}`,
-                kind:
-                  hit.entityType === "file"
-                    ? "file"
-                    : hit.entityType === "node"
-                      ? "node"
-                      : "sequence",
-                summary: hit.relativePath ?? hit.summary ?? hit.snippet,
-                title: hit.title,
-                onSelect: () => {
-                  if (hit.constellationId !== workspace.constellationId) {
-                    workspace.selectConstellation(hit.constellationId);
-                    return;
-                  }
+          const nextItems: SearchPaletteItem[] = hits
+            .filter((hit) =>
+              hit.entityType === "file" ||
+              hit.entityType === "node" ||
+              hit.entityType === "sequence" ||
+              hit.entityType === "sequence_step"
+            )
+            .map((hit): SearchPaletteItem => ({
+              id: `backend:${hit.entityType}:${hit.entityId}`,
+              kind:
+                hit.entityType === "file"
+                  ? "file"
+                  : hit.entityType === "node"
+                    ? "node"
+                    : "sequence",
+              summary: hit.relativePath ?? hit.summary ?? hit.snippet,
+              title: hit.title,
+              onSelect: () => {
+                if (hit.constellationId !== workspace.constellationId) {
+                  workspace.selectConstellation(hit.constellationId);
+                  return;
+                }
 
-                  if (hit.entityType === "file" && hit.relativePath) {
-                    const entry = workspace.entries.find(
-                      (candidate) => candidate.relativePath === hit.relativePath
-                    );
-                    if (entry) {
-                      workspace.selectEntry(entry.id);
-                    }
-                  }
-
-                  if (hit.entityType === "node") {
-                    workspace.selectNode(hit.entityId);
+                if (hit.entityType === "file" && hit.relativePath) {
+                  const entry = workspace.entries.find(
+                    (candidate) => candidate.relativePath === hit.relativePath
+                  );
+                  if (entry) {
+                    workspace.selectEntry(entry.id);
                   }
                 }
-              }))
-          );
+
+                if (hit.entityType === "node") {
+                  workspace.selectNode(hit.entityId);
+                }
+              }
+            }));
+          // Query transports can be recreated by an embedding surface while
+          // still returning the same hits. Retaining equivalent state avoids
+          // an effect → state update → render loop (and protects the command
+          // palette from exhausting memory under a slow search transport).
+          setBackendItems((current) => sameBackendItems(current, nextItems) ? current : nextItems);
         });
       })
       .catch(() => {
         if (!cancelled) {
-          setBackendItems([]);
+          setBackendItems((current) => current.length === 0 ? current : []);
         }
       });
 
@@ -210,4 +213,16 @@ export function useSearch(query: string, options: UseSearchOptions = {}) {
   }, [backendItems, rankedLocalItems]);
 
   return items;
+}
+
+function sameBackendItems(current: SearchPaletteItem[], next: SearchPaletteItem[]): boolean {
+  return current.length === next.length
+    && current.every((item, index) => {
+      const candidate = next[index];
+      return candidate !== undefined
+        && item.id === candidate.id
+        && item.kind === candidate.kind
+        && item.title === candidate.title
+        && item.summary === candidate.summary;
+    });
 }

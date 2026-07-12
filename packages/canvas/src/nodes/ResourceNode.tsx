@@ -5,8 +5,10 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import type { CSSProperties } from "react";
-import type { AdaptiveNodeStyle } from "./AdaptiveNode";
+import type { GraphNodeContract } from "@research-canvas/schema";
+import type { NodeVisualStyle } from "./nodeVisualStyle";
+import { KnowledgeCard } from "./KnowledgeCard";
+import { resolveKnowledgeCardPresentation } from "../presentation/cardPresentation";
 import {
   HANDLE_POSITIONS,
   HANDLE_SIDES,
@@ -17,7 +19,8 @@ import {
 interface ResourceNodeData {
   title: string;
   summary?: string;
-  style?: AdaptiveNodeStyle;
+  graph?: GraphNodeContract;
+  style?: NodeVisualStyle;
   absolutePath?: string;
   resourceKind?: string;
   content?: string;
@@ -28,7 +31,18 @@ export type ResourceNodeType = Node<ResourceNodeData, "resource">;
 
 export function ResourceNode({ data, selected }: NodeProps<ResourceNodeType>) {
   const { zoom } = useViewport();
-  const isDot = zoom < 0.4;
+  const coverUrl = data.style?.thumbnail
+    ?? (data.resourceKind === "image" && data.absolutePath
+      ? `asset://localhost/${encodeURI(data.absolutePath)}`
+      : undefined);
+  const presentation = resolveKnowledgeCardPresentation({
+    title: data.title,
+    summary: data.summary ?? "",
+    dotColour: data.style?.dotColour,
+    bgColour: data.style?.bgColour,
+    textColour: data.style?.textColour,
+    thumbnail: coverUrl,
+  }, data.graph);
 
   return (
     <>
@@ -78,38 +92,9 @@ export function ResourceNode({ data, selected }: NodeProps<ResourceNodeType>) {
             className="flow-handle"
           />
         ))}
-        {isDot ? (
-          <div className="resource-node resource-node--dot" data-selected={selected ? "true" : undefined}>
-            <span className="an-dot" style={{ "--dot-colour": data.style?.dotColour ?? "#4a4aff" } as CSSProperties} />
-          </div>
-        ) : (
-          <div
-            className="resource-node resource-node--face"
-            data-kind={data.resourceKind ?? "binary"}
-            data-selected={selected ? "true" : undefined}
-            style={{
-              "--node-bg": data.style?.bgColour,
-              "--node-text": data.style?.textColour,
-              "--node-accent": data.style?.dotColour,
-            } as CSSProperties}
-          >
-            <ResourceFace
-              resourceKind={data.resourceKind}
-              absolutePath={data.absolutePath}
-              content={data.content}
-              thumbnail={data.style?.thumbnail}
-              title={data.title}
-            />
-            <div className="resource-node__title-bar">
-              <span
-                className="resource-node__title"
-                style={{ color: data.style?.textColour } as CSSProperties}
-              >
-                {data.title}
-              </span>
-            </div>
-          </div>
-        )}
+        <div className="resource-node resource-node--card" data-selected={selected ? "true" : undefined}>
+          <KnowledgeCard presentation={presentation} compact={zoom < 0.8} />
+        </div>
         {HANDLE_SIDES.map((side) => (
           <Handle
             id={sourceHandleId(side)}
@@ -121,57 +106,5 @@ export function ResourceNode({ data, selected }: NodeProps<ResourceNodeType>) {
         ))}
       </div>
     </>
-  );
-}
-
-function ResourceFace({ resourceKind, absolutePath, content, thumbnail, title }: {
-  resourceKind?: string;
-  absolutePath?: string;
-  content?: string;
-  thumbnail?: string;
-  title: string;
-}) {
-  if (thumbnail) {
-    return (
-      <img
-        className="resource-node__image"
-        src={thumbnail}
-        alt={title}
-        draggable={false}
-      />
-    );
-  }
-
-  if (resourceKind === "image" && absolutePath) {
-    return (
-      <img
-        className="resource-node__image"
-        src={`asset://localhost/${encodeURI(absolutePath)}`}
-        alt={title}
-        draggable={false}
-      />
-    );
-  }
-
-  if ((resourceKind === "markdown" || resourceKind === "text") && content) {
-    return (
-      <div className="resource-node__text-preview">
-        {content}
-      </div>
-    );
-  }
-
-  if (resourceKind === "pdf") {
-    return (
-      <div className="resource-node__file-icon">
-        <span className="resource-node__file-badge">PDF</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="resource-node__file-icon">
-      <span className="resource-node__file-badge">{resourceKind ?? "FILE"}</span>
-    </div>
   );
 }

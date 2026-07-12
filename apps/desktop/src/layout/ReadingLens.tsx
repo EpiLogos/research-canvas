@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { CanvasNode } from "@research-canvas/schema";
+import { resolveKnowledgeCardPresentation } from "@research-canvas/canvas";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { NodeReaderBody } from "../features/viewer/NodeReaderBody";
 
@@ -16,6 +17,9 @@ export function ReadingLens({
 }) {
   const workspace = useCanvasWorkspace();
   const node = nodeOverride ?? workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
+  const presentation = node
+    ? resolveKnowledgeCardPresentation(node, node.graph)
+    : null;
 
   useEffect(() => {
     if (variant !== "overlay") return;
@@ -56,6 +60,21 @@ export function ReadingLens({
             </button>
           </div>
           <div className="ishell-reading__col">
+            {presentation && (
+              <header className="ishell-reading__record" style={{ borderLeftColor: presentation.palette.accent }}>
+                {presentation.coverUrl && (
+                  <img className="ishell-reading__cover" src={presentation.coverUrl} alt="" />
+                )}
+                <div>
+                  {presentation.pith && <p className="ishell-reading__pith">{presentation.pith}</p>}
+                  {presentation.badges.length > 0 && (
+                    <ul className="ishell-reading__badges" aria-label="Knowledge metadata">
+                      {presentation.badges.map((badge) => <li key={badge}>{badge}</li>)}
+                    </ul>
+                  )}
+                </div>
+              </header>
+            )}
             <NodeReaderBody node={node} />
           </div>
         </>

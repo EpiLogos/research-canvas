@@ -427,7 +427,7 @@ describe("retryPendingGraphNodeSyncs", () => {
       expect.any(Error)
     );
     expect(warn).toHaveBeenCalledWith(
-      "retryPendingGraphNodeSyncs: createGraphNode still failing; node kept pending",
+      "retryPendingGraphNodeSyncs: reconciliation failed; node kept pending",
       "node-5",
       expect.any(Error)
     );

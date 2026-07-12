@@ -46,7 +46,13 @@ function makeDataSource(over: Partial<TimelineDataSource> = {}): TimelineDataSou
       nodes: [
         timelineRecord(event("banda", "Banda genocide", "1621-01-01"), layout("banda", 280, 92, { bgColour: "#172033", dotColour: "#79c0d4" })),
         timelineRecord({ ...event("balfour", "Balfour Declaration", "1917-01-01"), entityType: "Source" }, layout("balfour", 240, 72, { bgColour: "#27211a", dotColour: "#d0a24a" })),
-      ], lanes: [{ id: "events" }], diagnostics: [],
+      ], relationships: [{
+        id: "historical-cause",
+        relType: "CAUSES",
+        sourceGraphNodeId: "banda",
+        targetGraphNodeId: "balfour",
+        properties: {},
+      }], lanes: [{ id: "events" }], diagnostics: [],
     }),
     archetypalLighting: async (operatorGraphNodeId: string): Promise<ArchetypalLighting> => ({
       operator: archetype(operatorGraphNodeId, "Monopoly mechanism"),
@@ -115,6 +121,10 @@ describe("TimelineLens", () => {
       expect(screen.getByTestId("timeline-node-banda")).toBeInTheDocument();
     });
     expect(screen.getByTestId("timeline-node-balfour")).toBeInTheDocument();
+    expect(screen.getByTestId("timeline-relationship-historical-cause")).toHaveAttribute(
+      "data-relation-kind",
+      "CAUSES",
+    );
   });
 
   test("shows a visible load error instead of a dates-only surface", async () => {
@@ -137,7 +147,7 @@ describe("TimelineLens", () => {
   test("retains and renders nonblocking timeline diagnostics", async () => {
     render(<TimelineLens dataSource={makeDataSource({
       loadTimelineView: async () => ({
-        workspaceId: "sqlite:/test", nodes: [], lanes: [{ id: "events" }],
+        workspaceId: "sqlite:/test", nodes: [], relationships: [], lanes: [{ id: "events" }],
         diagnostics: [{ graphNodeId: "bad-date", code: "invalid_temporal_anchor", message: "invalid date", validFrom: "nope", validTo: null }],
       }),
     })} onOpenNode={() => {}} />);
@@ -280,7 +290,7 @@ describe("TimelineLens", () => {
     const oldSave = vi.fn(() => new Promise<Awaited<ReturnType<NonNullable<TimelineDataSource["saveTimelineLayout"]>>>>((resolve) => { resolveOld = resolve; }));
     const oldSource = makeDataSource({ saveTimelineLayout: oldSave });
     const newSource = makeDataSource({
-      loadTimelineView: async () => ({ workspaceId: "sqlite:/new", lanes: [{ id: "events" }], diagnostics: [], nodes: [
+      loadTimelineView: async () => ({ workspaceId: "sqlite:/new", lanes: [{ id: "events" }], diagnostics: [], relationships: [], nodes: [
         timelineRecord(event("banda", "New workspace Banda", "1621-01-01"), layout("banda", 400, 130, { bgColour: "#abcdef" })),
       ] }),
     });
@@ -329,7 +339,7 @@ describe("TimelineLens", () => {
     render(
       <TimelineLens
         dataSource={makeDataSource({
-          loadTimelineView: async () => ({ workspaceId: "sqlite:/test", lanes: [], diagnostics: [], nodes: [
+          loadTimelineView: async () => ({ workspaceId: "sqlite:/test", lanes: [], diagnostics: [], relationships: [], nodes: [
             timelineRecord(event("edge", "Edge event", "1600-01-01"), layout("edge", 280, 92)),
           ] }),
         })}
@@ -364,7 +374,7 @@ describe("TimelineLens", () => {
     render(
       <TimelineLens
         dataSource={makeDataSource({
-          loadTimelineView: async () => ({ workspaceId: "sqlite:/test", lanes: [], diagnostics: [], nodes: [
+          loadTimelineView: async () => ({ workspaceId: "sqlite:/test", lanes: [], diagnostics: [], relationships: [], nodes: [
             timelineRecord(event("banda", "Banda genocide", "1621-01-01"), layout("banda", 280, 92)),
             timelineRecord(constellation("ql-unit", "QL Reading Unit", "1621-01-01"), layout("ql-unit", 300, 120)),
           ] }),

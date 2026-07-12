@@ -58,6 +58,7 @@ describe("createTimelineDataSource", () => {
           },
         },
       ],
+      relationships: [],
       lanes: [{ id: "events" }],
       diagnostics: [],
     };

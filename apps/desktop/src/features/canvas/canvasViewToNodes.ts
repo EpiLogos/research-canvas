@@ -39,6 +39,7 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
         type: "resource",
         id: node.graphNodeId,
         graphNodeId: node.graphNodeId,
+        graph: node,
         canvasId: view.canvasId,
         title,
         summary: node.summary ?? "",
@@ -64,6 +65,7 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
         type: "group",
         id: node.graphNodeId,
         graphNodeId: node.graphNodeId,
+        graph: node,
         canvasId: view.canvasId,
         title,
         summary: node.summary ?? "",
@@ -86,6 +88,7 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
         type: "portal",
         id: node.graphNodeId,
         graphNodeId: node.graphNodeId,
+        graph: node,
         canvasId: view.canvasId,
         title,
         summary: node.summary ?? "",
@@ -109,6 +112,7 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
         type: "note",
         id: node.graphNodeId,
         graphNodeId: node.graphNodeId,
+        graph: node,
         canvasId: view.canvasId,
         title,
         content: sidecar?.type === "note" ? sidecar.content : "",
@@ -132,6 +136,7 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
   }
 
   const edges: CanvasEdge[] = [];
+  const persistedRelationshipKeys = new Set<string>();
   for (const edgeLayout of view.edges) {
     const parsed = edgeSchema.parse({
       id: edgeLayout.id,
@@ -156,7 +161,66 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
     });
 
     edges.push(parsed);
+    persistedRelationshipKeys.add(relationshipKey(
+      edgeLayout.sourceGraphNodeId,
+      edgeLayout.targetGraphNodeId,
+      edgeLayout.relationKind,
+    ));
+  }
+
+  // Graph relationships are the semantic source of truth. Layout edges only
+  // hold presentation (anchors, stroke, annotations), so surface a virtual
+  // edge for every semantic link whose two endpoints are visible here.  A
+  // matching persisted layout edge supplies the drawing instead, preventing
+  // the same relationship from appearing twice after a canvas reload.
+  const visibleGraphNodeIds = new Set(nodes.map((node) => node.graphNodeId ?? node.id));
+  for (const relationship of view.relationships) {
+    if (
+      !visibleGraphNodeIds.has(relationship.sourceGraphNodeId)
+      || !visibleGraphNodeIds.has(relationship.targetGraphNodeId)
+      || persistedRelationshipKeys.has(relationshipKey(
+        relationship.sourceGraphNodeId,
+        relationship.targetGraphNodeId,
+        relationship.relType,
+      ))
+    ) {
+      continue;
+    }
+
+    const style = styleForRelationship(relationship.relType);
+    edges.push(edgeSchema.parse({
+      id: `graph:${relationship.id}`,
+      canvasId: view.canvasId,
+      sourceNodeId: relationship.sourceGraphNodeId,
+      targetNodeId: relationship.targetGraphNodeId,
+      relationKind: relationship.relType,
+      directionality: "forward",
+      label: relationship.relType,
+      note: "",
+      style,
+      sequencing: false,
+      sequencePriority: 0,
+      createdAt: now,
+      updatedAt: now,
+    }));
   }
 
   return { nodes, edges };
+}
+
+function relationshipKey(source: string, target: string, relationKind: string) {
+  return `${source}\u0000${target}\u0000${relationKind}`;
+}
+
+function styleForRelationship(relationKind: string) {
+  if (["NESTS", "CONTAINS", "PART_OF"].includes(relationKind)) {
+    return { stroke: "#8fd3ff", width: 2, dashed: false };
+  }
+  if (["CONTESTS", "CONTRADICTS"].includes(relationKind)) {
+    return { stroke: "#e07a6f", width: 2, dashed: true };
+  }
+  if (["SUPPORTS", "EVIDENCES", "CAUSES", "PRECEDES"].includes(relationKind)) {
+    return { stroke: "#79c0d4", width: 2, dashed: false };
+  }
+  return { stroke: "#b9a784", width: 1, dashed: true };
 }

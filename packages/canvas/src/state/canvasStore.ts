@@ -1,6 +1,6 @@
 import { createStore } from "zustand/vanilla";
 
-import { edgeSchema, nodeSchema, type CanvasEdge, type CanvasNode } from "@research-canvas/schema";
+import { edgeSchema, nodeSchema, type CanvasEdge, type CanvasNode, type GraphNodeContract } from "@research-canvas/schema";
 
 export interface CanvasSnapshot {
   edges: CanvasEdge[];
@@ -46,6 +46,7 @@ interface CreatePortalNodeInput {
 }
 
 interface ConnectNodesInput {
+  id?: string;
   relationKind: string;
   sourceNodeId: string;
   targetNodeId: string;
@@ -78,10 +79,13 @@ export interface CanvasStoreState {
   selectedNodeId: string | null;
   serialize: () => CanvasSnapshot;
   setSelectedNodeId: (nodeId: string | null) => void;
+  rebindEdgeToGraphRelationship: (edgeId: string, graphRelationshipId: string, relationKind: string) => void;
   updateEdgeConnection: (edgeId: string, input: UpdateEdgeConnectionInput) => void;
   updateEdgeRelationKind: (edgeId: string, relationKind: string) => void;
   updateEdgeNote: (edgeId: string, note: string) => void;
   updateNodeContent: (nodeId: string, content: string) => void;
+  /** Replaces the cache of canonical graph substance after a successful graph write. */
+  updateNodeGraph: (nodeId: string, graph: GraphNodeContract) => void;
   updateNodePosition: (
     nodeId: string,
     position: { x: number; y: number }
@@ -127,6 +131,7 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
       }));
     },
     connectNodes: ({
+      id,
       relationKind,
       sourceNodeId,
       targetNodeId,
@@ -135,7 +140,7 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
       directionality = "forward"
     }) => {
       const edge = edgeSchema.parse({
-        id: crypto.randomUUID(),
+        id: id ?? crypto.randomUUID(),
         canvasId,
         sourceNodeId,
         targetNodeId,
@@ -363,7 +368,6 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
         console.warn(`updateNodeContent: node ${nodeId} is type "${node.type}", not "note" — content not updated`);
         return;
       }
-      const nextTitle = deriveNoteTitle(content);
       const nextSummary = deriveNoteSummary(content);
       set((state) => ({
         nodes: state.nodes.map((n) =>
@@ -372,10 +376,40 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
                 ...n,
                 content,
                 summary: nextSummary,
-                title: nextTitle,
                 updatedAt: now(),
               }
             : n,
+        ),
+      }));
+    },
+    updateNodeGraph: (nodeId, graph) => {
+      set((state) => ({
+        nodes: state.nodes.map((node) =>
+          node.id === nodeId
+            ? {
+                ...node,
+                graphNodeId: graph.graphNodeId,
+                graph,
+                title: graph.title,
+                summary: graph.summary,
+                updatedAt: now(),
+              }
+            : node,
+        ),
+      }));
+    },
+    rebindEdgeToGraphRelationship: (edgeId, graphRelationshipId, relationKind) => {
+      set((state) => ({
+        edges: state.edges.map((edge) =>
+          edge.id === edgeId
+            ? {
+                ...edge,
+                id: `graph:${graphRelationshipId}`,
+                relationKind,
+                label: relationKind,
+                updatedAt: now(),
+              }
+            : edge,
         ),
       }));
     },
@@ -468,21 +502,6 @@ function mimeTypeFor(resourceKind: CreateResourceNodeInput["resourceKind"]) {
     default:
       return "application/octet-stream";
   }
-}
-
-function deriveNoteTitle(content: string) {
-  const firstMeaningfulLine = content
-    .split(/\r?\n/u)
-    .map((line) => line.replace(/^#{1,6}\s+/u, "").trim())
-    .find((line) => line.length > 0);
-
-  if (!firstMeaningfulLine) {
-    return "Untitled note";
-  }
-
-  return firstMeaningfulLine.length > 64
-    ? `${firstMeaningfulLine.slice(0, 61).trimEnd()}...`
-    : firstMeaningfulLine;
 }
 
 function deriveNoteSummary(content: string) {

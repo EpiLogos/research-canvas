@@ -74,6 +74,8 @@ describe("canvasViewToCanvasNodes", () => {
     expect(node.type).toBe("note");
     expect(node.canvasId).toBe(CANVAS_ID);
     expect(node.title).toBe("N");
+    expect(node.graph?.entityType).toBe("Figure");
+    expect(node.graph?.evidenceTags).toEqual([]);
     expect(node.position.x).toBe(12);
     expect(node.position.y).toBe(34);
     expect(node.size.width).toBe(240);
@@ -97,6 +99,71 @@ describe("canvasViewToCanvasNodes", () => {
     expect(edge.relationKind).toBe("CAUSES");
     expect(edge.id).toBe(EDGE_ID);
     expect(edge.canvasId).toBe(CANVAS_ID);
+  });
+
+  it("projects canonical graph relationships when both endpoints belong to this constellation", () => {
+    const view = buildFixtureView();
+    const secondId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    view.nodes.push({
+      node: { ...buildGraphNode(secondId, "Target") },
+      layout: {
+        graphNodeId: secondId,
+        canvasId: CANVAS_ID,
+        positionX: 340,
+        positionY: 34,
+        width: 240,
+        height: 160,
+        style: {},
+      },
+    });
+    view.edges = [];
+    view.relationships = [{
+      id: "relationship-1",
+      relType: "SUPPORTS",
+      sourceGraphNodeId: GRAPH_NODE_ID,
+      targetGraphNodeId: secondId,
+      properties: {},
+    }];
+
+    const { edges } = canvasViewToCanvasNodes(view);
+
+    expect(edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "graph:relationship-1",
+        sourceNodeId: GRAPH_NODE_ID,
+        targetNodeId: secondId,
+        relationKind: "SUPPORTS",
+      }),
+    ]));
+  });
+
+  it("does not draw a duplicate for a matching persisted layout edge", () => {
+    const view = buildFixtureView();
+    const sourceId = GRAPH_NODE_ID;
+    view.nodes.push({
+      node: { ...buildGraphNode(SOURCE_NODE_ID, "Source") },
+      layout: {
+        graphNodeId: SOURCE_NODE_ID,
+        canvasId: CANVAS_ID,
+        positionX: 340,
+        positionY: 34,
+        width: 240,
+        height: 160,
+        style: {},
+      },
+    });
+    view.relationships = [{
+      id: "relationship-layout-match",
+      relType: "CAUSES",
+      sourceGraphNodeId: SOURCE_NODE_ID,
+      targetGraphNodeId: sourceId,
+      properties: {},
+    }];
+
+    const { edges } = canvasViewToCanvasNodes(view);
+
+    expect(edges).toHaveLength(1);
+    expect(edges[0]!.id).toBe(EDGE_ID);
   });
 
   it("applies style fields from layout", () => {

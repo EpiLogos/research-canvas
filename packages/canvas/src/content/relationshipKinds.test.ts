@@ -7,8 +7,11 @@ import {
 } from "./relationshipKinds";
 
 describe("relationshipKinds", () => {
-  it("lists exactly the ten spec relationship kinds in order", () => {
+  it("distinguishes structural, historical, epistemic, geographic, and archetypal relationships", () => {
     expect(RELATIONSHIP_KINDS.map((option) => option.kind)).toEqual([
+      "CONTAINS",
+      "PART_OF",
+      "NESTS",
       "INSTANTIATES",
       "ECHOES",
       "CAUSES",
@@ -18,7 +21,11 @@ describe("relationshipKinds", () => {
       "TRANSFORMS_INTO",
       "LOCATED_AT",
       "SOURCED_FROM",
+      "SUPPORTS",
+      "QUALIFIES",
+      "CONTESTS",
       "RESONATES_WITH",
+      "UNCLASSIFIED_RESEARCH_CONNECTION",
     ]);
   });
 
@@ -31,6 +38,8 @@ describe("relationshipKinds", () => {
 
   it("recognises valid SCREAMING_SNAKE kinds and rejects others", () => {
     expect(isRelationshipKind("CAUSES")).toBe(true);
+    expect(isRelationshipKind("CONTAINS")).toBe(true);
+    expect(isRelationshipKind("UNCLASSIFIED_RESEARCH_CONNECTION")).toBe(true);
     expect(isRelationshipKind("causes")).toBe(false);
     expect(isRelationshipKind("RELATES")).toBe(false);
   });

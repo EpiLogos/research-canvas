@@ -276,7 +276,7 @@ function CanvasViewInner({
       onConnectNodes?.({
         sourceNodeId: connection.source,
         targetNodeId: connection.target,
-        relationKind: "reference",
+        relationKind: "UNCLASSIFIED_RESEARCH_CONNECTION",
         sourceHandleId: connection.sourceHandle ?? undefined,
         targetHandleId: connection.targetHandle ?? undefined,
         directionality: "forward",
@@ -348,13 +348,10 @@ function CanvasViewInner({
     height: node.size?.height,
     data: {
       summary:
-        node.type === "resource"
-          ? node.relativePath
-          : node.type === "note"
-            ? node.content
-            : node.summary,
+        node.summary,
       nodeType: node.type === "portal" ? "portal" : node.type === "group" ? "group" : undefined,
       title: node.title,
+      graph: node.graph,
       content: node.type === "note" ? node.content : node.type === "resource" ? node.relativePath : undefined,
       tags: node.type === "note" ? node.tags : undefined,
       resourceKind: node.type === "resource" ? node.resourceKind : undefined,
