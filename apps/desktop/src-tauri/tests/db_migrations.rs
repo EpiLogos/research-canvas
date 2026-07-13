@@ -53,7 +53,7 @@ fn db_migrations_applies_initial_migration_to_a_real_temp_database() {
             row.get(0)
         })
         .expect("migration count");
-    assert_eq!(applied_migrations, 13);
+    assert_eq!(applied_migrations, 14);
 }
 
 #[test]
@@ -68,7 +68,7 @@ fn db_migrations_migration_runner_is_idempotent_and_deterministic() {
             row.get(0)
         })
         .expect("migration count");
-    assert_eq!(applied_migrations, 13);
+    assert_eq!(applied_migrations, 14);
 }
 
 #[test]
@@ -142,7 +142,7 @@ fn db_migrations_upgrade_0010_without_touching_documents_or_canvas_layouts() {
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row
                 .get::<_, i64>(0))
             .unwrap(),
-        13
+        14
     );
     assert!(table_exists(&reopened, "graph_node_metadata"));
     assert!(table_exists(&reopened, "timeline_layout"));
@@ -197,6 +197,48 @@ fn db_migrations_upgrade_actual_0012_documents_as_honest_imports_without_changin
             0,
             "[]".into()
         )
+    );
+}
+
+#[test]
+fn db_migrations_remove_only_the_default_timeline_rows_created_by_a_selection_click() {
+    let dir = tempdir().expect("temp dir");
+    let path = dir.path().join("timeline-click-repair.sqlite");
+    let connection = Connection::open(&path).expect("fixture database");
+    MigrationRunner::migrate_through(&connection, "0013_node_document_reconciliation")
+        .expect("apply pre-repair schema");
+    connection.execute_batch(
+        "INSERT INTO graph_node_metadata(graph_node_id, entity_type, title, content_origin, content_revision, schema_version, sync_state, is_temporal)
+             VALUES ('selection-click', 'Event', 'Selection click', 'seed', 0, 1, 'pending', 1),
+                    ('manual-layout', 'Event', 'Manual layout', 'seed', 0, 1, 'pending', 1);
+         INSERT INTO timeline_layout(graph_node_id, lane, offset_y, width, height, style_json)
+             VALUES ('selection-click', 'events', 0, 240, 72, '{}'),
+                    ('manual-layout', 'events', 44, 240, 72, '{}');",
+    ).expect("seed accidental and manual timeline rows");
+
+    MigrationRunner::migrate(&connection).expect("apply the click-layout repair");
+
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT COUNT(*) FROM timeline_layout WHERE graph_node_id='selection-click'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap(),
+        0,
+        "a selection click must not acquire an explicit events lane",
+    );
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT COUNT(*) FROM timeline_layout WHERE graph_node_id='manual-layout'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap(),
+        1,
+        "a genuinely moved card remains persisted",
     );
 }
 

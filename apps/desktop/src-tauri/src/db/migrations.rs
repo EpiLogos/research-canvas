@@ -64,6 +64,10 @@ const MIGRATIONS: &[Migration] = &[
         version: "0013_node_document_reconciliation",
         sql: include_str!("../../migrations/0013_node_document_reconciliation.sql"),
     },
+    Migration {
+        version: "0014_remove_selection_click_timeline_layouts",
+        sql: include_str!("../../migrations/0014_remove_selection_click_timeline_layouts.sql"),
+    },
 ];
 
 impl MigrationRunner {

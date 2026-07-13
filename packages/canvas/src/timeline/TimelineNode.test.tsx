@@ -145,6 +145,35 @@ describe("TimelineNode", () => {
     expect(onOpen).toHaveBeenCalledWith("n1", expect.objectContaining({ graphNodeId: "n1" }));
   });
 
+  test("selecting a card does not create or commit a timeline layout", () => {
+    const onSelect = vi.fn();
+    const onResize = vi.fn();
+    const onCommit = vi.fn();
+    render(
+      <TimelineNode
+        placed={placed({})}
+        lit={null}
+        selected={false}
+        dimmed={false}
+        filtered={false}
+        onSelect={onSelect}
+        onOpen={() => {}}
+        onResize={onResize}
+        onCommit={onCommit}
+        onColorTag={() => {}}
+      />,
+    );
+
+    const card = screen.getByTestId("timeline-node-card-n1");
+    fireEvent.pointerDown(card, { pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.pointerUp(window, { pointerId: 1, clientX: 100, clientY: 100 });
+    fireEvent.click(card);
+
+    expect(onSelect).toHaveBeenCalledWith("n1");
+    expect(onResize).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
   test("lit dominant node carries the lit-dominant data attribute", () => {
     render(
       <TimelineNode

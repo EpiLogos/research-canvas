@@ -4,7 +4,7 @@ import { useStore } from "zustand";
 
 import type { ArchetypalLighting, GraphNode, LitInstance, TimelineLayoutMutationResult, TimelineView } from "./contracts";
 import { createTimelineStore, type TimelineCardGeometryUpdate } from "./timelineStore";
-import { placeItems, type TimelinePresentation } from "./projection";
+import { FALLBACK_TIMELINE_LANE_ID, placeItems, type TimelinePresentation } from "./projection";
 import { generateTicks } from "./ticks";
 import { TimelineAxis } from "./TimelineAxis";
 import { TimelineNode } from "./TimelineNode";
@@ -183,7 +183,7 @@ export function TimelineLens({
       const expectedRevision = knownRevisions.current.get(graphNodeId) ?? snapshot.layoutRevision;
       try {
         const result = await dataSource.saveTimelineLayout!({
-          graphNodeId, lane: snapshot.lane ?? "events", offsetY: snapshot.offsetY,
+          graphNodeId, lane: snapshot.lane ?? FALLBACK_TIMELINE_LANE_ID, offsetY: snapshot.offsetY,
           width: snapshot.width, height: snapshot.height, style: snapshot.style, expectedRevision,
         });
         if (dataSourceEpoch.current !== epoch) return;

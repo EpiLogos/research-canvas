@@ -31,6 +31,11 @@ export interface PlacedItem {
 
 export const DEFAULT_TIMELINE_CARD_WIDTH_PX = 240;
 export const DEFAULT_TIMELINE_CARD_HEIGHT_PX = 72;
+/**
+ * The persisted layout schema requires a lane, but the timeline has no manual
+ * lane picker. This fallback remains collision-aware automatic placement.
+ */
+export const FALLBACK_TIMELINE_LANE_ID = "events";
 const VIEWPORT_EDGE_FADE_PX = 96;
 const CARD_GAP_PX = 16;
 const LANE_ORDER: readonly PlacedItem["laneSide"][] = [
@@ -83,8 +88,11 @@ export function placeItems(
   laneDefinitions: TimelineLane[] = [],
 ): PlacedItem[] {
   const explicitIds = Array.from(new Set([
-    ...laneDefinitions.map((lane) => lane.id),
-    ...items.map((item) => item.presentation.lane).filter((lane): lane is string => lane !== null).sort(),
+    ...laneDefinitions.map((lane) => lane.id).filter(isExplicitPlacementLane),
+    ...items
+      .map((item) => item.presentation.lane)
+      .filter((lane): lane is string => lane !== null && isExplicitPlacementLane(lane))
+      .sort(),
   ]));
   const explicitSlots = new Map(explicitIds.map((id, index) => [id, index]));
   const laneEnds = new Array(LANE_ORDER.length).fill(Number.NEGATIVE_INFINITY);
@@ -92,7 +100,9 @@ export function placeItems(
     const startPx = yearToPixel(viewport, item.startYear);
     const endPx =
       item.endYear === null ? startPx : yearToPixel(viewport, item.endYear);
-    const explicitSlot = item.presentation.lane === null ? undefined : explicitSlots.get(item.presentation.lane);
+    const explicitSlot = item.presentation.lane !== null && isExplicitPlacementLane(item.presentation.lane)
+      ? explicitSlots.get(item.presentation.lane)
+      : undefined;
     const autoSlot = chooseLaneSlot(laneEnds, startPx);
     const laneSlot = explicitSlot ?? explicitIds.length + autoSlot;
     if (explicitSlot === undefined) laneEnds[autoSlot] = startPx + cardWidth(item.presentation) + CARD_GAP_PX;
@@ -104,6 +114,10 @@ export function placeItems(
       laneSide: LANE_ORDER[laneSlot % LANE_ORDER.length],
     };
   });
+}
+
+function isExplicitPlacementLane(lane: string): boolean {
+  return lane !== FALLBACK_TIMELINE_LANE_ID;
 }
 
 export interface CardViewportFadeInput {

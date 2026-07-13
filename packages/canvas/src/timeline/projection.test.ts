@@ -104,7 +104,7 @@ describe("placeItems", () => {
     expect(b.endPx).toBeCloseTo(500, 3); // ongoing
   });
 
-  test("persisted lane ids retain stable grouping across reload while unassigned nodes use later auto lanes", () => {
+  test("persisted lane ids retain stable grouping across reload while unassigned nodes use a distinct automatic slot", () => {
     const items = projectNodes([
       { ...record({ graphNodeId: "explicit-a", validFrom: "1700-01-01" }), layoutOverride: { lane: "sources", offsetY: 0, width: 240, height: 72, style: {}, layoutRevision: 2 } },
       { ...record({ graphNodeId: "auto", validFrom: "1700-01-01" }), layoutOverride: null },
@@ -116,7 +116,21 @@ describe("placeItems", () => {
     const laneShape = (placed: typeof first) => Object.fromEntries(placed.map((p) => [p.item.graphNodeId, [p.laneIndex, p.laneSide]]));
     expect(laneShape(reloaded)).toEqual(laneShape(first));
     expect(laneShape(first)["explicit-a"]).toEqual(laneShape(first)["explicit-b"]);
-    expect(first.find((p) => p.item.graphNodeId === "auto")!.laneIndex).toBeGreaterThanOrEqual(1);
+    expect(laneShape(first)["auto"]).not.toEqual(laneShape(first)["explicit-a"]);
+  });
+
+  test("legacy fallback events layouts retain collision-aware automatic placement", () => {
+    const items = projectNodes([
+      record({ graphNodeId: "a", validFrom: "1953-01-01" }),
+      record({ graphNodeId: "b", validFrom: "1954-01-01" }),
+    ]);
+
+    const placed = placeItems(items, { centerYear: 1954, pixelsPerYear: 10, widthPx: 1000 }, [{ id: "events" }]);
+
+    expect(placed.map((item) => `${item.laneSide}:${item.laneIndex}`)).toEqual([
+      "above:0",
+      "below:0",
+    ]);
   });
 
   test("assigns nearby events to alternating above/below lanes", () => {

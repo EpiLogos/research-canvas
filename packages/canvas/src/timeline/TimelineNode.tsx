@@ -10,6 +10,7 @@ const MIN_CARD_WIDTH = 180;
 const MAX_CARD_WIDTH = 520;
 const MIN_CARD_HEIGHT = 72;
 const MAX_CARD_HEIGHT = 260;
+const DRAG_ACTIVATION_DISTANCE_PX = 2;
 
 type ResizeCorner = "nw" | "ne" | "sw" | "se";
 export type TimelineNodeLod = "marker" | "label" | "detail";
@@ -69,6 +70,7 @@ export function TimelineNode({
     startY: number;
     corner?: ResizeCorner;
     geometry: TimelineCardGeometry;
+    didMutate: boolean;
   } | null>(null);
   const suppressClick = useRef(false);
   const cardLeft = positionX - cardWidth / 2;
@@ -102,7 +104,12 @@ export function TimelineNode({
     if (!current || event.pointerId !== current.pointerId) return;
     const deltaX = event.clientX - current.startX;
     const deltaY = event.clientY - current.startY;
-    if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
+    const movedFarEnough = current.mode === "move"
+      ? Math.abs(deltaY) > DRAG_ACTIVATION_DISTANCE_PX
+      : Math.abs(deltaX) > DRAG_ACTIVATION_DISTANCE_PX || Math.abs(deltaY) > DRAG_ACTIVATION_DISTANCE_PX;
+    if (!current.didMutate && !movedFarEnough) return;
+    if (!current.didMutate) {
+      current.didMutate = true;
       suppressClick.current = true;
     }
 
@@ -117,9 +124,10 @@ export function TimelineNode({
   }
 
   function handlePointerUp(event: PointerEvent) {
-    if (dragState.current?.pointerId === event.pointerId) {
+    const current = dragState.current;
+    if (current?.pointerId === event.pointerId) {
       dragState.current = null;
-      onCommit?.(item.graphNodeId);
+      if (current.didMutate) onCommit?.(item.graphNodeId);
     }
   }
 
@@ -148,6 +156,7 @@ export function TimelineNode({
         width: cardWidth,
         height: cardHeight,
       },
+      didMutate: false,
     };
     if (mode === "resize") {
       suppressClick.current = true;
