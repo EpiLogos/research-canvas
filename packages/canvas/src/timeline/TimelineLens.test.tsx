@@ -230,7 +230,7 @@ describe("TimelineLens", () => {
     });
   });
 
-  test("timeline arrows pan in their named direction and accelerate while held", async () => {
+  test("ArrowLeft and ArrowRight pan in their named direction and accelerate while held, without rendering navigation buttons", async () => {
     let frame: FrameRequestCallback | null = null;
     const requestFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
       frame = callback;
@@ -250,7 +250,10 @@ describe("TimelineLens", () => {
     await screen.findByTestId("timeline-node-banda");
     const initialCenter = viewportChanges.at(-1)!.centerYear;
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Move timeline earlier" }), { pointerId: 80 });
+    expect(screen.queryByRole("button", { name: "Move timeline earlier" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Move timeline later" })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
     await waitFor(() => expect(viewportChanges.at(-1)!.centerYear).toBeLessThan(initialCenter));
     const afterTap = viewportChanges.at(-1)!.centerYear;
 
@@ -262,14 +265,42 @@ describe("TimelineLens", () => {
     });
     await waitFor(() => expect(viewportChanges.at(-1)!.centerYear).toBeLessThan(afterTap - 100));
 
-    fireEvent.pointerUp(screen.getByRole("button", { name: "Move timeline earlier" }), { pointerId: 80 });
+    fireEvent.keyUp(window, { key: "ArrowLeft" });
     expect(cancelFrame).toHaveBeenCalled();
     expect(requestFrame).toHaveBeenCalled();
 
     const afterEarlier = viewportChanges.at(-1)!.centerYear;
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Move timeline later" }), { pointerId: 81 });
+    fireEvent.keyDown(window, { key: "ArrowRight" });
     await waitFor(() => expect(viewportChanges.at(-1)!.centerYear).toBeGreaterThan(afterEarlier));
-    fireEvent.pointerUp(screen.getByRole("button", { name: "Move timeline later" }), { pointerId: 81 });
+    fireEvent.keyUp(window, { key: "ArrowRight" });
+  });
+
+  test("timeline navigation leaves arrow keys to text editing and an open reader", async () => {
+    const viewportChanges: Array<{ centerYear: number; pixelsPerYear: number }> = [];
+    const { container } = render(
+      <TimelineLens
+        dataSource={makeDataSource()}
+        onOpenNode={() => {}}
+        initialViewport={{ centerYear: 1800, pixelsPerYear: 2 }}
+        onViewportChange={(viewport) => viewportChanges.push(viewport)}
+      />,
+    );
+    await screen.findByTestId("timeline-node-banda");
+    const initialCenter = viewportChanges.at(-1)!.centerYear;
+    const input = document.createElement("input");
+    container.append(input);
+
+    fireEvent.keyDown(input, { key: "ArrowLeft" });
+    expect(viewportChanges.at(-1)!.centerYear).toBe(initialCenter);
+
+    input.remove();
+    const reader = document.createElement("section");
+    reader.setAttribute("role", "dialog");
+    reader.setAttribute("aria-modal", "true");
+    container.append(reader);
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(viewportChanges.at(-1)!.centerYear).toBe(initialCenter);
+    reader.remove();
   });
 
   test("has no transport bar and pans the whole timeline scene vertically", async () => {

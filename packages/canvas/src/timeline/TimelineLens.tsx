@@ -271,30 +271,43 @@ export function TimelineLens({
     };
   }, [stopTimelineNavigation, store]);
 
-  const nudgeTimelineNavigation = useCallback((direction: TimelineNavigationDirection) => {
-    const directionMultiplier = direction === "earlier" ? 1 : -1;
-    store.getState().pan(directionMultiplier * TIMELINE_NUDGE_PX);
-  }, [store]);
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        (event.key !== "ArrowLeft" && event.key !== "ArrowRight") ||
+        shouldLeaveArrowKeyAlone(event.target)
+      ) return;
+      event.preventDefault();
+      const direction = event.key === "ArrowLeft" ? "earlier" : "later";
+      // Browsers repeat keydown while held. Preserve the original start time
+      // so autorepeat cannot reset the acceleration curve.
+      if (navigationRef.current?.direction === direction) return;
+      startTimelineNavigation(direction);
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      const direction = event.key === "ArrowLeft" ? "earlier" : "later";
+      if (navigationRef.current?.direction === direction) stopTimelineNavigation();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", stopTimelineNavigation);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", stopTimelineNavigation);
+    };
+  }, [startTimelineNavigation, stopTimelineNavigation]);
 
   useEffect(() => stopTimelineNavigation, [stopTimelineNavigation]);
 
   return (
     <div className="timeline-lens" data-testid="timeline-lens">
       <div className="timeline-toolbar" data-testid="timeline-toolbar">
-        <div className="timeline-navigation" role="group" aria-label="Timeline navigation">
-          <TimelineNavigationButton
-            direction="earlier"
-            onStart={startTimelineNavigation}
-            onStop={stopTimelineNavigation}
-            onNudge={nudgeTimelineNavigation}
-          />
-          <TimelineNavigationButton
-            direction="later"
-            onStart={startTimelineNavigation}
-            onStop={stopTimelineNavigation}
-            onNudge={nudgeTimelineNavigation}
-          />
-        </div>
         <span className="timeline-tier" data-testid="timeline-tier">{tier}</span>
         {activeCategories.length > 0 && (
           <div className="timeline-filters" aria-label="Timeline card filters">
@@ -426,42 +439,10 @@ export function TimelineLens({
   );
 }
 
-function TimelineNavigationButton({
-  direction,
-  onStart,
-  onStop,
-  onNudge,
-}: {
-  direction: TimelineNavigationDirection;
-  onStart: (direction: TimelineNavigationDirection) => void;
-  onStop: () => void;
-  onNudge: (direction: TimelineNavigationDirection) => void;
-}): JSX.Element {
-  const label = direction === "earlier" ? "Move timeline earlier" : "Move timeline later";
-  return (
-    <button
-      type="button"
-      className="timeline-navigation__button"
-      aria-label={label}
-      title="Hold to move faster"
-      onPointerDown={(event) => {
-        event.preventDefault();
-        event.currentTarget.setPointerCapture?.(event.pointerId);
-        onStart(direction);
-      }}
-      onPointerUp={onStop}
-      onPointerCancel={onStop}
-      onLostPointerCapture={onStop}
-      onClick={(event) => {
-        // Keyboard activation does not produce a pointer-down event. It still
-        // gets a single accessible nudge, whereas mouse/touch uses the hold
-        // loop above.
-        if (event.detail === 0) onNudge(direction);
-      }}
-    >
-      {direction === "earlier" ? "←" : "→"}
-    </button>
-  );
+function shouldLeaveArrowKeyAlone(target: EventTarget | null): boolean {
+  if (document.querySelector('[role="dialog"][aria-modal="true"]')) return true;
+  if (!(target instanceof HTMLElement)) return false;
+  return target.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""], [role="textbox"]') !== null;
 }
 
 function verticalPanBounds(placed: ReturnType<typeof placeItems>, trackHeight: number) {
