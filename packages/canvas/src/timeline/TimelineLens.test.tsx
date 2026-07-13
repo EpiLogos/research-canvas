@@ -230,7 +230,7 @@ describe("TimelineLens", () => {
     });
   });
 
-  test("ArrowLeft and ArrowRight pan in their named direction and accelerate while held, without rendering navigation buttons", async () => {
+  test("ArrowLeft and ArrowRight accelerate smoothly, coast briefly after release, and reset before reversing", async () => {
     let frame: FrameRequestCallback | null = null;
     const requestFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
       frame = callback;
@@ -254,25 +254,48 @@ describe("TimelineLens", () => {
     expect(screen.queryByRole("button", { name: "Move timeline later" })).not.toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: "ArrowLeft" });
-    await waitFor(() => expect(viewportChanges.at(-1)!.centerYear).toBeLessThan(initialCenter));
-    const afterTap = viewportChanges.at(-1)!.centerYear;
+    expect(viewportChanges.at(-1)!.centerYear).toBe(initialCenter);
 
     act(() => {
       frame?.(0);
-      for (let timestamp = 16; timestamp <= 1_000; timestamp += 16) {
+      for (let timestamp = 16; timestamp <= 480; timestamp += 16) {
         frame?.(timestamp);
       }
     });
-    await waitFor(() => expect(viewportChanges.at(-1)!.centerYear).toBeLessThan(afterTap - 100));
-
-    fireEvent.keyUp(window, { key: "ArrowLeft" });
-    expect(cancelFrame).toHaveBeenCalled();
-    expect(requestFrame).toHaveBeenCalled();
-
     const afterEarlier = viewportChanges.at(-1)!.centerYear;
+    expect(afterEarlier).toBeLessThan(initialCenter - 100);
+
+    // Reversing clears existing velocity first: the next direction starts from
+    // rest rather than carrying the old motion through the axis.
     fireEvent.keyDown(window, { key: "ArrowRight" });
-    await waitFor(() => expect(viewportChanges.at(-1)!.centerYear).toBeGreaterThan(afterEarlier));
+    expect(viewportChanges.at(-1)!.centerYear).toBe(afterEarlier);
+    expect(cancelFrame).toHaveBeenCalled();
+
+    act(() => {
+      frame?.(496);
+      for (let timestamp = 512; timestamp <= 800; timestamp += 16) {
+        frame?.(timestamp);
+      }
+    });
+    const beforeRelease = viewportChanges.at(-1)!.centerYear;
+    expect(beforeRelease).toBeGreaterThan(afterEarlier);
+
     fireEvent.keyUp(window, { key: "ArrowRight" });
+    act(() => {
+      frame?.(816);
+    });
+    const afterTailStarts = viewportChanges.at(-1)!.centerYear;
+    expect(afterTailStarts).toBeGreaterThan(beforeRelease);
+
+    act(() => {
+      for (let timestamp = 832; timestamp <= 1_200; timestamp += 16) {
+        frame?.(timestamp);
+      }
+    });
+    const afterTailStops = viewportChanges.at(-1)!.centerYear;
+    act(() => frame?.(1_216));
+    expect(viewportChanges.at(-1)!.centerYear).toBe(afterTailStops);
+    expect(requestFrame).toHaveBeenCalled();
   });
 
   test("timeline navigation leaves arrow keys to text editing and an open reader", async () => {

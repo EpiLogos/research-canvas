@@ -34,10 +34,9 @@ const AXIS_HEIGHT = 48;
 // wheel/trackpad delta produces a proportionally larger zoom change. Negative
 // deltaY (scroll up / pinch out) zooms in.
 const WHEEL_ZOOM_BASE = 1.003;
-const TIMELINE_NUDGE_PX = 36;
-const TIMELINE_INITIAL_PAN_SPEED_PX_PER_SECOND = 220;
-const TIMELINE_PAN_ACCELERATION_PX_PER_SECOND_SQUARED = 980;
+const TIMELINE_PAN_ACCELERATION_PX_PER_SECOND_SQUARED = 2_400;
 const TIMELINE_MAX_PAN_SPEED_PX_PER_SECOND = 2_400;
+const TIMELINE_TAIL_DECELERATION_PX_PER_SECOND_SQUARED = 9_000;
 
 type TimelineNavigationDirection = "earlier" | "later";
 
@@ -74,9 +73,11 @@ export function TimelineLens({
   const navigationRef = useRef<{
     direction: TimelineNavigationDirection;
     frameId: number;
-    startedAt: number | null;
     lastFrameAt: number | null;
+    speedPxPerSecond: number;
+    phase: "accelerating" | "coasting";
   } | null>(null);
+  const heldNavigationKeys = useRef(new Set<"ArrowLeft" | "ArrowRight">());
 
   // Load timeline nodes once on mount.
   useEffect(() => {
@@ -241,33 +242,39 @@ export function TimelineLens({
   const startTimelineNavigation = useCallback((direction: TimelineNavigationDirection) => {
     stopTimelineNavigation();
     const directionMultiplier = direction === "earlier" ? 1 : -1;
-    // A short tap still gives a discernible nudge. Holding continues from that
-    // movement and quickly ramps from a walk to a fast scrub.
-    store.getState().pan(directionMultiplier * TIMELINE_NUDGE_PX);
     const step = (timestamp: number) => {
       const navigation = navigationRef.current;
       if (!navigation || navigation.direction !== direction) return;
-      if (navigation.startedAt === null || navigation.lastFrameAt === null) {
-        navigation.startedAt = timestamp;
+      if (navigation.lastFrameAt === null) {
         navigation.lastFrameAt = timestamp;
       } else {
-        const elapsedSeconds = (timestamp - navigation.startedAt) / 1_000;
         const frameSeconds = Math.min((timestamp - navigation.lastFrameAt) / 1_000, 0.05);
-        const speed = Math.min(
-          TIMELINE_MAX_PAN_SPEED_PX_PER_SECOND,
-          TIMELINE_INITIAL_PAN_SPEED_PX_PER_SECOND
-            + elapsedSeconds * TIMELINE_PAN_ACCELERATION_PX_PER_SECOND_SQUARED,
-        );
-        store.getState().pan(directionMultiplier * speed * frameSeconds);
+        navigation.speedPxPerSecond = navigation.phase === "accelerating"
+          ? Math.min(
+              TIMELINE_MAX_PAN_SPEED_PX_PER_SECOND,
+              navigation.speedPxPerSecond + frameSeconds * TIMELINE_PAN_ACCELERATION_PX_PER_SECOND_SQUARED,
+            )
+          : Math.max(
+              0,
+              navigation.speedPxPerSecond - frameSeconds * TIMELINE_TAIL_DECELERATION_PX_PER_SECOND_SQUARED,
+            );
         navigation.lastFrameAt = timestamp;
+        if (navigation.speedPxPerSecond === 0) {
+          navigationRef.current = null;
+          return;
+        }
+        store.getState().pan(directionMultiplier * navigation.speedPxPerSecond * frameSeconds);
       }
-      navigation.frameId = window.requestAnimationFrame(step);
+      if (navigationRef.current === navigation) {
+        navigation.frameId = window.requestAnimationFrame(step);
+      }
     };
     navigationRef.current = {
       direction,
       frameId: window.requestAnimationFrame(step),
-      startedAt: null,
       lastFrameAt: null,
+      speedPxPerSecond: 0,
+      phase: "accelerating",
     };
   }, [stopTimelineNavigation, store]);
 
@@ -282,24 +289,37 @@ export function TimelineLens({
         shouldLeaveArrowKeyAlone(event.target)
       ) return;
       event.preventDefault();
+      const key = event.key as "ArrowLeft" | "ArrowRight";
+      if (heldNavigationKeys.current.has(key)) return;
+      heldNavigationKeys.current.add(key);
       const direction = event.key === "ArrowLeft" ? "earlier" : "later";
-      // Browsers repeat keydown while held. Preserve the original start time
-      // so autorepeat cannot reset the acceleration curve.
-      if (navigationRef.current?.direction === direction) return;
+      const navigation = navigationRef.current;
+      if (navigation?.direction === direction) {
+        navigation.phase = "accelerating";
+        return;
+      }
+      // A reversal always discards the prior velocity. The new direction then
+      // ramps from rest, so it never snaps through the axis with old momentum.
       startTimelineNavigation(direction);
     };
     const handleKeyUp = (event: KeyboardEvent) => {
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      heldNavigationKeys.current.delete(event.key);
       const direction = event.key === "ArrowLeft" ? "earlier" : "later";
-      if (navigationRef.current?.direction === direction) stopTimelineNavigation();
+      const navigation = navigationRef.current;
+      if (navigation?.direction === direction) navigation.phase = "coasting";
+    };
+    const handleWindowBlur = () => {
+      heldNavigationKeys.current.clear();
+      stopTimelineNavigation();
     };
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
-    window.addEventListener("blur", stopTimelineNavigation);
+    window.addEventListener("blur", handleWindowBlur);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
-      window.removeEventListener("blur", stopTimelineNavigation);
+      window.removeEventListener("blur", handleWindowBlur);
     };
   }, [startTimelineNavigation, stopTimelineNavigation]);
 
