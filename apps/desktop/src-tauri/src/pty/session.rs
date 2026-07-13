@@ -53,7 +53,7 @@ pub struct TerminalSession {
 
 impl TerminalSession {
     pub fn spawn(workdir: PathBuf, app: Option<AppHandle>) -> std::io::Result<Self> {
-        let shell = resolve_shell();
+        let tmux_session = tmux_session_name(&workdir);
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -64,16 +64,22 @@ impl TerminalSession {
             })
             .map_err(to_io_error)?;
 
-        let mut command = CommandBuilder::new(shell.clone());
+        // tmux owns the durable shell process. The app only owns this client
+        // attachment, so an app update or panel remount can reconnect to the
+        // same workspace state instead of starting an unrelated shell.
+        let mut command = CommandBuilder::new("tmux");
         command.cwd(&workdir);
         command.env("TERM", "xterm-256color");
         command.env("COLORTERM", "truecolor");
         command.env("LANG", "en_US.UTF-8");
-        for argument in shell_arguments(&shell) {
-            command.arg(argument);
-        }
+        command.args(["new-session", "-A", "-s", tmux_session.as_str(), "-c"]);
+        command.arg(workdir.as_os_str());
 
-        let child = pair.slave.spawn_command(command).map_err(to_io_error)?;
+        let child = pair.slave.spawn_command(command).map_err(|error| {
+            std::io::Error::other(format!(
+                "unable to attach terminal to tmux session `{tmux_session}`: {error}. Install tmux to use the persistent terminal"
+            ))
+        })?;
         let master = pair.master;
         let mut reader = master.try_clone_reader().map_err(to_io_error)?;
         let writer = master.take_writer().map_err(to_io_error)?;
@@ -81,7 +87,7 @@ impl TerminalSession {
         let session = Self {
             id: Uuid::new_v4().to_string(),
             workdir,
-            shell,
+            shell: format!("tmux:{tmux_session}"),
             columns: Arc::new(Mutex::new(DEFAULT_COLUMNS)),
             rows: Arc::new(Mutex::new(DEFAULT_ROWS)),
             output: Arc::new(Mutex::new(String::new())),
@@ -219,30 +225,118 @@ impl TerminalSession {
     }
 }
 
-fn resolve_shell() -> String {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-    if Path::new(&shell).exists() {
-        shell
-    } else if Path::new("/bin/zsh").exists() {
-        "/bin/zsh".to_string()
-    } else {
-        "/bin/sh".to_string()
+fn tmux_session_name(workdir: &Path) -> String {
+    let canonical_workdir = std::fs::canonicalize(workdir).unwrap_or_else(|_| workdir.into());
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for byte in canonical_workdir.to_string_lossy().as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
     }
-}
-
-fn shell_arguments(shell: &str) -> Vec<&'static str> {
-    let executable = Path::new(shell)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or_default();
-
-    match executable {
-        "bash" => vec!["--noprofile", "--norc", "-i"],
-        "zsh" => vec!["-i"],
-        _ => vec!["-i"],
-    }
+    format!("research-canvas-{hash:016x}")
 }
 
 fn to_io_error(error: impl std::fmt::Display) -> std::io::Error {
     std::io::Error::other(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{path::Path, process::Command, thread, time::Duration};
+
+    use tempfile::tempdir;
+    use uuid::Uuid;
+
+    use super::tmux_session_name;
+    use crate::pty::TerminalManager;
+
+    struct TmuxSessionGuard(String);
+
+    impl Drop for TmuxSessionGuard {
+        fn drop(&mut self) {
+            let _ = Command::new("tmux")
+                .args(["kill-session", "-t", &self.0])
+                .status();
+        }
+    }
+
+    fn wait_for_file(path: &Path) -> Option<String> {
+        for _ in 0..200 {
+            if let Ok(contents) = std::fs::read_to_string(path) {
+                return Some(contents);
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+        None
+    }
+
+    #[test]
+    fn reopening_a_workspace_terminal_rejoins_its_existing_tmux_session() {
+        let workdir = tempdir().expect("workspace directory");
+        let tmux_session = tmux_session_name(workdir.path());
+        let _cleanup = TmuxSessionGuard(tmux_session);
+        let marker = format!("research-canvas-{}", Uuid::new_v4());
+        let first_signal = workdir.path().join("first-client-ready");
+        let second_signal = workdir.path().join("reopened-client-marker");
+        let first_manager = TerminalManager::new();
+
+        let first = first_manager
+            .create_session(workdir.path())
+            .expect("create first terminal client");
+        assert!(
+            first_manager
+                .wait_for_output(&first.id, "\u{1b}", Duration::from_secs(5))
+                .is_some(),
+            "tmux rendered its first terminal frame",
+        );
+        first_manager
+            .send_input(
+                &first.id,
+                &format!(
+                    "export RESEARCH_CANVAS_TMUX_MARKER={marker}; printf ready > {}\n",
+                    first_signal.display(),
+                ),
+            )
+            .expect("set process state in tmux");
+        assert_eq!(
+            wait_for_file(&first_signal).as_deref(),
+            Some("ready"),
+            "the first client did not reach its tmux pane: {:?}",
+            first_manager
+                .session(&first.id)
+                .expect("first session remains available")
+                .output(),
+        );
+        first_manager
+            .close_session(&first.id)
+            .expect("close only the first terminal client");
+        drop(first_manager);
+
+        let reopened_manager = TerminalManager::new();
+        let reopened = reopened_manager
+            .create_session(workdir.path())
+            .expect("reopen the workspace terminal");
+        assert!(
+            reopened_manager
+                .wait_for_output(&reopened.id, "\u{1b}", Duration::from_secs(5))
+                .is_some(),
+            "reopened client rendered its tmux terminal frame",
+        );
+        reopened_manager
+            .send_input(
+                &reopened.id,
+                &format!(
+                    "printf '%s' \"$RESEARCH_CANVAS_TMUX_MARKER\" > {}\n",
+                    second_signal.display(),
+                ),
+            )
+            .expect("query process state after reattachment");
+
+        assert_eq!(
+            wait_for_file(&second_signal).as_deref(),
+            Some(marker.as_str())
+        );
+        reopened_manager
+            .close_session(&reopened.id)
+            .expect("close reopened terminal client");
+    }
 }
