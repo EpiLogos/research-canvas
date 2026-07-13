@@ -29,6 +29,7 @@ export function Shell() {
   const layout = useShellLayout();
   const workspace = useCanvasWorkspace();
   const [fullScreenMode, setFullScreenMode] = useState<"closed" | "node" | "sequence">("closed");
+  const [fullScreenRecord, setFullScreenRecord] = useState<ReaderRecord | null>(null);
   const [leftMode, setLeftMode] = useState<"files" | "search" | "annotations">("files");
   const [sequencesOpen, setSequencesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -42,6 +43,7 @@ export function Shell() {
   const { lens, setLens } = useLensMode();
   const closeFullScreen = useCallback(() => {
     setFullScreenMode("closed");
+    setFullScreenRecord(null);
   }, []);
   const timelineDataSource = useMemo(
     () => workspace.workspaceId ?
@@ -109,6 +111,7 @@ export function Shell() {
     setSequencesOpen(false);
     setSettingsOpen(false);
     setFullScreenMode("closed");
+    setFullScreenRecord(null);
     setReadingOverlayOpen(false);
     setReadingRecord(null);
   }, []);
@@ -129,8 +132,9 @@ export function Shell() {
   }, [closeOverlays]);
 
   const enterFullScreen = useCallback(
-    (mode: "node" | "sequence") => {
+    (mode: "node" | "sequence", record: ReaderRecord | null = null) => {
       closeOverlays();
+      setFullScreenRecord(record);
       setFullScreenMode(mode);
     },
     [closeOverlays],
@@ -283,7 +287,7 @@ export function Shell() {
 
           {lens === "reading" && (
             <ReadingLens
-              onFullScreen={() => enterFullScreen("node")}
+              onFullScreen={(record) => enterFullScreen("node", record)}
               onExitToCanvas={() => setLens("canvas")}
             />
           )}
@@ -291,7 +295,7 @@ export function Shell() {
           {readingOverlayOpen && (
             <ReadingLens
               variant="overlay"
-              onFullScreen={() => enterFullScreen("node")}
+              onFullScreen={(record) => enterFullScreen("node", record)}
               onExitToCanvas={() => {
                 setReadingOverlayOpen(false);
                 setReadingRecord(null);
@@ -324,7 +328,7 @@ export function Shell() {
           </BottomDock>
 
           {fullScreenMode !== "closed" && (
-            <FullScreenReader mode={fullScreenMode} onClose={closeFullScreen} />
+            <FullScreenReader mode={fullScreenMode} record={fullScreenRecord} onClose={closeFullScreen} />
           )}
         </div>
       </div>

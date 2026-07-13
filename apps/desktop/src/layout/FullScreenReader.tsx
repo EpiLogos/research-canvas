@@ -5,53 +5,46 @@ import { SequencePresenter } from "@research-canvas/canvas";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { NodeContentPane } from "../features/viewer/NodeContentPane";
 import { NodeReaderBody } from "../features/viewer/NodeReaderBody";
+import { GraphDocumentAuthoringActions } from "../features/viewer/GraphDocumentContent";
+import { readerRecordFromCanvasNode, type ReaderRecord } from "../features/viewer/readerRecord";
+import { ReaderSurface } from "../features/viewer/ReaderSurface";
 
 interface FullScreenReaderProps {
   mode: "node" | "sequence";
   onClose: () => void;
+  record?: ReaderRecord | null;
 }
 
-export function FullScreenReader({ mode, onClose }: FullScreenReaderProps) {
+export function FullScreenReader({ mode, onClose, record = null }: FullScreenReaderProps) {
   if (mode === "sequence") {
     return <SequenceMode onClose={onClose} />;
   }
-  return <NodeMode onClose={onClose} />;
+  return <NodeMode onClose={onClose} record={record} />;
 }
 
-function NodeMode({ onClose }: { onClose: () => void }) {
+function NodeMode({ onClose, record }: { onClose: () => void; record: ReaderRecord | null }) {
   const workspace = useCanvasWorkspace();
   const node: CanvasNode | null =
     workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
+  const activeRecord = record ?? (node ? readerRecordFromCanvasNode(node) : null);
 
   useEffect(() => {
-    if (!node) onClose();
-  }, [node, onClose]);
+    if (!activeRecord) onClose();
+  }, [activeRecord, onClose]);
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
-
-  if (!node) return null;
+  if (!activeRecord) return null;
 
   return (
     <div className="fullscreen-reader">
-      <header className="fullscreen-reader__header">
-        <nav className="fullscreen-reader__breadcrumb">
-          <span>{workspace.activeConstellation?.displayName ?? "Constellation"}</span>
-          <span className="fsr-sep">&rsaquo;</span>
-          <span>Canvas</span>
-          <span className="fsr-sep">&rsaquo;</span>
-          <span className="fsr-current">{node.title}</span>
-        </nav>
-        <button className="fullscreen-reader__close" onClick={onClose} title="Back to canvas (Esc)">&larr; Back</button>
-      </header>
-      <main className="fullscreen-reader__body">
-        <NodeReaderBody node={node} affordances={false} />
-      </main>
+      <ReaderSurface
+        record={activeRecord}
+        workspaceRoot={workspace.workingRoot}
+        variant="full"
+        onExit={onClose}
+        actions={activeRecord.graphNodeId ? <GraphDocumentAuthoringActions graphNodeId={activeRecord.graphNodeId} /> : undefined}
+      >
+        <NodeReaderBody node={activeRecord.canvasNode} record={activeRecord} affordances={false} />
+      </ReaderSurface>
     </div>
   );
 }

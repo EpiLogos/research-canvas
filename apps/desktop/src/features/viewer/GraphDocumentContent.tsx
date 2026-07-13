@@ -26,11 +26,14 @@ export function GraphDocumentContent({
   transport,
   databasePath,
   editable = true,
+  showAuthoringControls = true,
 }: {
   graphNodeId: string;
   transport: GraphDocumentTransport;
   databasePath: string | null;
   editable?: boolean;
+  /** Render insertion/link controls in the surrounding UI, never in prose by default. */
+  showAuthoringControls?: boolean;
 }) {
   const workspace = useCanvasWorkspace();
   return (
@@ -42,12 +45,23 @@ export function GraphDocumentContent({
         workspaceRoot={workspace.workingRoot}
         editable={editable}
       />
-      <div className="graph-document-content__linking">
-        <InsertMediaButtons graphNodeId={graphNodeId} />
-        <LinkFilePicker graphNodeId={graphNodeId} />
-        <LinkNodePicker sourceGraphNodeId={graphNodeId} />
-      </div>
+      {showAuthoringControls ? <GraphDocumentAuthoringActions graphNodeId={graphNodeId} /> : null}
     </NodeContentDropSurface>
+  );
+}
+
+/**
+ * Actual document mutation controls, rendered by ReaderSurface inside its
+ * details/action drawer. Keeping this separate from the document prevents the
+ * controls from being mistaken for part of a node's authored long-form text.
+ */
+export function GraphDocumentAuthoringActions({ graphNodeId }: { graphNodeId: string }) {
+  return (
+    <div className="graph-document-content__linking" role="group" aria-label="Node authoring actions">
+      <InsertMediaButtons graphNodeId={graphNodeId} />
+      <LinkFilePicker graphNodeId={graphNodeId} />
+      <LinkNodePicker sourceGraphNodeId={graphNodeId} />
+    </div>
   );
 }
 

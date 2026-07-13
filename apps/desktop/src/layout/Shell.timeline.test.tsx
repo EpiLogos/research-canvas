@@ -139,6 +139,19 @@ describe("Shell timeline lens", () => {
     expect(screen.queryByTestId("reading-overlay")).not.toBeInTheDocument();
   });
 
+  test("takes the same timeline reader record into full-screen reading", async () => {
+    render(<Shell />);
+    fireEvent.click(screen.getByTestId("lens-timeline"));
+    fireEvent.doubleClick(await screen.findByTestId("timeline-node-banda"));
+    fireEvent.click(screen.getByRole("button", { name: "Read full screen" }));
+
+    expect(await screen.findByTestId("reading-fullscreen")).toHaveTextContent("Banda genocide");
+    expect(screen.getByTestId("reader-cover")).toHaveAttribute(
+      "src",
+      "asset://localhost/%2Fcanonical%2Fassets%2Fbanda%2Fship.png",
+    );
+  });
+
   test("timeline card geometry persists through timeline storage and never mutates canvas state", async () => {
     render(<Shell />);
     fireEvent.click(screen.getByTestId("lens-timeline"));
