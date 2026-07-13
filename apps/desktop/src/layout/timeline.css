@@ -43,6 +43,36 @@
   color: #9a9aa8;
 }
 
+.timeline-navigation {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 3px;
+}
+
+.timeline-navigation__button {
+  width: 27px;
+  height: 25px;
+  padding: 0;
+  border: 1px solid #324158;
+  border-radius: 5px;
+  background: #111823;
+  color: #d6e3ef;
+  font: 600 15px/1 var(--ob-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  cursor: ew-resize;
+}
+
+.timeline-navigation__button:hover,
+.timeline-navigation__button:focus-visible {
+  border-color: #79c0d4;
+  background: #182a3b;
+  outline: none;
+}
+
+.timeline-navigation__button:active {
+  background: #21384d;
+  transform: translateY(1px);
+}
+
 .timeline-filters {
   display: flex;
   align-items: center;

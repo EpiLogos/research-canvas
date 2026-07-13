@@ -87,6 +87,8 @@ interface CanvasViewProps {
   onPlaySequence?: () => void;
   /** Host-specific URL adapter for local resource thumbnails (e.g. Tauri asset://). */
   assetUrlForPath?: (absolutePath: string) => string;
+  /** Normalizes stored thumbnail URLs owned by the desktop host. */
+  resolveAssetUrl?: (url: string) => string;
 }
 
 const nodeTypes: NodeTypes = {
@@ -139,7 +141,8 @@ function CanvasViewInner({
   onRegisterCaptureViewport,
   onToggleEdgeSequencing,
   onPlaySequence,
-  assetUrlForPath
+  assetUrlForPath,
+  resolveAssetUrl,
 }: CanvasViewProps) {
   const { fitView, getViewport, getZoom, screenToFlowPosition, setCenter, setViewport } =
     useReactFlow();
@@ -381,7 +384,8 @@ function CanvasViewInner({
         bgColour: node.bgColour ?? undefined,
         textColour: node.textColour ?? undefined,
         thumbnail: node.thumbnail
-          ?? (node.type === "resource" && node.resourceKind === "image" && node.absolutePath
+          ? (resolveAssetUrl?.(node.thumbnail) ?? node.thumbnail)
+          : (node.type === "resource" && node.resourceKind === "image" && node.absolutePath
             ? assetUrlForPath?.(node.absolutePath)
             : undefined),
       },

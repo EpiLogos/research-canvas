@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useStore } from "zustand";
 
@@ -34,6 +34,12 @@ const AXIS_HEIGHT = 48;
 // wheel/trackpad delta produces a proportionally larger zoom change. Negative
 // deltaY (scroll up / pinch out) zooms in.
 const WHEEL_ZOOM_BASE = 1.003;
+const TIMELINE_NUDGE_PX = 36;
+const TIMELINE_INITIAL_PAN_SPEED_PX_PER_SECOND = 220;
+const TIMELINE_PAN_ACCELERATION_PX_PER_SECOND_SQUARED = 980;
+const TIMELINE_MAX_PAN_SPEED_PX_PER_SECOND = 2_400;
+
+type TimelineNavigationDirection = "earlier" | "later";
 
 export function TimelineLens({
   dataSource,
@@ -65,6 +71,12 @@ export function TimelineLens({
   const [visibleCategories, setVisibleCategories] = useState<Record<TimelineCategory, boolean>>(() =>
     Object.fromEntries(TIMELINE_CATEGORIES.map((category) => [category.id, true])) as Record<TimelineCategory, boolean>,
   );
+  const navigationRef = useRef<{
+    direction: TimelineNavigationDirection;
+    frameId: number;
+    startedAt: number | null;
+    lastFrameAt: number | null;
+  } | null>(null);
 
   // Load timeline nodes once on mount.
   useEffect(() => {
@@ -220,9 +232,69 @@ export function TimelineLens({
     dragState.current = null;
   };
 
+  const stopTimelineNavigation = useCallback(() => {
+    const navigation = navigationRef.current;
+    if (navigation) window.cancelAnimationFrame(navigation.frameId);
+    navigationRef.current = null;
+  }, []);
+
+  const startTimelineNavigation = useCallback((direction: TimelineNavigationDirection) => {
+    stopTimelineNavigation();
+    const directionMultiplier = direction === "earlier" ? 1 : -1;
+    // A short tap still gives a discernible nudge. Holding continues from that
+    // movement and quickly ramps from a walk to a fast scrub.
+    store.getState().pan(directionMultiplier * TIMELINE_NUDGE_PX);
+    const step = (timestamp: number) => {
+      const navigation = navigationRef.current;
+      if (!navigation || navigation.direction !== direction) return;
+      if (navigation.startedAt === null || navigation.lastFrameAt === null) {
+        navigation.startedAt = timestamp;
+        navigation.lastFrameAt = timestamp;
+      } else {
+        const elapsedSeconds = (timestamp - navigation.startedAt) / 1_000;
+        const frameSeconds = Math.min((timestamp - navigation.lastFrameAt) / 1_000, 0.05);
+        const speed = Math.min(
+          TIMELINE_MAX_PAN_SPEED_PX_PER_SECOND,
+          TIMELINE_INITIAL_PAN_SPEED_PX_PER_SECOND
+            + elapsedSeconds * TIMELINE_PAN_ACCELERATION_PX_PER_SECOND_SQUARED,
+        );
+        store.getState().pan(directionMultiplier * speed * frameSeconds);
+        navigation.lastFrameAt = timestamp;
+      }
+      navigation.frameId = window.requestAnimationFrame(step);
+    };
+    navigationRef.current = {
+      direction,
+      frameId: window.requestAnimationFrame(step),
+      startedAt: null,
+      lastFrameAt: null,
+    };
+  }, [stopTimelineNavigation, store]);
+
+  const nudgeTimelineNavigation = useCallback((direction: TimelineNavigationDirection) => {
+    const directionMultiplier = direction === "earlier" ? 1 : -1;
+    store.getState().pan(directionMultiplier * TIMELINE_NUDGE_PX);
+  }, [store]);
+
+  useEffect(() => stopTimelineNavigation, [stopTimelineNavigation]);
+
   return (
     <div className="timeline-lens" data-testid="timeline-lens">
       <div className="timeline-toolbar" data-testid="timeline-toolbar">
+        <div className="timeline-navigation" role="group" aria-label="Timeline navigation">
+          <TimelineNavigationButton
+            direction="earlier"
+            onStart={startTimelineNavigation}
+            onStop={stopTimelineNavigation}
+            onNudge={nudgeTimelineNavigation}
+          />
+          <TimelineNavigationButton
+            direction="later"
+            onStart={startTimelineNavigation}
+            onStop={stopTimelineNavigation}
+            onNudge={nudgeTimelineNavigation}
+          />
+        </div>
         <span className="timeline-tier" data-testid="timeline-tier">{tier}</span>
         {activeCategories.length > 0 && (
           <div className="timeline-filters" aria-label="Timeline card filters">
@@ -351,6 +423,44 @@ export function TimelineLens({
         />
       )}
     </div>
+  );
+}
+
+function TimelineNavigationButton({
+  direction,
+  onStart,
+  onStop,
+  onNudge,
+}: {
+  direction: TimelineNavigationDirection;
+  onStart: (direction: TimelineNavigationDirection) => void;
+  onStop: () => void;
+  onNudge: (direction: TimelineNavigationDirection) => void;
+}): JSX.Element {
+  const label = direction === "earlier" ? "Move timeline earlier" : "Move timeline later";
+  return (
+    <button
+      type="button"
+      className="timeline-navigation__button"
+      aria-label={label}
+      title="Hold to move faster"
+      onPointerDown={(event) => {
+        event.preventDefault();
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+        onStart(direction);
+      }}
+      onPointerUp={onStop}
+      onPointerCancel={onStop}
+      onLostPointerCapture={onStop}
+      onClick={(event) => {
+        // Keyboard activation does not produce a pointer-down event. It still
+        // gets a single accessible nudge, whereas mouse/touch uses the hold
+        // loop above.
+        if (event.detail === 0) onNudge(direction);
+      }}
+    >
+      {direction === "earlier" ? "←" : "→"}
+    </button>
   );
 }
 

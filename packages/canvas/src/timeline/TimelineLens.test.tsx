@@ -1,8 +1,12 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { TimelineLens, type TimelineDataSource } from "./TimelineLens";
 import type { ArchetypalLighting, GraphNode, LitInstance, NodeLayout, TimelineViewNode } from "./contracts";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function event(id: string, title: string, validFrom: string): GraphNode {
   return {
@@ -224,6 +228,48 @@ describe("TimelineLens", () => {
     await waitFor(() => {
       expect(screen.getByTestId("timeline-tier").textContent).not.toBe(before);
     });
+  });
+
+  test("timeline arrows pan in their named direction and accelerate while held", async () => {
+    let frame: FrameRequestCallback | null = null;
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frame = callback;
+      return 1;
+    });
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const viewportChanges: Array<{ centerYear: number; pixelsPerYear: number }> = [];
+
+    render(
+      <TimelineLens
+        dataSource={makeDataSource()}
+        onOpenNode={() => {}}
+        initialViewport={{ centerYear: 1800, pixelsPerYear: 2 }}
+        onViewportChange={(viewport) => viewportChanges.push(viewport)}
+      />,
+    );
+    await screen.findByTestId("timeline-node-banda");
+    const initialCenter = viewportChanges.at(-1)!.centerYear;
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Move timeline earlier" }), { pointerId: 80 });
+    await waitFor(() => expect(viewportChanges.at(-1)!.centerYear).toBeLessThan(initialCenter));
+    const afterTap = viewportChanges.at(-1)!.centerYear;
+
+    act(() => {
+      frame?.(0);
+      for (let timestamp = 16; timestamp <= 1_000; timestamp += 16) {
+        frame?.(timestamp);
+      }
+    });
+    await waitFor(() => expect(viewportChanges.at(-1)!.centerYear).toBeLessThan(afterTap - 100));
+
+    fireEvent.pointerUp(screen.getByRole("button", { name: "Move timeline earlier" }), { pointerId: 80 });
+    expect(cancelFrame).toHaveBeenCalled();
+    expect(requestFrame).toHaveBeenCalled();
+
+    const afterEarlier = viewportChanges.at(-1)!.centerYear;
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Move timeline later" }), { pointerId: 81 });
+    await waitFor(() => expect(viewportChanges.at(-1)!.centerYear).toBeGreaterThan(afterEarlier));
+    fireEvent.pointerUp(screen.getByRole("button", { name: "Move timeline later" }), { pointerId: 81 });
   });
 
   test("has no transport bar and pans the whole timeline scene vertically", async () => {

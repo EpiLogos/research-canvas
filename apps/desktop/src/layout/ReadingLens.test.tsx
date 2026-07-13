@@ -1,9 +1,14 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type { CanvasNode } from "@research-canvas/schema";
 
 import { ReadingLens } from "./ReadingLens";
 
-const state = { nodes: [] as Array<{ id: string; title: string; type: string }>, selectedNodeId: null as string | null };
+const state = {
+  nodes: [] as Array<{ id: string; title: string; type: string }>,
+  selectedNodeId: null as string | null,
+  workingRoot: "/workspace/project",
+};
 
 vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
   useCanvasWorkspace: () => state,
@@ -46,6 +51,44 @@ describe("ReadingLens", () => {
     render(<ReadingLens onFullScreen={() => {}} onExitToCanvas={onExitToCanvas} />);
     fireEvent.click(screen.getByRole("button", { name: "Back to canvas" }));
     expect(onExitToCanvas).toHaveBeenCalledTimes(1);
+  });
+
+  it("repairs a persisted legacy thumbnail URL before rendering the reader cover", () => {
+    state.nodes = [];
+    state.selectedNodeId = null;
+    const imageNode = {
+      id: "n1",
+      graphNodeId: "n1",
+      canvasId: "canvas-1",
+      type: "resource",
+      title: "Archive photograph",
+      summary: "A historical image.",
+      position: { x: 0, y: 0 },
+      size: { width: 260, height: 180 },
+      resourceKind: "image",
+      absolutePath: "/workspace/project/assets/n1/cover.png",
+      relativePath: "assets/n1/cover.png",
+      mimeType: "image/png",
+      fileFingerprint: "image:cover.png",
+      thumbnail: "asset://localhost/workspace/project/assets/n1/cover.png",
+      sequenceCaption: null,
+      sequenceViewport: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    } as CanvasNode;
+
+    render(
+      <ReadingLens
+        nodeOverride={imageNode}
+        onFullScreen={() => {}}
+        onExitToCanvas={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole("presentation")).toHaveAttribute(
+      "src",
+      "asset://localhost/%2Fworkspace%2Fproject%2Fassets%2Fn1%2Fcover.png",
+    );
   });
 
   it("closes the overlay variant with Escape", () => {

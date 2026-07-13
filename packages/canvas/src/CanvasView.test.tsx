@@ -97,11 +97,17 @@ describe("CanvasView card rendering", () => {
       updatedAt: NOW,
     };
 
-    render(<CanvasView nodes={[node]} edges={[]} />);
+    render(
+      <CanvasView
+        nodes={[node]}
+        edges={[]}
+        resolveAssetUrl={(url) => url.replace("asset://localhost/workspace", "asset://localhost/%2Fworkspace")}
+      />,
+    );
 
     const card = await screen.findByTestId("knowledge-card");
     const thumbnail = card.querySelector("img");
-    expect(thumbnail).toHaveAttribute("src", "asset://localhost/workspace/thumb.png");
+    expect(thumbnail).toHaveAttribute("src", "asset://localhost/%2Fworkspace/thumb.png");
     expect(screen.getByRole("heading", { name: "Archive note" })).toBeInTheDocument();
   });
 

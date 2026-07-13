@@ -3,7 +3,7 @@ import type { CanvasNode } from "@research-canvas/schema";
 import { resolveKnowledgeCardPresentation } from "@research-canvas/canvas";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { NodeReaderBody } from "../features/viewer/NodeReaderBody";
-import { toAssetUrl } from "../features/canvas/resourceFileHelpers";
+import { resolveWorkspaceAssetUrl, toAssetUrl } from "../features/canvas/resourceFileHelpers";
 
 export function ReadingLens({
   onFullScreen,
@@ -18,9 +18,16 @@ export function ReadingLens({
 }) {
   const workspace = useCanvasWorkspace();
   const node = nodeOverride ?? workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
-  const presentationNode = node?.type === "resource" && node.resourceKind === "image" && node.absolutePath
-    ? { ...node, thumbnail: node.thumbnail ?? toAssetUrl(node.absolutePath) }
-    : node;
+  const presentationNode = node
+    ? {
+        ...node,
+        thumbnail: node.thumbnail
+          ? resolveWorkspaceAssetUrl(node.thumbnail, workspace.workingRoot)
+          : node.type === "resource" && node.resourceKind === "image" && node.absolutePath
+            ? toAssetUrl(node.absolutePath)
+            : undefined,
+      }
+    : null;
   const presentation = presentationNode
     ? resolveKnowledgeCardPresentation(presentationNode, presentationNode.graph)
     : null;

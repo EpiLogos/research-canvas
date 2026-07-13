@@ -111,7 +111,7 @@ describe("NodeDocumentPane", () => {
     );
 
     await waitFor(() => {
-      expect(container.querySelector('img[src="asset://localhost/workspace/project/assets/n1/cat.png"]')).not.toBeNull();
+      expect(container.querySelector('img[src="asset://localhost/%2Fworkspace%2Fproject%2Fassets%2Fn1%2Fcat.png"]')).not.toBeNull();
     });
   });
 

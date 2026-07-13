@@ -1,3 +1,5 @@
+import { convertFileSrc, isTauri } from "@tauri-apps/api/core";
+
 interface DeriveResourceImportPlanInput {
   absolutePath: string;
   resourceRoots: string[];
@@ -36,8 +38,13 @@ export function deriveResourceImportPlan({
 
 export function toAssetUrl(absolutePath: string) {
   const normalizedPath = normalizePath(absolutePath);
-  const rootedPath = normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`;
-  return `asset://localhost${rootedPath.split("/").map(encodeURIComponent).join("/")}`;
+  // Tauri's native converter deliberately encodes the *whole* path. In
+  // particular, `/Users/...` becomes `/%2FUsers...`; the asset handler strips
+  // the URL separator and then decodes this back to an absolute filesystem
+  // path. Constructing `asset://localhost/Users/...` by hand loses that slash
+  // and produces a relative lookup (the broken-image question mark).
+  if (isTauri()) return convertFileSrc(normalizedPath);
+  return `asset://localhost/${encodeURIComponent(normalizedPath)}`;
 }
 
 /**
@@ -47,11 +54,16 @@ export function toAssetUrl(absolutePath: string) {
  */
 export function resolveWorkspaceAssetUrl(url: string, workspaceRoot: string | null | undefined): string {
   const value = url.trim();
-  if (!value || !workspaceRoot) return value;
+  if (!value) return value;
 
   const normalized = value.replace(/\\/g, "/");
   if (normalized.startsWith("/") || /^[a-z]:\//i.test(normalized)) return toAssetUrl(normalized);
+
+  const normalizedAssetUrl = normalizeLegacyAssetUrl(value);
+  if (normalizedAssetUrl !== value) return normalizedAssetUrl;
   if (hasUrlScheme(value)) return value;
+  if (!workspaceRoot) return value;
+
   if (!isSafeWorkspaceAssetPath(normalized)) return value;
   return toAssetUrl(`${normalizePath(workspaceRoot)}/${normalized}`);
 }
@@ -68,16 +80,13 @@ export function resolveBlockNoteAssetUrls(body: string, workspaceRoot: string | 
 /** Restores Tauri display URLs to the portable workspace-relative form before saving. */
 export function restoreBlockNoteAssetUrls(body: string, workspaceRoot: string | null | undefined): string {
   if (!workspaceRoot) return body;
-  const workspaceAssetPrefix = `${toAssetUrl(workspaceRoot)}/`;
+  const normalizedRoot = normalizePath(workspaceRoot);
   return mapBlockNoteImageUrls(body, (url) => {
-    if (!url.startsWith(workspaceAssetPrefix)) return url;
-    const relative = url.slice(workspaceAssetPrefix.length);
+    const absolutePath = assetUrlToAbsolutePath(url);
+    if (!absolutePath || !absolutePath.startsWith(`${normalizedRoot}/`)) return url;
+    const relative = absolutePath.slice(normalizedRoot.length + 1);
     if (!isSafeWorkspaceAssetPath(relative)) return url;
-    try {
-      return decodeURIComponent(relative);
-    } catch {
-      return url;
-    }
+    return relative;
   });
 }
 
@@ -139,6 +148,35 @@ function normalizePath(path: string) {
 
 function hasUrlScheme(value: string) {
   return /^[a-z][a-z\d+.-]*:/i.test(value);
+}
+
+function normalizeLegacyAssetUrl(url: string) {
+  const prefix = "asset://localhost/";
+  if (!url.startsWith(prefix)) return url;
+  const encodedPath = url.slice(prefix.length);
+  // The native macOS/Linux format is `asset://localhost/%2Fabsolute%2Fpath`.
+  // Keep valid values unchanged and only repair the manually built legacy form.
+  if (/^%2f/i.test(encodedPath)) return url;
+  try {
+    const decodedPath = decodeURIComponent(encodedPath);
+    const absolutePath = decodedPath.startsWith("/") || /^[a-z]:\//i.test(decodedPath)
+      ? decodedPath
+      : `/${decodedPath}`;
+    return toAssetUrl(absolutePath);
+  } catch {
+    return url;
+  }
+}
+
+function assetUrlToAbsolutePath(url: string): string | null {
+  const prefixes = ["asset://localhost/", "http://asset.localhost/"];
+  const prefix = prefixes.find((candidate) => url.startsWith(candidate));
+  if (!prefix) return null;
+  try {
+    return decodeURIComponent(url.slice(prefix.length)).replace(/\\/g, "/");
+  } catch {
+    return null;
+  }
 }
 
 function isSafeWorkspaceAssetPath(value: string) {
