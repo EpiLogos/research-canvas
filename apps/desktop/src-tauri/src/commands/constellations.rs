@@ -30,6 +30,11 @@ pub struct WorkspaceBootstrap {
     pub database_path: String,
     pub workspace_id: String,
     pub constellations: Vec<ConstellationTreeNodePayload>,
+    /// The monorepo root (not a constellation's content root, which for the
+    /// root-archetypal-field constellation is `antichrist-vault/`). Callers
+    /// that need to run shell commands (e.g. the embedded terminal) should
+    /// use this, not a constellation's `rootPath`.
+    pub workspace_root: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -313,7 +318,8 @@ pub fn bootstrap_workspace_at(
 ) -> Result<WorkspaceBootstrap, String> {
     let database_path = database_path.as_ref().to_path_buf();
     let database = Database::open(&database_path).map_err(|error| error.to_string())?;
-    ensure_workspace_constellations(database.connection(), &workspace_root())?;
+    let root = workspace_root();
+    ensure_workspace_constellations(database.connection(), &root)?;
 
     let constellations = list_constellations_flat(database.connection())?;
     let active_constellation_id = constellations
@@ -336,6 +342,7 @@ pub fn bootstrap_workspace_at(
             .into_iter()
             .map(constellation_tree_payload)
             .collect(),
+        workspace_root: root.to_string_lossy().to_string(),
     })
 }
 

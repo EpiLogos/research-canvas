@@ -230,6 +230,11 @@ fn bootstrap_workspace_surfaces_root_constellation_portals_and_preserves_layout_
                 .to_string_lossy()
         )
     );
+    assert_eq!(
+        PathBuf::from(&bootstrap.workspace_root),
+        workspace_root(),
+        "bootstrap exposes the monorepo root for workspace-wide commands"
+    );
     let root = bootstrap
         .constellations
         .iter()
