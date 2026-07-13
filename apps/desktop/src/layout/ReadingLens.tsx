@@ -3,11 +3,11 @@ import type { CanvasNode } from "@research-canvas/schema";
 import { resolveKnowledgeCardPresentation } from "@research-canvas/canvas";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { NodeReaderBody } from "../features/viewer/NodeReaderBody";
-import { resolveWorkspaceAssetUrl } from "../features/canvas/resourceFileHelpers";
 import {
   readerRecordFromCanvasNode,
   type ReaderRecord,
 } from "../features/viewer/readerRecord";
+import { resolveReaderMediaReference } from "../features/viewer/readerMedia";
 
 export function ReadingLens({
   onFullScreen,
@@ -25,9 +25,10 @@ export function ReadingLens({
   const workspace = useCanvasWorkspace();
   const selectedNode = nodeOverride ?? workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
   const record = recordOverride ?? (selectedNode ? readerRecordFromCanvasNode(selectedNode) : null);
-  const coverUrl = record?.coverReference
-    ? resolveWorkspaceAssetUrl(record.coverReference, workspace.workingRoot)
+  const coverMedia = record?.coverReference
+    ? resolveReaderMediaReference(record.coverReference, workspace.workingRoot)
     : null;
+  const coverUrl = coverMedia?.status === "resolved" ? coverMedia.displayUrl : null;
   const presentation = record
     ? resolveKnowledgeCardPresentation({
         title: record.title,
@@ -80,9 +81,13 @@ export function ReadingLens({
           <div className="ishell-reading__col">
             {presentation && (
               <header className="ishell-reading__record" style={{ borderLeftColor: presentation.palette.accent }}>
-                {presentation.coverUrl && (
+                {coverMedia?.status === "unresolved" ? (
+                  <div className="ishell-reading__media-unresolved" data-testid="reader-media-unresolved">
+                    Image source needs re-attaching
+                  </div>
+                ) : presentation.coverUrl ? (
                   <img className="ishell-reading__cover" data-testid="reader-cover" src={presentation.coverUrl} alt="" />
-                )}
+                ) : null}
                 <div>
                   {presentation.pith && <p className="ishell-reading__pith">{presentation.pith}</p>}
                   {presentation.badges.length > 0 && (

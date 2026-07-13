@@ -41,6 +41,13 @@ const body = JSON.stringify([
     content: [{ type: "text", text: "Graph body", styles: {} }],
     children: [],
   },
+  {
+    id: "image-1",
+    type: "image",
+    props: { url: "assets/g1/ship.png", caption: "Company fleet" },
+    content: [],
+    children: [],
+  },
 ]);
 
 // The transport is the backend boundary — the only legitimate data double in a
@@ -110,6 +117,7 @@ const workspaceValue = {
   contentLinkingActions,
   entries: [],
   selectedEntryId: null,
+  workingRoot: "/workspace/project",
 } as unknown as ComponentProps<
   typeof CanvasWorkspaceContext.Provider
 >["value"];
@@ -129,10 +137,11 @@ function renderDocument() {
 
 describe("GraphDocumentContent — cutover + mounted content/linking affordances", () => {
   it("renders the real node document (Neo4j-backed body) for a graph node id", async () => {
-    renderDocument();
+    const { container } = renderDocument();
     // The real BlockNote editor renders the body loaded via readGraphNode.
     expect(await screen.findByText("Graph body")).toBeInTheDocument();
     expect(transport.readGraphNode).toHaveBeenCalledWith({ graphNodeId: "g1" });
+    expect(container.querySelector('img[src="asset://localhost/%2Fworkspace%2Fproject%2Fassets%2Fg1%2Fship.png"]')).not.toBeNull();
   });
 
   it("mounts the WS4 content + linking affordances around the document", async () => {

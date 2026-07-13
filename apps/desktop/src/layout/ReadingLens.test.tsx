@@ -105,4 +105,31 @@ describe("ReadingLens", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onExitToCanvas).toHaveBeenCalledTimes(1);
   });
+
+  it("renders a clear unresolved-media notice instead of a broken image for a blob thumbnail", () => {
+    state.nodes = [];
+    state.selectedNodeId = null;
+    const node = {
+      id: "n1",
+      graphNodeId: null,
+      canvasId: "canvas-1",
+      type: "note",
+      title: "Lost image reference",
+      content: "[]",
+      tags: [],
+      summary: "The original image needs re-attaching.",
+      thumbnail: "blob:https://chatgpt.com/lost-image",
+      position: { x: 0, y: 0 },
+      size: { width: 260, height: 180 },
+      sequenceCaption: null,
+      sequenceViewport: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    } as CanvasNode;
+
+    render(<ReadingLens nodeOverride={node} onFullScreen={() => {}} onExitToCanvas={() => {}} />);
+
+    expect(screen.getByTestId("reader-media-unresolved")).toHaveTextContent("Image source needs re-attaching");
+    expect(screen.queryByTestId("reader-cover")).not.toBeInTheDocument();
+  });
 });

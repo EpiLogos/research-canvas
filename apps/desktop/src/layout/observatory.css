@@ -308,6 +308,19 @@
   border-radius: 4px;
   border: 1px solid var(--ob-line);
 }
+.ishell-reading__media-unresolved {
+  display: flex;
+  align-items: center;
+  width: 132px;
+  min-height: 54px;
+  padding: 7px 9px;
+  border: 1px dashed var(--ob-line-3);
+  border-radius: 4px;
+  color: var(--ob-faint);
+  font-family: var(--ob-mono);
+  font-size: 9px;
+  line-height: 1.35;
+}
 .ishell-reading__pith {
   margin: 0;
   color: var(--ob-dim);
