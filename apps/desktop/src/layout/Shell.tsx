@@ -39,6 +39,7 @@ export function Shell() {
   const [drawingMode, setDrawingMode] = useState(false);
   const [strokeColour, setStrokeColour] = useState("#f97316");
   const timelineViewports = useRef(new Map<string, { centerYear: number; pixelsPerYear: number }>());
+  const browserCloseTimer = useRef<number | null>(null);
 
   const { lens, setLens } = useLensMode();
   const closeFullScreen = useCallback(() => {
@@ -157,6 +158,32 @@ export function Shell() {
     setDrawingMode(false);
   }, [layout]);
 
+  const cancelBrowserClose = useCallback(() => {
+    if (browserCloseTimer.current !== null) {
+      window.clearTimeout(browserCloseTimer.current);
+      browserCloseTimer.current = null;
+    }
+  }, []);
+
+  const scheduleBrowserClose = useCallback(() => {
+    cancelBrowserClose();
+    browserCloseTimer.current = window.setTimeout(() => {
+      const focusedElement = document.activeElement;
+      if (focusedElement instanceof HTMLElement && focusedElement.closest("[data-browser-surface='true']")) {
+        return;
+      }
+      closeBrowser();
+    }, 260);
+  }, [cancelBrowserClose, closeBrowser]);
+
+  const previewBrowserMode = useCallback((mode: "files" | "search" | "annotations") => {
+    cancelBrowserClose();
+    setLeftMode(mode);
+    layout.setBrowserOpen(true);
+  }, [cancelBrowserClose, layout]);
+
+  useEffect(() => () => cancelBrowserClose(), [cancelBrowserClose]);
+
   // Global keyboard shortcuts.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -170,6 +197,9 @@ export function Shell() {
       if ((e.metaKey || e.ctrlKey) && e.key === "1") { e.preventDefault(); setShellLens("canvas"); }
       if ((e.metaKey || e.ctrlKey) && e.key === "2") { e.preventDefault(); setShellLens("timeline"); }
       if ((e.metaKey || e.ctrlKey) && e.key === "3") { e.preventDefault(); setShellLens("reading"); }
+      if (e.key === "Escape" && layout.browserOpen) {
+        closeBrowser();
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -239,6 +269,9 @@ export function Shell() {
           activeLeftMode={leftMode}
           onToggleBrowser={layout.toggleBrowser}
           onSetBrowserMode={setBrowserMode}
+          onPreviewBrowserMode={previewBrowserMode}
+          onBrowserInteractionStart={cancelBrowserClose}
+          onBrowserInteractionEnd={scheduleBrowserClose}
           onOpenSequences={openSequences}
           onOpenSettings={openSettings}
           inspectorActive={inspectorVisible}
@@ -252,7 +285,8 @@ export function Shell() {
             open={layout.browserOpen}
             mode={leftMode}
             onResizeStart={layout.beginBrowserResize}
-            onClose={closeBrowser}
+            onInteractionStart={cancelBrowserClose}
+            onInteractionEnd={scheduleBrowserClose}
             drawingMode={drawingMode}
             onToggleDrawing={() => setDrawingMode((v) => !v)}
             strokeColour={strokeColour}

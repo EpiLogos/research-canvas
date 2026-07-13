@@ -37,6 +37,10 @@ import { ResourceNode } from "./nodes/ResourceNode";
 import { defaultSourceHandleId, defaultTargetHandleId } from "./nodes/nodeHandles";
 
 interface CanvasViewProps {
+  /** Changes whenever the active workspace canvas changes. */
+  canvasKey?: string;
+  /** A persisted or tab-local viewport to restore after a canvas switch. */
+  initialViewport?: { x: number; y: number; zoom: number } | null;
   edges: CanvasEdge[];
   nodes: CanvasNode[];
   onMoveNode?: (nodeId: string, position: { x: number; y: number }) => void;
@@ -110,6 +114,8 @@ export function CanvasView(props: CanvasViewProps) {
 }
 
 function CanvasViewInner({
+  canvasKey,
+  initialViewport = null,
   edges,
   nodes,
   onMoveNode,
@@ -131,8 +137,6 @@ function CanvasViewInner({
   onUpdateEdgeRelationKind,
   onResizeNode,
   onUpdateNoteContent,
-  leftPanelOpen,
-  rightPanelOpen,
   annotations = [],
   drawingEnabled = false,
   onCreateStroke,
@@ -172,9 +176,15 @@ function CanvasViewInner({
   }, [nodes, setCenter, getZoom]);
 
   useEffect(() => {
-    const timer = setTimeout(() => fitView({ padding: 0.15 }), 200);
+    const timer = setTimeout(() => {
+      if (initialViewport) {
+        void setViewport(initialViewport, { duration: 0 });
+      } else {
+        void fitView({ padding: 0.15 });
+      }
+    }, 200);
     return () => clearTimeout(timer);
-  }, [leftPanelOpen, rightPanelOpen, fitView]);
+  }, [canvasKey, fitView, initialViewport, setViewport]);
 
   const flyToNode = useCallback(
     (nodeId: string, viewport?: { x: number; y: number; zoom: number }) => {

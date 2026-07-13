@@ -852,7 +852,7 @@ fn write_layout_records(
         LayoutWriteMode::PreserveExisting => {
             let mut written = 0;
             for record in records {
-                written += connection
+                let inserted = connection
                     .execute(
                         "INSERT OR IGNORE INTO node_layout (
                             graph_node_id,
@@ -878,10 +878,78 @@ fn write_layout_records(
                         ],
                     )
                     .map_err(|e| e.to_string())?;
+                written += inserted;
+                // Bootstrap never overwrites a person's chosen layout, but a
+                // newly curated portable thumbnail is an additive repair: it
+                // may fill an absent value only. This lets existing workspaces
+                // receive an image fix without moving cards or replacing any
+                // user styling/thumbnail choice.
+                if inserted == 0 && merge_missing_thumbnail(connection, record)? {
+                    written += 1;
+                }
             }
             Ok(written)
         }
     }
+}
+
+fn merge_missing_thumbnail(
+    connection: &Connection,
+    desired: &NodeLayoutRecord,
+) -> Result<bool, String> {
+    let desired_style = serde_json::from_str::<serde_json::Value>(&desired.style_json)
+        .map_err(|error| format!("invalid seeded style JSON: {error}"))?;
+    let Some(thumbnail) = desired_style
+        .get("thumbnail")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+    else {
+        return Ok(false);
+    };
+
+    let Some(current_style_json) = connection
+        .query_row(
+            "SELECT style_json FROM node_layout WHERE canvas_id = ?1 AND graph_node_id = ?2",
+            params![desired.canvas_id, desired.graph_node_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+    else {
+        return Ok(false);
+    };
+    let Ok(mut current_style) = serde_json::from_str::<serde_json::Value>(&current_style_json)
+    else {
+        // A corrupt, user-owned layout must not be replaced by a bootstrap
+        // side effect. Normal persistence/repair owns that condition.
+        return Ok(false);
+    };
+    let Some(style_object) = current_style.as_object_mut() else {
+        return Ok(false);
+    };
+    if style_object
+        .get("thumbnail")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        return Ok(false);
+    }
+    style_object.insert(
+        "thumbnail".to_string(),
+        serde_json::Value::String(thumbnail.to_string()),
+    );
+    connection
+        .execute(
+            "UPDATE node_layout SET style_json = ?1, updated_at = ?2 WHERE canvas_id = ?3 AND graph_node_id = ?4",
+            params![
+                current_style.to_string(),
+                desired.updated_at,
+                desired.canvas_id,
+                desired.graph_node_id,
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(true)
 }
 
 fn constellation_canvas_kind(slug: &str) -> String {
@@ -1034,7 +1102,7 @@ fn layout_style_json(
 }
 
 fn node_style_json(seed: &NodeSeed) -> String {
-    serde_json::json!({
+    let mut style = serde_json::json!({
         "dotColour": colour_for(seed.entity_type),
         "bgColour": "#151515",
         "textColour": "#f2efe8",
@@ -1044,8 +1112,24 @@ fn node_style_json(seed: &NodeSeed) -> String {
             "content": seed.summary,
             "tags": seed.evidence_tags
         }
-    })
-    .to_string()
+    });
+    if let Some(thumbnail) = thumbnail_for_seed(seed.slug) {
+        style["thumbnail"] = serde_json::Value::String(thumbnail.to_string());
+    }
+    style.to_string()
+}
+
+/** Curated media is opt-in and attached to the precise node it depicts. */
+fn thumbnail_for_seed(slug: &str) -> Option<&'static str> {
+    match slug {
+        "claim-balfour-hidden-hand" => Some(
+            "assets/root-archetypal-field:claim-balfour-hidden-hand/black_white_silver_exact_green_geometry.png",
+        ),
+        "dutroux-institutional-failure" => Some(
+            "assets/root-archetypal-field:dutroux-institutional-failure/black_white_silver_green_geometry_clean.png",
+        ),
+        _ => None,
+    }
 }
 
 fn child_layout_position(index: usize) -> (f64, f64) {
@@ -3708,6 +3792,72 @@ mod tests {
         serde_json::from_str::<serde_json::Value>(&record.style_json).expect("style json")
             ["__canvasNode"]
             .clone()
+    }
+
+    #[test]
+    fn curated_seed_media_is_attached_to_its_specific_cards_without_replacing_existing_style() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let database = Database::open(directory.path().join("seed.sqlite")).expect("database");
+        let root = ensure_root_archetypal_constellation_workspace(
+            database.connection(),
+            directory.path().to_str().expect("workspace root"),
+        )
+        .expect("seeded workspace");
+        let claim_canvas_id = ConstellationRepository::new(database.connection())
+            .list_children(&root.constellation_id)
+            .expect("child constellations")
+            .into_iter()
+            .find(|constellation| constellation.slug == "claim-provenance")
+            .and_then(|constellation| constellation.primary_canvas_id)
+            .expect("claim provenance canvas");
+        let desired = LayoutRepository::new(database.connection())
+            .list_node_layout(&claim_canvas_id)
+            .expect("claim provenance layouts")
+            .into_iter()
+            .find(|layout| {
+                layout.graph_node_id == "root-archetypal-field:claim-balfour-hidden-hand"
+            })
+            .expect("seeded Balfour claim card");
+        let existing = NodeLayoutRecord {
+            style_json: serde_json::json!({ "dotColour": "#112233", "bgColour": "#224466" })
+                .to_string(),
+            position_x: 12.0,
+            position_y: 24.0,
+            ..desired.clone()
+        };
+        LayoutRepository::new(database.connection())
+            .upsert_node_layout(&existing)
+            .expect("existing layout");
+
+        write_layout_records(
+            database.connection(),
+            &[desired],
+            LayoutWriteMode::PreserveExisting,
+        )
+        .expect("preserve existing layout");
+        let stored = LayoutRepository::new(database.connection())
+            .list_node_layout(&claim_canvas_id)
+            .expect("stored layouts")
+            .into_iter()
+            .find(|layout| {
+                layout.graph_node_id == "root-archetypal-field:claim-balfour-hidden-hand"
+            })
+            .expect("stored Balfour claim card");
+        let style: serde_json::Value =
+            serde_json::from_str(&stored.style_json).expect("style JSON");
+
+        assert_eq!(
+            stored.position_x, 12.0,
+            "thumbnail repair must not move a card"
+        );
+        assert_eq!(
+            style["dotColour"], "#112233",
+            "thumbnail repair must preserve user styling"
+        );
+        assert_eq!(
+            style["thumbnail"],
+            "assets/root-archetypal-field:claim-balfour-hidden-hand/black_white_silver_exact_green_geometry.png",
+        );
     }
 
     #[test]

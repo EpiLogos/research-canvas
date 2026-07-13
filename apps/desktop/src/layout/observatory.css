@@ -148,9 +148,12 @@
 .ishell .icon-strip__btn svg { width: 16px; height: 16px; }
 .ishell .icon-strip__btn:hover { color: var(--ob-dim); background: var(--ob-line); }
 .ishell .icon-strip__btn[data-active="true"] { color: var(--ob-accent); background: var(--ob-tint); }
+.ishell .icon-strip__btn:focus-visible { outline: 1px solid var(--ob-accent); outline-offset: 2px; }
 .ishell-stage { flex: 1 1 auto; }
 
-/* Floating browser overlay (the existing .left-overlay, restyled to a card). */
+/* Explorer: invoked from the rail, held while pointer/focus remains in its
+   surface, and released after a short exit delay. There is deliberately no
+   redundant close box competing with the tool rail. */
 .ishell-stage .left-overlay {
   position: absolute;
   left: 8px; top: 8px; bottom: 8px;
@@ -171,30 +174,58 @@
   transform: translateX(0);
   opacity: 1;
 }
+.explorer-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 14px 12px 11px;
+  border-bottom: 1px solid var(--ob-line);
+  background: linear-gradient(120deg, rgba(121, 192, 212, 0.09), transparent 70%);
+}
+.explorer-heading__eyebrow {
+  color: var(--ob-ink);
+  font: 600 10px var(--ob-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.explorer-heading__detail { color: var(--ob-faint); font-size: 10px; line-height: 1.35; }
 .lo-browser-controls { display: flex; flex-direction: column; gap: 6px; padding: 10px 10px 6px; }
 .lo-seg { display: flex; background: var(--ob-panel); border: 1px solid var(--ob-line-2); border-radius: 7px; padding: 2px; }
 .lo-seg button { flex: 1; font: inherit; font-size: 11px; border: 0; background: transparent; color: var(--ob-dim); padding: 4px 0; border-radius: 5px; cursor: pointer; }
 .lo-seg button[data-active="true"] { background: var(--ob-tint); color: var(--ob-accent); }
 .lo-filter { font: inherit; font-size: 11px; background: var(--ob-panel); border: 1px solid var(--ob-line-2); border-radius: 7px; padding: 5px 9px; color: var(--ob-ink); }
 .lo-filter::placeholder { color: var(--ob-faint); }
-
-/* Close affordance for the browser overlay — mirrors .ishell-inspector__close
-   so the two floating panels feel consistent. */
-.left-overlay__close {
-  position: absolute;
-  top: 8px; right: 8px;
-  z-index: 1;
-  width: 20px; height: 20px;
-  display: flex; align-items: center; justify-content: center;
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  color: var(--ob-faint);
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
+.lo-constellation-list {
+  max-height: min(36vh, 330px);
+  gap: 1px;
+  padding: 3px 6px 7px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--ob-line-3) transparent;
+  scrollbar-width: thin;
 }
-.left-overlay__close:hover { color: var(--ob-accent); background: var(--ob-line); }
+.lo-constellation-item {
+  position: relative;
+  gap: 3px;
+  padding-top: 7px;
+  padding-right: 8px;
+  padding-bottom: 7px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+.lo-constellation-item__line { display: flex; min-width: 0; align-items: center; gap: 6px; }
+.lo-constellation-item__branch { width: 10px; color: var(--ob-faint); font: 12px var(--ob-mono); }
+.lo-constellation-item__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lo-constellation-item__meta { color: var(--ob-faint); font: 9px var(--ob-mono); letter-spacing: 0.02em; }
+.lo-constellation-item:hover { background: rgba(121, 192, 212, 0.075); border-color: rgba(121, 192, 212, 0.16); }
+.lo-constellation-item[data-active="true"] {
+  background: var(--ob-tint);
+  border-color: rgba(121, 192, 212, 0.3);
+  color: var(--ob-ink);
+}
+.lo-constellation-item[data-active="true"] .lo-constellation-item__branch,
+.lo-constellation-item[data-active="true"] .lo-constellation-item__meta { color: var(--ob-accent); }
+.lo-constellation-item:focus-visible { outline: 1px solid var(--ob-accent); outline-offset: -1px; }
 
 /* Floating inspector overlay. */
 .ishell-inspector {
@@ -234,6 +265,67 @@
 .ishell-dock__resize { position: absolute; background: transparent; }
 .ishell-dock__resize--height { left: 0; right: 0; top: 0; height: 5px; cursor: ns-resize; }
 .ishell-dock__resize--width { top: 0; right: 0; bottom: 0; width: 6px; cursor: ew-resize; }
+
+/* Persistent workbench tabs. Timeline stays outside this strip by design. */
+.canvas-tabs {
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  right: 14px;
+  z-index: var(--z-panel);
+  display: flex;
+  min-width: 0;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  pointer-events: none;
+}
+.canvas-tabs::-webkit-scrollbar { display: none; }
+.canvas-tabs__item {
+  display: flex;
+  min-width: 0;
+  max-width: 230px;
+  border: 1px solid var(--ob-line-2);
+  border-radius: 7px;
+  background: rgba(12, 17, 25, 0.9);
+  pointer-events: auto;
+}
+.canvas-tabs__item[data-active="true"] {
+  border-color: var(--ob-accent-deep);
+  background: var(--ob-panel-2);
+  box-shadow: 0 8px 22px -16px rgba(0, 0, 0, 0.9);
+}
+.canvas-tabs__tab {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ob-dim);
+  cursor: pointer;
+  font: 11px var(--ob-sans);
+  padding: 7px 8px 7px 10px;
+}
+.canvas-tabs__item[data-active="true"] .canvas-tabs__tab { color: var(--ob-ink); }
+.canvas-tabs__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canvas-tabs__pin { color: var(--ob-accent); font-size: 8px; }
+.canvas-tabs__close {
+  display: grid;
+  width: 27px;
+  flex: 0 0 27px;
+  place-items: center;
+  border: 0;
+  border-left: 1px solid var(--ob-line);
+  border-radius: 0 6px 6px 0;
+  background: transparent;
+  color: var(--ob-faint);
+  cursor: pointer;
+}
+.canvas-tabs__close:hover,
+.canvas-tabs__close:focus-visible { background: var(--ob-tint); color: var(--ob-accent); outline: none; }
+.canvas-tabs__close svg { fill: none; stroke: currentColor; stroke-linecap: round; stroke-width: 1.8; }
 
 /* ===== Reader surface: one frame for canvas, timeline and full-screen ===== */
 .reader-surface {
@@ -443,6 +535,37 @@
   font-family: var(--ob-mono);
   font-size: 10px;
 }
+.reader-surface__metadata-detail {
+  display: block;
+  margin-top: 3px;
+  color: var(--ob-faint);
+  font-family: var(--ob-mono);
+  font-size: 10px;
+}
+.reader-surface__place-tags { display: flex !important; flex-wrap: wrap; gap: 4px; }
+.reader-surface__place-tags li {
+  padding: 2px 6px;
+  border: 1px solid rgba(121, 192, 212, 0.28);
+  border-radius: 999px;
+  background: var(--ob-tint);
+  color: var(--ob-accent);
+}
+.reader-sources { display: grid; gap: 7px; }
+.reader-sources__item { display: grid; gap: 3px; }
+.reader-sources__link,
+.reader-sources__coordinate {
+  width: fit-content;
+  max-width: 100%;
+  color: var(--ob-accent);
+  font-family: var(--ob-mono);
+  font-size: 10px;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.reader-sources__link:hover,
+.reader-sources__link:focus-visible { color: var(--ob-ink); text-decoration: underline; outline: none; }
+.reader-sources__provenance,
+.reader-sources__empty { color: var(--ob-faint); font: 9px var(--ob-mono); }
 .reader-surface__actions {
   display: grid;
   gap: 10px;

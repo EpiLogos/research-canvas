@@ -78,7 +78,7 @@ describe("useShellLayout summoned panels", () => {
     const start = { clientX: 100, preventDefault() {} } as unknown as React.PointerEvent;
     act(() => result.current.beginBrowserResize(start));
     act(() => window.dispatchEvent(new PointerEvent("pointermove", { clientX: 140 })));
-    expect(result.current.browserWidth).toBe(280);
+    expect(result.current.browserWidth).toBe(340);
     act(() => window.dispatchEvent(new PointerEvent("pointerup")));
   });
 

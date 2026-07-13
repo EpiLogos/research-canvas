@@ -15,6 +15,23 @@ const record = {
   evidenceTags: ["history:documented", "place:banda-islands"],
   sourceCoordinates: ["episodes/2/colonial-power.md#banda"],
   bodySourceCoordinates: ["research/banda-archive.md#company-fleet"],
+  narrative: {
+    historicity: "historical",
+    claimKind: "fact",
+    evidenceStatus: "documented",
+    temporalRole: "occurred_at",
+    sourceKind: "research",
+  },
+  ql: {
+    form: "quaternity",
+    unitId: "ql-banda",
+    arc: "day",
+    topology: "torus",
+    schemaVersion: 2,
+    sourceCoordinates: ["ql/banda-unit.md#P3"],
+    completeness: "complete",
+  },
+  placeTags: ["place:banda-islands"],
   temporal: { validFrom: "1621-01-01", validTo: null, precision: "year" },
   placeCoverage: "resolved",
 } satisfies ReaderRecord;
@@ -46,9 +63,11 @@ describe("ReaderSurface", () => {
     expect(screen.getByText("Deep historical reading")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Show reader details" }));
-    expect(screen.getByText("episodes/2/colonial-power.md#banda")).toBeInTheDocument();
-    expect(screen.getByText("research/banda-archive.md#company-fleet")).toBeInTheDocument();
-    expect(screen.getByText("Resolved place coverage")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "episodes/2/colonial-power.md#banda" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "research/banda-archive.md#company-fleet" })).toBeInTheDocument();
+    expect(screen.getByText("QL unit · ql-banda")).toBeInTheDocument();
+    expect(screen.getByText("historical · fact · documented")).toBeInTheDocument();
+    expect(screen.getByText("banda islands")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add relation" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Close reading" }));

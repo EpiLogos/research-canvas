@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 
-const BROWSER_MIN = 200;
-const BROWSER_MAX = 380;
+const BROWSER_MIN = 240;
+const BROWSER_MAX = 460;
 const INSPECTOR_MIN = 220;
 const INSPECTOR_MAX = 380;
 const DOCK_MIN = 120;
@@ -13,7 +13,7 @@ export function useShellLayout() {
   const shellRef = useRef<HTMLDivElement>(null);
 
   const [browserOpen, setBrowserOpen] = useState(false);
-  const [browserWidth, setBrowserWidth] = useState(240);
+  const [browserWidth, setBrowserWidth] = useState(300);
   const toggleBrowser = useCallback(() => setBrowserOpen((v) => !v), []);
 
   const [inspectorOpen, setInspectorOpen] = useState(false);

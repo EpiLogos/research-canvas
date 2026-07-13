@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { FuzzyFilePicker } from "@research-canvas/canvas";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { SearchPanel } from "../features/search/SearchPanel";
@@ -8,14 +8,15 @@ interface LeftOverlayProps {
   open: boolean;
   mode: "files" | "search" | "annotations";
   onResizeStart: (e: React.PointerEvent) => void;
-  onClose?: () => void;
+  onInteractionStart?: () => void;
+  onInteractionEnd?: () => void;
   drawingMode?: boolean;
   onToggleDrawing?: () => void;
   strokeColour?: string;
   onSetStrokeColour?: (colour: string) => void;
 }
 
-export function LeftOverlay({ open, mode, onResizeStart, onClose, drawingMode, onToggleDrawing, strokeColour, onSetStrokeColour }: LeftOverlayProps) {
+export function LeftOverlay({ open, mode, onResizeStart, onInteractionStart, onInteractionEnd, drawingMode, onToggleDrawing, strokeColour, onSetStrokeColour }: LeftOverlayProps) {
   const workspace = useCanvasWorkspace();
   const [folderError, setFolderError] = useState<string | null>(null);
   const [showFolderPicker, setShowFolderPicker] = useState(false);
@@ -23,6 +24,30 @@ export function LeftOverlay({ open, mode, onResizeStart, onClose, drawingMode, o
   const [folderPickerAnchor, setFolderPickerAnchor] = useState<{ x: number; y: number } | null>(null);
   const [browserView, setBrowserView] = useState<"graph" | "files">("graph");
   const [filter, setFilter] = useState("");
+  const constellationRows = useMemo(() => {
+    const byId = new Map(workspace.constellations.map((constellation) => [constellation.id, constellation]));
+    const childrenByParent = new Map<string | null, typeof workspace.constellations>();
+    for (const constellation of workspace.constellations) {
+      const parentId = constellation.parentId && byId.has(constellation.parentId)
+        ? constellation.parentId
+        : null;
+      childrenByParent.set(parentId, [
+        ...(childrenByParent.get(parentId) ?? []),
+        constellation,
+      ]);
+    }
+
+    const rows: Array<{ constellation: typeof workspace.constellations[number]; depth: number; childCount: number }> = [];
+    const visit = (parentId: string | null, depth: number) => {
+      for (const constellation of childrenByParent.get(parentId) ?? []) {
+        const children = childrenByParent.get(constellation.id) ?? [];
+        rows.push({ constellation, depth, childCount: children.length });
+        visit(constellation.id, depth + 1);
+      }
+    };
+    visit(null, 0);
+    return rows;
+  }, [workspace.constellations]);
 
   const handleAddFolder = useCallback(async (e: React.MouseEvent) => {
     const rect = (e.target as HTMLElement).getBoundingClientRect();
@@ -38,41 +63,64 @@ export function LeftOverlay({ open, mode, onResizeStart, onClose, drawingMode, o
   }, [workspace]);
 
   return (
-    <aside className="left-overlay" data-testid="left-overlay" data-open={open ? "true" : "false"} aria-hidden={!open}>
-      <button
-        type="button"
-        className="left-overlay__close"
-        aria-label="Close panel"
-        onClick={() => onClose?.()}
-      >
-        ×
-      </button>
+    <aside
+      className="left-overlay"
+      data-testid="left-overlay"
+      data-open={open ? "true" : "false"}
+      data-browser-surface="true"
+      aria-hidden={!open}
+      onPointerEnter={onInteractionStart}
+      onPointerLeave={onInteractionEnd}
+      onFocusCapture={onInteractionStart}
+      onBlurCapture={(event) => {
+        const surface = event.currentTarget;
+        window.setTimeout(() => {
+          if (!surface.contains(document.activeElement)) onInteractionEnd?.();
+        }, 0);
+      }}
+    >
       <div className="left-overlay__inner">
 
         {mode === "files" && (
           <>
-            {/* Constellation selector — always visible in files mode, regardless
-                of the Graph/Files sub-view, so it doesn't look buried behind
-                the segmented control below. */}
+            <header className="explorer-heading">
+              <span className="explorer-heading__eyebrow">Workspace explorer</span>
+              <span className="explorer-heading__detail">Constellations are independent canvases</span>
+            </header>
             <div className="lo-section">
               <div className="lo-section__header">
                 <span className="lo-label">Constellations</span>
               </div>
               <div className="lo-constellation-list" data-testid="lo-constellations">
-                {workspace.constellations.map((constellation) => (
+                {constellationRows.map(({ constellation, depth, childCount }) => (
                   <button
                     key={constellation.id}
                     className="lo-constellation-item"
                     data-active={workspace.activeConstellationId === constellation.id ? "true" : "false"}
-                    onClick={() => workspace.selectConstellation(constellation.id)}
+                    data-depth={depth}
+                    aria-current={workspace.activeConstellationId === constellation.id ? "page" : undefined}
+                    style={{ paddingLeft: `${10 + depth * 14}px` }}
+                    onClick={() => {
+                      const openConstellation = workspace.openConstellationTab ?? workspace.selectConstellation;
+                      void openConstellation(constellation.id);
+                    }}
                     title={constellation.summary || constellation.rootPath}
                   >
-                    <span className="lo-constellation-item__name">
-                      {constellation.name}
+                    <span className="lo-constellation-item__line">
+                      <span className="lo-constellation-item__branch" aria-hidden="true">
+                        {childCount > 0 ? "⌁" : "·"}
+                      </span>
+                      <span className="lo-constellation-item__name">
+                        {constellation.name}
+                      </span>
                     </span>
                     {constellation.summary && (
                       <span className="lo-constellation-item__summary">{constellation.summary}</span>
                     )}
+                    <span className="lo-constellation-item__meta">
+                      {depth === 0 ? "root canvas" : "nested constellation"}
+                      {childCount > 0 ? ` · ${childCount} child${childCount === 1 ? "" : "ren"}` : ""}
+                    </span>
                   </button>
                 ))}
                 {workspace.constellations.length === 0 && (

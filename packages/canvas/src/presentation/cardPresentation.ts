@@ -69,7 +69,7 @@ export function resolveKnowledgeCardPresentation(
   };
   const title = graphNode?.title.trim() || node.title?.trim() || "Untitled";
   const pith = graphNode?.summary.trim() || node.summary?.trim() || "";
-  const tags = graphNode?.evidenceTags.slice(0, 2) ?? [];
+  const tags = (graphNode?.evidenceTags ?? []).slice(0, 2);
 
   return {
     title,
@@ -110,7 +110,7 @@ function badgeList(node: GraphNodeContract | null | undefined): string[] {
   if (node.evidenceStatus === "contested") badges.push("Contested");
   if (node.claimKind) badges.push(titleCase(node.claimKind));
   if (node.validFrom) badges.push(node.validFrom.slice(0, 4));
-  for (const tag of node.evidenceTags.filter((tag) => tag.startsWith("place:"))) {
+  for (const tag of (node.evidenceTags ?? []).filter((tag) => tag.startsWith("place:"))) {
     badges.push(formatGeographicTag(tag));
   }
   if (node.placeCoverage === "resolved") badges.push("Place resolved");

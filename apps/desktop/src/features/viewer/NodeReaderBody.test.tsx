@@ -30,6 +30,12 @@ vi.mock("./NodeDocumentPane", () => ({
   ),
 }));
 
+vi.mock("@research-canvas/viewers", () => ({
+  BlockNoteDocument: ({ body, editable }: { body: string; editable: boolean }) => (
+    <div data-testid="graph-record-body" data-editable={String(editable)}>{body}</div>
+  ),
+}));
+
 describe("NodeReaderBody", () => {
   it("renders the document pane for a graph-backed node", () => {
     const node = { id: "n1", title: "T", type: "note", graphNodeId: "g-1" } as never;
@@ -73,5 +79,22 @@ describe("NodeReaderBody", () => {
     render(<NodeReaderBody node={node} affordances={false} />);
     expect(screen.getByTestId("bare-doc-pane")).toHaveTextContent("bare:g-1");
     expect(screen.queryByTestId("doc-pane")).not.toBeInTheDocument();
+  });
+
+  it("renders the graph body supplied by a timeline record without requiring a local document row", () => {
+    const record = {
+      graphNodeId: "timeline-graph",
+      canvasNode: null,
+      graphNode: {
+        graphNodeId: "timeline-graph",
+        body: '[{"type":"paragraph","content":[{"type":"text","text":"Deep historical account"}]}]',
+      },
+    } as never;
+
+    render(<NodeReaderBody record={record} affordances={false} />);
+
+    expect(screen.getByTestId("graph-record-body")).toHaveTextContent("Deep historical account");
+    expect(screen.getByTestId("graph-record-body")).toHaveAttribute("data-editable", "false");
+    expect(screen.queryByTestId("bare-doc-pane")).not.toBeInTheDocument();
   });
 });

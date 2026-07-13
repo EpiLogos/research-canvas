@@ -27,9 +27,26 @@ export function ReadingLens({
 
   if (!record) {
     return (
-      <section className="reader-surface reader-surface--lens" data-testid="reading-pane">
-        <div className="reader-surface__empty">Select a node to read</div>
-      </section>
+      <>
+        {variant === "overlay" ? (
+          <button
+            type="button"
+            className="reader-surface__scrim"
+            data-testid="reader-scrim"
+            aria-label="Dismiss reading backdrop"
+            onClick={onExitToCanvas}
+          />
+        ) : null}
+        <section
+          className={`reader-surface reader-surface--${variant}`}
+          data-testid={variant === "overlay" ? "reading-overlay" : "reading-pane"}
+          role={variant === "overlay" ? "dialog" : undefined}
+          aria-modal={variant === "overlay" ? "true" : undefined}
+          aria-label={variant === "overlay" ? "Node reading" : undefined}
+        >
+          <div className="reader-surface__empty">Select a node to read</div>
+        </section>
+      </>
     );
   }
 

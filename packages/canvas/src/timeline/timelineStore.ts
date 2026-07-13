@@ -103,7 +103,11 @@ export function createTimelineStore(
     },
     hydrate: (view) => {
       const items = projectNodes(view.nodes);
-      const preserveViewport = get().manualViewport;
+      // A workspace can survive a graph replacement while the shell still
+      // remembers its last camera. Keep a deliberate focus inside this
+      // timeline's historical domain, but do not reopen a populated timeline
+      // at a completely unrelated century with every card off-screen.
+      const preserveViewport = get().manualViewport && isCameraNearTimeline(items, get().centerYear);
       set({
         items,
         // Older local terminal bridges may return a timeline payload from
@@ -174,6 +178,24 @@ export function createTimelineStore(
           : item),
       })),
   }));
+}
+
+function isCameraNearTimeline(items: TimelineItem[], centerYear: number): boolean {
+  if (items.length === 0 || !Number.isFinite(centerYear)) return false;
+
+  let minYear = Number.POSITIVE_INFINITY;
+  let maxYear = Number.NEGATIVE_INFINITY;
+  for (const item of items) {
+    minYear = Math.min(minYear, item.startYear);
+    maxYear = Math.max(maxYear, item.endYear ?? item.startYear);
+  }
+
+  if (!Number.isFinite(minYear) || !Number.isFinite(maxYear)) return false;
+  const domainYears = Math.max(maxYear - minYear, 1);
+  // The margin preserves a nearby, intentional working focus while avoiding
+  // a stale camera from a different historical corpus.
+  const marginYears = Math.max(50, domainYears * 0.25);
+  return centerYear >= minYear - marginYears && centerYear <= maxYear + marginYears;
 }
 
 function fitViewportToItems(

@@ -1,4 +1,6 @@
 import { CanvasScreen } from "../features/canvas/CanvasScreen";
+import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
+import { CanvasTabs } from "./CanvasTabs";
 
 interface CanvasPaneProps {
   onNodeSelect?: (nodeId: string) => void;
@@ -11,12 +13,19 @@ interface CanvasPaneProps {
 }
 
 export function CanvasPane({ onNodeSelect, onNodeDoubleClick, onPlaySequence, leftPanelOpen, rightPanelOpen, drawingMode, strokeColour }: CanvasPaneProps) {
+  const workspace = useCanvasWorkspace();
   return (
     <section
       className="canvas-pane"
       data-testid="canvas-pane"
       style={{ position: "absolute", inset: 0 }}
     >
+      <CanvasTabs
+        tabs={workspace.canvasTabs ?? []}
+        activeTabId={workspace.activeCanvasTabId ?? null}
+        onActivate={(tabId) => { void workspace.activateCanvasTab?.(tabId); }}
+        onClose={(tabId) => { void workspace.closeCanvasTab?.(tabId); }}
+      />
       <CanvasScreen
         onNodeSelect={onNodeSelect}
         onNodeDoubleClick={onNodeDoubleClick}

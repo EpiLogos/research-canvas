@@ -11,6 +11,26 @@ export interface ReaderRecord {
   evidenceTags: string[];
   sourceCoordinates: string[];
   bodySourceCoordinates: string[];
+  /** Statement status is distinct from its temporal placement. */
+  narrative: {
+    historicity: GraphNodeContract["historicity"];
+    claimKind: GraphNodeContract["claimKind"];
+    evidenceStatus: GraphNodeContract["evidenceStatus"];
+    temporalRole: GraphNodeContract["temporalRole"];
+    sourceKind: GraphNodeContract["sourceKind"];
+  };
+  /** Preserves QL structure and its own provenance in the shared reader. */
+  ql: {
+    form: GraphNodeContract["qlForm"];
+    unitId: string | null;
+    arc: GraphNodeContract["qlArc"];
+    topology: GraphNodeContract["qlTopology"];
+    schemaVersion: number | null;
+    sourceCoordinates: string[];
+    completeness: GraphNodeContract["qlCompletenessStatus"];
+  } | null;
+  /** Geographic tags name a place; placeCoverage only says whether it was mapped. */
+  placeTags: string[];
   temporal: {
     validFrom: string | null;
     validTo: string | null;
@@ -47,6 +67,9 @@ export function readerRecordFromCanvasNode(canvasNode: CanvasNode): ReaderRecord
       evidenceTags: [],
       sourceCoordinates: [],
       bodySourceCoordinates: [],
+      narrative: emptyNarrative(),
+      ql: null,
+      placeTags: [],
       temporal: null,
       placeCoverage: null,
     };
@@ -63,6 +86,9 @@ export function readerRecordFromCanvasNode(canvasNode: CanvasNode): ReaderRecord
     evidenceTags: canvasNode.type === "note" ? canvasNode.tags : [],
     sourceCoordinates: [],
     bodySourceCoordinates: [],
+    narrative: emptyNarrative(),
+    ql: null,
+    placeTags: [],
     temporal: null,
     placeCoverage: null,
   };
@@ -81,9 +107,28 @@ function graphReaderRecord(
     title: graphNode.title,
     pith: graphNode.summary,
     coverReference: preferredCover ?? firstImageReference(graphNode.body),
-    evidenceTags: graphNode.evidenceTags,
-    sourceCoordinates: graphNode.sourceCoordinates,
-    bodySourceCoordinates: graphNode.bodySourceCoordinates,
+    evidenceTags: graphNode.evidenceTags ?? [],
+    sourceCoordinates: graphNode.sourceCoordinates ?? [],
+    bodySourceCoordinates: graphNode.bodySourceCoordinates ?? [],
+    narrative: {
+      historicity: graphNode.historicity,
+      claimKind: graphNode.claimKind,
+      evidenceStatus: graphNode.evidenceStatus,
+      temporalRole: graphNode.temporalRole,
+      sourceKind: graphNode.sourceKind,
+    },
+    ql: graphNode.qlForm || graphNode.qlUnitId || (graphNode.qlSourceCoordinates?.length ?? 0) > 0
+      ? {
+          form: graphNode.qlForm,
+          unitId: graphNode.qlUnitId,
+          arc: graphNode.qlArc,
+          topology: graphNode.qlTopology,
+          schemaVersion: graphNode.qlSchemaVersion,
+          sourceCoordinates: graphNode.qlSourceCoordinates ?? [],
+          completeness: graphNode.qlCompletenessStatus,
+        }
+      : null,
+    placeTags: (graphNode.evidenceTags ?? []).filter((tag) => tag.startsWith("place:")),
     temporal: graphNode.isTemporal
       ? {
           validFrom: graphNode.validFrom,
@@ -92,6 +137,16 @@ function graphReaderRecord(
         }
       : null,
     placeCoverage: graphNode.placeCoverage,
+  };
+}
+
+function emptyNarrative(): ReaderRecord["narrative"] {
+  return {
+    historicity: null,
+    claimKind: null,
+    evidenceStatus: null,
+    temporalRole: null,
+    sourceKind: null,
   };
 }
 

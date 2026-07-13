@@ -58,6 +58,13 @@ describe("reader records", () => {
       evidenceTags: ["history:documented", "place:banda-islands"],
       sourceCoordinates: ["episodes/2/colonial-power.md#banda"],
       bodySourceCoordinates: ["episodes/2/colonial-power.md#banda"],
+      narrative: {
+        historicity: "historical",
+        claimKind: "fact",
+        evidenceStatus: "documented",
+        temporalRole: "occurred_at",
+        sourceKind: "research",
+      },
       temporal: {
         validFrom: "1621-01-01",
         validTo: null,

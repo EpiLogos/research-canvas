@@ -25,6 +25,8 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
   const nodes: CanvasNode[] = [];
   for (const joined of view.nodes) {
     const { node, layout } = joined;
+    const createdAt = canonicalCanvasTimestamp(node.createdAt, now);
+    const updatedAt = canonicalCanvasTimestamp(node.updatedAt, now);
     const sidecar = layout.style.__canvasNode as CanvasNodeSidecar | undefined;
     // Local-first title reconstruction (lf-task-3): the joined GraphNode's
     // title wins when Neo4j substance is actually present, but a layout row
@@ -57,8 +59,8 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
         fileFingerprint: sidecar.fileFingerprint,
         sequenceCaption: null,
         sequenceViewport: null,
-        createdAt: node.createdAt,
-        updatedAt: node.updatedAt,
+        createdAt,
+        updatedAt,
       });
     } else if (sidecar?.type === "group") {
       parsed = nodeSchema.parse({
@@ -80,8 +82,8 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
         childNodeIds: sidecar.childNodeIds,
         sequenceCaption: null,
         sequenceViewport: null,
-        createdAt: node.createdAt,
-        updatedAt: node.updatedAt,
+        createdAt,
+        updatedAt,
       });
     } else if (sidecar?.type === "portal") {
       parsed = nodeSchema.parse({
@@ -103,8 +105,8 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
         constellationKind: sidecar.constellationKind ?? "standard",
         sequenceCaption: null,
         sequenceViewport: null,
-        createdAt: node.createdAt,
-        updatedAt: node.updatedAt,
+        createdAt,
+        updatedAt,
       });
     } else {
       // note type (sidecar?.type === "note") OR no sidecar (graph-only / agent-authored node)
@@ -127,8 +129,8 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
         tags: sidecar?.type === "note" ? sidecar.tags : [],
         sequenceCaption: null,
         sequenceViewport: null,
-        createdAt: node.createdAt,
-        updatedAt: node.updatedAt,
+        createdAt,
+        updatedAt,
       });
     }
 
@@ -206,6 +208,16 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
   }
 
   return { nodes, edges };
+}
+
+/**
+ * Neo4j and SQLite legitimately serialise UTC as either `Z` or `+00:00`.
+ * Canvas nodes use a stricter `Z` contract, so normalize at the joined-read
+ * boundary rather than rejecting an otherwise valid graph view wholesale.
+ */
+function canonicalCanvasTimestamp(value: string, fallback: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? fallback : date.toISOString();
 }
 
 function relationshipKey(source: string, target: string, relationKind: string) {

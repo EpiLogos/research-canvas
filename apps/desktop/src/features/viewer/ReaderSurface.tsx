@@ -4,6 +4,7 @@ import { resolveKnowledgeCardPresentation } from "@research-canvas/canvas";
 
 import { resolveReaderMediaReference } from "./readerMedia";
 import type { ReaderRecord } from "./readerRecord";
+import { collectReaderSources, ReaderSources } from "./ReaderSources";
 
 export type ReaderSurfaceVariant = "lens" | "overlay" | "full";
 
@@ -155,7 +156,7 @@ export function ReaderSurface({
                 <ReaderIcon kind="close" />
               </button>
             </div>
-            <ReaderMetadata record={record} />
+            <ReaderMetadata record={record} workspaceRoot={workspaceRoot} />
             {actions ? (
               <div className="reader-surface__actions" aria-label="Reader actions">
                 <span className="reader-surface__details-label">Add to this node</span>
@@ -169,13 +170,36 @@ export function ReaderSurface({
   );
 }
 
-function ReaderMetadata({ record }: { record: ReaderRecord }) {
-  const sourceCoordinates = [...record.sourceCoordinates, ...record.bodySourceCoordinates];
+function ReaderMetadata({
+  record,
+  workspaceRoot,
+}: {
+  record: ReaderRecord;
+  workspaceRoot: string | null | undefined;
+}) {
+  const sources = collectReaderSources({
+    sourceCoordinates: record.sourceCoordinates,
+    bodySourceCoordinates: record.bodySourceCoordinates,
+    qlSourceCoordinates: record.ql?.sourceCoordinates,
+  });
   const temporal = record.temporal
     ? [record.temporal.validFrom?.slice(0, 4), record.temporal.validTo?.slice(0, 4)]
         .filter(Boolean)
         .join(" – ") || "Temporal placement recorded"
     : "Not temporal";
+  const narrative = [
+    record.narrative.historicity,
+    record.narrative.claimKind,
+    record.narrative.evidenceStatus,
+  ].filter((value) => value !== null);
+  const qlDescriptor = record.ql
+    ? [
+        record.ql.form?.replaceAll("_", " "),
+        record.ql.arc && record.ql.arc !== "not_applicable" ? record.ql.arc : null,
+        record.ql.topology && record.ql.topology !== "unspecified" ? record.ql.topology : null,
+        record.ql.completeness && record.ql.completeness !== "not_applicable" ? record.ql.completeness : null,
+      ].filter((value): value is string => Boolean(value)).join(" · ")
+    : null;
 
   return (
     <dl className="reader-surface__metadata">
@@ -185,18 +209,31 @@ function ReaderMetadata({ record }: { record: ReaderRecord }) {
       </div>
       <div>
         <dt>Place</dt>
-        <dd>{record.placeCoverage === "resolved" ? "Resolved place coverage" : record.placeCoverage ?? "No place coverage"}</dd>
+        <dd>
+          {record.placeTags.length > 0 ? (
+            <ul className="reader-surface__place-tags">
+              {record.placeTags.map((tag) => <li key={tag}>{tag.slice("place:".length).replaceAll("-", " ")}</li>)}
+            </ul>
+          ) : record.placeCoverage === "resolved" ? "Resolved place coverage" : record.placeCoverage ?? "No place coverage"}
+        </dd>
+      </div>
+      <div>
+        <dt>Historical status</dt>
+        <dd>{narrative.length > 0 ? narrative.join(" · ") : "Not classified"}</dd>
       </div>
       <div>
         <dt>Sources</dt>
-        <dd>
-          {sourceCoordinates.length > 0 ? (
-            <ul>
-              {sourceCoordinates.map((coordinate, index) => <li key={`${coordinate}-${index}`}>{coordinate}</li>)}
-            </ul>
-          ) : "No source coordinates"}
-        </dd>
+        <dd><ReaderSources sources={sources} workspaceRoot={workspaceRoot} /></dd>
       </div>
+      {record.ql ? (
+        <div>
+          <dt>QL structure</dt>
+          <dd>
+            {record.ql.unitId ? <span>{`QL unit · ${record.ql.unitId}`}</span> : <span>QL-framed node</span>}
+            {qlDescriptor ? <span className="reader-surface__metadata-detail">{qlDescriptor}</span> : null}
+          </dd>
+        </div>
+      ) : null}
       {record.graphNodeId ? (
         <div>
           <dt>Graph identity</dt>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { CanvasNode } from "@research-canvas/schema";
+import { BlockNoteDocument } from "@research-canvas/viewers";
 import { createWorkspaceTransport, readWorkspaceTextFile } from "@research-canvas/desktop-api";
 import type {
   GraphNode,
@@ -10,6 +11,7 @@ import { useCanvasWorkspace } from "../canvas/CanvasWorkspaceContext";
 import { NodeContentPane } from "./NodeContentPane";
 import { GraphDocumentContent } from "./GraphDocumentContent";
 import { NodeDocumentPane } from "./NodeDocumentPane";
+import { resolveBlockNoteAssetUrls } from "../canvas/resourceFileHelpers";
 import type { ReaderRecord } from "./readerRecord";
 
 export function NodeReaderBody({
@@ -64,6 +66,25 @@ export function NodeReaderBody({
         onNoteContentChange={(content) => workspace.updateNodeContent(canvasNode.id, content)}
         showToolbar={false}
       />
+    );
+  }
+
+  // Timeline reads already carry an authoritative graph snapshot. Do not
+  // force that snapshot through the local authoring-document bridge merely to
+  // display it: a browser or a newly bootstrapped workspace may not yet have
+  // a local row, while the deep body is already available here. This path is
+  // deliberately read-only; authoring remains on the local-first document
+  // workflow below.
+  if (!affordances && record?.graphNode) {
+    const displayBody = resolveBlockNoteAssetUrls(record.graphNode.body, workspace.workingRoot);
+    return (
+      <div className="node-document-pane node-document-pane--reader" data-testid="graph-reader-body">
+        <BlockNoteDocument
+          key={workspace.workingRoot ?? "unresolved-workspace"}
+          body={displayBody}
+          editable={false}
+        />
+      </div>
     );
   }
 

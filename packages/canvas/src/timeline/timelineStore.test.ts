@@ -103,6 +103,20 @@ describe("timelineStore", () => {
     expect(viewport.pixelsPerYear).toBe(24);
   });
 
+  test("hydrates a usable timeline when a remembered camera belongs to an unrelated historical domain", () => {
+    const store = createTimelineStore({ initialCenterYear: -150, initialPixelsPerYear: 4 });
+    store.getState().setWidth(1200);
+    store.getState().hydrate(view([
+      record({ graphNodeId: "medici", validFrom: "1460-01-01", validTo: "1600-12-31" }),
+      record({ graphNodeId: "nygard", validFrom: "2020-01-01", validTo: "2025-12-31" }),
+    ]));
+
+    const viewport = store.getState().viewport();
+    expect(viewport.centerYear).toBeGreaterThan(1400);
+    expect(viewport.centerYear).toBeLessThan(2100);
+    expect(viewport.pixelsPerYear).toBeLessThan(2);
+  });
+
   test("tier() derives from current pixelsPerYear", () => {
     const store = createTimelineStore({ initialPixelsPerYear: 0.05 });
     expect(store.getState().tier()).toBe("millennium");

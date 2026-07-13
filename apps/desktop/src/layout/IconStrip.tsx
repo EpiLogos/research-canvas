@@ -3,6 +3,9 @@ interface IconStripProps {
   activeLeftMode: "files" | "search" | "annotations";
   onToggleBrowser: () => void;
   onSetBrowserMode: (mode: "files" | "search" | "annotations") => void;
+  onPreviewBrowserMode?: (mode: "files" | "search" | "annotations") => void;
+  onBrowserInteractionStart?: () => void;
+  onBrowserInteractionEnd?: () => void;
   onOpenSequences: () => void;
   onOpenSettings: () => void;
   inspectorActive: boolean;
@@ -34,7 +37,7 @@ const NAV_ICONS: { id: string; label: string; svg: string }[] = [
   },
 ];
 
-export function IconStrip({ browserActive, activeLeftMode, onToggleBrowser, onSetBrowserMode, onOpenSequences, onOpenSettings, inspectorActive, onToggleInspector, terminalActive, onToggleTerminal }: IconStripProps) {
+export function IconStrip({ browserActive, activeLeftMode, onToggleBrowser, onSetBrowserMode, onPreviewBrowserMode, onBrowserInteractionStart, onBrowserInteractionEnd, onOpenSequences, onOpenSettings, inspectorActive, onToggleInspector, terminalActive, onToggleTerminal }: IconStripProps) {
   const handleNavClick = (id: string) => {
     if (id === "files" || id === "search" || id === "annotate") {
       // Uniform verb pattern: Files/Search/Annotate all set the shared
@@ -53,7 +56,15 @@ export function IconStrip({ browserActive, activeLeftMode, onToggleBrowser, onSe
   };
 
   return (
-    <aside className="icon-strip" aria-label="Navigation" data-testid="left-rail">
+    <aside
+      className="icon-strip"
+      aria-label="Navigation"
+      data-testid="left-rail"
+      data-browser-surface="true"
+      onPointerLeave={onBrowserInteractionEnd}
+      onFocusCapture={onBrowserInteractionStart}
+      onBlurCapture={onBrowserInteractionEnd}
+    >
       <div className="icon-strip__nav">
         {NAV_ICONS.map((icon) => (
           <button
@@ -69,6 +80,12 @@ export function IconStrip({ browserActive, activeLeftMode, onToggleBrowser, onSe
             title={icon.label}
             aria-label={icon.label}
             onClick={() => handleNavClick(icon.id)}
+            onPointerEnter={() => {
+              if (icon.id === "files" || icon.id === "search" || icon.id === "annotate") {
+                onPreviewBrowserMode?.(icon.id === "annotate" ? "annotations" : icon.id);
+                onBrowserInteractionStart?.();
+              }
+            }}
             dangerouslySetInnerHTML={{ __html: icon.svg }}
           />
         ))}

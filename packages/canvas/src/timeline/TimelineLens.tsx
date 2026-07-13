@@ -123,11 +123,15 @@ export function TimelineLens({
 
   const viewport = state.viewport();
   useEffect(() => {
+    // Until the graph has hydrated, the store only holds its neutral startup
+    // camera. Publishing that value would make the shell remember a fictitious
+    // location and could reopen the next timeline far from its actual nodes.
+    if (!loaded && state.items.length === 0) return;
     onViewportChange?.({
       centerYear: viewport.centerYear,
       pixelsPerYear: viewport.pixelsPerYear,
     });
-  }, [onViewportChange, viewport.centerYear, viewport.pixelsPerYear]);
+  }, [loaded, onViewportChange, state.items.length, viewport.centerYear, viewport.pixelsPerYear]);
   const tier = state.tier();
   // Preserve direct manipulation at the normal working scale.  Only the
   // genuinely panoramic millennium view collapses nodes to markers; century
@@ -206,13 +210,24 @@ export function TimelineLens({
     saveQueues.current.set(graphNodeId, next);
   };
 
-  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const rect = trackRef.current?.getBoundingClientRect();
-    const anchorPx = rect ? event.clientX - rect.left : viewport.widthPx / 2;
-    const factor = Math.pow(WHEEL_ZOOM_BASE, -event.deltaY);
-    store.getState().zoom(factor, anchorPx);
-  };
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    // React delegates wheel handlers as passive in Chromium. Timeline zoom
+    // needs to own this gesture (and suppress page scroll), so register a
+    // native non-passive listener rather than emitting a console error on
+    // every zoom gesture.
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const currentViewport = store.getState().viewport();
+      const rect = track.getBoundingClientRect();
+      const anchorPx = event.clientX - rect.left;
+      const factor = Math.pow(WHEEL_ZOOM_BASE, -event.deltaY);
+      store.getState().zoom(factor, Number.isFinite(anchorPx) ? anchorPx : currentViewport.widthPx / 2);
+    };
+    track.addEventListener("wheel", handleWheel, { passive: false });
+    return () => track.removeEventListener("wheel", handleWheel);
+  }, [store]);
 
   // Drag-to-pan.
   const dragState = useRef<{ lastX: number; lastY: number } | null>(null);
@@ -378,7 +393,6 @@ export function TimelineLens({
         data-testid="timeline-track"
         ref={trackRef}
         style={{ position: "relative", overflow: "hidden" }}
-        onWheel={handleWheel}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

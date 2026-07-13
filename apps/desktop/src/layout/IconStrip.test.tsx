@@ -9,6 +9,9 @@ function setup(overrides: Partial<Parameters<typeof IconStrip>[0]> = {}) {
     activeLeftMode: "files" as const,
     onToggleBrowser: vi.fn(),
     onSetBrowserMode: vi.fn(),
+    onPreviewBrowserMode: vi.fn(),
+    onBrowserInteractionStart: vi.fn(),
+    onBrowserInteractionEnd: vi.fn(),
     onOpenSequences: vi.fn(),
     onOpenSettings: vi.fn(),
     inspectorActive: false,
@@ -59,5 +62,16 @@ describe("IconStrip rail", () => {
     fireEvent.click(screen.getByRole("button", { name: "Files & Constellation" }));
     expect(props.onSetBrowserMode).toHaveBeenCalledWith("files");
     expect(props.onToggleBrowser).not.toHaveBeenCalled();
+  });
+
+  it("previews a browser tool on hover and keeps the drawer interaction alive", () => {
+    const props = setup();
+    const files = screen.getByRole("button", { name: "Files & Constellation" });
+    fireEvent.pointerEnter(files);
+    expect(props.onPreviewBrowserMode).toHaveBeenCalledWith("files");
+    expect(props.onBrowserInteractionStart).toHaveBeenCalled();
+
+    fireEvent.pointerLeave(screen.getByTestId("left-rail"));
+    expect(props.onBrowserInteractionEnd).toHaveBeenCalled();
   });
 });

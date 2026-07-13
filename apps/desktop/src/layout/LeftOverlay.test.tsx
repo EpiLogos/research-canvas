@@ -27,6 +27,15 @@ vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
         parentId: "main",
         children: [],
       },
+      {
+        id: "constellation-b",
+        name: "Banda archipelago",
+        slug: "banda-archipelago",
+        rootPath: "/workspace/constellations/prometheus-fire/banda-archipelago",
+        summary: "A nested historical field.",
+        parentId: "constellation-a",
+        children: [],
+      },
     ],
     activeConstellationId: "main",
     selectConstellation,
@@ -46,9 +55,9 @@ vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
   }),
 }));
 
-function renderFiles(onClose = vi.fn()) {
+function renderFiles() {
   return render(
-    <LeftOverlay open mode="files" onResizeStart={() => {}} onClose={onClose} />,
+    <LeftOverlay open mode="files" onResizeStart={() => {}} />,
   );
 }
 
@@ -88,12 +97,12 @@ describe("LeftOverlay browser", () => {
     expect(screen.getByText("Files", { selector: ".lo-label" })).toBeInTheDocument();
   });
 
-  it("renders a Close panel button that calls onClose", () => {
-    const onClose = vi.fn();
-    renderFiles(onClose);
-    const closeBtn = screen.getByRole("button", { name: "Close panel" });
-    fireEvent.click(closeBtn);
-    expect(onClose).toHaveBeenCalledTimes(1);
+  it("presents constellations as a hierarchy, not a flat project list", () => {
+    renderFiles();
+    expect(screen.getByRole("button", { name: /Root Ecology/ })).toHaveAttribute("data-depth", "0");
+    expect(screen.getByRole("button", { name: /Prometheus fire/ })).toHaveAttribute("data-depth", "1");
+    expect(screen.getByRole("button", { name: /Banda archipelago/ })).toHaveAttribute("data-depth", "2");
+    expect(screen.queryByRole("button", { name: "Close panel" })).not.toBeInTheDocument();
   });
 
   it("shows the Constellations section in files mode even when browserView is the default Graph view", () => {

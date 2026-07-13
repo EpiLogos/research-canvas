@@ -60,6 +60,8 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, onPlaySequence, 
 
         <div className="canvas-layer-stack">
           <CanvasView
+            canvasKey={workspace.canvasId}
+            initialViewport={workspace.activeCanvasViewport}
             edges={workspace.edges}
             nodes={workspace.nodes}
             selectedEdgeId={workspace.selectedEdgeId}

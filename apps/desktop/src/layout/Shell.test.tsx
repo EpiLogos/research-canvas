@@ -400,7 +400,7 @@ describe("Shell frame", () => {
     expect(screen.getByTestId("reading-overlay")).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "Read full screen" }));
-    const backButton = screen.getByRole("button", { name: /^← Back$/ });
+    const backButton = screen.getByRole("button", { name: "Close reading" });
     expect(backButton).toBeVisible();
 
     fireEvent.click(backButton);
@@ -429,15 +429,16 @@ describe("Shell frame", () => {
     expect(screen.getByTestId("browser-files")).toBeInTheDocument();
   });
 
-  it("closing the browser via the panel's close button resets drawingMode (no stuck draw cursor)", () => {
+  it("closing the browser with Escape resets drawingMode (no stuck draw cursor)", () => {
     renderShell();
     // Open the browser in annotations mode and start drawing.
     fireEvent.click(screen.getByRole("button", { name: "Annotations" }));
     fireEvent.click(screen.getByRole("button", { name: "Start drawing" }));
     expect(screen.getByRole("button", { name: "Stop drawing" })).toHaveAttribute("data-active", "true");
 
-    // Close the panel via its close button — this must also turn drawing off.
-    fireEvent.click(screen.getByRole("button", { name: "Close panel" }));
+    // The hover-first explorer has no redundant close affordance; Escape is
+    // the explicit keyboard dismissal and must also turn drawing off.
+    fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.getByTestId("left-overlay")).toHaveAttribute("data-open", "false");
 
     // Reopen annotations — drawing must not still be "on" from before.
@@ -457,7 +458,7 @@ describe("Shell frame", () => {
     renderShell();
     fireEvent.click(screen.getByRole("button", { name: "Files & Constellation" }));
     fireEvent.change(screen.getByTestId("browser-filter"), { target: { value: "prometheus" } });
-    fireEvent.click(screen.getByRole("button", { name: "Close panel" }));
+    fireEvent.keyDown(window, { key: "Escape" });
 
     expect(screen.getByTestId("left-overlay")).toHaveAttribute("data-open", "false");
 

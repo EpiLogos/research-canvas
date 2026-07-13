@@ -88,6 +88,19 @@ describe("canvasViewToCanvasNodes", () => {
     expect(nodes[0]!.summary).toBe("a summary");
   });
 
+  it("normalizes persisted UTC-offset graph timestamps before creating strict canvas nodes", () => {
+    const view = buildFixtureView();
+    view.nodes[0]!.node.createdAt = "2026-07-07T12:33:46.002+00:00";
+    view.nodes[0]!.node.updatedAt = "2026-07-07T13:41:07.241+00:00";
+
+    const { nodes } = canvasViewToCanvasNodes(view);
+
+    expect(nodes[0]).toMatchObject({
+      createdAt: "2026-07-07T12:33:46.002Z",
+      updatedAt: "2026-07-07T13:41:07.241Z",
+    });
+  });
+
   it("maps edges so that sourceNodeId === view.edges[0].sourceGraphNodeId", () => {
     const view = buildFixtureView();
     const { edges } = canvasViewToCanvasNodes(view);
