@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CanvasNode } from "@research-canvas/schema";
 import { CanvasPane } from "./CanvasPane";
 import { FullScreenReader } from "./FullScreenReader";
 import { IconStrip } from "./IconStrip";
@@ -20,6 +19,11 @@ import { CommandPalette } from "../features/search/CommandPalette";
 import { TimelineLens } from "@research-canvas/canvas";
 import { createWorkspaceTransport, type GraphNode } from "@research-canvas/desktop-api";
 import { createTimelineDataSource } from "../features/timeline/createTimelineDataSource";
+import {
+  readerRecordFromCanvasNode,
+  readerRecordFromGraphNode,
+  type ReaderRecord,
+} from "../features/viewer/readerRecord";
 
 export function Shell() {
   const layout = useShellLayout();
@@ -30,7 +34,7 @@ export function Shell() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [readingOverlayOpen, setReadingOverlayOpen] = useState(false);
-  const [readingNode, setReadingNode] = useState<CanvasNode | null>(null);
+  const [readingRecord, setReadingRecord] = useState<ReaderRecord | null>(null);
   const [drawingMode, setDrawingMode] = useState(false);
   const [strokeColour, setStrokeColour] = useState("#f97316");
   const timelineViewports = useRef(new Map<string, { centerYear: number; pixelsPerYear: number }>());
@@ -62,10 +66,13 @@ export function Shell() {
   const openNodeDocument = useCallback(
     (graphNodeId: string, timelineNode?: GraphNode) => {
       workspace.selectNode(graphNodeId);
-      setReadingNode(
-        timelineNode && !workspace.nodes.some((node) => node.id === graphNodeId)
-          ? readerNodeFromTimeline(timelineNode, workspace.canvasId)
-          : null,
+      const canvasNode = workspace.nodes.find((node) => node.id === graphNodeId) ?? null;
+      setReadingRecord(
+        timelineNode
+          ? readerRecordFromGraphNode(timelineNode)
+          : canvasNode
+            ? readerRecordFromCanvasNode(canvasNode)
+            : null,
       );
       setReadingOverlayOpen(true);
     },
@@ -79,7 +86,7 @@ export function Shell() {
         return;
       }
       setReadingOverlayOpen(false);
-      setReadingNode(null);
+      setReadingRecord(null);
       setLens(mode);
     },
     [setLens],
@@ -103,7 +110,7 @@ export function Shell() {
     setSettingsOpen(false);
     setFullScreenMode("closed");
     setReadingOverlayOpen(false);
-    setReadingNode(null);
+    setReadingRecord(null);
   }, []);
 
   const openPalette = useCallback(() => {
@@ -180,15 +187,16 @@ export function Shell() {
   const handleNodeDoubleClick = useCallback(
     (nodeId: string) => {
       const node = workspace.nodes.find((candidate) => candidate.id === nodeId);
+      if (!node) return;
       if (node?.type === "portal") {
         setReadingOverlayOpen(false);
-        setReadingNode(null);
+        setReadingRecord(null);
         void workspace.openCanvas(node.targetCanvasId);
         return;
       }
 
       workspace.selectNode(nodeId);
-      setReadingNode(null);
+      setReadingRecord(readerRecordFromCanvasNode(node));
       setReadingOverlayOpen(true);
     },
     [workspace],
@@ -286,9 +294,9 @@ export function Shell() {
               onFullScreen={() => enterFullScreen("node")}
               onExitToCanvas={() => {
                 setReadingOverlayOpen(false);
-                setReadingNode(null);
+                setReadingRecord(null);
               }}
-              nodeOverride={readingNode}
+              recordOverride={readingRecord}
             />
           )}
 
@@ -345,23 +353,4 @@ export function Shell() {
       />
     </div>
   );
-}
-
-function readerNodeFromTimeline(node: GraphNode, canvasId: string): CanvasNode {
-  return {
-    type: "note",
-    id: node.graphNodeId,
-    graphNodeId: node.graphNodeId,
-    canvasId,
-    title: node.title,
-    content: node.body,
-    summary: node.summary,
-    tags: node.evidenceTags,
-    position: { x: 0, y: 0 },
-    size: { width: 360, height: 220 },
-    sequenceCaption: null,
-    sequenceViewport: null,
-    createdAt: node.createdAt,
-    updatedAt: node.updatedAt,
-  };
 }

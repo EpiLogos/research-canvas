@@ -18,6 +18,7 @@ vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
     updateNodeStyle: vi.fn(),
     canvasId: "c1",
     databasePath: "/canonical/workspace.sqlite",
+    workingRoot: "/canonical",
     workspaceId,
     activeConstellationId: "p1",
     activeConstellation: null,
@@ -42,8 +43,16 @@ const loadTimelineView = vi.fn(async () => ({
   workspaceId: "sqlite:/server-canonical/workspace.sqlite",
   nodes: [{
     node: {
-      graphNodeId: "banda", entityType: "Event", title: "Banda genocide", body: "[]", summary: "",
-      archetypalResonance: null, coordinate: null, sourceCoordinates: [], isTemporal: true,
+      graphNodeId: "banda", entityType: "Event", title: "Banda genocide",
+      body: JSON.stringify([{ type: "image", props: { url: "assets/banda/ship.png" }, content: [], children: [] }]),
+      summary: "A documented Company-state violence event.",
+      archetypalResonance: null, coordinate: null, sourceCoordinates: ["episodes/2/colonial-power.md#banda"],
+      evidenceTags: ["history:documented", "place:banda-islands"], sourceKind: "research",
+      contentOrigin: "imported", contentRevision: 1, seedSchemaVersion: 1,
+      bodySourceCoordinates: ["episodes/2/colonial-power.md#banda"], historicity: "historical",
+      claimKind: "fact", evidenceStatus: "documented", temporalRole: "occurred_at", placeCoverage: "resolved",
+      qlForm: null, qlUnitId: null, qlArc: "not_applicable", qlTopology: "unspecified", qlSchemaVersion: null,
+      qlSourceCoordinates: [], qlCompletenessStatus: "not_applicable", isTemporal: true,
       validFrom: "1621-01-01", validTo: null, temporalPrecision: "year",
       createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z",
     },
@@ -121,6 +130,11 @@ describe("Shell timeline lens", () => {
     fireEvent.doubleClick(node);
     expect(selectNode).toHaveBeenCalledWith("banda");
     expect(await screen.findByTestId("reading-overlay")).toHaveTextContent("Banda genocide");
+    expect(screen.getByTestId("reader-cover")).toHaveAttribute(
+      "src",
+      "asset://localhost/%2Fcanonical%2Fassets%2Fbanda%2Fship.png",
+    );
+    expect(screen.getByTestId("reading-overlay")).toHaveTextContent("A documented Company-state violence event.");
     fireEvent.click(screen.getByRole("button", { name: "Close reading" }));
     expect(screen.queryByTestId("reading-overlay")).not.toBeInTheDocument();
   });

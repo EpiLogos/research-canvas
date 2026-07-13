@@ -3,33 +3,40 @@ import type { CanvasNode } from "@research-canvas/schema";
 import { resolveKnowledgeCardPresentation } from "@research-canvas/canvas";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { NodeReaderBody } from "../features/viewer/NodeReaderBody";
-import { resolveWorkspaceAssetUrl, toAssetUrl } from "../features/canvas/resourceFileHelpers";
+import { resolveWorkspaceAssetUrl } from "../features/canvas/resourceFileHelpers";
+import {
+  readerRecordFromCanvasNode,
+  type ReaderRecord,
+} from "../features/viewer/readerRecord";
 
 export function ReadingLens({
   onFullScreen,
   onExitToCanvas,
   variant = "lens",
   nodeOverride = null,
+  recordOverride = null,
 }: {
   onFullScreen: () => void;
   onExitToCanvas: () => void;
   variant?: "lens" | "overlay";
   nodeOverride?: CanvasNode | null;
+  recordOverride?: ReaderRecord | null;
 }) {
   const workspace = useCanvasWorkspace();
-  const node = nodeOverride ?? workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
-  const presentationNode = node
-    ? {
-        ...node,
-        thumbnail: node.thumbnail
-          ? resolveWorkspaceAssetUrl(node.thumbnail, workspace.workingRoot)
-          : node.type === "resource" && node.resourceKind === "image" && node.absolutePath
-            ? toAssetUrl(node.absolutePath)
-            : undefined,
-      }
+  const selectedNode = nodeOverride ?? workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
+  const record = recordOverride ?? (selectedNode ? readerRecordFromCanvasNode(selectedNode) : null);
+  const coverUrl = record?.coverReference
+    ? resolveWorkspaceAssetUrl(record.coverReference, workspace.workingRoot)
     : null;
-  const presentation = presentationNode
-    ? resolveKnowledgeCardPresentation(presentationNode, presentationNode.graph)
+  const presentation = record
+    ? resolveKnowledgeCardPresentation({
+        title: record.title,
+        summary: record.pith,
+        dotColour: record.canvasNode?.dotColour,
+        bgColour: record.canvasNode?.bgColour,
+        textColour: record.canvasNode?.textColour,
+        thumbnail: coverUrl ?? undefined,
+      }, record.graphNode)
     : null;
 
   useEffect(() => {
@@ -49,10 +56,10 @@ export function ReadingLens({
       aria-modal={variant === "overlay" ? "true" : undefined}
       aria-label={variant === "overlay" ? "Node reading" : undefined}
     >
-      {node ? (
+      {record ? (
         <>
           <div className="ishell-reading__bar">
-            <span className="ishell-reading__title">{node.title}</span>
+            <span className="ishell-reading__title">{record.title}</span>
             <button
               type="button"
               className="ishell-reading__canvas"
@@ -74,7 +81,7 @@ export function ReadingLens({
             {presentation && (
               <header className="ishell-reading__record" style={{ borderLeftColor: presentation.palette.accent }}>
                 {presentation.coverUrl && (
-                  <img className="ishell-reading__cover" src={presentation.coverUrl} alt="" />
+                  <img className="ishell-reading__cover" data-testid="reader-cover" src={presentation.coverUrl} alt="" />
                 )}
                 <div>
                   {presentation.pith && <p className="ishell-reading__pith">{presentation.pith}</p>}
@@ -86,7 +93,7 @@ export function ReadingLens({
                 </div>
               </header>
             )}
-            <NodeReaderBody node={node} />
+            <NodeReaderBody node={record.canvasNode} record={record} />
           </div>
         </>
       ) : (

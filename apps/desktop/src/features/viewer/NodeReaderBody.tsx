@@ -10,20 +10,24 @@ import { useCanvasWorkspace } from "../canvas/CanvasWorkspaceContext";
 import { NodeContentPane } from "./NodeContentPane";
 import { GraphDocumentContent } from "./GraphDocumentContent";
 import { NodeDocumentPane } from "./NodeDocumentPane";
+import type { ReaderRecord } from "./readerRecord";
 
 export function NodeReaderBody({
   node,
+  record = null,
   affordances = true,
 }: {
-  node: CanvasNode;
+  node?: CanvasNode | null;
+  record?: ReaderRecord | null;
   affordances?: boolean;
 }) {
   const workspace = useCanvasWorkspace();
+  const canvasNode = node ?? record?.canvasNode ?? null;
   const textResourceNode =
-    node.type === "resource" &&
-    node.absolutePath &&
-    (node.resourceKind === "markdown" || node.resourceKind === "text")
-      ? node
+    canvasNode?.type === "resource" &&
+    canvasNode.absolutePath &&
+    (canvasNode.resourceKind === "markdown" || canvasNode.resourceKind === "text")
+      ? canvasNode
       : null;
   const [textContent, setTextContent] = useState<string | null>(null);
 
@@ -51,19 +55,19 @@ export function NodeReaderBody({
     };
   }, [textResourceNode]);
 
-  if (node.type === "resource") {
+  if (canvasNode?.type === "resource") {
     return (
       <NodeContentPane
-        node={node}
+        node={canvasNode}
         textContent={textContent}
         onFullScreen={() => {}}
-        onNoteContentChange={(content) => workspace.updateNodeContent(node.id, content)}
+        onNoteContentChange={(content) => workspace.updateNodeContent(canvasNode.id, content)}
         showToolbar={false}
       />
     );
   }
 
-  const graphNodeId = (node as unknown as { graphNodeId?: string }).graphNodeId ?? null;
+  const graphNodeId = record?.graphNodeId ?? canvasNode?.graphNodeId ?? null;
   if (graphNodeId) {
     const transport = createWorkspaceTransport() as unknown as {
       readGraphNode: (input: { graphNodeId: string }) => Promise<GraphNode>;
@@ -90,13 +94,13 @@ export function NodeReaderBody({
     );
   }
 
-  return (
+  return canvasNode ? (
     <NodeContentPane
-      node={node}
+      node={canvasNode}
       textContent={textContent}
       onFullScreen={() => {}}
-      onNoteContentChange={(content) => workspace.updateNodeContent(node.id, content)}
+      onNoteContentChange={(content) => workspace.updateNodeContent(canvasNode.id, content)}
       showToolbar={false}
     />
-  );
+  ) : <div className="content-tab__placeholder">No content</div>;
 }
