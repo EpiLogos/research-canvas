@@ -120,6 +120,35 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
             .map_err(Into::into)
     }
 
+    /// Reads the full local projection, including durable timestamps, for a
+    /// companion record that must be presentable outside the temporal lens.
+    pub fn get_with_timestamps(
+        &self,
+        graph_node_id: &str,
+    ) -> RepositoryResult<Option<TemporalGraphNodeMetadataRecord>> {
+        self.connection
+            .query_row(
+                "SELECT graph_node_id, entity_type, title, archetypal_resonance, coordinate,
+             source_coordinates_json, evidence_tags_json, source_kind, content_origin,
+             content_revision, seed_schema_version, body_source_coordinates_json, historicity,
+             claim_kind, evidence_status, temporal_role, place_coverage, ql_form, ql_unit_id,
+             ql_arc, ql_topology, ql_schema_version, ql_source_coordinates_json,
+             ql_completeness_status, is_temporal, valid_from, valid_to, temporal_precision,
+             schema_version, sync_state, remote_revision, created_at, updated_at
+             FROM graph_node_metadata WHERE graph_node_id = ?1",
+                [graph_node_id],
+                |row| {
+                    Ok(TemporalGraphNodeMetadataRecord {
+                        metadata: record_from_row(row)?,
+                        created_at: row.get(31)?,
+                        updated_at: row.get(32)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
     pub fn list_temporal(&self) -> RepositoryResult<Vec<TemporalGraphNodeMetadataRecord>> {
         let mut statement = self.connection.prepare(
             "SELECT graph_node_id, entity_type, title, archetypal_resonance, coordinate,

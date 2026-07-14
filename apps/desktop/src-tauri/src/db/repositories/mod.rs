@@ -8,6 +8,7 @@ pub mod graph_metadata;
 pub mod layout;
 pub mod node_document;
 pub mod node_relationship;
+pub mod relationship_vocabulary;
 pub mod resource_roots;
 pub mod saved_sequences;
 pub mod search;

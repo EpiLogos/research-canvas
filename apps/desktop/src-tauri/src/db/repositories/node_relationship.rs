@@ -6,7 +6,10 @@ use serde_json::Value;
 
 use super::{
     error::{RepositoryError, RepositoryResult},
-    graph::{validate_contract_revision, validate_rel_type, ContentOrigin, GraphRelationship},
+    graph::{
+        canonical_relationship_key, validate_contract_revision, validate_rel_type, ContentOrigin,
+        GraphRelationship,
+    },
     graph_metadata::SyncState,
 };
 
@@ -46,6 +49,15 @@ impl NodeRelationshipRecord {
             target_graph_node_id: self.target_graph_node_id.clone(),
             properties: self.properties.clone(),
         }
+    }
+
+    pub fn canonical_key(&self) -> String {
+        canonical_relationship_key(
+            &self.source_graph_node_id,
+            &self.target_graph_node_id,
+            &self.rel_type,
+            &self.properties,
+        )
     }
 }
 
@@ -124,9 +136,22 @@ impl<'conn> NodeRelationshipRepository<'conn> {
     pub fn merge(
         &self,
         incoming: &NodeRelationshipRecord,
+        expected_revision: Option<i64>,
     ) -> RepositoryResult<RelationshipMutation> {
         validate_record(incoming)?;
+        if let Some(expected_revision) = expected_revision {
+            validate_contract_revision("expectedRevision", expected_revision)
+                .map_err(RepositoryError::Validation)?;
+        }
         let Some(current) = self.get(&incoming.relationship_id)? else {
+            if let Some(expected_revision) = expected_revision {
+                return Ok(RelationshipMutation::Conflict {
+                    current_revision: 0,
+                    reason: format!(
+                        "relationship does not exist at expected revision {expected_revision}"
+                    ),
+                });
+            }
             let affected = self.connection.execute(
                 "INSERT INTO graph_relationship(
                     relationship_id, source_graph_node_id, target_graph_node_id, rel_type,
@@ -153,13 +178,27 @@ impl<'conn> NodeRelationshipRepository<'conn> {
         if same_contract(&current, incoming) {
             return Ok(RelationshipMutation::Preserved);
         }
-        if incoming.revision < current.revision {
+        if current.origin == ContentOrigin::UserAuthored
+            && incoming.origin != ContentOrigin::UserAuthored
+        {
             return Ok(RelationshipMutation::Preserved);
+        }
+        if incoming.revision < current.revision {
+            return Ok(RelationshipMutation::Conflict {
+                current_revision: current.revision,
+                reason: "incoming relationship revision is stale".into(),
+            });
         }
         if incoming.revision == current.revision {
             return Ok(RelationshipMutation::Conflict {
                 current_revision: current.revision,
                 reason: "different relationship contract at the same revision".into(),
+            });
+        }
+        if expected_revision != Some(current.revision) {
+            return Ok(RelationshipMutation::Conflict {
+                current_revision: current.revision,
+                reason: "expected relationship revision does not match persisted revision".into(),
             });
         }
 
@@ -361,4 +400,184 @@ fn decode_error(index: usize, error: impl Display) -> rusqlite::Error {
             error.to_string(),
         )),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{
+        connection::Database,
+        repositories::{
+            graph::{ContentOrigin, EntityType},
+            GraphMetadataMutation, GraphNodeMetadataRecord, GraphNodeMetadataRepository,
+        },
+    };
+
+    fn metadata(graph_node_id: &str) -> GraphNodeMetadataRecord {
+        GraphNodeMetadataRecord {
+            graph_node_id: graph_node_id.into(),
+            entity_type: EntityType::Archetype,
+            title: graph_node_id.into(),
+            archetypal_resonance: None,
+            coordinate: None,
+            source_coordinates: vec![format!("vault/{graph_node_id}.md")],
+            evidence_tags: vec!["documented".into()],
+            source_kind: Some("vault-file".into()),
+            content_origin: ContentOrigin::CorpusCompiled,
+            content_revision: 1,
+            seed_schema_version: Some(1),
+            body_source_coordinates: vec![format!("vault/{graph_node_id}.md#body")],
+            historicity: None,
+            claim_kind: None,
+            evidence_status: None,
+            temporal_role: None,
+            place_coverage: None,
+            ql_form: None,
+            ql_unit_id: None,
+            ql_arc: None,
+            ql_topology: None,
+            ql_schema_version: None,
+            ql_source_coordinates: vec![],
+            ql_completeness_status: None,
+            is_temporal: false,
+            valid_from: None,
+            valid_to: None,
+            temporal_precision: None,
+            schema_version: 1,
+            sync_state: SyncState::Pending,
+            remote_revision: None,
+        }
+    }
+
+    fn relationship(origin: ContentOrigin, revision: i64, reading: &str) -> NodeRelationshipRecord {
+        NodeRelationshipRecord {
+            relationship_id: "relationship-a".into(),
+            source_graph_node_id: "source".into(),
+            target_graph_node_id: "target".into(),
+            rel_type: "INSTANTIATES".into(),
+            properties: serde_json::json!({
+                "canonicalKey": "source:INSTANTIATES:target",
+                "reading": reading,
+            }),
+            source_coordinates: vec!["vault/relations.md#source".into()],
+            evidence_tags: vec!["documented".into()],
+            origin,
+            sync_state: SyncState::Pending,
+            revision,
+            remote_revision: None,
+            created_at: None,
+            updated_at: None,
+        }
+    }
+
+    #[test]
+    fn relationship_merge_uses_expected_revision_and_preserves_user_authored_contracts() {
+        let directory = tempfile::tempdir().expect("temporary database directory");
+        let database = Database::open(directory.path().join("relationships.sqlite"))
+            .expect("migrated temporary database");
+        let metadata_repository = GraphNodeMetadataRepository::new(database.connection());
+        for graph_node_id in ["source", "target"] {
+            assert_eq!(
+                metadata_repository
+                    .save(&metadata(graph_node_id), None)
+                    .expect("persist relationship endpoint"),
+                GraphMetadataMutation::Created,
+            );
+        }
+
+        let repository = NodeRelationshipRepository::new(database.connection());
+        let authored_v1 = relationship(ContentOrigin::UserAuthored, 1, "authored v1");
+        assert_eq!(
+            repository
+                .merge(&authored_v1, None)
+                .expect("create user-authored relationship"),
+            RelationshipMutation::Created,
+        );
+        assert_eq!(
+            repository
+                .merge(&authored_v1, None)
+                .expect("exact user-authored retry"),
+            RelationshipMutation::Preserved,
+        );
+
+        let corpus_v2 = relationship(ContentOrigin::CorpusCompiled, 2, "compiler rewrite");
+        assert_eq!(
+            repository
+                .merge(&corpus_v2, Some(1))
+                .expect("automatic rewrite is preserved rather than applied"),
+            RelationshipMutation::Preserved,
+        );
+        assert_eq!(
+            repository
+                .get("relationship-a")
+                .expect("reload user relationship")
+                .expect("user relationship remains")
+                .properties["reading"],
+            "authored v1",
+        );
+
+        let authored_v2 = relationship(ContentOrigin::UserAuthored, 2, "authored v2");
+        assert_eq!(
+            repository
+                .merge(&authored_v2, Some(1))
+                .expect("compare-and-swap user update"),
+            RelationshipMutation::Updated,
+        );
+        let stale = relationship(ContentOrigin::UserAuthored, 3, "stale writer");
+        assert!(matches!(
+            repository
+                .merge(&stale, Some(1))
+                .expect("stale update is a mutation result"),
+            RelationshipMutation::Conflict {
+                current_revision: 2,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn structural_root_relationships_validate_and_project_without_a_separate_vocabulary() {
+        let directory = tempfile::tempdir().expect("temporary database directory");
+        let database = Database::open(directory.path().join("root-relationships.sqlite"))
+            .expect("migrated temporary database");
+        let metadata_repository = GraphNodeMetadataRepository::new(database.connection());
+        for graph_node_id in ["root-field", "nested-ql-unit"] {
+            assert_eq!(
+                metadata_repository
+                    .save(&metadata(graph_node_id), None)
+                    .expect("persist structural endpoint"),
+                GraphMetadataMutation::Created,
+            );
+        }
+
+        let structural = NodeRelationshipRecord {
+            relationship_id: "root-field-nests-ql-unit".into(),
+            source_graph_node_id: "root-field".into(),
+            target_graph_node_id: "nested-ql-unit".into(),
+            rel_type: "NESTS".into(),
+            properties: serde_json::json!({"seed_key": "root:field:NESTS:ql-unit"}),
+            source_coordinates: vec!["root-archetypal-field.md#constellations".into()],
+            evidence_tags: vec!["ql_unit".into()],
+            origin: ContentOrigin::Seed,
+            sync_state: SyncState::Pending,
+            revision: 1,
+            remote_revision: None,
+            created_at: None,
+            updated_at: None,
+        };
+        let repository = NodeRelationshipRepository::new(database.connection());
+        assert_eq!(
+            repository
+                .merge(&structural, None)
+                .expect("persist canonical structural relationship"),
+            RelationshipMutation::Created,
+        );
+        let projected = repository
+            .get("root-field-nests-ql-unit")
+            .expect("read structural relationship")
+            .expect("structural relationship exists")
+            .as_graph_relationship();
+        assert_eq!(projected.rel_type, "NESTS");
+        assert_eq!(projected.properties["seed_key"], "root:field:NESTS:ql-unit");
+    }
 }

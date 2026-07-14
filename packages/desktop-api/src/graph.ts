@@ -139,6 +139,12 @@ export interface TimelineViewNode {
   node: GraphNode;
   anchor: TimelineAnchor;
   layoutOverride: TimelineLayoutOverride | null;
+  /**
+   * A non-temporal endpoint shown beside an anchored temporal node so a graph
+   * relationship can be read in the timeline. It is contextual placement,
+   * not a claim that this node happened at `anchor`.
+   */
+  relationCompanion?: boolean;
 }
 
 export interface TimelineLane { id: string }
@@ -154,7 +160,12 @@ export interface TimelineDiagnostic {
 export interface TimelineView {
   workspaceId: string;
   nodes: TimelineViewNode[];
-  /** Canonical graph links whose two endpoints are temporally located. */
+  /**
+   * Canonical links with at least one displayed temporal endpoint. Every link
+   * has presentation records for both endpoints; a non-temporal endpoint is
+   * returned as a `relationCompanion` rather than being misclassified as an
+   * historical moment.
+   */
   relationships: GraphRelationship[];
   lanes: TimelineLane[];
   diagnostics: TimelineDiagnostic[];

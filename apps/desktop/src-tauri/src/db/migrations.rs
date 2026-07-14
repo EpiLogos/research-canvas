@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::{borrow::Cow, collections::BTreeSet};
 
 use rusqlite::{Connection, Result};
 
@@ -72,6 +72,12 @@ const MIGRATIONS: &[Migration] = &[
         version: "0015_graph_relationship_projection",
         sql: include_str!("../../migrations/0015_graph_relationship_projection.sql"),
     },
+    Migration {
+        version: "0016_graph_relationship_structural_vocabulary_repair",
+        sql: include_str!(
+            "../../migrations/0016_graph_relationship_structural_vocabulary_repair.sql"
+        ),
+    },
 ];
 
 impl MigrationRunner {
@@ -109,7 +115,7 @@ impl MigrationRunner {
                 continue;
             }
 
-            connection.execute_batch(migration.sql)?;
+            connection.execute_batch(&migration_sql(migration))?;
             connection.execute(
                 "INSERT INTO schema_migrations (version) VALUES (?1)",
                 [migration.version],
@@ -118,6 +124,19 @@ impl MigrationRunner {
 
         transaction.commit()
     }
+}
+
+/// 0015 is immutable history. 0016 deliberately consumes the one canonical
+/// runtime vocabulary while rebuilding the old local projection, so root
+/// seeding, remote writes, and SQLite checks cannot drift apart.
+fn migration_sql(migration: &Migration) -> Cow<'static, str> {
+    if migration.version == "0016_graph_relationship_structural_vocabulary_repair" {
+        return Cow::Owned(migration.sql.replace(
+            "__RELATIONSHIP_TYPES__",
+            &super::repositories::relationship_vocabulary::sqlite_check_values(),
+        ));
+    }
+    Cow::Borrowed(migration.sql)
 }
 
 fn applied_versions(connection: &Connection) -> Result<BTreeSet<String>> {

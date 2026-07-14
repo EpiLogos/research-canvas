@@ -5,6 +5,8 @@ import { yearToPixel, type TimelineViewport } from "./viewport";
 export interface TimelineItem {
   graphNodeId: string;
   node: GraphNode;
+  /** See TimelineViewNode.relationCompanion: contextual, not historical. */
+  relationCompanion?: boolean;
   presentation: TimelinePresentation;
   startYear: number;
   /** null = ongoing / open-ended (no validTo). */
@@ -51,20 +53,22 @@ const LANE_ORDER: readonly PlacedItem["laneSide"][] = [
 
 /**
  * Keep only temporally-located nodes with a parseable validFrom and project
- * them onto a numeric year axis. Trans-temporal nodes (isTemporal === false)
- * are never projected (WS0 §8.1). Sorted ascending by startYear.
+ * them onto a numeric year axis. A non-temporal node may appear only when the
+ * transport explicitly marks it as a relation companion, anchored to an
+ * adjacent temporal node. Sorted ascending by startYear.
  */
 export function projectNodes(records: TimelineViewNode[]): TimelineItem[] {
   const items: TimelineItem[] = [];
   for (const record of records) {
     const { node, anchor, layoutOverride } = record;
-    if (!node.isTemporal) continue;
+    if (!node.isTemporal && !record.relationCompanion) continue;
     const startYear = parseTemporalInstant(anchor.validFrom);
     if (startYear === null) continue;
     const endYear = parseTemporalInstant(anchor.validTo);
     items.push({
       graphNodeId: node.graphNodeId,
       node,
+      relationCompanion: record.relationCompanion === true,
       presentation: {
         lane: layoutOverride?.lane ?? null,
         offsetY: layoutOverride?.offsetY ?? 0,

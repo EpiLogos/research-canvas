@@ -172,6 +172,7 @@ export function TimelineNode({
       data-selected={selected ? "true" : undefined}
       data-dimmed={dimmed ? "true" : undefined}
       data-filtered={filtered ? "true" : undefined}
+      data-relation-companion={item.relationCompanion ? "true" : undefined}
       data-category={category}
       data-lod={lod}
       className={`timeline-node timeline-node--${placed.laneSide}`}
@@ -241,7 +242,9 @@ export function TimelineNode({
           title={categoryStyle.label}
           style={{ backgroundColor: item.presentation.style.dotColour ?? categoryStyle.color }}
         />
-        <span className="timeline-node-date">{formatItemDate(item)}</span>
+        <span className="timeline-node-date">
+          {item.relationCompanion ? "linked context" : formatItemDate(item)}
+        </span>
         <span className="timeline-node-title">{item.node.title}</span>
         {lod === "detail" && summary && (
           <span

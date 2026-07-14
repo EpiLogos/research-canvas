@@ -1352,7 +1352,7 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
         staticTimelineDiagnostic(node) !== null
       );
       const timelineLayoutById = new Map(bundle.timelineLayout.map((record) => [record.graphNodeId, record.layout]));
-      const nodes = temporalNodes
+      const temporalRecords = temporalNodes
         .filter((node): node is GraphNode & { validFrom: string; temporalPrecision: NonNullable<GraphNode["temporalPrecision"]> } =>
           !invalid.includes(node) && typeof node.validFrom === "string" && node.temporalPrecision !== null
         )
@@ -1365,14 +1365,39 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
           },
           layoutOverride: timelineLayoutById.get(node.graphNodeId) ?? null,
         }));
-      const temporalIds = new Set(nodes.map((record) => record.node.graphNodeId));
+      const temporalIds = new Set(temporalRecords.map((record) => record.node.graphNodeId));
+      const candidateRelationships = bundle.relationships.filter((relationship) =>
+        temporalIds.has(relationship.sourceGraphNodeId)
+        || temporalIds.has(relationship.targetGraphNodeId),
+      );
+      const companionAnchors = new Map<string, (typeof temporalRecords)[number]["anchor"]>();
+      for (const relationship of candidateRelationships) {
+        const sourceAnchor = temporalRecords.find((record) => record.node.graphNodeId === relationship.sourceGraphNodeId)?.anchor;
+        const targetAnchor = temporalRecords.find((record) => record.node.graphNodeId === relationship.targetGraphNodeId)?.anchor;
+        const register = (graphNodeId: string, anchor: typeof sourceAnchor) => {
+          if (!anchor || temporalIds.has(graphNodeId) || !nodeById.has(graphNodeId)) return;
+          const existing = companionAnchors.get(graphNodeId);
+          if (!existing || anchor.validFrom < existing.validFrom) companionAnchors.set(graphNodeId, anchor);
+        };
+        register(relationship.targetGraphNodeId, sourceAnchor);
+        register(relationship.sourceGraphNodeId, targetAnchor);
+      }
+      const companionRecords = [...companionAnchors.entries()].flatMap(([graphNodeId, anchor]) => {
+        const node = nodeById.get(graphNodeId);
+        return node ? [{ node, anchor, layoutOverride: null, relationCompanion: true }] : [];
+      });
+      const presentationIds = new Set([
+        ...temporalIds,
+        ...companionRecords.map((record) => record.node.graphNodeId),
+      ]);
+      const relationships = candidateRelationships.filter((relationship) =>
+        presentationIds.has(relationship.sourceGraphNodeId)
+        && presentationIds.has(relationship.targetGraphNodeId),
+      );
       return {
         workspaceId: canonicalWorkspaceId,
-        nodes,
-        relationships: bundle.relationships.filter((relationship) =>
-          temporalIds.has(relationship.sourceGraphNodeId)
-          && temporalIds.has(relationship.targetGraphNodeId),
-        ),
+        nodes: [...temporalRecords, ...companionRecords],
+        relationships,
         lanes: [],
         diagnostics: invalid.map((node) => ({
           graphNodeId: node.graphNodeId,

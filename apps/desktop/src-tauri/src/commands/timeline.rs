@@ -9,11 +9,12 @@ use crate::{
         connection::Database,
         repositories::{
             graph::{
-                EntityType, GraphNode, GraphRelationship, Historicity, TemporalPrecision,
-                TemporalRole,
+                canonical_relationship_key, EntityType, GraphNode, GraphRelationship, Historicity,
+                TemporalPrecision, TemporalRole,
             },
-            GraphNodeMetadataRepository, NodeDocumentRepository, NodeRelationshipRepository,
-            TimelineLayoutMutation, TimelineLayoutRecord, TimelineLayoutRepository,
+            GraphNodeMetadataRepository, LocalNodeDocument, NodeDocumentRepository,
+            NodeRelationshipRepository, TemporalGraphNodeMetadataRecord, TimelineLayoutMutation,
+            TimelineLayoutRecord, TimelineLayoutRepository,
         },
     },
     SharedApiState,
@@ -200,6 +201,11 @@ pub struct TimelineNode {
     pub node: GraphNode,
     pub anchor: TimelineAnchor,
     pub layout_override: Option<TimelineLayoutOverride>,
+    /// A non-temporal or filtered endpoint attached to a displayed temporal
+    /// node for relationship presentation. It is context, never an assertion
+    /// that the companion itself occurred at this anchor.
+    #[serde(default)]
+    pub relation_companion: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -235,6 +241,187 @@ pub struct TimelineView {
     pub diagnostics: Vec<TimelineDiagnostic>,
 }
 
+fn graph_node_from_local_projection(
+    record: &TemporalGraphNodeMetadataRecord,
+    document: Option<LocalNodeDocument>,
+) -> GraphNode {
+    let metadata = &record.metadata;
+    let (body, summary, content_origin, content_revision, body_source_coordinates) = match document
+    {
+        Some(document) => (
+            document.body,
+            document.summary,
+            Some(document.content_origin),
+            Some(document.content_revision),
+            document.body_source_coordinates,
+        ),
+        None => (
+            "[]".into(),
+            String::new(),
+            Some(metadata.content_origin),
+            Some(metadata.content_revision),
+            metadata.body_source_coordinates.clone(),
+        ),
+    };
+    GraphNode {
+        graph_node_id: metadata.graph_node_id.clone(),
+        entity_type: metadata.entity_type,
+        title: metadata.title.clone(),
+        body,
+        summary,
+        archetypal_resonance: metadata.archetypal_resonance.clone(),
+        coordinate: metadata.coordinate.clone(),
+        source_coordinates: metadata.source_coordinates.clone(),
+        evidence_tags: metadata.evidence_tags.clone(),
+        source_kind: metadata.source_kind.clone(),
+        content_origin,
+        content_revision,
+        seed_schema_version: metadata.seed_schema_version,
+        body_source_coordinates,
+        historicity: metadata.historicity,
+        claim_kind: metadata.claim_kind,
+        evidence_status: metadata.evidence_status,
+        temporal_role: metadata.temporal_role,
+        place_coverage: metadata.place_coverage,
+        ql_form: metadata.ql_form,
+        ql_unit_id: metadata.ql_unit_id.clone(),
+        ql_arc: metadata.ql_arc,
+        ql_topology: metadata.ql_topology,
+        ql_schema_version: metadata.ql_schema_version,
+        ql_source_coordinates: metadata.ql_source_coordinates.clone(),
+        ql_completeness_status: metadata.ql_completeness_status,
+        is_temporal: metadata.is_temporal,
+        valid_from: metadata.valid_from.clone(),
+        valid_to: metadata.valid_to.clone(),
+        temporal_precision: metadata.temporal_precision,
+        created_at: record.created_at.clone(),
+        updated_at: record.updated_at.clone(),
+    }
+}
+
+fn timeline_relation_companions(
+    displayed_nodes: &[TimelineNode],
+    relationships: &[GraphRelationship],
+    nodes_by_id: &BTreeMap<String, GraphNode>,
+) -> Vec<TimelineNode> {
+    let displayed = displayed_nodes
+        .iter()
+        .filter(|node| !node.relation_companion)
+        .map(|node| (node.node.graph_node_id.as_str(), &node.anchor))
+        .collect::<BTreeMap<_, _>>();
+    let mut companion_anchors = BTreeMap::<String, TimelineAnchor>::new();
+    let mut register = |companion_id: &str, anchor: &TimelineAnchor| {
+        if displayed.contains_key(companion_id) || !nodes_by_id.contains_key(companion_id) {
+            return;
+        }
+        companion_anchors
+            .entry(companion_id.to_string())
+            .and_modify(|current| {
+                if anchor.valid_from < current.valid_from {
+                    *current = anchor.clone();
+                }
+            })
+            .or_insert_with(|| anchor.clone());
+    };
+    for relationship in relationships {
+        let source_anchor = displayed.get(relationship.source_graph_node_id.as_str());
+        let target_anchor = displayed.get(relationship.target_graph_node_id.as_str());
+        if let Some(anchor) = source_anchor {
+            register(&relationship.target_graph_node_id, anchor);
+        }
+        if let Some(anchor) = target_anchor {
+            register(&relationship.source_graph_node_id, anchor);
+        }
+    }
+    companion_anchors
+        .into_iter()
+        .filter_map(|(graph_node_id, anchor)| {
+            nodes_by_id
+                .get(&graph_node_id)
+                .cloned()
+                .map(|node| TimelineNode {
+                    node,
+                    anchor,
+                    layout_override: None,
+                    relation_companion: true,
+                })
+        })
+        .collect()
+}
+
+fn merge_relationships_by_canonical_key(
+    local: impl IntoIterator<Item = GraphRelationship>,
+    remote: impl IntoIterator<Item = GraphRelationship>,
+) -> Vec<GraphRelationship> {
+    let mut merged = BTreeMap::new();
+    for relationship in local.into_iter().chain(remote) {
+        let key = canonical_relationship_key(
+            &relationship.source_graph_node_id,
+            &relationship.target_graph_node_id,
+            &relationship.rel_type,
+            &relationship.properties,
+        );
+        merged.insert(key, relationship);
+    }
+    merged.into_values().collect()
+}
+
+fn rebuild_timeline_relation_companions(
+    view: &mut TimelineView,
+    supplemental_nodes: impl IntoIterator<Item = GraphNode>,
+) {
+    let displayed = view
+        .nodes
+        .iter()
+        .filter(|node| !node.relation_companion)
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut nodes_by_id = view
+        .nodes
+        .iter()
+        .map(|node| (node.node.graph_node_id.clone(), node.node.clone()))
+        .collect::<BTreeMap<_, _>>();
+    nodes_by_id.extend(
+        supplemental_nodes
+            .into_iter()
+            .map(|node| (node.graph_node_id.clone(), node)),
+    );
+    // A relationship layer can only draw a link when it can locate *both*
+    // endpoint placements. Keep the relation eligibility broad (one displayed
+    // temporal endpoint is enough) but do not return an unrenderable edge if
+    // a remote endpoint has vanished between the relationship and node reads.
+    let displayed_ids = displayed
+        .iter()
+        .map(|node| node.node.graph_node_id.as_str())
+        .collect::<BTreeSet<_>>();
+    view.relationships.retain(|relationship| {
+        (displayed_ids.contains(relationship.source_graph_node_id.as_str())
+            || displayed_ids.contains(relationship.target_graph_node_id.as_str()))
+            && nodes_by_id.contains_key(&relationship.source_graph_node_id)
+            && nodes_by_id.contains_key(&relationship.target_graph_node_id)
+    });
+    let companions = timeline_relation_companions(&displayed, &view.relationships, &nodes_by_id);
+    view.nodes = displayed;
+    view.nodes.extend(companions);
+}
+
+/// Remote graph enrichment is strictly opportunistic. A local timeline is a
+/// complete offline projection and must remain readable if Bolt is unavailable
+/// or the companion lookup fails.
+fn apply_remote_timeline_enrichment(
+    view: &mut TimelineView,
+    remote: Result<(Vec<GraphRelationship>, Vec<GraphNode>), String>,
+) {
+    let Ok((remote_relationships, remote_nodes)) = remote else {
+        return;
+    };
+    view.relationships = merge_relationships_by_canonical_key(
+        std::mem::take(&mut view.relationships),
+        remote_relationships,
+    );
+    rebuild_timeline_relation_companions(view, remote_nodes);
+}
+
 pub fn timeline_workspace_identity(path: impl AsRef<std::path::Path>) -> Result<String, String> {
     let canonical = std::fs::canonicalize(path).map_err(|error| error.to_string())?;
     Ok(format!("sqlite:{}", canonical.to_string_lossy()))
@@ -254,7 +441,8 @@ pub fn load_timeline_view_at_path(
         ));
     }
     let database = Database::open(path.as_ref()).map_err(|error| error.to_string())?;
-    let metadata = GraphNodeMetadataRepository::new(database.connection())
+    let metadata_repository = GraphNodeMetadataRepository::new(database.connection());
+    let metadata = metadata_repository
         .list_temporal()
         .map_err(|error| error.to_string())?;
     let documents = NodeDocumentRepository::new(database.connection());
@@ -269,7 +457,7 @@ pub fn load_timeline_view_at_path(
     let mut diagnostics = Vec::new();
     let mut lane_ids = BTreeSet::new();
     for row in metadata {
-        let metadata = row.metadata;
+        let metadata = &row.metadata;
         if !matches_filters(&metadata, &request.filters) {
             continue;
         }
@@ -281,11 +469,11 @@ pub fn load_timeline_view_at_path(
             Ok(anchor) => anchor,
             Err(message) => {
                 diagnostics.push(TimelineDiagnostic {
-                    graph_node_id: metadata.graph_node_id,
+                    graph_node_id: metadata.graph_node_id.clone(),
                     code: TimelineDiagnosticCode::InvalidTemporalAnchor,
                     message,
-                    valid_from: metadata.valid_from,
-                    valid_to: metadata.valid_to,
+                    valid_from: metadata.valid_from.clone(),
+                    valid_to: metadata.valid_to.clone(),
                 });
                 continue;
             }
@@ -295,11 +483,11 @@ pub fn load_timeline_view_at_path(
             .map_err(|error| error.to_string())?
         else {
             diagnostics.push(TimelineDiagnostic {
-                graph_node_id: metadata.graph_node_id,
+                graph_node_id: metadata.graph_node_id.clone(),
                 code: TimelineDiagnosticCode::MissingAuthoritativeDocument,
                 message: "temporal metadata has no authoritative node_document".into(),
-                valid_from: metadata.valid_from,
-                valid_to: metadata.valid_to,
+                valid_from: metadata.valid_from.clone(),
+                valid_to: metadata.valid_to.clone(),
             });
             continue;
         };
@@ -317,40 +505,8 @@ pub fn load_timeline_view_at_path(
         nodes.push(TimelineNode {
             anchor,
             layout_override,
-            node: GraphNode {
-                graph_node_id: metadata.graph_node_id,
-                entity_type: metadata.entity_type,
-                title: metadata.title,
-                body: document.body,
-                summary: document.summary,
-                archetypal_resonance: metadata.archetypal_resonance,
-                coordinate: metadata.coordinate,
-                source_coordinates: metadata.source_coordinates,
-                evidence_tags: metadata.evidence_tags,
-                source_kind: metadata.source_kind,
-                content_origin: Some(document.content_origin),
-                content_revision: Some(document.content_revision),
-                seed_schema_version: metadata.seed_schema_version,
-                body_source_coordinates: document.body_source_coordinates,
-                historicity: metadata.historicity,
-                claim_kind: metadata.claim_kind,
-                evidence_status: metadata.evidence_status,
-                temporal_role: metadata.temporal_role,
-                place_coverage: metadata.place_coverage,
-                ql_form: metadata.ql_form,
-                ql_unit_id: metadata.ql_unit_id,
-                ql_arc: metadata.ql_arc,
-                ql_topology: metadata.ql_topology,
-                ql_schema_version: metadata.ql_schema_version,
-                ql_source_coordinates: metadata.ql_source_coordinates,
-                ql_completeness_status: metadata.ql_completeness_status,
-                is_temporal: true,
-                valid_from: metadata.valid_from,
-                valid_to: metadata.valid_to,
-                temporal_precision: metadata.temporal_precision,
-                created_at: row.created_at,
-                updated_at: row.updated_at,
-            },
+            node: graph_node_from_local_projection(&row, Some(document)),
+            relation_companion: false,
         });
     }
     let temporal_ids = nodes
@@ -362,6 +518,51 @@ pub fn load_timeline_view_at_path(
         .map_err(|error| error.to_string())?
         .into_iter()
         .map(|relationship| relationship.as_graph_relationship())
+        .collect::<Vec<_>>();
+    let companion_ids = relationships
+        .iter()
+        .flat_map(|relationship| {
+            [
+                relationship.source_graph_node_id.as_str(),
+                relationship.target_graph_node_id.as_str(),
+            ]
+        })
+        .filter(|graph_node_id| !temporal_ids.contains(*graph_node_id))
+        .collect::<BTreeSet<_>>();
+    let mut nodes_by_id = nodes
+        .iter()
+        .map(|node| (node.node.graph_node_id.clone(), node.node.clone()))
+        .collect::<BTreeMap<_, _>>();
+    for graph_node_id in companion_ids {
+        let Some(metadata) = metadata_repository
+            .get_with_timestamps(graph_node_id)
+            .map_err(|error| error.to_string())?
+        else {
+            continue;
+        };
+        let document = documents
+            .get_node_document(graph_node_id)
+            .map_err(|error| error.to_string())?;
+        nodes_by_id.insert(
+            graph_node_id.to_string(),
+            graph_node_from_local_projection(&metadata, document),
+        );
+    }
+    nodes.extend(timeline_relation_companions(
+        &nodes,
+        &relationships,
+        &nodes_by_id,
+    ));
+    let presentation_ids = nodes
+        .iter()
+        .map(|node| node.node.graph_node_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let relationships = relationships
+        .into_iter()
+        .filter(|relationship| {
+            presentation_ids.contains(relationship.source_graph_node_id.as_str())
+                && presentation_ids.contains(relationship.target_graph_node_id.as_str())
+        })
         .collect();
     Ok(TimelineView {
         workspace_id,
@@ -514,25 +715,55 @@ pub async fn load_timeline_view_command(
         let temporal_ids = view
             .nodes
             .iter()
+            .filter(|node| !node.relation_companion)
             .map(|node| node.node.graph_node_id.as_str())
             .collect::<std::collections::BTreeSet<_>>();
-        let mut relationships = view
-            .relationships
-            .into_iter()
-            .map(|relationship| (relationship.id.clone(), relationship))
-            .collect::<BTreeMap<_, _>>();
-        for relationship in graph
-            .list_relationships()
-            .await?
-            .into_iter()
-            .filter(|relationship| {
-                temporal_ids.contains(relationship.source_graph_node_id.as_str())
-                    && temporal_ids.contains(relationship.target_graph_node_id.as_str())
-            })
+        let remote_relationships = match graph
+            .relationships_involving(
+                &temporal_ids
+                    .iter()
+                    .map(|graph_node_id| (*graph_node_id).to_string())
+                    .collect::<Vec<_>>(),
+            )
+            .await
         {
-            relationships.insert(relationship.id.clone(), relationship);
-        }
-        view.relationships = relationships.into_values().collect();
+            Ok(relationships) => relationships,
+            Err(_) => return Ok(view),
+        };
+        let displayed_ids = temporal_ids
+            .iter()
+            .map(|graph_node_id| (*graph_node_id).to_string())
+            .collect::<BTreeSet<_>>();
+        let known_ids = view
+            .nodes
+            .iter()
+            .map(|node| node.node.graph_node_id.as_str())
+            .collect::<BTreeSet<_>>();
+        let missing_endpoint_ids = remote_relationships
+            .iter()
+            .flat_map(|relationship| {
+                [
+                    relationship.source_graph_node_id.as_str(),
+                    relationship.target_graph_node_id.as_str(),
+                ]
+            })
+            .filter(|graph_node_id| {
+                !displayed_ids.contains(*graph_node_id) && !known_ids.contains(*graph_node_id)
+            })
+            .map(str::to_string)
+            .collect::<BTreeSet<_>>();
+        let remote_nodes = if missing_endpoint_ids.is_empty() {
+            Vec::new()
+        } else {
+            match graph
+                .get_nodes(&missing_endpoint_ids.into_iter().collect::<Vec<_>>())
+                .await
+            {
+                Ok(nodes) => nodes,
+                Err(_) => return Ok(view),
+            }
+        };
+        apply_remote_timeline_enrichment(&mut view, Ok((remote_relationships, remote_nodes)));
     }
     Ok(view)
 }
@@ -636,6 +867,49 @@ mod local_relationship_projection_tests {
         }
     }
 
+    fn projected_node(
+        graph_node_id: &str,
+        entity_type: EntityType,
+        is_temporal: bool,
+    ) -> GraphNode {
+        graph_node_from_local_projection(
+            &TemporalGraphNodeMetadataRecord {
+                metadata: metadata(graph_node_id, entity_type, is_temporal),
+                created_at: "2026-07-14T00:00:00.000Z".into(),
+                updated_at: "2026-07-14T00:00:00.000Z".into(),
+            },
+            None,
+        )
+    }
+
+    fn timeline_relationship(
+        id: &str,
+        source_graph_node_id: &str,
+        target_graph_node_id: &str,
+        properties: serde_json::Value,
+    ) -> GraphRelationship {
+        GraphRelationship {
+            id: id.into(),
+            rel_type: "INSTANTIATES".into(),
+            source_graph_node_id: source_graph_node_id.into(),
+            target_graph_node_id: target_graph_node_id.into(),
+            properties,
+        }
+    }
+
+    fn temporal_timeline_node(node: GraphNode) -> TimelineNode {
+        TimelineNode {
+            node,
+            anchor: TimelineAnchor {
+                valid_from: "1888".into(),
+                valid_to: None,
+                precision: TemporalPrecision::Year,
+            },
+            layout_override: None,
+            relation_companion: false,
+        }
+    }
+
     #[test]
     fn local_relationships_round_trip_and_offline_timeline_projects_temporal_endpoints() {
         let directory = tempfile::tempdir().expect("temporary SQLite directory");
@@ -684,13 +958,13 @@ mod local_relationship_projection_tests {
             );
             assert_eq!(
                 relationship_repository
-                    .merge(&temporal_link)
+                    .merge(&temporal_link, None)
                     .expect("persist local relationship"),
                 RelationshipMutation::Created
             );
             assert_eq!(
                 relationship_repository
-                    .merge(&temporal_link)
+                    .merge(&temporal_link, None)
                     .expect("replay local relationship"),
                 RelationshipMutation::Preserved
             );
@@ -727,12 +1001,15 @@ mod local_relationship_projection_tests {
                 1
             );
             relationship_repository
-                .merge(&relationship(
-                    "unrelated-source-resonates-work",
-                    "unrelated-source",
-                    "unrelated-work",
-                    "RESONATES_WITH",
-                ))
+                .merge(
+                    &relationship(
+                        "unrelated-source-resonates-work",
+                        "unrelated-source",
+                        "unrelated-work",
+                        "RESONATES_WITH",
+                    ),
+                    None,
+                )
                 .expect("persist unrelated relationship");
         }
 
@@ -747,7 +1024,10 @@ mod local_relationship_projection_tests {
         )
         .expect("load offline timeline");
 
-        assert_eq!(timeline.nodes.len(), 1);
+        assert_eq!(timeline.nodes.len(), 2);
+        assert!(timeline.nodes.iter().any(|node| {
+            node.node.graph_node_id == "archetype-antichrist" && node.relation_companion
+        }));
         assert_eq!(timeline.relationships.len(), 1);
         let relationship = &timeline.relationships[0];
         assert_eq!(relationship.id, "event-1888-instantiates-antichrist");
@@ -770,29 +1050,111 @@ mod local_relationship_projection_tests {
         let mut invalid =
             relationship("bad\u{0}relationship", "event", "archetype", "INSTANTIATES");
         let error = repository
-            .merge(&invalid)
+            .merge(&invalid, None)
             .expect_err("invalid relationship id rejected");
         assert!(error.to_string().contains("relationship"));
 
         invalid.relationship_id = "valid-id".into();
         invalid.rel_type = "UNCONTROLLED".into();
         let error = repository
-            .merge(&invalid)
+            .merge(&invalid, None)
             .expect_err("invalid relationship type rejected");
         assert!(error.to_string().contains("rel_type"));
 
         invalid.rel_type = "INSTANTIATES".into();
         invalid.properties = serde_json::json!(["not", "an", "object"]);
         let error = repository
-            .merge(&invalid)
+            .merge(&invalid, None)
             .expect_err("non-object relationship properties rejected");
         assert!(error.to_string().contains("properties"));
 
         invalid.properties = serde_json::json!({});
         invalid.evidence_tags = vec!["ok".into(), "".into()];
         let error = repository
-            .merge(&invalid)
+            .merge(&invalid, None)
             .expect_err("invalid tag rejected");
         assert!(error.to_string().contains("evidence"));
+    }
+
+    #[test]
+    fn remote_timeline_enrichment_is_best_effort_and_deduplicates_by_canonical_key() {
+        let event = projected_node("event-1888", EntityType::Event, true);
+        let archetype = projected_node("archetype-antichrist", EntityType::Archetype, false);
+        let local = timeline_relationship(
+            "sqlite-relationship-17",
+            "event-1888",
+            "archetype-antichrist",
+            serde_json::json!({"seed_key": "root:event-1888:INSTANTIATES:antichrist"}),
+        );
+        let mut local_view = TimelineView {
+            workspace_id: "sqlite:/offline".into(),
+            nodes: vec![temporal_timeline_node(event.clone())],
+            relationships: vec![local.clone()],
+            lanes: vec![],
+            diagnostics: vec![],
+        };
+        rebuild_timeline_relation_companions(&mut local_view, vec![archetype.clone()]);
+        assert_eq!(
+            local_view.nodes.len(),
+            2,
+            "local timeline already contains a renderable companion"
+        );
+
+        let before_failure = (
+            local_view
+                .nodes
+                .iter()
+                .map(|node| node.node.graph_node_id.clone())
+                .collect::<BTreeSet<_>>(),
+            local_view
+                .relationships
+                .iter()
+                .map(|relationship| relationship.id.clone())
+                .collect::<BTreeSet<_>>(),
+        );
+        apply_remote_timeline_enrichment(&mut local_view, Err("Bolt unavailable".into()));
+        assert_eq!(
+            local_view
+                .nodes
+                .iter()
+                .map(|node| node.node.graph_node_id.clone())
+                .collect::<BTreeSet<_>>(),
+            before_failure.0,
+            "Neo4j failure must leave the valid local timeline intact",
+        );
+        assert_eq!(
+            local_view
+                .relationships
+                .iter()
+                .map(|relationship| relationship.id.clone())
+                .collect::<BTreeSet<_>>(),
+            before_failure.1,
+        );
+
+        let remote_copy = timeline_relationship(
+            "neo4j-element-id-9:17",
+            "event-1888",
+            "archetype-antichrist",
+            serde_json::json!({"seed_key": "root:event-1888:INSTANTIATES:antichrist"}),
+        );
+        apply_remote_timeline_enrichment(&mut local_view, Ok((vec![remote_copy], vec![archetype])));
+        assert_eq!(
+            local_view.relationships.len(),
+            1,
+            "local and remote copies are one semantic edge"
+        );
+        assert_eq!(local_view.relationships[0].id, "neo4j-element-id-9:17");
+        assert!(local_view.nodes.iter().any(|node| {
+            node.node.graph_node_id == "archetype-antichrist" && node.relation_companion
+        }));
+        let presentation_ids = local_view
+            .nodes
+            .iter()
+            .map(|node| node.node.graph_node_id.as_str())
+            .collect::<BTreeSet<_>>();
+        assert!(local_view.relationships.iter().all(|relationship| {
+            presentation_ids.contains(relationship.source_graph_node_id.as_str())
+                && presentation_ids.contains(relationship.target_graph_node_id.as_str())
+        }));
     }
 }

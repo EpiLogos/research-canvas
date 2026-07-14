@@ -131,6 +131,44 @@ describe("TimelineLens", () => {
     );
   });
 
+  test("renders a non-temporal relation companion so an event-to-archetype link has two visible endpoints", async () => {
+    const historicalEvent = event("event-1888", "The 1888 event", "1888-01-01");
+    const contextualArchetype = archetype("archetype-antichrist", "Antichrist archetype");
+    render(
+      <TimelineLens
+        dataSource={makeDataSource({
+          loadTimelineView: async () => ({
+            workspaceId: "sqlite:/test",
+            nodes: [
+              timelineRecord(historicalEvent, layout("event-1888", 240, 72)),
+              {
+                node: contextualArchetype,
+                anchor: { validFrom: "1888-01-01", validTo: null, precision: "year" },
+                layoutOverride: null,
+                relationCompanion: true,
+              },
+            ],
+            relationships: [{
+              id: "event-instantiates-archetype",
+              relType: "INSTANTIATES",
+              sourceGraphNodeId: "event-1888",
+              targetGraphNodeId: "archetype-antichrist",
+              properties: {},
+            }],
+            lanes: [{ id: "events" }],
+            diagnostics: [],
+          }),
+        })}
+        onOpenNode={() => {}}
+      />,
+    );
+
+    const companion = await screen.findByTestId("timeline-node-archetype-antichrist");
+    expect(companion).toHaveAttribute("data-relation-companion", "true");
+    expect(companion).toHaveTextContent("linked context");
+    expect(screen.getByTestId("timeline-relationship-event-instantiates-archetype")).toBeInTheDocument();
+  });
+
   test("shows a visible load error instead of a dates-only surface", async () => {
     render(
       <TimelineLens

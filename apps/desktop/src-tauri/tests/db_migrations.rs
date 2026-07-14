@@ -47,13 +47,14 @@ fn db_migrations_applies_initial_migration_to_a_real_temp_database() {
     assert!(table_exists(connection, "node_document"));
     assert!(table_exists(connection, "graph_node_metadata"));
     assert!(table_exists(connection, "timeline_layout"));
+    assert!(table_exists(connection, "graph_relationship"));
 
     let applied_migrations: i64 = connection
         .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
             row.get(0)
         })
         .expect("migration count");
-    assert_eq!(applied_migrations, 14);
+    assert_eq!(applied_migrations, 16);
 }
 
 #[test]
@@ -68,7 +69,7 @@ fn db_migrations_migration_runner_is_idempotent_and_deterministic() {
             row.get(0)
         })
         .expect("migration count");
-    assert_eq!(applied_migrations, 14);
+    assert_eq!(applied_migrations, 16);
 }
 
 #[test]
@@ -142,10 +143,230 @@ fn db_migrations_upgrade_0010_without_touching_documents_or_canvas_layouts() {
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row
                 .get::<_, i64>(0))
             .unwrap(),
-        14
+        16
     );
     assert!(table_exists(&reopened, "graph_node_metadata"));
     assert!(table_exists(&reopened, "timeline_layout"));
+}
+
+#[test]
+fn db_migrations_0016_creates_the_exact_local_relationship_projection_inventory() {
+    let (_dir, database) = open_temp_database();
+    let connection = database.connection();
+
+    let columns = connection
+        .prepare("PRAGMA table_info(graph_relationship)")
+        .expect("relationship table info")
+        .query_map([], |row| row.get::<_, String>(1))
+        .expect("relationship columns")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("decode relationship columns");
+    assert_eq!(
+        columns,
+        vec![
+            "relationship_id",
+            "source_graph_node_id",
+            "target_graph_node_id",
+            "rel_type",
+            "properties_json",
+            "source_coordinates_json",
+            "evidence_tags_json",
+            "origin",
+            "sync_state",
+            "relationship_revision",
+            "remote_revision",
+            "created_at",
+            "updated_at",
+        ],
+    );
+
+    let indexes = connection
+        .prepare(
+            "SELECT name FROM sqlite_master
+             WHERE type='index' AND tbl_name='graph_relationship'
+             ORDER BY name",
+        )
+        .expect("relationship index inventory")
+        .query_map([], |row| row.get::<_, String>(0))
+        .expect("relationship index rows")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("decode relationship indexes");
+    assert_eq!(
+        indexes,
+        vec![
+            "idx_graph_relationship_source",
+            "idx_graph_relationship_sync",
+            "idx_graph_relationship_target",
+            "idx_graph_relationship_type",
+            "sqlite_autoindex_graph_relationship_1",
+        ],
+    );
+
+    let triggers = connection
+        .prepare(
+            "SELECT name FROM sqlite_master
+             WHERE type='trigger' AND tbl_name='graph_relationship'
+             ORDER BY name",
+        )
+        .expect("relationship trigger inventory")
+        .query_map([], |row| row.get::<_, String>(0))
+        .expect("relationship trigger rows")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("decode relationship triggers");
+    assert_eq!(
+        triggers,
+        vec![
+            "trg_graph_relationship_string_arrays_insert",
+            "trg_graph_relationship_string_arrays_update",
+        ],
+    );
+
+    let table_sql: String = connection
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='graph_relationship'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("relationship table SQL");
+    for rel_type in [
+        "CONTAINS",
+        "PART_OF",
+        "NESTS",
+        "INSTANTIATES",
+        "ECHOES",
+        "CAUSES",
+        "INFLUENCES",
+        "OPPOSES",
+        "INHERITS",
+        "TRANSFORMS_INTO",
+        "LOCATED_AT",
+        "SOURCED_FROM",
+        "SUPPORTS",
+        "QUALIFIES",
+        "CONTESTS",
+        "RESONATES_WITH",
+        "UNCLASSIFIED_RESEARCH_CONNECTION",
+    ] {
+        assert!(
+            table_sql.contains(rel_type),
+            "missing relationship type {rel_type}"
+        );
+    }
+}
+
+#[test]
+fn db_migrations_0016_upgrades_a_real_applied_0015_relationship_projection_without_losing_rows() {
+    let dir = tempdir().expect("temp dir");
+    let path = dir.path().join("relationship-vocabulary-upgrade.sqlite");
+    let connection = Connection::open(&path).expect("fixture database");
+    MigrationRunner::migrate_through(&connection, "0015_graph_relationship_projection")
+        .expect("apply the historical 0015 schema");
+    let pre_upgrade_sql: String = connection
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='graph_relationship'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read historical relationship table");
+    assert!(pre_upgrade_sql.contains("INSTANTIATES"));
+    assert!(!pre_upgrade_sql.contains("NESTS"));
+
+    connection
+        .execute_batch(
+            "INSERT INTO graph_node_metadata(
+                graph_node_id, entity_type, title, content_origin, content_revision,
+                schema_version, sync_state
+             ) VALUES
+                ('legacy-root', 'Constellation', 'Legacy root', 'seed', 4, 1, 'synced'),
+                ('legacy-unit', 'Constellation', 'Legacy unit', 'corpus_compiled', 7, 1, 'pending');
+             INSERT INTO graph_relationship(
+                relationship_id, source_graph_node_id, target_graph_node_id, rel_type,
+                properties_json, source_coordinates_json, evidence_tags_json, origin,
+                sync_state, relationship_revision, remote_revision, created_at, updated_at
+             ) VALUES (
+                'legacy-instantiates', 'legacy-root', 'legacy-unit', 'INSTANTIATES',
+                '{\"canonicalKey\":\"legacy-root:INSTANTIATES:legacy-unit\",\"reading\":\"preserve me\"}',
+                '[\"episodes/2/timeline.md#1888\"]', '[\"documented\",\"timeline\"]',
+                'corpus_compiled', 'conflict', 12, 34,
+                '2024-01-02T03:04:05.000Z', '2025-06-07T08:09:10.000Z'
+             );",
+        )
+        .expect("insert valid historical relationship row");
+
+    MigrationRunner::migrate(&connection).expect("upgrade applied 0015 database to 0016");
+    let preserved = connection
+        .query_row(
+            "SELECT relationship_id, source_graph_node_id, target_graph_node_id, rel_type,
+                    properties_json, source_coordinates_json, evidence_tags_json, origin,
+                    sync_state, relationship_revision, remote_revision, created_at, updated_at
+             FROM graph_relationship WHERE relationship_id='legacy-instantiates'",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, String>(8)?,
+                    row.get::<_, i64>(9)?,
+                    row.get::<_, Option<i64>>(10)?,
+                    row.get::<_, String>(11)?,
+                    row.get::<_, String>(12)?,
+                ))
+            },
+        )
+        .expect("relationship survives vocabulary upgrade");
+    let (
+        relationship_id,
+        source_graph_node_id,
+        target_graph_node_id,
+        rel_type,
+        properties_json,
+        source_coordinates_json,
+        evidence_tags_json,
+        origin,
+        sync_state,
+        relationship_revision,
+        remote_revision,
+        created_at,
+        updated_at,
+    ) = preserved;
+    assert_eq!(relationship_id, "legacy-instantiates");
+    assert_eq!(source_graph_node_id, "legacy-root");
+    assert_eq!(target_graph_node_id, "legacy-unit");
+    assert_eq!(rel_type, "INSTANTIATES");
+    assert_eq!(
+        properties_json,
+        "{\"canonicalKey\":\"legacy-root:INSTANTIATES:legacy-unit\",\"reading\":\"preserve me\"}"
+    );
+    assert_eq!(source_coordinates_json, "[\"episodes/2/timeline.md#1888\"]");
+    assert_eq!(evidence_tags_json, "[\"documented\",\"timeline\"]");
+    assert_eq!(origin, "corpus_compiled");
+    assert_eq!(sync_state, "conflict");
+    assert_eq!(relationship_revision, 12);
+    assert_eq!(remote_revision, Some(34));
+    assert_eq!(created_at, "2024-01-02T03:04:05.000Z");
+    assert_eq!(updated_at, "2025-06-07T08:09:10.000Z");
+    connection
+        .execute(
+            "INSERT INTO graph_relationship(
+                relationship_id, source_graph_node_id, target_graph_node_id, rel_type,
+                properties_json, source_coordinates_json, evidence_tags_json, origin,
+                sync_state, relationship_revision
+             ) VALUES (?1, ?2, ?3, 'NESTS', '{}', '[]', '[]', 'seed', 'pending', 1)",
+            ["structural-after-upgrade", "legacy-root", "legacy-unit"],
+        )
+        .expect("upgraded local schema accepts structural NESTS relationship");
+    let applied_migrations: i64 = connection
+        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
+        .expect("migration count after upgrade");
+    assert_eq!(applied_migrations, 16);
 }
 
 #[test]

@@ -1,6 +1,8 @@
 // apps/desktop/src-tauri/src/db/repositories/graph.rs
 use serde::{Deserialize, Serialize};
 
+pub(crate) use super::relationship_vocabulary::{canonical_relationship_key, validate_rel_type};
+
 macro_rules! controlled_string_enum {
     ($name:ident { $($variant:ident => $value:literal),+ $(,)? }) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -604,27 +606,6 @@ fn validate_entity_label(entity_type: &str) -> Result<EntityType, String> {
 
 pub fn semantic_relabel_entity_types() -> &'static [EntityType] {
     EntityType::ALL
-}
-
-const REL_TYPES: &[&str] = &[
-    "INSTANTIATES",
-    "ECHOES",
-    "CAUSES",
-    "INFLUENCES",
-    "OPPOSES",
-    "INHERITS",
-    "TRANSFORMS_INTO",
-    "LOCATED_AT",
-    "SOURCED_FROM",
-    "RESONATES_WITH",
-];
-
-pub(crate) fn validate_rel_type(rel_type: &str) -> Result<&str, String> {
-    REL_TYPES
-        .iter()
-        .find(|r| **r == rel_type)
-        .copied()
-        .ok_or_else(|| format!("unknown rel_type: {rel_type}"))
 }
 
 fn relationship_from_row(
@@ -1324,7 +1305,14 @@ impl GraphRepository {
         properties: serde_json::Value,
     ) -> Result<GraphRelationship, String> {
         let rel = validate_rel_type(rel_type)?;
-        // Properties is a flat JSON object; serialize to a JSON string and set via apoc-free map.
+        let properties = relationship_properties_with_canonical_key(
+            source_graph_node_id,
+            target_graph_node_id,
+            rel,
+            properties,
+        )?;
+        // Properties are a JSON object; serialize to an APOC map after adding
+        // the durable canonical key used to reconcile local and remote copies.
         let props_str = serde_json::to_string(&properties).map_err(|e| e.to_string())?;
         let cypher = format!(
             "MATCH (s:TheoryNode {{graph_node_id: $src}}), (t {{graph_node_id: $tgt}}) \
@@ -1400,10 +1388,14 @@ impl GraphRepository {
         note: &str,
     ) -> Result<(GraphRelationship, bool), String> {
         let marker = uuid::Uuid::new_v4().to_string();
+        let canonical_key = format!(
+            "source:{}\u{1f}{}\u{1f}SOURCED_FROM\u{1f}{source_path}",
+            source_graph_node_id, target_graph_node_id
+        );
         let q = query(
             "MATCH (s:TheoryNode {graph_node_id: $src}), (t:TheoryNode {graph_node_id: $tgt}) \
              MERGE (s)-[r:SOURCED_FROM {sourcePath: $source_path}]->(t) \
-             ON CREATE SET r.quote = $quote, r.note = $note, r.__agent_created = $marker \
+             ON CREATE SET r.quote = $quote, r.note = $note, r.canonicalKey = $canonical_key, r.__agent_created = $marker \
              WITH r, r.__agent_created = $marker AS created \
              REMOVE r.__agent_created \
              RETURN elementId(r) AS id, type(r) AS rel_type, \
@@ -1415,6 +1407,7 @@ impl GraphRepository {
         .param("source_path", source_path.to_string())
         .param("quote", quote.to_string())
         .param("note", note.to_string())
+        .param("canonical_key", canonical_key)
         .param("marker", marker);
         let mut rows = self
             .graph
@@ -1629,6 +1622,20 @@ impl GraphRepository {
         self.collect_relationships(q).await
     }
 
+    /// Queries only the relationship neighbourhood required by a displayed
+    /// timeline. This avoids a global graph scan and preserves links where
+    /// exactly one endpoint is temporal (Event → Archetype/Constellation).
+    pub async fn relationships_involving(
+        &self,
+        graph_node_ids: &[String],
+    ) -> Result<Vec<GraphRelationship>, String> {
+        if graph_node_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let q = query(RELATIONSHIPS_INVOLVING_CYPHER).param("ids", graph_node_ids.to_vec());
+        self.collect_relationships(q).await
+    }
+
     pub async fn relationships_for_node(
         &self,
         graph_node_id: &str,
@@ -1693,9 +1700,47 @@ impl GraphRepository {
     }
 }
 
+const RELATIONSHIPS_INVOLVING_CYPHER: &str = "MATCH (s)-[r]->(t) \
+     WHERE s.graph_node_id IN $ids OR t.graph_node_id IN $ids \
+     RETURN elementId(r) AS id, type(r) AS rel_type, \
+            s.graph_node_id AS src, t.graph_node_id AS tgt, \
+            apoc.convert.toJson(properties(r)) AS props";
+
+/// Generic graph writes use Neo4j's element id for addressing only. Persist a
+/// semantic identity too, so a later SQLite projection can reconcile that
+/// edge with an offline or seeded copy across storage engines.
+fn relationship_properties_with_canonical_key(
+    source_graph_node_id: &str,
+    target_graph_node_id: &str,
+    rel_type: &str,
+    properties: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let mut properties = properties
+        .as_object()
+        .cloned()
+        .ok_or_else(|| "relationship properties must be a JSON object".to_string())?;
+    if !properties.contains_key("canonicalKey")
+        && !properties.contains_key("canonical_key")
+        && !properties.contains_key("seed_key")
+    {
+        properties.insert(
+            "canonicalKey".into(),
+            serde_json::Value::String(canonical_relationship_key(
+                source_graph_node_id,
+                target_graph_node_id,
+                rel_type,
+                &serde_json::Value::Object(properties.clone()),
+            )),
+        );
+    }
+    Ok(serde_json::Value::Object(properties))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::GraphRepository;
+    use super::{
+        relationship_properties_with_canonical_key, GraphRepository, RELATIONSHIPS_INVOLVING_CYPHER,
+    };
 
     #[test]
     fn context_search_query_drops_lucene_syntax_and_empty_queries() {
@@ -1726,5 +1771,37 @@ mod tests {
             GraphRepository::normalize_context_search_limit(500),
             Some(100)
         );
+    }
+
+    #[test]
+    fn timeline_relationship_query_is_endpoint_scoped_not_a_global_graph_scan() {
+        assert!(RELATIONSHIPS_INVOLVING_CYPHER.contains("s.graph_node_id IN $ids"));
+        assert!(RELATIONSHIPS_INVOLVING_CYPHER.contains("t.graph_node_id IN $ids"));
+        assert!(!RELATIONSHIPS_INVOLVING_CYPHER.contains("MATCH (s:TheoryNode)-[r]->(t)"));
+    }
+
+    #[test]
+    fn generic_relationship_writes_persist_a_stable_key_without_overriding_seed_identity() {
+        let generic = relationship_properties_with_canonical_key(
+            "event-1888",
+            "archetype-antichrist",
+            "INSTANTIATES",
+            serde_json::json!({"reading": "expression"}),
+        )
+        .expect("normalise generic relationship properties");
+        assert_eq!(
+            generic["canonicalKey"],
+            "edge:event-1888\u{1f}archetype-antichrist\u{1f}INSTANTIATES"
+        );
+
+        let seed = relationship_properties_with_canonical_key(
+            "root-field",
+            "ql-unit",
+            "NESTS",
+            serde_json::json!({"seed_key": "root:field:NESTS:ql-unit"}),
+        )
+        .expect("normalise seed relationship properties");
+        assert_eq!(seed["seed_key"], "root:field:NESTS:ql-unit");
+        assert!(seed.get("canonicalKey").is_none());
     }
 }

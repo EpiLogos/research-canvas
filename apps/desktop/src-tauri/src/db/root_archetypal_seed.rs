@@ -4202,6 +4202,18 @@ mod tests {
                 && rel.target == "root-ecology"
                 && rel.rel_type == "RESONATES_WITH")
         }));
+        for relationship in relationships
+            .iter()
+            .filter(|relationship| matches!(relationship.rel_type, "NESTS" | "PART_OF"))
+        {
+            assert_eq!(
+                crate::db::repositories::relationship_vocabulary::validate_rel_type(
+                    relationship.rel_type,
+                ),
+                Ok(relationship.rel_type),
+                "root structural relationship is accepted by remote and local vocabulary",
+            );
+        }
     }
 
     #[test]

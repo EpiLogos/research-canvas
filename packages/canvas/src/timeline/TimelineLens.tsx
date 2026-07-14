@@ -456,7 +456,7 @@ export function TimelineLens({
                   onResize={handleResizeNode}
                   onCommit={commitTimelineLayout}
                   onColorTag={handleColorTag}
-                  readOnly={!dataSource.saveTimelineLayout}
+                  readOnly={!dataSource.saveTimelineLayout || p.item.relationCompanion}
                 />
               );
             })}
