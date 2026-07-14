@@ -644,6 +644,11 @@ fn geographic_tag_for_seed(slug: &str) -> Option<&'static str> {
         "medici-template" | "studiolo-image-knowledge" => Some("place:florence-italy"),
         "voc-eic-corpora" => Some("place:amsterdam-netherlands"),
         "banda-genocide" => Some("place:banda-islands-indonesia"),
+        "event-rudolf-ii-prague" => Some("place:prague-czechia"),
+        "institution-voc" | "event-bank-of-amsterdam" => Some("place:amsterdam-netherlands"),
+        "event-rhodes-confession" | "thinker-john-ruskin" => Some("place:oxford-england"),
+        "event-mk-ultra" => Some("place:united-states"),
+        "event-cult-of-reason" => Some("place:paris-france"),
         "enlightenment-occultation" => Some("place:europe"),
         "bank-of-england" | "balfour-declaration" | "chatham-cfr" => Some("place:london-england"),
         "plassey-eic-sovereignty" => Some("place:plassey-bengal-india"),
@@ -1325,6 +1330,10 @@ fn colour_for(entity_type: &str) -> &'static str {
         "Event" => "#c46f5b",
         "Source" => "#9f8fd1",
         "Constellation" => "#5aa9d8",
+        "Myth" => "#9d77c9",
+        "Figure" => "#d58c5a",
+        "Institution" => "#668dbd",
+        "Place" => "#5caa9a",
         _ => "#aeb7c2",
     }
 }
@@ -2606,13 +2615,13 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "devil",
-            "Archetype",
+            "Myth",
             "Devil",
             "Sixfold image at QL #0.",
             Some("#0"),
             &["#0", DEVIL_CHAIN_SOURCE, POSITION_0_SOURCE, RESONANCE_SOURCE],
-            &["ql_unit", "ql_positioned", "interpretive_vector"],
-            None,
+            &["mythic_image", "ql_positioned", "interpretive_vector"],
+            Some("mythic-image"),
             false,
             None,
             None,
@@ -2620,13 +2629,13 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "mithra",
-            "Archetype",
+            "Myth",
             "Mithra",
             "Solar-bull covenant image at QL #1.",
             Some("#1"),
             &["#1", DEVIL_CHAIN_SOURCE, POSITION_1_SOURCE, RESONANCE_SOURCE],
-            &["ql_unit", "ql_positioned", "interpretive_vector"],
-            None,
+            &["mythic_image", "ql_positioned", "interpretive_vector"],
+            Some("mythic-image"),
             false,
             None,
             None,
@@ -2634,7 +2643,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "prometheus",
-            "Archetype",
+            "Myth",
             "Prometheus",
             "Stolen fire and technical mediation at QL #2.",
             Some("#2"),
@@ -2646,8 +2655,8 @@ fn node_seeds() -> Vec<NodeSeed> {
                 POSITION_2_SOURCE,
                 RESONANCE_SOURCE,
             ],
-            &["ql_unit", "ql_positioned", "interpretive_vector"],
-            None,
+            &["mythic_image", "ql_positioned", "interpretive_vector"],
+            Some("mythic-image"),
             false,
             None,
             None,
@@ -2655,13 +2664,13 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "lucifer-venus",
-            "Archetype",
+            "Myth",
             "Lucifer / Venus",
             "Light-bearer, beauty, and reflective seduction at QL #3.",
             Some("#3"),
             &["#3", DEVIL_CHAIN_SOURCE, POSITION_3_SOURCE, RESONANCE_SOURCE],
-            &["ql_unit", "ql_positioned", "interpretive_vector"],
-            None,
+            &["mythic_image", "ql_positioned", "interpretive_vector"],
+            Some("mythic-image"),
             false,
             None,
             None,
@@ -2669,13 +2678,13 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "satan-chronos",
-            "Archetype",
+            "Myth",
             "Satan / Chronos",
             "Accuser-time and devouring age at QL #4.",
             Some("#4"),
             &["#4", DEVIL_CHAIN_SOURCE, POSITION_4_SOURCE, RESONANCE_SOURCE],
-            &["ql_unit", "ql_positioned", "interpretive_vector"],
-            None,
+            &["mythic_image", "ql_positioned", "interpretive_vector"],
+            Some("mythic-image"),
             false,
             None,
             None,
@@ -2683,7 +2692,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "pan-hen",
-            "Archetype",
+            "Myth",
             "Pan-Hen",
             "All-one field and animal-divine threshold at QL #5.",
             Some("#5"),
@@ -2694,8 +2703,8 @@ fn node_seeds() -> Vec<NodeSeed> {
                 POSITION_5_SOURCE,
                 RESONANCE_SOURCE,
             ],
-            &["ql_unit", "ql_positioned", "interpretive_vector"],
-            None,
+            &["mythic_image", "ql_positioned", "interpretive_vector"],
+            Some("mythic-image"),
             false,
             None,
             None,
@@ -2703,13 +2712,13 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "god-father",
-            "Archetype",
+            "Myth",
             "God / Father",
             "Christ-chain image at QL #0: source and fatherhood read from the offered side.",
             Some("#0"),
             &["#0", CHRIST_CHAIN_SOURCE, POSITION_0_SOURCE],
-            &["ql_unit", "ql_positioned", "interpretive_vector"],
-            None,
+            &["mythic_image", "ql_positioned", "interpretive_vector"],
+            Some("mythic-image"),
             false,
             None,
             None,
@@ -2717,13 +2726,13 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "zarathustra",
-            "Archetype",
+            "Myth",
             "Zarathustra",
             "Christ-chain image at QL #1: solar moral split and first differentiation.",
             Some("#1"),
             &["#1", CHRIST_CHAIN_SOURCE, POSITION_1_SOURCE],
-            &["ql_unit", "ql_positioned", "interpretive_vector"],
-            None,
+            &["mythic_image", "ql_positioned", "interpretive_vector"],
+            Some("mythic-image"),
             false,
             None,
             None,
@@ -2731,13 +2740,13 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "christ",
-            "Archetype",
+            "Myth",
             "Christ",
             "Christ-chain image at QL #3: Logos as offered ordering intelligence.",
             Some("#3"),
             &["#3", CHRIST_CHAIN_SOURCE, POSITION_3_SOURCE, RESONANCE_SOURCE],
-            &["ql_unit", "ql_positioned", "interpretive_vector"],
-            None,
+            &["mythic_image", "ql_positioned", "interpretive_vector"],
+            Some("mythic-image"),
             false,
             None,
             None,
@@ -2745,13 +2754,13 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "jesus",
-            "Archetype",
+            "Figure",
             "Jesus",
             "Christ-chain image at QL #4: personal incarnation of offered love.",
             Some("#4"),
             &["#4", CHRIST_CHAIN_SOURCE, POSITION_4_SOURCE],
-            &["ql_unit", "ql_positioned", "interpretive_vector"],
-            None,
+            &["historical_figure", "ql_positioned", "interpretive_vector"],
+            Some("historical-figure"),
             false,
             None,
             None,
@@ -2759,7 +2768,7 @@ fn node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "god-man",
-            "Archetype",
+            "Myth",
             "God-Man",
             "Christ-chain image at QL #5: Pan-Hen read from the Christic side.",
             Some("#5"),
@@ -2769,8 +2778,8 @@ fn node_seeds() -> Vec<NodeSeed> {
                 DOUBLE_HELIX_SOURCE,
                 POSITION_5_SOURCE,
             ],
-            &["ql_unit", "ql_positioned", "interpretive_vector"],
-            None,
+            &["mythic_image", "ql_positioned", "interpretive_vector"],
+            Some("mythic-image"),
             false,
             None,
             None,
@@ -3614,112 +3623,112 @@ fn corpus_node_seeds() -> Vec<NodeSeed> {
             None,
         ),
         n(
-            "myth-devil",
-            "Myth",
-            "The Devil",
-            "Mythic image at QL #0 in the Spectral Devil's Chain; not a documented historical event.",
-            Some("#0"),
-            &["#0", DEVIL_CHAIN_SOURCE],
-            &["mythic_image", "ql_positioned", "interpretive_vector"],
-            Some("mythic-image"),
+            "source-episode-1-naked-face",
+            "Source",
+            "Episode 1: The Naked Face",
+            "Canonical Episode 1 script source, preserved in full for reader-level detail rather than reduced to a canvas card.",
+            None,
+            &["antichrist-vault/episodes/1/ep-0.1-(now-ep-1.0)/Episode_0_1_The_Naked_Face_v9.md"],
+            &["episode_1", "script", "source_material"],
+            Some("episode-script"),
             false,
             None,
             None,
             None,
         ),
         n(
-            "myth-mithra",
-            "Myth",
-            "Mithra",
-            "Mythic image at QL #1 in the Spectral Devil's Chain, preserved as mythic rather than historical evidence.",
-            Some("#1"),
-            &["#1", DEVIL_CHAIN_SOURCE],
-            &["mythic_image", "ql_positioned", "interpretive_vector"],
-            Some("mythic-image"),
+            "source-episode-1-full-quotes",
+            "Source",
+            "Episode 1 sourcebook: full quotes",
+            "Episode 1 quotation sourcebook retained as a full reader document with portable provenance.",
+            None,
+            &["antichrist-vault/episodes/1/ep-0.1-(now-ep-1.0)/The_Naked_Face_Full_Quotes_v7.md"],
+            &["episode_1", "sourcebook", "source_material"],
+            Some("episode-sourcebook"),
             false,
             None,
             None,
             None,
         ),
         n(
-            "myth-prometheus",
-            "Myth",
-            "Prometheus",
-            "Mythic bridge image at QL #2 shared by the two spectral lineages.",
-            Some("#2"),
-            &["#2", DEVIL_CHAIN_SOURCE, CHRIST_CHAIN_SOURCE],
-            &["mythic_image", "ql_positioned", "interpretive_vector"],
-            Some("mythic-image"),
+            "source-report-1-episode-architecture",
+            "Source",
+            "Research Report 1: episode architecture",
+            "Episode 2 research source retained in full for the reader and linking surface.",
+            None,
+            &["antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report1.md"],
+            &["episode_2", "research_report", "source_material"],
+            Some("research-report"),
             false,
             None,
             None,
             None,
         ),
         n(
-            "myth-lucifer",
-            "Myth",
-            "Lucifer",
-            "Mythic light-bearer image at QL #3 in the Spectral Devil's Chain.",
-            Some("#3"),
-            &["#3", DEVIL_CHAIN_SOURCE],
-            &["mythic_image", "ql_positioned", "interpretive_vector"],
-            Some("mythic-image"),
+            "source-report-2-power-network",
+            "Source",
+            "Research Report 2: power network",
+            "Episode 2 research source retained in full for the reader and linking surface.",
+            None,
+            &["antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report2.md"],
+            &["episode_2", "research_report", "source_material"],
+            Some("research-report"),
             false,
             None,
             None,
             None,
         ),
         n(
-            "myth-satan",
-            "Myth",
-            "Satan",
-            "Mythic devourer image at QL #4 in the Spectral Devil's Chain.",
-            Some("#4"),
-            &["#4", DEVIL_CHAIN_SOURCE],
-            &["mythic_image", "ql_positioned", "interpretive_vector"],
-            Some("mythic-image"),
+            "source-report-4-esoteric-history",
+            "Source",
+            "Research Report 4: esoteric history",
+            "Episode 2 research source retained in full for the reader and linking surface.",
+            None,
+            &["antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report4.md"],
+            &["episode_2", "research_report", "source_material"],
+            Some("research-report"),
             false,
             None,
             None,
             None,
         ),
         n(
-            "myth-pan",
-            "Myth",
-            "Pan",
-            "Mythic image of completed sacrifice at QL #5 in the Spectral Devil's Chain.",
-            Some("#5"),
-            &["#5", DEVIL_CHAIN_SOURCE],
-            &["mythic_image", "ql_positioned", "interpretive_vector"],
-            Some("mythic-image"),
+            "source-report-6-finance",
+            "Source",
+            "Research Report 6: finance",
+            "Episode 2 research source retained in full for the reader and linking surface.",
+            None,
+            &["antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report6.md"],
+            &["episode_2", "research_report", "source_material"],
+            Some("research-report"),
             false,
             None,
             None,
             None,
         ),
         n(
-            "myth-christ-logos",
-            "Myth",
-            "Christ as Logos",
-            "Mythic and theological Logos image at QL #3, kept distinct from the historical Jesus figure.",
-            Some("#3"),
-            &["#3", CHRIST_CHAIN_SOURCE],
-            &["mythic_image", "ql_positioned", "interpretive_vector"],
-            Some("mythic-image"),
+            "source-report-7-drug-corridor",
+            "Source",
+            "Research Report 7: drug corridor",
+            "Episode 2 research source retained in full for the reader and linking surface.",
+            None,
+            &["antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report7.md"],
+            &["episode_2", "research_report", "source_material"],
+            Some("research-report"),
             false,
             None,
             None,
             None,
         ),
         n(
-            "figure-jesus-of-nazareth",
-            "Figure",
-            "Jesus of Nazareth",
-            "Historical person distinguished from the Christ/Logos archetypal image in the reader and graph.",
-            Some("#4"),
-            &["#4", CHRIST_CHAIN_SOURCE],
-            &["historical_figure", "ql_positioned", "interpretive_vector"],
-            Some("historical-figure"),
+            "source-report-9-image-archive",
+            "Source",
+            "Research Report 9: image archive",
+            "Episode 2 research source retained in full for the reader and linking surface.",
+            None,
+            &["antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report9.md"],
+            &["episode_2", "research_report", "source_material"],
+            Some("research-report"),
             false,
             None,
             None,
@@ -3797,17 +3806,17 @@ fn corpus_node_seeds() -> Vec<NodeSeed> {
         ),
         n(
             "technological-occultation",
-            "Event",
-            "MK-ULTRA and technological occultation",
-            "Documented CIA behavioural-research program material, held apart from the larger interpretive claim that technology itself is occultation.",
+            "Interpretation",
+            "Technological occultation",
+            "Interpretive lens for the claim that technology can function as occultation; it remains distinct from the separately dated MK-ULTRA record.",
             None,
             &[REPORT_5_SOURCE],
-            &["documented", "research_program"],
-            Some("research-program"),
-            true,
-            Some("1953-01-01"),
-            Some("1973-01-01"),
-            Some("year"),
+            &["interpretive_vector", "evidence_bounded"],
+            Some("interpretation"),
+            false,
+            None,
+            None,
+            None,
         ),
         n(
             "stargate-remote-viewing",
@@ -3821,6 +3830,286 @@ fn corpus_node_seeds() -> Vec<NodeSeed> {
             true,
             Some("1972-01-01"),
             Some("1995-01-01"),
+            Some("year"),
+        ),
+        n(
+            "source-episode-1-2-resonance-ledger",
+            "Source",
+            "Episode 1–2 archetypal resonance ledger",
+            "Source ledger that names the interpretive relations between Episode 1 images and Episode 2 historical material without converting those vectors into historical facts.",
+            None,
+            &[RESONANCE_SOURCE],
+            &["episode_1", "episode_2", "resonance_ledger", "source_material"],
+            Some("resonance-ledger"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "myth-black-sun",
+            "Myth",
+            "Black Sun / clouded sky",
+            "Organising mythic image of the Deficiency unit: an occluded field, not a historical moment to be tagged as evidence.",
+            None,
+            &[DEFICIENCY_SOURCE],
+            &["mythic_image", "interpretive_vector", "ql_unit_image"],
+            Some("mythic-image"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "event-rudolf-ii-prague",
+            "Event",
+            "Rudolf II’s Prague court",
+            "The documented 1576–1612 court culture of alchemy, astronomy, and Kunstkammer practice; its reader distinguishes record from later symbolic resonance.",
+            None,
+            &[REPORT_8_SOURCE, TIMELINE_SOURCE],
+            &["documented", "historical_event", "court_culture"],
+            Some("historical-event"),
+            true,
+            Some("1576-01-01"),
+            Some("1612-01-01"),
+            Some("year"),
+        ),
+        n(
+            "institution-voc",
+            "Institution",
+            "Dutch East India Company (VOC)",
+            "Documented chartered corporation with sovereign powers, maintained as an institution with a historical span rather than an archetypal label.",
+            None,
+            &[REPORT_8_SOURCE, TIMELINE_SOURCE],
+            &["documented", "historical_institution", "corporate_sovereignty"],
+            Some("historical-institution"),
+            true,
+            Some("1602-01-01"),
+            Some("1799-01-01"),
+            Some("year"),
+        ),
+        n(
+            "event-bank-of-amsterdam",
+            "Event",
+            "Bank of Amsterdam founded",
+            "The 1609 foundation and clearing practices of the Wisselbank, kept as a documented financial event rather than a mythic time marker.",
+            None,
+            &[REPORT_8_SOURCE, TIMELINE_SOURCE],
+            &["documented", "financial_history"],
+            Some("historical-event"),
+            true,
+            Some("1609-01-01"),
+            None,
+            Some("year"),
+        ),
+        n(
+            "event-rhodes-confession",
+            "Event",
+            "Rhodes’s Confession of Faith",
+            "The 2 June 1877 text in which Cecil Rhodes articulated an imperial secret-society programme; the reader keeps the document’s own language and context available.",
+            None,
+            &[REPORT_3_SOURCE, REPORT_8_SOURCE, TIMELINE_SOURCE],
+            &["documented", "historical_event", "primary_text_context"],
+            Some("historical-event"),
+            true,
+            Some("1877-06-02"),
+            Some("1877-06-02"),
+            Some("day"),
+        ),
+        n(
+            "thinker-john-ruskin",
+            "Figure",
+            "John Ruskin",
+            "Thinker whose 1870 Slade lecture is cited in the research as a documented influence on Rhodes’s imperial intellectual environment.",
+            None,
+            &[REPORT_3_SOURCE, REPORT_8_SOURCE, TIMELINE_SOURCE],
+            &["thinker", "documented", "source_citation"],
+            Some("thinker"),
+            true,
+            Some("1870-02-08"),
+            None,
+            Some("day"),
+        ),
+        n(
+            "thinker-michael-aquino",
+            "Figure",
+            "Michael Aquino",
+            "Figure in the Report 5 record, whose military PSYOP writing and Temple of Set activity require the source’s own evidence boundaries.",
+            None,
+            &[REPORT_5_SOURCE, TIMELINE_SOURCE],
+            &["thinker", "documented", "evidence_bounded"],
+            Some("thinker"),
+            true,
+            Some("1980-01-01"),
+            Some("2020-01-01"),
+            Some("year"),
+        ),
+        n(
+            "thinker-anton-lavey",
+            "Figure",
+            "Anton LaVey",
+            "Figure in the Report 5 distinction between documented biography, constructed legend, and speculation about intelligence links.",
+            None,
+            &[REPORT_5_SOURCE],
+            &["thinker", "documented", "evidence_bounded"],
+            Some("thinker"),
+            true,
+            Some("1930-01-01"),
+            Some("1997-01-01"),
+            Some("year"),
+        ),
+        n(
+            "thinker-jack-parsons",
+            "Figure",
+            "Jack Parsons",
+            "Documented rocket engineer and occult practitioner in the Report 5 section; the card does not collapse those records into an unproven coordination claim.",
+            None,
+            &[REPORT_5_SOURCE],
+            &["thinker", "documented", "evidence_bounded"],
+            Some("thinker"),
+            true,
+            Some("1914-01-01"),
+            Some("1952-01-01"),
+            Some("year"),
+        ),
+        n(
+            "thinker-edward-bernays",
+            "Figure",
+            "Edward Bernays",
+            "Thinker used in Report 5 as a source-grounded comparison for propaganda and symbolic technique, not proof of occult causation.",
+            None,
+            &[REPORT_5_SOURCE],
+            &["thinker", "source_citation", "interpretive_vector"],
+            Some("thinker"),
+            true,
+            Some("1891-01-01"),
+            Some("1995-01-01"),
+            Some("year"),
+        ),
+        n(
+            "event-mk-ultra",
+            "Event",
+            "MK-ULTRA program",
+            "Documented CIA behavioural-research programme (1953–1973), made distinct from the separate interpretive node about technological occultation.",
+            None,
+            &[REPORT_5_SOURCE, TIMELINE_SOURCE],
+            &["documented", "historical_event", "research_program"],
+            Some("research-program"),
+            true,
+            Some("1953-01-01"),
+            Some("1973-01-01"),
+            Some("year"),
+        ),
+        n(
+            "institution-british-east-india-company",
+            "Institution",
+            "British East India Company",
+            "Documented corporate-imperial institution traced in the Report 8 reader from trade company to governing body.",
+            None,
+            &[REPORT_8_SOURCE, TIMELINE_SOURCE],
+            &["documented", "historical_institution", "corporate_imperialism"],
+            Some("historical-institution"),
+            true,
+            Some("1600-01-01"),
+            Some("1858-01-01"),
+            Some("year"),
+        ),
+        n(
+            "place-florence",
+            "Place",
+            "Florence",
+            "Place node for Medici patronage, Hermetic translation, and studiolo culture; geography remains distinct from the claims made about their resonance.",
+            None,
+            &[REPORT_8_SOURCE, TIMELINE_SOURCE],
+            &["place", "historical_geography", "documented"],
+            Some("place"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "place-amsterdam",
+            "Place",
+            "Amsterdam",
+            "Place node for the VOC and Wisselbank developments carried by the historical research timeline.",
+            None,
+            &[REPORT_8_SOURCE, TIMELINE_SOURCE],
+            &["place", "historical_geography", "documented"],
+            Some("place"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "place-oxford",
+            "Place",
+            "Oxford",
+            "Place node for the university setting in which the reports situate Ruskin’s lecture, Rhodes’s study, and Masonic initiation.",
+            None,
+            &[REPORT_3_SOURCE, REPORT_8_SOURCE, TIMELINE_SOURCE],
+            &["place", "historical_geography", "documented"],
+            Some("place"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "place-paris",
+            "Place",
+            "Paris",
+            "Place node for the 1793 Festival of Reason and the report’s account of revolutionary experiments with manufactured religion.",
+            None,
+            &[REPORT_8_SOURCE, TIMELINE_SOURCE],
+            &["place", "historical_geography", "documented"],
+            Some("place"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "place-united-states",
+            "Place",
+            "United States",
+            "Place node for the Report 5 record of intelligence, military, research-program, and media material; it does not imply one unified causal network.",
+            None,
+            &[REPORT_5_SOURCE, TIMELINE_SOURCE],
+            &["place", "historical_geography", "evidence_bounded"],
+            Some("place"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "event-cult-of-reason",
+            "Event",
+            "Cult of Reason at Notre Dame",
+            "The documented 1793 Festival of Reason, retained separately from broader interpretations of manufactured religion and symbolic politics.",
+            None,
+            &[REPORT_8_SOURCE, TIMELINE_SOURCE],
+            &["documented", "historical_event"],
+            Some("historical-event"),
+            true,
+            Some("1793-11-10"),
+            Some("1793-11-10"),
+            Some("day"),
+        ),
+        n(
+            "thinker-wouter-hanegraaff",
+            "Figure",
+            "Wouter Hanegraaff",
+            "Scholar cited for the academic framework of mnemohistory and occultation; the reader preserves the specific research context and attribution.",
+            None,
+            &[REPORT_8_SOURCE],
+            &["thinker", "source_citation", "documented"],
+            Some("thinker"),
+            true,
+            Some("2012-01-01"),
+            None,
             Some("year"),
         ),
     ]
@@ -4169,6 +4458,12 @@ fn relationship_seeds() -> Vec<RelSeed> {
         ),
     ];
 
+    // Corpus relations can refine a structural membership with source-backed
+    // interpretive status. Add them before the generic constellation pass so
+    // there is exactly one contract for a semantic triple rather than two
+    // same-revision records that conflict in the local projection.
+    relationships.extend(corpus_relationship_seeds());
+
     let constellations = constellation_seeds();
     for constellation in &constellations {
         for member in constellation.members {
@@ -4201,7 +4496,6 @@ fn relationship_seeds() -> Vec<RelSeed> {
         }
     }
 
-    relationships.extend(corpus_relationship_seeds());
     relationships
 }
 
@@ -4224,65 +4518,65 @@ fn r(
 fn corpus_relationship_seeds() -> Vec<RelSeed> {
     vec![
         r(
-            "myth-devil",
+            "devil",
             "PART_OF",
             "devil-sixfold-lineage",
             None,
             &["structural_membership", "interpretive_vector"],
         ),
         r(
-            "myth-mithra",
+            "mithra",
             "PART_OF",
             "devil-sixfold-lineage",
             None,
             &["structural_membership", "interpretive_vector"],
         ),
         r(
-            "myth-prometheus",
+            "prometheus",
             "PART_OF",
             "devil-sixfold-lineage",
             None,
             &["structural_membership", "interpretive_vector"],
         ),
         r(
-            "myth-prometheus",
+            "prometheus",
             "PART_OF",
             "christ-sixfold-lineage",
             None,
             &["structural_membership", "interpretive_vector"],
         ),
         r(
-            "myth-lucifer",
+            "lucifer-venus",
             "PART_OF",
             "devil-sixfold-lineage",
             None,
             &["structural_membership", "interpretive_vector"],
         ),
         r(
-            "myth-satan",
+            "satan-chronos",
             "PART_OF",
             "devil-sixfold-lineage",
             None,
             &["structural_membership", "interpretive_vector"],
         ),
         r(
-            "myth-pan",
+            "pan-hen",
             "PART_OF",
             "devil-sixfold-lineage",
             None,
             &["structural_membership", "interpretive_vector"],
         ),
         r(
-            "myth-christ-logos",
+            "christ",
             "PART_OF",
             "christ-sixfold-lineage",
             None,
             &["structural_membership", "interpretive_vector"],
         ),
         r(
-            "figure-jesus-of-nazareth",
+            "jesus",
             "INSTANTIATES",
-            "myth-christ-logos",
+            "christ",
             None,
             &["interpretive_vector"],
         ),
@@ -4333,7 +4627,7 @@ fn corpus_relationship_seeds() -> Vec<RelSeed> {
             "SOURCED_FROM",
             "source-report-5-occult-psyops",
             None,
-            &["documented"],
+            &["interpretive_vector", "source_citation"],
         ),
         r(
             "mk-ultra-midnight-climax",
@@ -4341,6 +4635,216 @@ fn corpus_relationship_seeds() -> Vec<RelSeed> {
             "source-report-5-occult-psyops",
             None,
             &["documented"],
+        ),
+        r(
+            "source-episode-1-2-resonance-ledger",
+            "SOURCED_FROM",
+            "source-episode-2-timeline",
+            None,
+            &["source_material"],
+        ),
+        r(
+            "god-father",
+            "PART_OF",
+            "christ-sixfold-lineage",
+            None,
+            &["structural_membership", "interpretive_vector"],
+        ),
+        r(
+            "zarathustra",
+            "PART_OF",
+            "christ-sixfold-lineage",
+            None,
+            &["structural_membership", "interpretive_vector"],
+        ),
+        r(
+            "god-man",
+            "PART_OF",
+            "christ-sixfold-lineage",
+            None,
+            &["structural_membership", "interpretive_vector"],
+        ),
+        r(
+            "myth-black-sun",
+            "RESONATES_WITH",
+            "black-sun-monopoly",
+            None,
+            &["interpretive_vector", "resonance_ledger"],
+        ),
+        r(
+            "event-rudolf-ii-prague",
+            "LOCATED_AT",
+            "place-prague",
+            None,
+            &["documented"],
+        ),
+        r(
+            "event-rudolf-ii-prague",
+            "SOURCED_FROM",
+            "source-report-8-power-metamorphosis",
+            None,
+            &["documented"],
+        ),
+        r(
+            "event-rudolf-ii-prague",
+            "RESONATES_WITH",
+            "studiolo-image-knowledge",
+            None,
+            &["interpretive_vector", "resonance_ledger"],
+        ),
+        r(
+            "institution-voc",
+            "LOCATED_AT",
+            "place-amsterdam",
+            None,
+            &["documented"],
+        ),
+        r(
+            "institution-voc",
+            "SOURCED_FROM",
+            "source-report-8-power-metamorphosis",
+            None,
+            &["documented"],
+        ),
+        r(
+            "institution-voc",
+            "INSTANTIATES",
+            "voc-eic-corpora",
+            None,
+            &["interpretive_vector", "resonance_ledger"],
+        ),
+        r(
+            "event-bank-of-amsterdam",
+            "LOCATED_AT",
+            "place-amsterdam",
+            None,
+            &["documented"],
+        ),
+        r(
+            "event-bank-of-amsterdam",
+            "SOURCED_FROM",
+            "source-report-8-power-metamorphosis",
+            None,
+            &["documented"],
+        ),
+        r(
+            "event-rhodes-confession",
+            "LOCATED_AT",
+            "place-oxford",
+            None,
+            &["documented"],
+        ),
+        r(
+            "event-rhodes-confession",
+            "CONTAINS",
+            "figure-cecil-rhodes",
+            None,
+            &["documented"],
+        ),
+        r(
+            "event-rhodes-confession",
+            "SOURCED_FROM",
+            "source-report-3-rhodes",
+            None,
+            &["documented"],
+        ),
+        r(
+            "thinker-john-ruskin",
+            "SOURCED_FROM",
+            "source-report-3-rhodes",
+            None,
+            &["source_citation"],
+        ),
+        r(
+            "thinker-john-ruskin",
+            "RESONATES_WITH",
+            "event-rhodes-confession",
+            None,
+            &["source_citation", "interpretive_vector"],
+        ),
+        r(
+            "thinker-michael-aquino",
+            "SOURCED_FROM",
+            "source-report-5-occult-psyops",
+            None,
+            &["documented"],
+        ),
+        r(
+            "thinker-anton-lavey",
+            "SOURCED_FROM",
+            "source-report-5-occult-psyops",
+            None,
+            &["documented"],
+        ),
+        r(
+            "thinker-jack-parsons",
+            "SOURCED_FROM",
+            "source-report-5-occult-psyops",
+            None,
+            &["documented"],
+        ),
+        r(
+            "thinker-edward-bernays",
+            "SOURCED_FROM",
+            "source-report-5-occult-psyops",
+            None,
+            &["source_citation"],
+        ),
+        r(
+            "event-mk-ultra",
+            "LOCATED_AT",
+            "place-united-states",
+            None,
+            &["documented"],
+        ),
+        r(
+            "event-mk-ultra",
+            "SOURCED_FROM",
+            "source-report-5-occult-psyops",
+            None,
+            &["documented"],
+        ),
+        r(
+            "event-mk-ultra",
+            "RESONATES_WITH",
+            "mind-control-hypnosis",
+            None,
+            &["interpretive_vector", "resonance_ledger"],
+        ),
+        r(
+            "institution-british-east-india-company",
+            "SOURCED_FROM",
+            "source-report-8-power-metamorphosis",
+            None,
+            &["documented"],
+        ),
+        r(
+            "institution-british-east-india-company",
+            "INSTANTIATES",
+            "voc-eic-corpora",
+            None,
+            &["interpretive_vector", "resonance_ledger"],
+        ),
+        r(
+            "event-cult-of-reason",
+            "LOCATED_AT",
+            "place-paris",
+            None,
+            &["documented"],
+        ),
+        r(
+            "event-cult-of-reason",
+            "SOURCED_FROM",
+            "source-report-8-power-metamorphosis",
+            None,
+            &["documented"],
+        ),
+        r(
+            "thinker-wouter-hanegraaff",
+            "SOURCED_FROM",
+            "source-report-8-power-metamorphosis",
+            None,
+            &["source_citation"],
         ),
     ]
 }
@@ -4442,10 +4946,25 @@ mod tests {
 
         let seeds = node_seeds();
         for (slug, entity_type) in [
-            ("myth-devil", "Myth"),
+            ("devil", "Myth"),
             ("thinker-carl-jung", "Figure"),
             ("source-report-5-occult-psyops", "Source"),
             ("place-banda-islands", "Place"),
+            ("god-father", "Myth"),
+            ("zarathustra", "Myth"),
+            ("god-man", "Myth"),
+            ("myth-black-sun", "Myth"),
+            ("event-rudolf-ii-prague", "Event"),
+            ("institution-voc", "Institution"),
+            ("event-rhodes-confession", "Event"),
+            ("thinker-jack-parsons", "Figure"),
+            ("thinker-edward-bernays", "Figure"),
+            ("place-florence", "Place"),
+            ("place-amsterdam", "Place"),
+            ("ontological-unit", "Constellation"),
+            ("social-power-unit", "Constellation"),
+            ("solar-system-unit", "Constellation"),
+            ("deficiency-unit", "Constellation"),
         ] {
             assert_eq!(
                 seeds
@@ -4462,10 +4981,63 @@ mod tests {
                 && relationship.rel_type == "LOCATED_AT"
         }));
         assert!(relationship_seeds().iter().any(|relationship| {
-            relationship.source == "myth-devil"
+            relationship.source == "devil"
                 && relationship.target == "devil-sixfold-lineage"
                 && relationship.rel_type == "PART_OF"
         }));
+        assert!(relationship_seeds().iter().any(|relationship| {
+            relationship.source == "event-rudolf-ii-prague"
+                && relationship.target == "place-prague"
+                && relationship.rel_type == "LOCATED_AT"
+        }));
+        assert!(relationship_seeds().iter().any(|relationship| {
+            relationship.source == "event-rhodes-confession"
+                && relationship.target == "figure-cecil-rhodes"
+                && relationship.rel_type == "CONTAINS"
+        }));
+        assert!(relationship_seeds().iter().any(|relationship| {
+            relationship.source == "institution-voc"
+                && relationship.target == "place-amsterdam"
+                && relationship.rel_type == "LOCATED_AT"
+        }));
+        let myth = seeds
+            .iter()
+            .find(|seed| seed.slug == "myth-black-sun")
+            .expect("Black Sun myth seed")
+            .to_graph_node("corpus-test");
+        assert!(
+            !myth.is_temporal,
+            "mythic images must not be timeline events"
+        );
+        let prague_event = seeds
+            .iter()
+            .find(|seed| seed.slug == "event-rudolf-ii-prague")
+            .expect("Rudolf II Prague event seed")
+            .to_graph_node("corpus-test");
+        assert!(
+            prague_event.is_temporal,
+            "dated historical records belong in the timeline"
+        );
+        assert_eq!(
+            prague_event
+                .place_coverage
+                .map(|coverage| coverage.as_str()),
+            Some("resolved"),
+            "a timeline record with a LOCATED_AT place must expose resolved geographic coverage",
+        );
+        let technological_occultation = seeds
+            .iter()
+            .find(|seed| seed.slug == "technological-occultation")
+            .expect("technological-occultation interpretation seed")
+            .to_graph_node("corpus-test");
+        assert_eq!(
+            technological_occultation.entity_type.as_str(),
+            "Interpretation"
+        );
+        assert!(
+            !technological_occultation.is_temporal,
+            "a thematic interpretation is not a second dated MK-ULTRA event",
+        );
         let rhodes = seeds
             .iter()
             .find(|seed| seed.slug == "figure-cecil-rhodes")
@@ -4476,6 +5048,150 @@ mod tests {
             Some("active_during"),
             "a thinker or figure's active span is not an event occurrence",
         );
+    }
+
+    #[test]
+    fn every_compiled_reader_document_has_one_typed_seeded_card_face() {
+        let seeded_slugs = node_seeds()
+            .into_iter()
+            .map(|seed| seed.slug)
+            .collect::<std::collections::BTreeSet<_>>();
+        let missing_card_faces = crate::db::corpus_knowledge::document_slugs()
+            .into_iter()
+            .filter(|slug| !seeded_slugs.contains(slug.as_str()))
+            .collect::<Vec<_>>();
+
+        assert!(
+            missing_card_faces.is_empty(),
+            "every compiled reader document needs one typed node/card face: {missing_card_faces:?}",
+        );
+    }
+
+    #[test]
+    fn ql_constellation_members_use_their_own_typed_myth_and_figure_reader_documents() {
+        let seeds = node_seeds();
+        for (slug, entity_type, source_phrase) in [
+            ("devil", "Myth", "The Fear of Formlessness"),
+            ("mithra", "Myth", "The Arian Age Balanced Sacrificer"),
+            ("prometheus", "Myth", "The Bridge"),
+            ("lucifer-venus", "Myth", "The Light-Bearer Fallen"),
+            ("satan-chronos", "Myth", "The Devourer"),
+            ("pan-hen", "Myth", "The All"),
+            ("god-father", "Myth", "The Father"),
+            ("zarathustra", "Myth", "The First Naming"),
+            ("christ", "Myth", "The Logos Incarnate"),
+            ("jesus", "Figure", "The Historical Person"),
+            ("god-man", "Myth", "Divine-Human Integration"),
+        ] {
+            let seed = seeds
+                .iter()
+                .find(|seed| seed.slug == slug)
+                .unwrap_or_else(|| panic!("QL constellation member exists: {slug}"));
+            assert_eq!(
+                seed.entity_type, entity_type,
+                "{slug} has a truthful entity type"
+            );
+            let document = seed.to_document_input("ql-card-face");
+            assert_eq!(document.content_origin, ContentOrigin::CorpusCompiled);
+            assert!(
+                document.body.contains(source_phrase),
+                "{slug} reader keeps its source-derived deep content",
+            );
+            assert_ne!(
+                document.summary, document.body,
+                "{slug} preserves a pithy card face"
+            );
+        }
+        for duplicate_slug in [
+            "myth-devil",
+            "myth-mithra",
+            "myth-prometheus",
+            "myth-lucifer",
+            "myth-satan",
+            "myth-pan",
+            "myth-christ-logos",
+            "myth-god-father",
+            "myth-zarathustra",
+            "myth-god-man",
+            "figure-jesus-of-nazareth",
+        ] {
+            assert!(
+                !seeds.iter().any(|seed| seed.slug == duplicate_slug),
+                "QL constellation content must not be duplicated into a second invisible card system: {duplicate_slug}",
+            );
+        }
+    }
+
+    #[test]
+    fn typed_myth_historical_figure_place_and_institution_cards_have_distinct_seed_colours() {
+        for (entity_type, expected) in [
+            ("Myth", "#9d77c9"),
+            ("Figure", "#d58c5a"),
+            ("Institution", "#668dbd"),
+            ("Place", "#5caa9a"),
+        ] {
+            assert_eq!(
+                colour_for(entity_type),
+                expected,
+                "{entity_type} card colour"
+            );
+        }
+    }
+
+    #[test]
+    fn corpus_relation_audit_requires_typed_endpoints_evidence_and_place_for_new_timeline_records()
+    {
+        let seeds = node_seeds();
+        let types_by_slug = seeds
+            .iter()
+            .map(|seed| (seed.slug, seed.entity_type))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let relations = corpus_relationship_seeds();
+
+        assert!(
+            relations.len() >= 45,
+            "the expanded corpus needs a material cross-domain relation field",
+        );
+        for relation in &relations {
+            assert!(
+                !relation.evidence_tags.is_empty(),
+                "every corpus relation carries an evidence/interpretation status",
+            );
+            assert_eq!(
+                crate::db::repositories::relationship_vocabulary::validate_rel_type(
+                    relation.rel_type
+                ),
+                Ok(relation.rel_type),
+                "every corpus relation uses the persisted relationship vocabulary: {} {} {}",
+                relation.source,
+                relation.rel_type,
+                relation.target,
+            );
+            assert!(
+                types_by_slug.contains_key(relation.source)
+                    && types_by_slug.contains_key(relation.target),
+                "relation endpoints are projected nodes: {} {} {}",
+                relation.source,
+                relation.rel_type,
+                relation.target,
+            );
+        }
+        for temporal_slug in [
+            "event-rudolf-ii-prague",
+            "event-bank-of-amsterdam",
+            "event-rhodes-confession",
+            "event-mk-ultra",
+            "event-cult-of-reason",
+        ] {
+            assert!(
+                relations.iter().any(|relation| {
+                    relation.source == temporal_slug
+                        && relation.rel_type == "LOCATED_AT"
+                        && types_by_slug.get(relation.target) == Some(&"Place")
+                }),
+                "{temporal_slug} has a typed geographic relation"
+            );
+        }
     }
 
     #[test]
@@ -4493,6 +5209,29 @@ mod tests {
         assert!(
             missing_endpoints.is_empty(),
             "every relation must point at a projected graph node: {missing_endpoints:?}"
+        );
+    }
+
+    #[test]
+    fn seeded_relationships_have_one_contract_per_semantic_triple() {
+        let mut counts = std::collections::BTreeMap::new();
+        for relationship in relationship_seeds() {
+            *counts
+                .entry((
+                    relationship.source,
+                    relationship.rel_type,
+                    relationship.target,
+                ))
+                .or_insert(0_usize) += 1;
+        }
+        let duplicates = counts
+            .into_iter()
+            .filter_map(|(relationship, count)| (count > 1).then_some(relationship))
+            .collect::<Vec<_>>();
+
+        assert!(
+            duplicates.is_empty(),
+            "each semantic relationship must have one canonical seed contract: {duplicates:?}"
         );
     }
 
@@ -4577,7 +5316,7 @@ mod tests {
         }));
 
         let myth_document = NodeDocumentRepository::new(database.connection())
-            .get_node_document("root-test:myth-devil")
+            .get_node_document("root-test:devil")
             .expect("read compiled myth document")
             .expect("myth document exists");
         assert_eq!(myth_document.content_origin, ContentOrigin::CorpusCompiled);
@@ -4586,7 +5325,7 @@ mod tests {
             .connection()
             .query_row(
                 "SELECT entity_type, historicity, source_kind
-                 FROM graph_node_metadata WHERE graph_node_id='root-test:myth-devil'",
+                 FROM graph_node_metadata WHERE graph_node_id='root-test:devil'",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )

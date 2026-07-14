@@ -6,8 +6,10 @@ import test from "node:test";
 
 import {
   compileCorpusKnowledge,
+  extractWikiLinks,
   renderCompiledCorpus,
 } from "./compile-corpus-knowledge.mjs";
+import { auditCorpusKnowledge } from "./audit-corpus-knowledge.mjs";
 
 async function fixtureCorpus() {
   const root = await mkdtemp(path.join(tmpdir(), "corpus-knowledge-"));
@@ -127,4 +129,55 @@ test("rejects unsafe source coordinates rather than compiling an absolute or esc
     () => compileCorpusKnowledge({ root, manifestPath: "knowledge-manifest.json" }),
     /relative path within the corpus root/,
   );
+});
+
+test("normalises escaped wikilink separators from vault markdown", () => {
+  assert.deepEqual(extractWikiLinks("[[position-0\\|#0]] and [[unit-ontological\\|Ontological]]"), [
+    "position-0",
+    "unit-ontological",
+  ]);
+});
+
+test("checked-in corpus covers the Episode 1/2 mythic, theoretical, historical, and geographic field", async () => {
+  const compiled = await compileCorpusKnowledge();
+  const report = auditCorpusKnowledge(compiled);
+  const slugs = new Set(compiled.documents.map((document) => document.slug));
+
+  assert.ok(
+    compiled.documents.length >= 60,
+    "the checked-in corpus must carry the remaining Episode 2 research reports and Episode 1 source texts, not only a curated excerpt",
+  );
+  assert.ok(
+    compiled.sources.length >= 23,
+    "Episode 1 source texts/QL units, all Episode 2 research reports, chats, and resonance ledger must all be represented",
+  );
+  for (const slug of [
+    "god-father",
+    "zarathustra",
+    "god-man",
+    "event-rudolf-ii-prague",
+    "institution-voc",
+    "event-rhodes-confession",
+    "thinker-jack-parsons",
+    "thinker-edward-bernays",
+    "place-florence",
+    "place-amsterdam",
+    "ontological-unit",
+    "social-power-unit",
+    "solar-system-unit",
+    "deficiency-unit",
+    "source-episode-1-naked-face",
+    "source-episode-1-full-quotes",
+    "source-report-1-episode-architecture",
+    "source-report-2-power-network",
+    "source-report-4-esoteric-history",
+    "source-report-6-finance",
+    "source-report-7-drug-corridor",
+    "source-report-9-image-archive",
+  ]) {
+    assert.ok(slugs.has(slug), `missing source-derived corpus document: ${slug}`);
+  }
+  assert.equal(report.unresolvedWikilinks.length, 0);
+  assert.equal(report.ambiguousWikilinks.length, 0);
+  assert.equal(report.shallowDocuments.length, 0);
 });

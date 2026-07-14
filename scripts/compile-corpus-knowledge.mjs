@@ -106,9 +106,13 @@ function markdownSelectionToBlocks(markdown) {
 
 /** Extract portable wikilink targets without guessing an ambiguous filename. */
 export function extractWikiLinks(markdown) {
+  // Some vault exports escape the display separator (`\\|`) even though it is
+  // still a normal Obsidian-style wikilink.  Normalize that representation
+  // before parsing so a portable graph target never inherits a stray slash.
+  const normalized = markdown.replaceAll("\\|", "|");
   return [
     ...new Set(
-      [...markdown.matchAll(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)]
+      [...normalized.matchAll(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)]
         .map((match) => match[1].trim())
         .filter(Boolean),
     ),

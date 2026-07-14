@@ -43,6 +43,30 @@
       "role": "ql-unit"
     },
     {
+      "path": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-ontological.md",
+      "role": "ql-unit"
+    },
+    {
+      "path": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-social-power.md",
+      "role": "ql-unit"
+    },
+    {
+      "path": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-solar-system.md",
+      "role": "ql-unit"
+    },
+    {
+      "path": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-deficiency.md",
+      "role": "ql-unit"
+    },
+    {
+      "path": "antichrist-vault/episodes/1/ep-0.1-(now-ep-1.0)/Episode_0_1_The_Naked_Face_v9.md",
+      "role": "episode-script"
+    },
+    {
+      "path": "antichrist-vault/episodes/1/ep-0.1-(now-ep-1.0)/The_Naked_Face_Full_Quotes_v7.md",
+      "role": "episode-sourcebook"
+    },
+    {
       "path": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Chat-log-0.2.md",
       "role": "episode-chat"
     },
@@ -55,6 +79,18 @@
       "role": "research-report"
     },
     {
+      "path": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report1.md",
+      "role": "research-report"
+    },
+    {
+      "path": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report2.md",
+      "role": "research-report"
+    },
+    {
+      "path": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report4.md",
+      "role": "research-report"
+    },
+    {
       "path": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report5.md",
       "role": "research-report"
     },
@@ -63,8 +99,24 @@
       "role": "research-report"
     },
     {
+      "path": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report6.md",
+      "role": "research-report"
+    },
+    {
+      "path": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report7.md",
+      "role": "research-report"
+    },
+    {
+      "path": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report9.md",
+      "role": "research-report"
+    },
+    {
       "path": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/episode-2-research-timeline.md",
       "role": "timeline-ledger"
+    },
+    {
+      "path": "antichrist-vault/episodes/episode-1-2-archetypal-resonance.md",
+      "role": "resonance-ledger"
     }
   ],
   "documents": [
@@ -90,49 +142,49 @@
       "startHeading": "The making of Cecil Rhodes: vicarage to vision of world dominion"
     },
     {
-      "slug": "figure-jesus-of-nazareth",
+      "slug": "jesus",
       "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-christs-chain.md",
       "startHeading": "[[position-4|#4]] — Jesus: The Historical Person",
       "endHeading": "[[position-5|#5]] — God-Man: Divine-Human Integration"
     },
     {
-      "slug": "myth-christ-logos",
+      "slug": "christ",
       "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-christs-chain.md",
       "startHeading": "[[position-3|#3]] — Christ: The Logos Incarnate",
       "endHeading": "[[position-4|#4]] — Jesus: The Historical Person"
     },
     {
-      "slug": "myth-devil",
+      "slug": "devil",
       "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-devils-chain.md",
       "startHeading": "[[position-0|#0]] — The Devil: General Daemonic Lord",
       "endHeading": "[[position-1|#1]] — Mithra: The Arian Age Balanced Sacrificer"
     },
     {
-      "slug": "myth-lucifer",
+      "slug": "lucifer-venus",
       "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-devils-chain.md",
       "startHeading": "[[position-3|#3]] — Lucifer: The Light-Bearer Fallen",
       "endHeading": "[[position-4|#4]] — Satan: The Devourer"
     },
     {
-      "slug": "myth-mithra",
+      "slug": "mithra",
       "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-devils-chain.md",
       "startHeading": "[[position-1|#1]] — Mithra: The Arian Age Balanced Sacrificer",
       "endHeading": "[[position-2|#2]] — Prometheus: The Bridge"
     },
     {
-      "slug": "myth-pan",
+      "slug": "pan-hen",
       "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-devils-chain.md",
       "startHeading": "[[position-5|#5]] — Pan: The All",
       "endHeading": "The Sacrifice Diagnostic — Summary"
     },
     {
-      "slug": "myth-prometheus",
+      "slug": "prometheus",
       "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-devils-chain.md",
       "startHeading": "[[position-2|#2]] — Prometheus: The Bridge",
       "endHeading": "[[position-3|#3]] — Lucifer: The Light-Bearer Fallen"
     },
     {
-      "slug": "myth-satan",
+      "slug": "satan-chronos",
       "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-devils-chain.md",
       "startHeading": "[[position-4|#4]] — Satan: The Devourer",
       "endHeading": "[[position-5|#5]] — Pan: The All"
@@ -207,6 +259,195 @@
       "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md",
       "startHeading": "Rudolf II's Prague: where alchemy met astronomy",
       "endHeading": "The long death and its aftermath"
+    },
+    {
+      "slug": "ontological-unit",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-ontological.md",
+      "startHeading": "QL Unit — The Ontological (Truth → Image of Truth)"
+    },
+    {
+      "slug": "social-power-unit",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-social-power.md",
+      "startHeading": "QL Unit — The Social / Power (Play → Work)"
+    },
+    {
+      "slug": "solar-system-unit",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-solar-system.md",
+      "startHeading": "QL Unit — The Solar System"
+    },
+    {
+      "slug": "deficiency-unit",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-deficiency.md",
+      "startHeading": "QL Unit — The Deficiency / Black Sun / Clouded Sky"
+    },
+    {
+      "slug": "god-father",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-christs-chain.md",
+      "startHeading": "[[position-0|#0]] — God: The Father",
+      "endHeading": "[[position-1|#1]] — Zarathustra: The First Naming"
+    },
+    {
+      "slug": "zarathustra",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-christs-chain.md",
+      "startHeading": "[[position-1|#1]] — Zarathustra: The First Naming",
+      "endHeading": "[[position-2|#2]] — Prometheus: The Bridge"
+    },
+    {
+      "slug": "god-man",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-christs-chain.md",
+      "startHeading": "[[position-5|#5]] — God-Man: Divine-Human Integration",
+      "endHeading": "The Sacrifice Diagnostic — Summary"
+    },
+    {
+      "slug": "myth-black-sun",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-deficiency.md",
+      "startHeading": "The Organising Image: The Clouded Sky",
+      "endHeading": "The Fallen Trinity as Structural Key"
+    },
+    {
+      "slug": "event-rudolf-ii-prague",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md",
+      "startHeading": "Rudolf II's Prague: where alchemy met astronomy",
+      "endHeading": "The long death and its aftermath"
+    },
+    {
+      "slug": "institution-voc",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md",
+      "startHeading": "The VOC: first corporate sovereign",
+      "endHeading": "The Banda genocide: corporate sovereignty's first atrocity"
+    },
+    {
+      "slug": "event-bank-of-amsterdam",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md",
+      "startHeading": "Financial innovations that still govern the world",
+      "endHeading": "The corporate body: a new kind of being"
+    },
+    {
+      "slug": "event-rhodes-confession",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report3.md",
+      "startHeading": "The Masonic initiation and the Confession of Faith",
+      "endHeading": "The inner life: Pickering, the lambs, and the flight from women"
+    },
+    {
+      "slug": "thinker-john-ruskin",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report3.md",
+      "startHeading": "Oxford, Ruskin, and the intellectual architecture of supremacism",
+      "endHeading": "The Masonic initiation and the Confession of Faith"
+    },
+    {
+      "slug": "thinker-michael-aquino",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report5.md",
+      "startHeading": "Thread 1: Michael Aquino — the man who wrote PSYOP doctrine and founded a temple",
+      "endHeading": "Thread 2: Anton LaVey — the showman and the substance behind the spectacle"
+    },
+    {
+      "slug": "thinker-anton-lavey",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report5.md",
+      "startHeading": "Thread 2: Anton LaVey — the showman and the substance behind the spectacle",
+      "endHeading": "Thread 3: Occult imagery as Hollywood's original technology"
+    },
+    {
+      "slug": "thinker-jack-parsons",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report5.md",
+      "startHeading": "Jack Parsons: the documented nexus of rocketry, occultism, and science fiction",
+      "endHeading": "Kenneth Anger: film as ritual, gossip as mythology"
+    },
+    {
+      "slug": "thinker-edward-bernays",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report5.md",
+      "startHeading": "Occult as technology: the Bernays parallel",
+      "endHeading": "Five interpretations and what the evidence supports"
+    },
+    {
+      "slug": "event-mk-ultra",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report5.md",
+      "startHeading": "MK-ULTRA: what survived the shredder",
+      "endHeading": "Project Stargate: when the CIA investigated psychics"
+    },
+    {
+      "slug": "institution-british-east-india-company",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md",
+      "startHeading": "The EIC model: corporate imperialism as template",
+      "endHeading": "Conclusion: the metamorphosis of power and what it means"
+    },
+    {
+      "slug": "place-florence",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md",
+      "startHeading": "Thread 1: The Habsburgs built an empire through weddings, then watched it dissolve",
+      "endHeading": "Thread 2: The Dutch invented the corporation and changed everything"
+    },
+    {
+      "slug": "place-amsterdam",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md",
+      "startHeading": "The VOC: first corporate sovereign",
+      "endHeading": "The Banda genocide: corporate sovereignty's first atrocity"
+    },
+    {
+      "slug": "place-oxford",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md",
+      "startHeading": "Oxford: the forge of imperial administrators",
+      "endHeading": "Diamonds, Masonry, and the Confession"
+    },
+    {
+      "slug": "event-cult-of-reason",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md",
+      "startHeading": "The Revolution's failed experiments with manufactured religion",
+      "endHeading": "Thread 6: The crucifixion of the world along two axes"
+    },
+    {
+      "slug": "place-paris",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md",
+      "startHeading": "The Revolution's failed experiments with manufactured religion",
+      "endHeading": "Thread 6: The crucifixion of the world along two axes"
+    },
+    {
+      "slug": "place-united-states",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report5.md",
+      "startHeading": "Thread 4: The documented occult-intelligence nexus",
+      "endHeading": "Thread 5: The steady pulse — lineage, technology, and what the pattern means"
+    },
+    {
+      "slug": "thinker-wouter-hanegraaff",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md",
+      "startHeading": "The academic framework for occultation",
+      "endHeading": "The Revolution's failed experiments with manufactured religion"
+    },
+    {
+      "slug": "source-episode-1-2-resonance-ledger",
+      "source": "antichrist-vault/episodes/episode-1-2-archetypal-resonance.md",
+      "startHeading": "Episode 1-2 Archetypal Resonance Ledger"
+    },
+    {
+      "slug": "source-episode-1-naked-face",
+      "source": "antichrist-vault/episodes/1/ep-0.1-(now-ep-1.0)/Episode_0_1_The_Naked_Face_v9.md"
+    },
+    {
+      "slug": "source-episode-1-full-quotes",
+      "source": "antichrist-vault/episodes/1/ep-0.1-(now-ep-1.0)/The_Naked_Face_Full_Quotes_v7.md"
+    },
+    {
+      "slug": "source-report-1-episode-architecture",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report1.md"
+    },
+    {
+      "slug": "source-report-2-power-network",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report2.md"
+    },
+    {
+      "slug": "source-report-4-esoteric-history",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report4.md"
+    },
+    {
+      "slug": "source-report-6-finance",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report6.md"
+    },
+    {
+      "slug": "source-report-7-drug-corridor",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report7.md"
+    },
+    {
+      "slug": "source-report-9-image-archive",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report9.md"
     }
   ]
 }

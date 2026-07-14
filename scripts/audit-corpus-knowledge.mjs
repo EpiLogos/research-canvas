@@ -4,6 +4,12 @@ import { fileURLToPath } from "node:url";
 
 import { compileCorpusKnowledge } from "./compile-corpus-knowledge.mjs";
 
+export const PRODUCTION_CORPUS_MINIMUMS = Object.freeze({
+  documents: 60,
+  sources: 23,
+  resolvedWikilinks: 100,
+});
+
 function normaliseTarget(value) {
   return value.trim().replace(/\\/g, "/").replace(/\.md$/i, "").toLowerCase();
 }
@@ -27,7 +33,7 @@ function bodyIsShallow(body) {
  * Reports graph-link health rather than guessing a target for ambiguous links.
  * Consumers can choose whether unresolved links are warnings or a strict gate.
  */
-export function auditCorpusKnowledge(compiled) {
+export function auditCorpusKnowledge(compiled, { minimums } = {}) {
   const targets = new Map();
   const addTarget = (alias, target) => {
     const key = normaliseTarget(alias);
@@ -69,13 +75,35 @@ export function auditCorpusKnowledge(compiled) {
       }
     }
   }
+  const documentCount = (compiled.documents ?? []).length;
+  const sourceCount = (compiled.sources ?? []).length;
+  const coverageFailures = [];
+  if (minimums) {
+    for (const [field, observed] of [
+      ["documents", documentCount],
+      ["sources", sourceCount],
+      ["resolvedWikilinks", resolvedWikilinkCount],
+    ]) {
+      const required = minimums[field];
+      if (Number.isSafeInteger(required) && required > 0 && observed < required) {
+        const reportField =
+          field === "documents"
+            ? "documentCount"
+            : field === "sources"
+              ? "sourceCount"
+              : "resolvedWikilinkCount";
+        coverageFailures.push(`${reportField} ${observed} is below required minimum ${required}`);
+      }
+    }
+  }
   return {
-    documentCount: (compiled.documents ?? []).length,
-    sourceCount: (compiled.sources ?? []).length,
+    documentCount,
+    sourceCount,
     resolvedWikilinkCount,
     unresolvedWikilinks: unresolvedWikilinks.sort(compareLinks),
     ambiguousWikilinks: ambiguousWikilinks.sort(compareLinks),
     shallowDocuments: shallowDocuments.sort(),
+    coverageFailures,
   };
 }
 
@@ -86,13 +114,14 @@ function compareLinks(left, right) {
 async function main() {
   const strict = process.argv.slice(2).includes("--strict");
   const compiled = await compileCorpusKnowledge();
-  const report = auditCorpusKnowledge(compiled);
+  const report = auditCorpusKnowledge(compiled, strict ? { minimums: PRODUCTION_CORPUS_MINIMUMS } : {});
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   if (
     strict &&
     (report.unresolvedWikilinks.length > 0 ||
       report.ambiguousWikilinks.length > 0 ||
-      report.shallowDocuments.length > 0)
+      report.shallowDocuments.length > 0 ||
+      report.coverageFailures.length > 0)
   ) {
     process.exitCode = 1;
   }

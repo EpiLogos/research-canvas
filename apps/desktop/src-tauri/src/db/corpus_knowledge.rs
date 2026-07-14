@@ -51,3 +51,14 @@ pub(crate) fn source_coordinates_for_slug(slug: &str) -> Option<Vec<String>> {
         .find(|document| document.slug == slug)
         .map(|document| document.source_coordinates.clone())
 }
+
+/// The seed surface consumes every checked-in reader document. Keeping the
+/// slugs queryable lets reconciliation tests detect a compiler artifact that
+/// has gained prose but no corresponding typed card/node.
+pub(crate) fn document_slugs() -> Vec<String> {
+    corpus()
+        .documents
+        .iter()
+        .map(|document| document.slug.clone())
+        .collect()
+}
