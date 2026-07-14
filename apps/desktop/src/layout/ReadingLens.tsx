@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { CanvasNode } from "@research-canvas/schema";
+import type { GraphNode } from "@research-canvas/desktop-api";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
+import { NodeContentDropSurface } from "../features/canvas/NodeContentDropSurface";
 import { NodeReaderBody } from "../features/viewer/NodeReaderBody";
 import { GraphDocumentAuthoringActions } from "../features/viewer/GraphDocumentContent";
 import {
@@ -64,6 +66,10 @@ export function ReadingLens({
     };
   }, [activeGraphNodeId, workspace.databasePath, workspace.transport]);
 
+  const updateOpenRecord = useCallback((graphNode: GraphNode) => {
+    setRecord((current) => current ? readerRecordWithGraphNode(current, graphNode) : current);
+  }, []);
+
   if (!record) {
     return (
       <>
@@ -89,7 +95,7 @@ export function ReadingLens({
     );
   }
 
-  return (
+  const readerSurface = (
     <ReaderSurface
       record={record}
       workspaceRoot={workspace.workingRoot}
@@ -99,11 +105,22 @@ export function ReadingLens({
       actions={record.graphNodeId ? (
         <GraphDocumentAuthoringActions
           graphNodeId={record.graphNodeId}
-          onGraphNodeUpdated={(graphNode) => setRecord((current) => current ? readerRecordWithGraphNode(current, graphNode) : current)}
+          nativeDropTarget={false}
+          onGraphNodeUpdated={updateOpenRecord}
         />
       ) : undefined}
     >
       <NodeReaderBody node={record.canvasNode} record={record} affordances={false} />
     </ReaderSurface>
   );
+
+  return record.graphNodeId ? (
+    <NodeContentDropSurface
+      graphNodeId={record.graphNodeId}
+      className="reader-native-drop-surface"
+      onGraphNodeUpdated={updateOpenRecord}
+    >
+      {readerSurface}
+    </NodeContentDropSurface>
+  ) : readerSurface;
 }

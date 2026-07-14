@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CanvasNode } from "@research-canvas/schema";
-import { readWorkspaceTextFile } from "@research-canvas/desktop-api";
+import { readWorkspaceTextFile, type GraphNode } from "@research-canvas/desktop-api";
 import { SequencePresenter } from "@research-canvas/canvas";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
+import { NodeContentDropSurface } from "../features/canvas/NodeContentDropSurface";
 import { NodeContentPane } from "../features/viewer/NodeContentPane";
 import { NodeReaderBody } from "../features/viewer/NodeReaderBody";
 import { GraphDocumentAuthoringActions } from "../features/viewer/GraphDocumentContent";
@@ -71,24 +72,41 @@ function NodeMode({ onClose, record }: { onClose: () => void; record: ReaderReco
     if (!activeRecord) onClose();
   }, [activeRecord, onClose]);
 
+  const updateOpenRecord = useCallback((graphNode: GraphNode) => {
+    setActiveRecord((current) => current ? readerRecordWithGraphNode(current, graphNode) : current);
+  }, []);
+
   if (!activeRecord) return null;
+
+  const readerSurface = (
+    <ReaderSurface
+      record={activeRecord}
+      workspaceRoot={workspace.workingRoot}
+      variant="full"
+      onExit={onClose}
+      actions={activeRecord.graphNodeId ? (
+        <GraphDocumentAuthoringActions
+          graphNodeId={activeRecord.graphNodeId}
+          nativeDropTarget={false}
+          onGraphNodeUpdated={updateOpenRecord}
+        />
+      ) : undefined}
+    >
+      <NodeReaderBody node={activeRecord.canvasNode} record={activeRecord} affordances={false} />
+    </ReaderSurface>
+  );
 
   return (
     <div className="fullscreen-reader">
-      <ReaderSurface
-        record={activeRecord}
-        workspaceRoot={workspace.workingRoot}
-        variant="full"
-        onExit={onClose}
-        actions={activeRecord.graphNodeId ? (
-          <GraphDocumentAuthoringActions
-            graphNodeId={activeRecord.graphNodeId}
-            onGraphNodeUpdated={(graphNode) => setActiveRecord((current) => current ? readerRecordWithGraphNode(current, graphNode) : current)}
-          />
-        ) : undefined}
-      >
-        <NodeReaderBody node={activeRecord.canvasNode} record={activeRecord} affordances={false} />
-      </ReaderSurface>
+      {activeRecord.graphNodeId ? (
+        <NodeContentDropSurface
+          graphNodeId={activeRecord.graphNodeId}
+          className="reader-native-drop-surface"
+          onGraphNodeUpdated={updateOpenRecord}
+        >
+          {readerSurface}
+        </NodeContentDropSurface>
+      ) : readerSurface}
     </div>
   );
 }

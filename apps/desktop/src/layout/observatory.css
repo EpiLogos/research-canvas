@@ -338,6 +338,11 @@
   background: var(--ob-bg-2);
   color: var(--ob-ink);
 }
+
+/* A reader root owns native file drops even while its details drawer is
+   closed. `display: contents` keeps that listener wrapper out of the visual
+   layout so the reader remains a first-class surface, not a nested card. */
+.reader-native-drop-surface { display: contents; }
 .reader-surface__bar {
   position: relative;
   z-index: var(--z-reading-bar);

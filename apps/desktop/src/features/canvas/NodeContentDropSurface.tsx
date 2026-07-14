@@ -15,6 +15,8 @@ import type { GraphNode } from "@research-canvas/desktop-api";
 interface NodeContentDropSurfaceProps {
   graphNodeId: string;
   children: ReactNode;
+  /** Lets reader roots attach the native listener without changing layout. */
+  className?: string;
   /** Lets a live reader replace its open record after a durable drop. */
   onGraphNodeUpdated?: (graphNode: GraphNode) => void;
 }
@@ -84,6 +86,7 @@ async function ingest(
 export function NodeContentDropSurface({
   graphNodeId,
   children,
+  className,
   onGraphNodeUpdated,
 }: NodeContentDropSurfaceProps) {
   const workspace = useCanvasWorkspace();
@@ -236,7 +239,7 @@ export function NodeContentDropSurface({
 
   return (
     <div
-      className="node-content-drop-surface"
+      className={["node-content-drop-surface", className].filter(Boolean).join(" ")}
       data-active={active ? "true" : "false"}
       onDragOver={(event) => {
         event.preventDefault();

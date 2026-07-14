@@ -1456,6 +1456,85 @@ mod tests {
     }
 
     #[test]
+    fn sqlite_rejects_deleting_the_usage_of_a_selected_cover() {
+        let (_directory, database_path, selected, _, _) = selected_cover_fixture();
+        let database = Database::open(&database_path).unwrap();
+
+        let deletion = database.connection().execute(
+            "DELETE FROM node_attachment_usage WHERE attachment_id=?1 AND role='cover'",
+            [&selected.id],
+        );
+
+        assert!(
+            deletion.is_err(),
+            "a selected canonical cover cannot lose its cover usage through direct SQL"
+        );
+    }
+
+    #[test]
+    fn sqlite_rejects_retargeting_the_usage_of_a_selected_cover() {
+        let (_directory, database_path, selected, alternate, _) = selected_cover_fixture();
+        let database = Database::open(&database_path).unwrap();
+
+        let role_change = database.connection().execute(
+            "UPDATE node_attachment_usage SET role='inline' WHERE attachment_id=?1 AND role='cover'",
+            [&selected.id],
+        );
+        assert!(
+            role_change.is_err(),
+            "a selected canonical cover must retain the cover role"
+        );
+
+        let attachment_change = database.connection().execute(
+            "UPDATE node_attachment_usage SET attachment_id=?1 WHERE attachment_id=?2 AND role='cover'",
+            [&alternate.id, &selected.id],
+        );
+        assert!(
+            attachment_change.is_err(),
+            "a selected canonical cover usage cannot be moved to a different attachment"
+        );
+    }
+
+    #[test]
+    fn sqlite_rejects_moving_an_attachment_selected_as_a_canonical_cover() {
+        let (_directory, database_path, selected, _, _) = selected_cover_fixture();
+        let database = Database::open(&database_path).unwrap();
+
+        let node_change = database.connection().execute(
+            "UPDATE node_attachment SET graph_node_id='n-reassigned' WHERE id=?1",
+            [&selected.id],
+        );
+
+        assert!(
+            node_change.is_err(),
+            "a presentation-selected attachment cannot be reassigned to another graph node"
+        );
+    }
+
+    #[test]
+    fn sqlite_allows_unselected_attachment_usage_and_ownership_mutations() {
+        let (_directory, database_path, _, _, unrelated) = selected_cover_fixture();
+        let database = Database::open(&database_path).unwrap();
+
+        let deleted_usage = database.connection().execute(
+            "DELETE FROM node_attachment_usage WHERE attachment_id=?1 AND role='inline'",
+            [&unrelated.id],
+        );
+        assert_eq!(
+            deleted_usage.expect("unselected attachment usage remains mutable"),
+            1
+        );
+        let moved_attachment = database.connection().execute(
+            "UPDATE node_attachment SET graph_node_id='n-relocated' WHERE id=?1",
+            [&unrelated.id],
+        );
+        assert_eq!(
+            moved_attachment.expect("unselected attachment ownership remains mutable"),
+            1
+        );
+    }
+
+    #[test]
     fn attachment_service_sweeps_crash_residue_without_touching_referenced_bytes() {
         let directory = tempfile::tempdir().expect("temporary attachment workspace");
         let workspace = directory.path().join("workspace");
@@ -1693,5 +1772,47 @@ mod tests {
                 schema_version: 1,
             },
         }
+    }
+
+    fn selected_cover_fixture() -> (
+        tempfile::TempDir,
+        PathBuf,
+        NodeAttachment,
+        NodeAttachment,
+        NodeAttachment,
+    ) {
+        let directory = tempfile::tempdir().expect("temporary attachment workspace");
+        let workspace = directory.path().join("workspace");
+        let source_dir = directory.path().join("source");
+        let database_path = directory.path().join("attachments.sqlite");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&source_dir).unwrap();
+        let selected_source = source_dir.join("selected-cover.png");
+        let alternate_source = source_dir.join("alternate.png");
+        let unrelated_source = source_dir.join("unrelated.png");
+        fs::write(&selected_source, b"selected canonical cover").unwrap();
+        fs::write(&alternate_source, b"other image for the same graph node").unwrap();
+        fs::write(&unrelated_source, b"unrelated attachment").unwrap();
+
+        let selected = attach_node_attachment_at_path(
+            &database_path,
+            attachment_request(&workspace, "n-selected", &selected_source, "cover"),
+        )
+        .expect("create a selected cover through the real attachment service")
+        .attachment;
+        let alternate = attach_node_attachment_at_path(
+            &database_path,
+            attachment_request(&workspace, "n-selected", &alternate_source, "inline"),
+        )
+        .expect("create an unselected image for the same graph node")
+        .attachment;
+        let unrelated = attach_node_attachment_at_path(
+            &database_path,
+            attachment_request(&workspace, "n-unrelated", &unrelated_source, "inline"),
+        )
+        .expect("create an unrelated attachment")
+        .attachment;
+
+        (directory, database_path, selected, alternate, unrelated)
     }
 }
