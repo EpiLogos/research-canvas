@@ -342,6 +342,7 @@ function NodeDocumentBody({
   const body = useStore(store, (state) => state.body);
   const status = useStore(store, (state) => state.status);
   const errorMessage = useStore(store, (state) => state.errorMessage);
+  const canEdit = editable && localAuthorityAvailable;
   const displayBody = useMemo(
     () => resolveBlockNoteAssetUrls(body, workspaceRoot),
     [body, workspaceRoot],
@@ -378,15 +379,19 @@ function NodeDocumentBody({
       <BlockNoteDocument
         // BlockNote seeds its document only on mount. Re-mount when the
         // workspace becomes known so an early-opened reader upgrades stored
-        // `assets/...` image paths to renderable Tauri URLs.
-        key={editable
-          ? (workspaceRoot ?? "unresolved-workspace")
-          : `${workspaceRoot ?? "unresolved-workspace"}:${displayBody}`}
+        // `assets/...` image paths to renderable Tauri URLs. A changed body
+        // must not be part of this key: a read-only BlockNote projection
+        // normalizes its blocks, which emits onChange and would otherwise
+        // detach the newly rendered document while the reader is loading.
+        // BlockNoteDocument applies subsequent read-only bodies in place.
+        key={workspaceRoot ?? "unresolved-workspace"}
         body={displayBody}
-        editable={editable && localAuthorityAvailable}
+        editable={canEdit}
         saveState={status}
         saveErrorMessage={errorMessage}
-        onChange={(next) => store.getState().setBody(restoreBlockNoteAssetUrls(next, workspaceRoot))}
+        onChange={canEdit
+          ? (next) => store.getState().setBody(restoreBlockNoteAssetUrls(next, workspaceRoot))
+          : undefined}
       />
       <div className="node-document-pane__status" data-status={status}>
         {status === "saving"

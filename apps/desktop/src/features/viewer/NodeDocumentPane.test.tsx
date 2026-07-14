@@ -84,6 +84,49 @@ describe("NodeDocumentPane", () => {
     expect(await screen.findByText("Loaded body")).toBeInTheDocument();
   });
 
+  it("keeps an unedited read-only local document clean instead of persisting editor projection", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const body = JSON.stringify([
+      {
+        id: "b1",
+        type: "paragraph",
+        props: {},
+        content: [{ type: "text", text: "Read-only canonical body", styles: {} }],
+        children: [],
+      },
+    ]);
+    const transport = {
+      readLocalNodeDocument: vi.fn().mockResolvedValue({
+        body,
+        summary: "",
+        neo4jSynced: true,
+        contentOrigin: "user_authored" as const,
+        contentRevision: 3,
+      }),
+      upsertLocalNodeDocument: vi.fn().mockResolvedValue(undefined),
+      readGraphNode: vi.fn().mockResolvedValue(makeNode(body)),
+    };
+
+    try {
+      render(
+        <NodeDocumentPane
+          graphNodeId="n1"
+          transport={transport}
+          databasePath="/tmp/db.sqlite"
+          editable={false}
+        />,
+      );
+
+      expect(await screen.findByText("Read-only canonical body")).toBeInTheDocument();
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(screen.getByText("Saved")).toBeInTheDocument();
+      expect(transport.upsertLocalNodeDocument).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("renders a portable attached-image path through the workspace asset protocol", async () => {
     const body = JSON.stringify([
       {
