@@ -1,11 +1,22 @@
 import type { ComponentProps } from "react";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createAnnotationStore, createCanvasStore } from "@research-canvas/canvas";
 
-import { GraphDocumentContent } from "./GraphDocumentContent";
+import { GraphDocumentAuthoringActions, GraphDocumentContent } from "./GraphDocumentContent";
 import { CanvasWorkspaceContext } from "../canvas/CanvasWorkspaceContext";
+
+let nativeDropHandler: ((event: { payload: { type: string; paths?: string[] } }) => void) | null = null;
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({
+    onDragDropEvent: vi.fn(async (handler) => {
+      nativeDropHandler = handler;
+      return vi.fn();
+    }),
+  }),
+}));
 
 // jsdom is missing a couple of browser APIs the real BlockNote editor touches
 // on mount. These are environment shims (not stubs of anything under test);
@@ -179,5 +190,68 @@ describe("GraphDocumentContent — cutover + mounted content/linking affordances
     // render; searchGraph is only called for a non-empty query. A render loop
     // would have exhausted the heap before reaching this assertion.
     expect(transport.searchGraph).not.toHaveBeenCalled();
+  });
+
+  it("mounts a reader authoring drop target that sends native paths through durable attachment transport", async () => {
+    const remote = {
+      graphNodeId: "g1",
+      entityType: "Figure",
+      title: "T",
+      body: "[]",
+      summary: "",
+      contentOrigin: "seed",
+      contentRevision: 3,
+      bodySourceCoordinates: [],
+      seedSchemaVersion: 1,
+    };
+    const attachedBody = '[{"type":"image","props":{"url":"assets/attachments/hash/native.png"}}]';
+    const durableTransport = {
+      ...transport,
+      readGraphNode: vi.fn().mockResolvedValue(remote),
+      attachNodeAttachment: vi.fn().mockResolvedValue({
+        attachment: {
+          id: "native-drop", graphNodeId: "g1", managedPath: "assets/attachments/hash/native.png",
+          originalFilename: "native.png", mimeType: "image/png", kind: "image", contentHash: "hash",
+          caption: "", role: "inline", provenanceSourcePath: "/vault/native.png", createdAt: "", updatedAt: "",
+        },
+        document: {
+          graphNodeId: "g1", body: attachedBody, summary: "", neo4jSynced: false,
+          contentOrigin: "user_authored", contentRevision: 4, bodySourceCoordinates: [],
+        },
+        expectedRemoteOrigin: "seed", expectedRemoteRevision: 3,
+      }),
+      compareAndSwapGraphNodeContent: vi.fn().mockResolvedValue({ kind: "updated" }),
+      acknowledgeLocalNodeDocumentSync: vi.fn().mockResolvedValue({ kind: "updated" }),
+    };
+    const onGraphNodeUpdated = vi.fn();
+    const readerWorkspace = {
+      ...workspaceValue,
+      transport: durableTransport,
+      databasePath: "/workspace/research-canvas.sqlite",
+    };
+    Object.assign(window, { __TAURI_INTERNALS__: {} });
+
+    render(
+      <CanvasWorkspaceContext.Provider value={readerWorkspace as never}>
+        <GraphDocumentAuthoringActions graphNodeId="g1" onGraphNodeUpdated={onGraphNodeUpdated} />
+      </CanvasWorkspaceContext.Provider>,
+    );
+
+    await vi.waitFor(() => expect(nativeDropHandler).not.toBeNull());
+    await act(async () => {
+      nativeDropHandler?.({ payload: { type: "drop", paths: ["/vault/native.png"] } });
+    });
+
+    await vi.waitFor(() => {
+      expect(durableTransport.attachNodeAttachment).toHaveBeenCalledWith(expect.objectContaining({
+        graphNodeId: "g1",
+        sourceAbsolutePath: "/vault/native.png",
+        kind: "image",
+        role: "inline",
+      }));
+      expect(onGraphNodeUpdated).toHaveBeenCalledWith(expect.objectContaining({ body: attachedBody }));
+    });
+    expect(contentLinkingActions.addImageToNode).not.toHaveBeenCalledWith("g1", "/vault/native.png");
+    delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
   });
 });

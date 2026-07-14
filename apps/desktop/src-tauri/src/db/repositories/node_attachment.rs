@@ -108,6 +108,17 @@ impl<'conn> NodeAttachmentRepository<'conn> {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
+    /// Returns every durable attachment path so the native attachment service
+    /// can conservatively recover crash residue without touching bytes still
+    /// referenced by SQLite.
+    pub fn managed_paths(&self) -> RepositoryResult<Vec<String>> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT managed_path FROM node_attachment ORDER BY managed_path")?;
+        let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
     /// Select the image that represents this graph node outside any
     /// particular canvas. The caller normally already marked the role, but
     /// keeping that invariant here makes the durable selector safe for future

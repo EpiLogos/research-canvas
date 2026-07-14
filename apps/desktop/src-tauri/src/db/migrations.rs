@@ -94,6 +94,10 @@ const MIGRATIONS: &[Migration] = &[
         version: "0020_node_attachment_presentation",
         sql: include_str!("../../migrations/0020_node_attachment_presentation.sql"),
     },
+    Migration {
+        version: "0021_node_attachment_presentation_guards",
+        sql: include_str!("../../migrations/0021_node_attachment_presentation_guards.sql"),
+    },
 ];
 
 impl MigrationRunner {

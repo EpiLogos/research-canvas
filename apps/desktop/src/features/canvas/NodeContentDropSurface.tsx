@@ -10,10 +10,13 @@ import {
 
 import { useCanvasWorkspace } from "./CanvasWorkspaceContext";
 import { attachNodeMedia } from "../viewer/nodeAttachmentActions";
+import type { GraphNode } from "@research-canvas/desktop-api";
 
 interface NodeContentDropSurfaceProps {
   graphNodeId: string;
   children: ReactNode;
+  /** Lets a live reader replace its open record after a durable drop. */
+  onGraphNodeUpdated?: (graphNode: GraphNode) => void;
 }
 
 function toFileShapes(list: FileList | null): { name: string; type: string; file: File }[] {
@@ -78,7 +81,11 @@ async function ingest(
   return { ok: true };
 }
 
-export function NodeContentDropSurface({ graphNodeId, children }: NodeContentDropSurfaceProps) {
+export function NodeContentDropSurface({
+  graphNodeId,
+  children,
+  onGraphNodeUpdated,
+}: NodeContentDropSurfaceProps) {
   const workspace = useCanvasWorkspace();
   const [active, setActive] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -98,7 +105,7 @@ export function NodeContentDropSurface({ graphNodeId, children }: NodeContentDro
             if (!workspace.transport || !workspace.databasePath || !workspace.workingRoot) {
               return workspace.contentLinkingActions.addImageToNode(nodeId, sourceAbsolutePath);
             }
-            return attachNodeMedia({
+            const attached = await attachNodeMedia({
               transport: workspace.transport,
               databasePath: workspace.databasePath,
               workspaceRoot: workspace.workingRoot,
@@ -107,6 +114,8 @@ export function NodeContentDropSurface({ graphNodeId, children }: NodeContentDro
               kind: "image",
               role: "inline",
             });
+            onGraphNodeUpdated?.(attached.graphNode);
+            return attached.graphNode;
           },
         );
         if (!result.ok) {
@@ -133,7 +142,7 @@ export function NodeContentDropSurface({ graphNodeId, children }: NodeContentDro
           if (!sourceAbsolutePath) continue;
           const kind = isImagePath(sourceAbsolutePath) ? "image" : "file";
           if (workspace.transport && workspace.databasePath && workspace.workingRoot) {
-            await attachNodeMedia({
+            const attached = await attachNodeMedia({
               transport: workspace.transport,
               databasePath: workspace.databasePath,
               workspaceRoot: workspace.workingRoot,
@@ -142,6 +151,7 @@ export function NodeContentDropSurface({ graphNodeId, children }: NodeContentDro
               kind,
               role: kind === "image" ? "inline" : "file",
             });
+            onGraphNodeUpdated?.(attached.graphNode);
           } else if (kind === "image") {
             await workspace.contentLinkingActions.addImageToNode(graphNodeId, sourceAbsolutePath);
           } else {

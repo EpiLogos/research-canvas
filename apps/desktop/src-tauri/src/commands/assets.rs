@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     fs,
     io::{BufReader, Read},
     path::{Path, PathBuf},
@@ -241,37 +242,36 @@ where
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| "source path has no valid UTF-8 filename".to_string())?;
-    // Copy before hashing: attachment identity must name the immutable bytes
-    // we will publish, not a mutable source file that can change mid-import.
-    let staged = stage_source_file(workspace_root, &source)?;
-    if let Err(error) = after_stage(&staged) {
-        fs::remove_file(&staged).ok();
-        return Err(error);
-    }
-    let source_hash = sha256_file(&staged)?;
-    let candidate = new_attachment_identity(&request, source_file_name, &source, &source_hash);
-    let database = match Database::open(database_path) {
-        Ok(database) => database,
-        Err(error) => {
-            fs::remove_file(&staged).ok();
-            return Err(error.to_string());
-        }
-    };
+    let database = Database::open(database_path).map_err(|error| error.to_string())?;
     let attachment_repo = NodeAttachmentRepository::new(database.connection());
     let document_repo = NodeDocumentRepository::new(database.connection());
-
-    let transaction = match TransactionGuard::begin(database.connection()) {
-        Ok(transaction) => transaction,
-        Err(error) => {
-            fs::remove_file(&staged).ok();
-            return Err(error.to_string());
-        }
-    };
+    // Every attachment operation obtains the SQLite writer lock before
+    // sweeping or staging bytes. That makes the recovery pass safe across
+    // processes: another import cannot have an uncommitted staged or
+    // published file while this operation decides whether it is unreferenced.
+    let transaction =
+        TransactionGuard::begin(database.connection()).map_err(|error| error.to_string())?;
+    let mut staged: Option<PathBuf> = None;
     let mut published_target: Option<PathBuf> = None;
     let result = (|| -> Result<AttachNodeAttachmentResult, String> {
+        recover_attachment_files(workspace_root, &attachment_repo)?;
+
+        // Copy before hashing: attachment identity must name the immutable
+        // staged bytes we will publish, not a mutable source file that can
+        // change mid-import.
+        let staged_path = stage_source_file(workspace_root, &source)?;
+        staged = Some(staged_path);
+        let staged_path = staged
+            .as_deref()
+            .ok_or_else(|| "attachment staging path was not created".to_string())?;
+        after_stage(staged_path)?;
+        let source_hash = sha256_file(staged_path)?;
+        let candidate = new_attachment_identity(&request, source_file_name, &source, &source_hash);
+
         // This check is deliberately inside BEGIN IMMEDIATE. A concurrent
         // import can only see a committed identity here, so it cannot insert
-        // a duplicate row or delete another invocation's published bytes.
+        // a duplicate row or cause recovery to delete another invocation's
+        // published bytes.
         let existing = attachment_repo
             .find_by_content_identity(&request.graph_node_id, &source_hash)
             .map_err(|error| error.to_string())?;
@@ -347,7 +347,7 @@ where
 
         before_commit()?;
         if new_attachment {
-            if publish_staged_file(&staged, &target)? {
+            if publish_staged_file(staged_path, &target)? {
                 published_target = Some(target);
             }
         }
@@ -365,14 +365,20 @@ where
                 if let Some(target) = published_target.as_ref() {
                     fs::remove_file(target).ok();
                 }
-                fs::remove_file(&staged).ok();
+                if let Some(staged) = staged.as_ref() {
+                    fs::remove_file(staged).ok();
+                }
                 return Err(error.to_string());
             }
-            fs::remove_file(&staged).ok();
+            if let Some(staged) = staged.as_ref() {
+                fs::remove_file(staged).ok();
+            }
             Ok(result)
         }
         Err(error) => {
-            fs::remove_file(&staged).ok();
+            if let Some(staged) = staged.as_ref() {
+                fs::remove_file(staged).ok();
+            }
             if let Some(target) = published_target.as_ref() {
                 // Delete only a path we created with create-new semantics;
                 // never remove an existing committed attachment on conflict.
@@ -684,6 +690,108 @@ fn portable_path_to_workspace_path(
     Ok(workspace_root.join(managed_path))
 }
 
+/// Recovers only crash residue in the attachment service's private
+/// namespaces. This runs while the caller owns SQLite's writer transaction;
+/// a concurrent attachment cannot publish a file until after it has a row in
+/// that transaction, so an unreferenced file here is safe to remove.
+fn recover_attachment_files(
+    workspace_root: &Path,
+    attachment_repo: &NodeAttachmentRepository<'_>,
+) -> Result<(), String> {
+    sweep_staging_residue(workspace_root)?;
+
+    let managed_root = workspace_root.join("assets").join("attachments");
+    let referenced_paths = attachment_repo
+        .managed_paths()
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        // Legacy assets/<node-id>/ files are not owned by this new service
+        // namespace and are deliberately outside recovery's remit.
+        .filter(|managed_path| managed_path.starts_with("assets/attachments/"))
+        .map(|managed_path| {
+            let managed_path = portable_path_to_workspace_path(workspace_root, &managed_path)?;
+            managed_path
+                .strip_prefix(&managed_root)
+                .map(Path::to_path_buf)
+                .map_err(|_| {
+                    "managed attachment path escaped the dedicated attachments namespace"
+                        .to_string()
+                })
+        })
+        .collect::<Result<BTreeSet<_>, _>>()?;
+
+    sweep_unreferenced_managed_files(&managed_root, &managed_root, &referenced_paths)
+}
+
+/// A stage or journal is only created while the writer transaction is held.
+/// If this recovery pass can run, any such file was left by a crashed writer.
+/// Unrecognised files are intentionally retained for operator inspection.
+fn sweep_staging_residue(workspace_root: &Path) -> Result<(), String> {
+    let staging = workspace_root.join("assets").join(".attachment-staging");
+    let entries = match fs::read_dir(&staging) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
+
+    for entry in entries {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let file_type = entry.file_type().map_err(|error| error.to_string())?;
+        if !file_type.is_file() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.ends_with(".stage") || name.ends_with(".journal") {
+            fs::remove_file(entry.path()).map_err(|error| error.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+fn sweep_unreferenced_managed_files(
+    managed_root: &Path,
+    current: &Path,
+    referenced_paths: &BTreeSet<PathBuf>,
+) -> Result<(), String> {
+    let entries = match fs::read_dir(current) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
+
+    for entry in entries {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let path = entry.path();
+        let file_type = entry.file_type().map_err(|error| error.to_string())?;
+        if file_type.is_dir() {
+            sweep_unreferenced_managed_files(managed_root, &path, referenced_paths)?;
+            // Empty directories are managed artefacts too. Never force-delete
+            // a directory: if an unknown file remains, it is retained.
+            match fs::remove_dir(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) if error.kind() == std::io::ErrorKind::DirectoryNotEmpty => {}
+                Err(error) => return Err(error.to_string()),
+            }
+            continue;
+        }
+        if !file_type.is_file() {
+            // Symlinks and special files cannot have been published by this
+            // service, so recovery leaves them untouched.
+            continue;
+        }
+        let relative = path
+            .strip_prefix(managed_root)
+            .map(Path::to_path_buf)
+            .map_err(|_| "managed attachment traversal escaped its root".to_string())?;
+        if !referenced_paths.contains(&relative) {
+            fs::remove_file(&path).map_err(|error| error.to_string())?;
+        }
+    }
+    Ok(())
+}
+
 fn stage_source_file(workspace_root: &Path, source: &Path) -> Result<PathBuf, String> {
     use std::io::Write;
 
@@ -989,7 +1097,7 @@ mod tests {
     }
 
     #[test]
-    fn concurrent_imports_stage_then_converge_on_one_attachment_identity() {
+    fn concurrent_imports_converge_on_one_attachment_identity() {
         let directory = tempfile::tempdir().expect("temporary attachment workspace");
         let workspace = directory.path().join("workspace");
         let source_dir = directory.path().join("source");
@@ -1000,28 +1108,28 @@ mod tests {
         fs::write(&source, b"one immutable image for two native connections").unwrap();
 
         // Migrate before the workers race. Each invocation still opens its own
-        // SQLite connection; the barrier is after staging and before BEGIN.
+        // SQLite connection, then both start together. The service takes the
+        // writer lock before staging so recovery and publication remain one
+        // serializable operation.
         drop(Database::open(&database_path).expect("initialise SQLite"));
-        let after_stage = Arc::new(Barrier::new(2));
+        let start = Arc::new(Barrier::new(2));
         let request = attachment_request(&workspace, "n-race", &source, "inline");
         let spawn_import = |barrier: Arc<Barrier>| {
             let request = request.clone();
             let database_path = database_path.clone();
             thread::spawn(move || {
+                barrier.wait();
                 attach_node_attachment_at_path_with_hooks(
                     &database_path,
                     request,
-                    move |_| {
-                        barrier.wait();
-                        Ok(())
-                    },
+                    |_| Ok(()),
                     || Ok(()),
                 )
             })
         };
 
-        let first = spawn_import(Arc::clone(&after_stage));
-        let second = spawn_import(Arc::clone(&after_stage));
+        let first = spawn_import(Arc::clone(&start));
+        let second = spawn_import(Arc::clone(&start));
         let first = first
             .join()
             .expect("first worker joins")
@@ -1261,6 +1369,142 @@ mod tests {
         assert!(
             error.is_err(),
             "the database itself rejects image-as-file usage"
+        );
+    }
+
+    #[test]
+    fn sqlite_rejects_invalid_usage_updates_and_cover_presentation_rows() {
+        let directory = tempfile::tempdir().expect("temporary attachment workspace");
+        let workspace = directory.path().join("workspace");
+        let source_dir = directory.path().join("source");
+        let database_path = directory.path().join("attachments.sqlite");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&source_dir).unwrap();
+        let first_source = source_dir.join("first.png");
+        let second_source = source_dir.join("second.png");
+        let third_source = source_dir.join("third.png");
+        fs::write(&first_source, b"first guarded image").unwrap();
+        fs::write(&second_source, b"second guarded image").unwrap();
+        fs::write(&third_source, b"third guarded image").unwrap();
+
+        let first = attach_node_attachment_at_path(
+            &database_path,
+            attachment_request(&workspace, "n-presentation-a", &first_source, "inline"),
+        )
+        .expect("first valid image attachment imports");
+        let second = attach_node_attachment_at_path(
+            &database_path,
+            attachment_request(&workspace, "n-presentation-b", &second_source, "inline"),
+        )
+        .expect("second valid image attachment imports");
+        let third = attach_node_attachment_at_path(
+            &database_path,
+            attachment_request(&workspace, "n-presentation-a", &third_source, "inline"),
+        )
+        .expect("third valid image attachment imports");
+        let database = Database::open(&database_path).unwrap();
+
+        let incompatible_usage_update = database.connection().execute(
+            "UPDATE node_attachment_usage SET role='file' WHERE attachment_id=?1 AND role='inline'",
+            [&first.attachment.id],
+        );
+        assert!(
+            incompatible_usage_update.is_err(),
+            "updating an image usage to file is rejected just like inserting it"
+        );
+
+        let missing_cover_usage = database.connection().execute(
+            "INSERT INTO node_attachment_presentation(graph_node_id,cover_attachment_id) VALUES(?1,?2)",
+            [&first.attachment.graph_node_id, &first.attachment.id],
+        );
+        assert!(
+            missing_cover_usage.is_err(),
+            "a canonical presentation must reference an attachment marked for cover use"
+        );
+
+        let foreign_attachment = database.connection().execute(
+            "INSERT INTO node_attachment_presentation(graph_node_id,cover_attachment_id) VALUES(?1,?2)",
+            [&first.attachment.graph_node_id, &second.attachment.id],
+        );
+        assert!(
+            foreign_attachment.is_err(),
+            "a canonical presentation cannot select an attachment from another graph node"
+        );
+
+        NodeAttachmentRepository::new(database.connection())
+            .select_cover(&first.attachment.graph_node_id, &first.attachment.id)
+            .expect("the repository creates one valid canonical cover before update checks");
+        let missing_cover_usage_update = database.connection().execute(
+            "UPDATE node_attachment_presentation SET cover_attachment_id=?1 WHERE graph_node_id=?2",
+            [&third.attachment.id, &first.attachment.graph_node_id],
+        );
+        assert!(
+            missing_cover_usage_update.is_err(),
+            "updating a canonical cover also requires cover usage"
+        );
+        let foreign_attachment_update = database.connection().execute(
+            "UPDATE node_attachment_presentation SET graph_node_id=?1 WHERE graph_node_id=?2",
+            [
+                &second.attachment.graph_node_id,
+                &first.attachment.graph_node_id,
+            ],
+        );
+        assert!(
+            foreign_attachment_update.is_err(),
+            "updating a canonical presentation cannot detach it from its owning graph node"
+        );
+    }
+
+    #[test]
+    fn attachment_service_sweeps_crash_residue_without_touching_referenced_bytes() {
+        let directory = tempfile::tempdir().expect("temporary attachment workspace");
+        let workspace = directory.path().join("workspace");
+        let source_dir = directory.path().join("source");
+        let database_path = directory.path().join("attachments.sqlite");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&source_dir).unwrap();
+        let referenced_source = source_dir.join("referenced.png");
+        let recovery_source = source_dir.join("recovery.png");
+        fs::write(&referenced_source, b"durably referenced attachment").unwrap();
+        fs::write(&recovery_source, b"attachment that triggers recovery").unwrap();
+
+        let referenced = attach_node_attachment_at_path(
+            &database_path,
+            attachment_request(&workspace, "n-recovery", &referenced_source, "inline"),
+        )
+        .expect("persist the attachment recovery must preserve");
+        let referenced_path = workspace.join(&referenced.attachment.managed_path);
+        let staging = workspace.join("assets/.attachment-staging");
+        let orphan_published = workspace.join("assets/attachments/orphan/stranded.png");
+        let stale_stage = staging.join("abandoned.stage");
+        let stale_journal = staging.join("attachment-stage-4294967295-stale.journal");
+        fs::create_dir_all(orphan_published.parent().unwrap()).unwrap();
+        fs::create_dir_all(&staging).unwrap();
+        fs::write(&orphan_published, b"bytes published before a process crash").unwrap();
+        fs::write(&stale_stage, b"bytes staged before a process crash").unwrap();
+        fs::write(&stale_journal, r#"{"pid":4294967295}"#).unwrap();
+
+        attach_node_attachment_at_path(
+            &database_path,
+            attachment_request(&workspace, "n-recovery", &recovery_source, "inline"),
+        )
+        .expect("service startup sweeps stale attachment residue before import");
+
+        assert!(
+            referenced_path.is_file(),
+            "never delete a managed path referenced by SQLite"
+        );
+        assert!(
+            !orphan_published.exists(),
+            "remove an unreferenced published asset"
+        );
+        assert!(
+            !stale_stage.exists(),
+            "remove an unowned stale staging file"
+        );
+        assert!(
+            !stale_journal.exists(),
+            "remove the stale staging ownership marker"
         );
     }
 

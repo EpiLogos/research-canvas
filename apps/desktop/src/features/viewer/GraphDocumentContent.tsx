@@ -46,7 +46,9 @@ export function GraphDocumentContent({
         workspaceRoot={workspace.workingRoot}
         editable={editable}
       />
-      {showAuthoringControls ? <GraphDocumentAuthoringActions graphNodeId={graphNodeId} /> : null}
+      {showAuthoringControls ? (
+        <GraphDocumentAuthoringActions graphNodeId={graphNodeId} nativeDropTarget={false} />
+      ) : null}
     </NodeContentDropSurface>
   );
 }
@@ -59,17 +61,25 @@ export function GraphDocumentContent({
 export function GraphDocumentAuthoringActions({
   graphNodeId,
   onGraphNodeUpdated,
+  nativeDropTarget = true,
 }: {
   graphNodeId: string;
   onGraphNodeUpdated?: (graphNode: GraphNode) => void;
+  /** The document editor already owns a drop target; live readers need one. */
+  nativeDropTarget?: boolean;
 }) {
-  return (
+  const controls = (
     <div className="graph-document-content__linking" role="group" aria-label="Node authoring actions">
       <InsertMediaButtons graphNodeId={graphNodeId} onGraphNodeUpdated={onGraphNodeUpdated} />
       <LinkFilePicker graphNodeId={graphNodeId} />
       <LinkNodePicker sourceGraphNodeId={graphNodeId} />
     </div>
   );
+  return nativeDropTarget ? (
+    <NodeContentDropSurface graphNodeId={graphNodeId} onGraphNodeUpdated={onGraphNodeUpdated}>
+      {controls}
+    </NodeContentDropSurface>
+  ) : controls;
 }
 
 function InsertMediaButtons({

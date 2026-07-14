@@ -101,9 +101,19 @@ export async function attachNodeMedia(input: {
   });
 
   const localGraph = graphWithLocalDocument(graphNode, attached.document);
-  // Cover selection is durable presentation data, not a document edit. A
-  // local cover attach therefore must not send an equal content revision
-  // through CAS: Neo4j correctly rejects that as a stale/no-op write.
+  // Cover selection is durable presentation data, never a request to sync
+  // document content. In particular, the native service can return a pending
+  // local document here (from an earlier prose/media edit); CASing it merely
+  // because the user chose a cover would publish unrelated authored work.
+  if (input.role === "cover") {
+    return {
+      attachment: attached.attachment,
+      graphNode: localGraph,
+      remoteSynced: attached.document.neo4jSynced,
+    };
+  }
+  // Other idempotent attachment requests can preserve an already-synced
+  // document. Avoid a rejected equal-revision CAS in that narrow case.
   if (documentMatchesGraphNode(attached.document, graphNode)) {
     return { attachment: attached.attachment, graphNode: localGraph, remoteSynced: true };
   }
