@@ -107,6 +107,18 @@ export function readerRecordWithGraphNode(
   return graphReaderRecord(graphNode, record.canvasNode, record.coverReference);
 }
 
+/**
+ * Applies a durable cover selection after the reader has resolved it from
+ * SQLite. `null` means no canonical selection exists yet, so an older layout
+ * thumbnail or inline image remains a useful compatibility fallback.
+ */
+export function readerRecordWithCanonicalCover(
+  record: ReaderRecord,
+  canonicalCover: string | null,
+): ReaderRecord {
+  return canonicalCover ? { ...record, coverReference: canonicalCover } : record;
+}
+
 function graphReaderRecord(
   graphNode: GraphNodeContract,
   canvasNode: CanvasNode | null,

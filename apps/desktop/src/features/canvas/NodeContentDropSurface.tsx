@@ -1,4 +1,5 @@
-import { useCallback, useState, type DragEvent, type ClipboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type DragEvent, type ClipboardEvent, type ReactNode } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import {
   classifyDropItems,
@@ -32,15 +33,25 @@ function toErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-// Tauri v2's File objects dropped/pasted from the OS do NOT carry a `.path`
-// property (that was a Tauri v1 convenience the webview no longer exposes),
-// so an image ingest item can never be imported this way. Previously this
-// silently no-op'd (the image just vanished). We now surface that explicitly
-// instead of guessing at a workaround, and point the user at the native
-// picker buttons ("Insert image" / "Attach file") which DO get a real
-// absolute path via the dialog plugin.
+// Browser File objects do not reveal a source path. In a native Tauri window
+// OS drags are handled below through `onDragDropEvent`, whose drop payload
+// carries real absolute paths. Clipboard files remain browser-shaped and need
+// a picker if the platform does not expose a path.
 const NO_PATH_MESSAGE =
-  "Can't read a file path from a dropped/pasted file in this app. Use the \"Insert image\" or \"Attach file\" button instead.";
+  "Can't read a source path from this pasted file. Use the \"Insert image\" or \"Attach file\" button instead.";
+
+function isTauriRuntime(): boolean {
+  return typeof window !== "undefined"
+    && Boolean((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__);
+}
+
+function nativeFileName(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? "attachment";
+}
+
+function isImagePath(path: string): boolean {
+  return /\.(avif|gif|jpe?g|png|svg|webp)$/i.test(path);
+}
 
 async function ingest(
   graphNodeId: string,
@@ -105,13 +116,91 @@ export function NodeContentDropSurface({ graphNodeId, children }: NodeContentDro
         setErrorMessage(toErrorMessage(error, "Failed to add the dropped/pasted content."));
       }
     },
-    [graphNodeId, workspace.contentLinkingActions],
+    [
+      graphNodeId,
+      workspace.contentLinkingActions,
+      workspace.databasePath,
+      workspace.transport,
+      workspace.workingRoot,
+    ],
   );
+
+  const runNativePaths = useCallback(
+    async (paths: string[]) => {
+      setErrorMessage(null);
+      try {
+        for (const sourceAbsolutePath of paths) {
+          if (!sourceAbsolutePath) continue;
+          const kind = isImagePath(sourceAbsolutePath) ? "image" : "file";
+          if (workspace.transport && workspace.databasePath && workspace.workingRoot) {
+            await attachNodeMedia({
+              transport: workspace.transport,
+              databasePath: workspace.databasePath,
+              workspaceRoot: workspace.workingRoot,
+              graphNodeId,
+              sourceAbsolutePath,
+              kind,
+              role: kind === "image" ? "inline" : "file",
+            });
+          } else if (kind === "image") {
+            await workspace.contentLinkingActions.addImageToNode(graphNodeId, sourceAbsolutePath);
+          } else {
+            await workspace.contentLinkingActions.attachFileToNode(
+              graphNodeId,
+              sourceAbsolutePath,
+              nativeFileName(sourceAbsolutePath),
+            );
+          }
+        }
+      } catch (error) {
+        setErrorMessage(toErrorMessage(error, "Failed to add the dropped files."));
+      }
+    },
+    [
+      graphNodeId,
+      workspace.contentLinkingActions,
+      workspace.databasePath,
+      workspace.transport,
+      workspace.workingRoot,
+    ],
+  );
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void getCurrentWindow()
+      .onDragDropEvent((event) => {
+        const payload = event.payload;
+        if (payload.type === "enter" || payload.type === "over") {
+          setActive(true);
+        } else if (payload.type === "leave") {
+          setActive(false);
+        } else if (payload.type === "drop") {
+          setActive(false);
+          void runNativePaths(payload.paths);
+        }
+      })
+      .then((nextUnlisten) => {
+        if (disposed) nextUnlisten();
+        else unlisten = nextUnlisten;
+      })
+      .catch((error) => {
+        setErrorMessage(toErrorMessage(error, "Native file dropping is unavailable."));
+      });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [runNativePaths]);
 
   const onDrop = useCallback(
     async (event: DragEvent) => {
       event.preventDefault();
       setActive(false);
+      // Tauri v2 delivers the authoritative path-bearing event on the native
+      // window listener above. Do not let its pathless DOM File shadow it.
+      if (isTauriRuntime()) return;
       const items = classifyDropItems({
         files: toFileShapes(event.dataTransfer.files),
         text: event.dataTransfer.getData("text/plain"),

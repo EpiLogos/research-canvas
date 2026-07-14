@@ -107,6 +107,69 @@ impl<'conn> NodeAttachmentRepository<'conn> {
         let rows = statement.query_map([attachment_id], |row| row.get::<_, String>(0))?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
+
+    /// Select the image that represents this graph node outside any
+    /// particular canvas. The caller normally already marked the role, but
+    /// keeping that invariant here makes the durable selector safe for future
+    /// entry points too.
+    pub fn select_cover(
+        &self,
+        graph_node_id: &str,
+        attachment_id: &str,
+    ) -> RepositoryResult<NodeAttachment> {
+        let attachment = self
+            .get(attachment_id)?
+            .ok_or_else(|| RepositoryError::Validation("cover attachment does not exist".into()))?;
+        if attachment.graph_node_id != graph_node_id {
+            return Err(RepositoryError::Validation(
+                "cover attachment belongs to a different graph node".into(),
+            ));
+        }
+        if attachment.kind != "image" {
+            return Err(RepositoryError::Validation(
+                "only image attachments can be selected as a cover".into(),
+            ));
+        }
+        self.ensure_usage(attachment_id, "cover")?;
+        self.connection.execute(
+            "INSERT INTO node_attachment_presentation(graph_node_id, cover_attachment_id, updated_at)
+             VALUES(?1, ?2, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+             ON CONFLICT(graph_node_id) DO UPDATE SET
+               cover_attachment_id=excluded.cover_attachment_id,
+               updated_at=excluded.updated_at",
+            params![graph_node_id, attachment_id],
+        )?;
+        Ok(attachment)
+    }
+
+    pub fn selected_cover_for_node(
+        &self,
+        graph_node_id: &str,
+    ) -> RepositoryResult<Option<NodeAttachment>> {
+        self.connection
+            .query_row(
+                "SELECT a.id,a.graph_node_id,a.managed_path,a.original_filename,a.mime_type,a.kind,
+                        a.content_hash,a.caption,a.role,a.provenance_source_path,a.created_at,a.updated_at
+                 FROM node_attachment_presentation AS presentation
+                 JOIN node_attachment AS a ON a.id = presentation.cover_attachment_id
+                 WHERE presentation.graph_node_id=?1",
+                [graph_node_id],
+                node_attachment_from_row,
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    pub fn selected_covers(&self) -> RepositoryResult<Vec<NodeAttachment>> {
+        let mut statement = self.connection.prepare(
+            "SELECT a.id,a.graph_node_id,a.managed_path,a.original_filename,a.mime_type,a.kind,
+                    a.content_hash,a.caption,a.role,a.provenance_source_path,a.created_at,a.updated_at
+             FROM node_attachment_presentation AS presentation
+             JOIN node_attachment AS a ON a.id = presentation.cover_attachment_id",
+        )?;
+        let rows = statement.query_map([], node_attachment_from_row)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
 }
 
 fn validate_attachment(attachment: &NodeAttachment) -> RepositoryResult<()> {
@@ -131,6 +194,13 @@ fn validate_attachment(attachment: &NodeAttachment) -> RepositoryResult<()> {
     if !matches!(attachment.kind.as_str(), "image" | "file") {
         return Err(RepositoryError::Validation(
             "unknown attachment kind".into(),
+        ));
+    }
+    if (attachment.kind == "image" && attachment.role == "file")
+        || (attachment.kind == "file" && attachment.role != "file")
+    {
+        return Err(RepositoryError::Validation(
+            "attachment kind and primary role are incompatible".into(),
         ));
     }
     validate_role(&attachment.role)

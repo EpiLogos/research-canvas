@@ -101,6 +101,12 @@ export async function attachNodeMedia(input: {
   });
 
   const localGraph = graphWithLocalDocument(graphNode, attached.document);
+  // Cover selection is durable presentation data, not a document edit. A
+  // local cover attach therefore must not send an equal content revision
+  // through CAS: Neo4j correctly rejects that as a stale/no-op write.
+  if (documentMatchesGraphNode(attached.document, graphNode)) {
+    return { attachment: attached.attachment, graphNode: localGraph, remoteSynced: true };
+  }
   let mutation: GraphContentCasMutation;
   try {
     mutation = await input.transport.compareAndSwapGraphNodeContent({
@@ -156,4 +162,15 @@ function graphWithLocalDocument(graphNode: GraphNode, document: LocalNodeDocumen
     contentRevision: document.contentRevision,
     bodySourceCoordinates: document.bodySourceCoordinates,
   };
+}
+
+function documentMatchesGraphNode(document: LocalNodeDocument, graphNode: GraphNode): boolean {
+  return document.body === graphNode.body
+    && document.summary === graphNode.summary
+    && document.contentOrigin === graphNode.contentOrigin
+    && document.contentRevision === graphNode.contentRevision
+    && document.bodySourceCoordinates.length === graphNode.bodySourceCoordinates.length
+    && document.bodySourceCoordinates.every(
+      (coordinate, index) => coordinate === graphNode.bodySourceCoordinates[index],
+    );
 }

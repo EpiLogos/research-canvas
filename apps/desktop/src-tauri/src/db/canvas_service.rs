@@ -1,5 +1,5 @@
 // apps/desktop/src-tauri/src/db/canvas_service.rs
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
 
@@ -10,7 +10,7 @@ use crate::db::{
             canonical_relationship_key, EntityType, GraphNode, GraphRelationship, GraphRepository,
         },
         layout::{CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord},
-        NodeRelationshipRepository,
+        NodeAttachmentRepository, NodeRelationshipRepository,
     },
 };
 
@@ -70,6 +70,7 @@ pub struct CanvasService {
 /// insufficient here.
 struct LocalCanvasProjection {
     layout_rows: Vec<NodeLayoutRecord>,
+    canonical_cover_paths: HashMap<String, String>,
     edge_rows: Vec<EdgeLayoutRecord>,
     app_state: Option<CanvasAppStateRecord>,
     tombstones: Vec<GraphRelationship>,
@@ -103,6 +104,7 @@ impl CanvasService {
         // which `#[tauri::command]` needs).
         let LocalCanvasProjection {
             layout_rows,
+            canonical_cover_paths,
             edge_rows,
             app_state,
             tombstones,
@@ -153,6 +155,10 @@ impl CanvasService {
                 Some(node) => node,
                 None => synthesize_node_from_layout(&row),
             };
+            let style = project_canonical_cover(
+                serde_json::from_str(&row.style_json).unwrap_or_else(|_| serde_json::json!({})),
+                canonical_cover_paths.get(&row.graph_node_id),
+            );
             let layout = NodeLayoutDto {
                 graph_node_id: row.graph_node_id.clone(),
                 canvas_id: row.canvas_id.clone(),
@@ -160,8 +166,7 @@ impl CanvasService {
                 position_y: row.position_y,
                 width: row.width,
                 height: row.height,
-                style: serde_json::from_str(&row.style_json)
-                    .unwrap_or_else(|_| serde_json::json!({})),
+                style,
             };
             joined.push(JoinedCanvasNode { node, layout });
         }
@@ -202,6 +207,22 @@ impl CanvasService {
     }
 }
 
+fn project_canonical_cover(
+    mut style: serde_json::Value,
+    canonical_cover: Option<&String>,
+) -> serde_json::Value {
+    if let (Some(cover_path), Some(style_object)) = (canonical_cover, style.as_object_mut()) {
+        // Canonical cover selection is application data, while the layout
+        // thumbnail is only a per-canvas visual cache. Project it into this
+        // read result without persisting or mutating the user's layout style.
+        style_object.insert(
+            "thumbnail".into(),
+            serde_json::Value::String(cover_path.clone()),
+        );
+    }
+    style
+}
+
 fn load_local_canvas_projection_at_path(
     database_path: impl AsRef<std::path::Path>,
     canvas_id: &str,
@@ -214,6 +235,12 @@ fn load_local_canvas_projection_at_path(
     let layout_rows = layout
         .list_node_layout(canvas_id)
         .map_err(|error| error.to_string())?;
+    let canonical_cover_paths = NodeAttachmentRepository::new(connection)
+        .selected_covers()
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|attachment| (attachment.graph_node_id, attachment.managed_path))
+        .collect::<HashMap<_, _>>();
     let edge_rows = layout
         .list_edge_layout(canvas_id)
         .map_err(|error| error.to_string())?;
@@ -233,6 +260,7 @@ fn load_local_canvas_projection_at_path(
 
     Ok(LocalCanvasProjection {
         layout_rows,
+        canonical_cover_paths,
         edge_rows: filter_tombstoned_layout_edges(edge_rows, &tombstoned_layout_edge_ids),
         app_state,
         tombstones,
@@ -446,6 +474,21 @@ mod tests {
 
         assert_eq!(visible.len(), 1);
         assert_eq!(visible[0].id, "manual-research-connection");
+    }
+
+    #[test]
+    fn canonical_cover_projection_overrides_a_stale_layout_thumbnail() {
+        let canonical = "assets/attachments/cover-hash/canonical.png".to_string();
+        let projected = project_canonical_cover(
+            serde_json::json!({
+                "thumbnail": "assets/legacy-layout-thumbnail.png",
+                "dotColour": "#c0ffee",
+            }),
+            Some(&canonical),
+        );
+
+        assert_eq!(projected["thumbnail"].as_str(), Some(canonical.as_str()));
+        assert_eq!(projected["dotColour"].as_str(), Some("#c0ffee"));
     }
 
     #[test]

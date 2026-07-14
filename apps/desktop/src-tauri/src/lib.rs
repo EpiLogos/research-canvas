@@ -109,6 +109,7 @@ pub fn run() {
             commands::constellations::read_workspace_text_file_command,
             commands::assets::import_node_image_command,
             commands::assets::attach_node_attachment_command,
+            commands::assets::read_node_attachment_presentation_command,
             commands::constellations::list_directories_command,
             commands::constellations::list_saved_sequences_command,
             commands::constellations::create_saved_sequence_command,

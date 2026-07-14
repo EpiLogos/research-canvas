@@ -80,7 +80,7 @@ export function NodeReaderBody({
     return (
       <div className="node-document-pane node-document-pane--reader" data-testid="graph-reader-body">
         <BlockNoteDocument
-          key={workspace.workingRoot ?? "unresolved-workspace"}
+          key={`${workspace.workingRoot ?? "unresolved-workspace"}:${record.graphNode.contentRevision ?? "revisionless"}:${displayBody}`}
           body={displayBody}
           editable={false}
         />

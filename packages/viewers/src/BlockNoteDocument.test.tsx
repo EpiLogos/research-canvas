@@ -49,6 +49,22 @@ describe("BlockNoteDocument", () => {
     expect(container.querySelector(".blocknote-document")).not.toBeNull();
   });
 
+  it("renders a newly supplied read-only body without closing the reader", async () => {
+    const original = JSON.stringify([
+      { type: "paragraph", props: {}, content: [{ type: "text", text: "Original account", styles: {} }] },
+    ]);
+    const withAttachment = JSON.stringify([
+      { type: "paragraph", props: {}, content: [{ type: "text", text: "Original account", styles: {} }] },
+      { type: "paragraph", props: {}, content: [{ type: "text", text: "Attached primary image", styles: {} }] },
+    ]);
+    const { rerender } = render(<BlockNoteDocument body={original} editable={false} />);
+
+    expect(await screen.findByText("Original account")).toBeInTheDocument();
+    rerender(<BlockNoteDocument body={withAttachment} editable={false} />);
+
+    expect(await screen.findByText("Attached primary image")).toBeInTheDocument();
+  });
+
   it("shows a visible save-failed indicator when saveState is 'error'", () => {
     render(
       <BlockNoteDocument

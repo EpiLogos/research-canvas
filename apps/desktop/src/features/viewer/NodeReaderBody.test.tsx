@@ -97,4 +97,30 @@ describe("NodeReaderBody", () => {
     expect(screen.getByTestId("graph-record-body")).toHaveAttribute("data-editable", "false");
     expect(screen.queryByTestId("bare-doc-pane")).not.toBeInTheDocument();
   });
+
+  it("rerenders the open timeline reader when a new attachment body arrives", () => {
+    const initialRecord = {
+      graphNodeId: "timeline-graph",
+      canvasNode: null,
+      graphNode: {
+        graphNodeId: "timeline-graph",
+        contentRevision: 4,
+        body: '[{"type":"paragraph","content":[{"type":"text","text":"Account before image"}]}]',
+      },
+    };
+    const attachedRecord = {
+      ...initialRecord,
+      graphNode: {
+        ...initialRecord.graphNode,
+        contentRevision: 5,
+        body: '[{"type":"paragraph","content":[{"type":"text","text":"Account before image"}]},{"type":"image","props":{"url":"assets/attachments/cover.png","caption":"Attached image"}}]',
+      },
+    };
+    const { rerender } = render(<NodeReaderBody record={initialRecord as never} affordances={false} />);
+
+    expect(screen.getByTestId("graph-record-body")).toHaveTextContent("Account before image");
+    rerender(<NodeReaderBody record={attachedRecord as never} affordances={false} />);
+
+    expect(screen.getByTestId("graph-record-body")).toHaveTextContent("assets/attachments/cover.png");
+  });
 });

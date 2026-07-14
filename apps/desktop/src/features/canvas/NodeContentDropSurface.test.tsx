@@ -6,6 +6,17 @@ import { createAnnotationStore, createCanvasStore } from "@research-canvas/canva
 import { NodeContentDropSurface } from "./NodeContentDropSurface";
 import { CanvasWorkspaceContext } from "./CanvasWorkspaceContext";
 
+let nativeDropHandler: ((event: { payload: { type: string; paths?: string[] } }) => void) | null = null;
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({
+    onDragDropEvent: vi.fn(async (handler) => {
+      nativeDropHandler = handler;
+      return vi.fn();
+    }),
+  }),
+}));
+
 function makeFileList(files: File[]): FileList {
   const list = {
     ...files,
@@ -34,6 +45,29 @@ function renderSurface(contentLinkingActions: Record<string, ReturnType<typeof v
 }
 
 describe("NodeContentDropSurface — drop/paste error surfacing", () => {
+  it("uses the native Tauri drop payload paths rather than a non-existent File.path", async () => {
+    const contentLinkingActions = {
+      addTextToNode: vi.fn(),
+      addImageToNode: vi.fn().mockResolvedValue(undefined),
+      attachFileToNode: vi.fn().mockResolvedValue(undefined),
+      linkMarkdownFileToNode: vi.fn(),
+      linkNodes: vi.fn(),
+    };
+    Object.assign(window, { __TAURI_INTERNALS__: {} });
+    renderSurface(contentLinkingActions);
+
+    await vi.waitFor(() => expect(nativeDropHandler).not.toBeNull());
+    nativeDropHandler?.({
+      payload: { type: "drop", paths: ["/vault/images/real-origin.png", "/vault/notes/evidence.pdf"] },
+    });
+
+    await vi.waitFor(() => {
+      expect(contentLinkingActions.addImageToNode).toHaveBeenCalledWith("n1", "/vault/images/real-origin.png");
+      expect(contentLinkingActions.attachFileToNode).toHaveBeenCalledWith("n1", "/vault/notes/evidence.pdf", "evidence.pdf");
+    });
+    delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+  });
+
   it("surfaces a visible error instead of silently dropping when a dropped File has no .path (Tauri v2)", async () => {
     const contentLinkingActions = {
       addTextToNode: vi.fn(),

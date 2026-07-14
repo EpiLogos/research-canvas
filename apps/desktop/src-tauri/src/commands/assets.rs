@@ -76,6 +76,20 @@ pub struct AttachNodeAttachmentResult {
     pub expected_remote_revision: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadNodeAttachmentPresentationRequest {
+    #[serde(default)]
+    pub database_path: Option<String>,
+    pub graph_node_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeAttachmentPresentation {
+    pub cover: Option<NodeAttachment>,
+}
+
 /// Build the workspace-relative asset path `assets/<graph_node_id>/<file>` using
 /// only the final file-name component of the source (directory parts stripped),
 /// always with forward slashes.
@@ -163,58 +177,59 @@ pub async fn attach_node_attachment_command(
     attach_node_attachment_at_path(&path, request)
 }
 
+/// Resolves the canonical, durable cover independently from any canvas
+/// layout. Readers use this after reload; canvas hydration folds it into an
+/// ephemeral thumbnail projection for the same reason.
+#[tauri::command]
+pub async fn read_node_attachment_presentation_command(
+    request: ReadNodeAttachmentPresentationRequest,
+    api_state: tauri::State<'_, SharedApiState>,
+) -> Result<NodeAttachmentPresentation, String> {
+    validate_graph_node_id(&request.graph_node_id)?;
+    let path = resolve_db_path(&request.database_path, &api_state)?;
+    read_node_attachment_presentation_at_path(&path, &request.graph_node_id)
+}
+
+pub fn read_node_attachment_presentation_at_path(
+    database_path: impl AsRef<Path>,
+    graph_node_id: &str,
+) -> Result<NodeAttachmentPresentation, String> {
+    validate_graph_node_id(graph_node_id)?;
+    let database = Database::open(database_path).map_err(|error| error.to_string())?;
+    let cover = NodeAttachmentRepository::new(database.connection())
+        .selected_cover_for_node(graph_node_id)
+        .map_err(|error| error.to_string())?;
+    Ok(NodeAttachmentPresentation { cover })
+}
+
 pub fn attach_node_attachment_at_path(
     database_path: impl AsRef<Path>,
     request: AttachNodeAttachmentRequest,
 ) -> Result<AttachNodeAttachmentResult, String> {
-    attach_node_attachment_at_path_with_hook(database_path.as_ref(), request, || Ok(()))
+    attach_node_attachment_at_path_with_hooks(
+        database_path.as_ref(),
+        request,
+        |_| Ok(()),
+        || Ok(()),
+    )
 }
 
-fn attach_node_attachment_at_path_with_hook<F>(
+/// The hooks make the filesystem/SQLite boundary observable in real native
+/// tests. Production uses no-op hooks; the service itself never relies on
+/// timing for correctness.
+fn attach_node_attachment_at_path_with_hooks<AfterStage, BeforeCommit>(
     database_path: &Path,
     request: AttachNodeAttachmentRequest,
-    before_commit: F,
+    after_stage: AfterStage,
+    before_commit: BeforeCommit,
 ) -> Result<AttachNodeAttachmentResult, String>
 where
-    F: FnOnce() -> Result<(), String>,
+    AfterStage: FnOnce(&Path) -> Result<(), String>,
+    BeforeCommit: FnOnce() -> Result<(), String>,
 {
     validate_graph_node_id(&request.graph_node_id)?;
     validate_kind_and_role(&request.kind, &request.role)?;
     let source = canonical_source_file(&request.source_absolute_path)?;
-    let source_file_name = source
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| "source path has no valid UTF-8 filename".to_string())?;
-    let source_hash = sha256_file(&source)?;
-    let database = Database::open(database_path).map_err(|error| error.to_string())?;
-    let attachment_repo = NodeAttachmentRepository::new(database.connection());
-    let document_repo = NodeDocumentRepository::new(database.connection());
-
-    let existing = attachment_repo
-        .find_by_content_identity(&request.graph_node_id, &source_hash)
-        .map_err(|error| error.to_string())?;
-    let new_attachment = existing.is_none();
-    let attachment = existing.unwrap_or_else(|| {
-        let id = uuid::Uuid::new_v4().to_string();
-        let file_name = portable_file_name(source_file_name);
-        let managed_path = format!("assets/{}/{source_hash}-{file_name}", request.graph_node_id);
-        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        NodeAttachment {
-            id,
-            graph_node_id: request.graph_node_id.clone(),
-            managed_path,
-            original_filename: source_file_name.to_string(),
-            mime_type: mime_type_for_file_name(source_file_name),
-            kind: request.kind.clone(),
-            content_hash: source_hash.clone(),
-            caption: request.caption.clone(),
-            role: request.role.clone(),
-            provenance_source_path: source.to_string_lossy().into_owned(),
-            created_at: now.clone(),
-            updated_at: now,
-        }
-    });
-
     let workspace_root = Path::new(&request.workspace_root);
     if !workspace_root.is_dir() {
         return Err(format!(
@@ -222,27 +237,88 @@ where
             workspace_root.display()
         ));
     }
-    let target = portable_path_to_workspace_path(workspace_root, &attachment.managed_path)?;
-    let staged = if new_attachment {
-        Some(stage_file(&source, &target, &attachment.id)?)
-    } else {
-        if !target.is_file() {
+    let source_file_name = source
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "source path has no valid UTF-8 filename".to_string())?;
+    // Copy before hashing: attachment identity must name the immutable bytes
+    // we will publish, not a mutable source file that can change mid-import.
+    let staged = stage_source_file(workspace_root, &source)?;
+    if let Err(error) = after_stage(&staged) {
+        fs::remove_file(&staged).ok();
+        return Err(error);
+    }
+    let source_hash = sha256_file(&staged)?;
+    let candidate = new_attachment_identity(&request, source_file_name, &source, &source_hash);
+    let database = match Database::open(database_path) {
+        Ok(database) => database,
+        Err(error) => {
+            fs::remove_file(&staged).ok();
+            return Err(error.to_string());
+        }
+    };
+    let attachment_repo = NodeAttachmentRepository::new(database.connection());
+    let document_repo = NodeDocumentRepository::new(database.connection());
+
+    let transaction = match TransactionGuard::begin(database.connection()) {
+        Ok(transaction) => transaction,
+        Err(error) => {
+            fs::remove_file(&staged).ok();
+            return Err(error.to_string());
+        }
+    };
+    let mut published_target: Option<PathBuf> = None;
+    let result = (|| -> Result<AttachNodeAttachmentResult, String> {
+        // This check is deliberately inside BEGIN IMMEDIATE. A concurrent
+        // import can only see a committed identity here, so it cannot insert
+        // a duplicate row or delete another invocation's published bytes.
+        let existing = attachment_repo
+            .find_by_content_identity(&request.graph_node_id, &source_hash)
+            .map_err(|error| error.to_string())?;
+        if let Some(existing) = &existing {
+            if existing.kind != request.kind {
+                return Err(format!(
+                    "attachment content identity already exists as kind {}; cannot reuse it as {}",
+                    existing.kind, request.kind
+                ));
+            }
+        }
+        let new_attachment = existing.is_none();
+        let attachment = existing.unwrap_or_else(|| candidate.clone());
+        let target = portable_path_to_workspace_path(workspace_root, &attachment.managed_path)?;
+        if !new_attachment && !target.is_file() {
             return Err(format!(
                 "attachment database row points to missing managed file: {}",
                 target.display()
             ));
         }
-        Some(PathBuf::new())
-    };
-
-    let transaction =
-        TransactionGuard::begin(database.connection()).map_err(|error| error.to_string())?;
-    let result = (|| -> Result<AttachNodeAttachmentResult, String> {
-        let base_document = ensure_local_document(
-            &document_repo,
-            &request.graph_node_id,
-            &request.authoritative_document,
-        )?;
+        // A repeated request that names an already-recorded attachment is
+        // idempotent, even though the first request made the local document
+        // pending remote sync. Any *new* attachment still has to protect that
+        // pending authored work through `ensure_local_document`.
+        let base_document = if !new_attachment {
+            document_repo
+                .get_node_document(&request.graph_node_id)
+                .map_err(|error| error.to_string())?
+                .filter(|document| {
+                    request.role == "cover"
+                        || document_contains_attachment(&document.body, &attachment.id)
+                })
+                .map(Ok)
+                .unwrap_or_else(|| {
+                    ensure_local_document(
+                        &document_repo,
+                        &request.graph_node_id,
+                        &request.authoritative_document,
+                    )
+                })?
+        } else {
+            ensure_local_document(
+                &document_repo,
+                &request.graph_node_id,
+                &request.authoritative_document,
+            )?
+        };
 
         if new_attachment {
             attachment_repo
@@ -252,6 +328,11 @@ where
         attachment_repo
             .ensure_usage(&attachment.id, &request.role)
             .map_err(|error| error.to_string())?;
+        if request.role == "cover" {
+            attachment_repo
+                .select_cover(&request.graph_node_id, &attachment.id)
+                .map_err(|error| error.to_string())?;
+        }
 
         let document = if request.role == "cover" {
             base_document
@@ -266,8 +347,9 @@ where
 
         before_commit()?;
         if new_attachment {
-            let staged_path = staged.as_ref().expect("new attachment has staged file");
-            fs::rename(staged_path, &target).map_err(|error| error.to_string())?;
+            if publish_staged_file(&staged, &target)? {
+                published_target = Some(target);
+            }
         }
         Ok(AttachNodeAttachmentResult {
             attachment: attachment.clone(),
@@ -280,22 +362,21 @@ where
     match result {
         Ok(result) => {
             if let Err(error) = transaction.commit() {
-                if new_attachment {
-                    fs::remove_file(&target).ok();
+                if let Some(target) = published_target.as_ref() {
+                    fs::remove_file(target).ok();
                 }
+                fs::remove_file(&staged).ok();
                 return Err(error.to_string());
             }
+            fs::remove_file(&staged).ok();
             Ok(result)
         }
         Err(error) => {
-            if new_attachment {
-                if let Some(staged_path) = staged.as_ref() {
-                    fs::remove_file(staged_path).ok();
-                }
-                // If the rename happened before a later error, remove the
-                // unique new target too. The transaction drop rolls DB state
-                // back, so no visible attachment or document remains.
-                fs::remove_file(&target).ok();
+            fs::remove_file(&staged).ok();
+            if let Some(target) = published_target.as_ref() {
+                // Delete only a path we created with create-new semantics;
+                // never remove an existing committed attachment on conflict.
+                fs::remove_file(target).ok();
             }
             Err(error)
         }
@@ -307,12 +388,6 @@ fn ensure_local_document(
     graph_node_id: &str,
     snapshot: &AuthoritativeDocumentSnapshot,
 ) -> Result<LocalNodeDocument, String> {
-    if let Some(document) = repository
-        .get_node_document(graph_node_id)
-        .map_err(|error| error.to_string())?
-    {
-        return Ok(document);
-    }
     let origin = ContentOrigin::try_from(snapshot.content_origin.clone())?;
     let entity_type = EntityType::try_from(snapshot.entity_type.clone())?;
     let input = DocumentContentInput {
@@ -329,6 +404,55 @@ fn ensure_local_document(
         title: snapshot.title.clone(),
         schema_version: snapshot.schema_version,
     };
+    if let Some(document) = repository
+        .get_node_document(graph_node_id)
+        .map_err(|error| error.to_string())?
+    {
+        if !document.neo4j_synced {
+            // This operation is a monotonic local merge: it appends a new
+            // attachment block to the already-durable user body and never
+            // substitutes the supplied remote snapshot for that body. Keep
+            // the document pending sync, rather than losing authored work or
+            // pretending it has been reconciled remotely.
+            return Ok(document);
+        }
+        if document.content_revision > snapshot.content_revision {
+            return Err(format!(
+                "local synced document revision {} is ahead of authoritative remote revision {}",
+                document.content_revision, snapshot.content_revision
+            ));
+        }
+        if document.content_revision == snapshot.content_revision
+            && (document.body != snapshot.body
+                || document.summary != snapshot.summary
+                || document.content_origin != origin
+                || document.body_source_coordinates != snapshot.body_source_coordinates)
+        {
+            return Err(
+                "local synced document differs from the authoritative remote snapshot at the same revision"
+                    .into(),
+            );
+        }
+        // A synced old local document is a cache, not competing authored
+        // work. Advance it to the supplied authoritative snapshot inside the
+        // attachment transaction before appending user content. Supplying the
+        // projection also repairs legitimate legacy rows that predate local
+        // graph metadata.
+        let decision = repository
+            .apply_reconciliation_with_projection_in_existing_transaction(
+                &input,
+                Some(document.content_revision),
+                Some(&projection),
+            )
+            .map_err(|error| error.to_string())?;
+        if let NodeDocumentMutation::Conflict { reason, .. } = decision {
+            return Err(format!("could not reconcile local document: {reason}"));
+        }
+        return repository
+            .get_node_document(graph_node_id)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| "local document reconciliation produced no document".to_string());
+    }
     match repository
         .apply_reconciliation_with_projection_in_existing_transaction(
             &input,
@@ -408,13 +532,7 @@ fn append_attachment_block(
         serde_json::from_str::<Vec<serde_json::Value>>(trimmed)
             .map_err(|_| "local document body is not a BlockNote block array".to_string())?
     };
-    let contains_attachment = blocks.iter().any(|block| {
-        block
-            .get("props")
-            .and_then(|props| props.get("attachmentId"))
-            .and_then(serde_json::Value::as_str)
-            == Some(attachment.id.as_str())
-    });
+    let contains_attachment = blocks_contain_attachment(&blocks, &attachment.id);
     if contains_attachment {
         return Ok(serde_json::to_string(&blocks).expect("serialise parsed JSON"));
     }
@@ -439,6 +557,22 @@ fn append_attachment_block(
     };
     blocks.push(block);
     serde_json::to_string(&blocks).map_err(|error| error.to_string())
+}
+
+fn document_contains_attachment(body: &str, attachment_id: &str) -> bool {
+    serde_json::from_str::<Vec<serde_json::Value>>(body)
+        .map(|blocks| blocks_contain_attachment(&blocks, attachment_id))
+        .unwrap_or(false)
+}
+
+fn blocks_contain_attachment(blocks: &[serde_json::Value], attachment_id: &str) -> bool {
+    blocks.iter().any(|block| {
+        block
+            .get("props")
+            .and_then(|props| props.get("attachmentId"))
+            .and_then(serde_json::Value::as_str)
+            == Some(attachment_id)
+    })
 }
 
 fn validate_kind_and_role(kind: &str, role: &str) -> Result<(), String> {
@@ -490,18 +624,51 @@ fn same_file_content(left: &Path, right: &Path) -> Result<bool, String> {
     Ok(sha256_file(left)? == sha256_file(right)?)
 }
 
-fn portable_file_name(file_name: &str) -> String {
-    let candidate = Path::new(file_name)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("file");
-    candidate
-        .chars()
-        .map(|character| match character {
-            '/' | '\\' | '\0' => '_',
-            value => value,
-        })
-        .collect()
+fn new_attachment_identity(
+    request: &AttachNodeAttachmentRequest,
+    source_file_name: &str,
+    source: &Path,
+    content_hash: &str,
+) -> NodeAttachment {
+    let node_key = sha256_text(&request.graph_node_id);
+    let extension = safe_extension(source_file_name);
+    let managed_path = match extension {
+        Some(extension) => format!("assets/attachments/{node_key}/{content_hash}.{extension}"),
+        None => format!("assets/attachments/{node_key}/{content_hash}"),
+    };
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    NodeAttachment {
+        id: uuid::Uuid::new_v4().to_string(),
+        graph_node_id: request.graph_node_id.clone(),
+        managed_path,
+        original_filename: source_file_name.to_string(),
+        mime_type: mime_type_for_file_name(source_file_name),
+        kind: request.kind.clone(),
+        content_hash: content_hash.to_string(),
+        caption: request.caption.clone(),
+        role: request.role.clone(),
+        provenance_source_path: source.to_string_lossy().into_owned(),
+        created_at: now.clone(),
+        updated_at: now,
+    }
+}
+
+fn sha256_text(value: &str) -> String {
+    format!("{:x}", Sha256::digest(value.as_bytes()))
+}
+
+fn safe_extension(file_name: &str) -> Option<String> {
+    let extension = Path::new(file_name)
+        .extension()
+        .and_then(|value| value.to_str())?
+        .to_ascii_lowercase();
+    if extension.is_empty()
+        || extension.len() > 16
+        || !extension.bytes().all(|byte| byte.is_ascii_alphanumeric())
+    {
+        return None;
+    }
+    Some(extension)
 }
 
 fn portable_path_to_workspace_path(
@@ -517,14 +684,89 @@ fn portable_path_to_workspace_path(
     Ok(workspace_root.join(managed_path))
 }
 
-fn stage_file(source: &Path, target: &Path, attachment_id: &str) -> Result<PathBuf, String> {
+fn stage_source_file(workspace_root: &Path, source: &Path) -> Result<PathBuf, String> {
+    use std::io::Write;
+
+    let staging = workspace_root.join("assets").join(".attachment-staging");
+    fs::create_dir_all(&staging).map_err(|error| error.to_string())?;
+    let staged = staging.join(format!("{}.stage", uuid::Uuid::new_v4()));
+    let copy_result = (|| -> Result<(), std::io::Error> {
+        let mut input = fs::File::open(source)?;
+        let mut output = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&staged)?;
+        std::io::copy(&mut input, &mut output)?;
+        output.flush()?;
+        output.sync_all()?;
+        Ok(())
+    })();
+    if let Err(error) = copy_result {
+        fs::remove_file(&staged).ok();
+        return Err(error.to_string());
+    }
+    Ok(staged)
+}
+
+/// Publishes without replacement. `true` means this invocation created the
+/// target and may remove it if the SQLite commit fails; `false` means an
+/// identical pre-existing target won the race and must never be deleted here.
+fn publish_staged_file(staged: &Path, target: &Path) -> Result<bool, String> {
+    use std::io::Write;
+
     let parent = target
         .parent()
         .ok_or_else(|| "attachment target has no parent".to_string())?;
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    let staged = parent.join(format!(".{attachment_id}.stage"));
-    fs::copy(source, &staged).map_err(|error| error.to_string())?;
-    Ok(staged)
+    match fs::hard_link(staged, target) {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            if same_file_content(staged, target)? {
+                Ok(false)
+            } else {
+                Err(format!(
+                    "managed attachment target already exists with different bytes: {}",
+                    target.display()
+                ))
+            }
+        }
+        Err(error) => {
+            let mut destination = match fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(target)
+            {
+                Ok(destination) => destination,
+                Err(create_error) if create_error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    return if same_file_content(staged, target)? {
+                        Ok(false)
+                    } else {
+                        Err(format!(
+                            "managed attachment target already exists with different bytes: {}",
+                            target.display()
+                        ))
+                    };
+                }
+                Err(create_error) => {
+                    return Err(format!(
+                        "could not publish attachment after hard-link failure {error}: {create_error}"
+                    ));
+                }
+            };
+            let copy_result = (|| -> Result<(), std::io::Error> {
+                let mut input = fs::File::open(staged)?;
+                std::io::copy(&mut input, &mut destination)?;
+                destination.flush()?;
+                destination.sync_all()?;
+                Ok(())
+            })();
+            if let Err(write_error) = copy_result {
+                fs::remove_file(target).ok();
+                return Err(write_error.to_string());
+            }
+            Ok(true)
+        }
+    }
 }
 
 fn mime_type_for_file_name(file_name: &str) -> String {
@@ -551,7 +793,11 @@ fn mime_type_for_file_name(file_name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
+    use std::{
+        fs,
+        sync::{Arc, Barrier},
+        thread,
+    };
 
     #[test]
     fn computes_forward_slash_relative_path_under_node_folder() {
@@ -680,7 +926,7 @@ mod tests {
         assert!(result
             .attachment
             .managed_path
-            .starts_with("assets/timeline-record/"));
+            .starts_with("assets/attachments/"));
         assert!(workspace.join(&result.attachment.managed_path).is_file());
         assert!(result
             .document
@@ -738,6 +984,106 @@ mod tests {
             fs::read(workspace.join(&second.attachment.managed_path)).unwrap(),
             b"second image bytes"
         );
+        assert!(second.document.body.contains(&first.attachment.id));
+        assert!(second.document.body.contains(&second.attachment.id));
+    }
+
+    #[test]
+    fn concurrent_imports_stage_then_converge_on_one_attachment_identity() {
+        let directory = tempfile::tempdir().expect("temporary attachment workspace");
+        let workspace = directory.path().join("workspace");
+        let source_dir = directory.path().join("source");
+        let database_path = directory.path().join("attachments.sqlite");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("same.png");
+        fs::write(&source, b"one immutable image for two native connections").unwrap();
+
+        // Migrate before the workers race. Each invocation still opens its own
+        // SQLite connection; the barrier is after staging and before BEGIN.
+        drop(Database::open(&database_path).expect("initialise SQLite"));
+        let after_stage = Arc::new(Barrier::new(2));
+        let request = attachment_request(&workspace, "n-race", &source, "inline");
+        let spawn_import = |barrier: Arc<Barrier>| {
+            let request = request.clone();
+            let database_path = database_path.clone();
+            thread::spawn(move || {
+                attach_node_attachment_at_path_with_hooks(
+                    &database_path,
+                    request,
+                    move |_| {
+                        barrier.wait();
+                        Ok(())
+                    },
+                    || Ok(()),
+                )
+            })
+        };
+
+        let first = spawn_import(Arc::clone(&after_stage));
+        let second = spawn_import(Arc::clone(&after_stage));
+        let first = first
+            .join()
+            .expect("first worker joins")
+            .expect("first import");
+        let second = second
+            .join()
+            .expect("second worker joins")
+            .expect("second import");
+
+        assert_eq!(first.attachment.id, second.attachment.id);
+        assert_eq!(
+            first.attachment.managed_path,
+            second.attachment.managed_path
+        );
+        assert_eq!(
+            fs::read(workspace.join(&first.attachment.managed_path)).unwrap(),
+            b"one immutable image for two native connections"
+        );
+        let database = Database::open(&database_path).unwrap();
+        let attachment_count: i64 = database
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM node_attachment WHERE graph_node_id='n-race'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(attachment_count, 1);
+    }
+
+    #[test]
+    fn hashes_the_staged_bytes_when_the_external_source_changes_mid_import() {
+        let directory = tempfile::tempdir().expect("temporary attachment workspace");
+        let workspace = directory.path().join("workspace");
+        let source_dir = directory.path().join("source");
+        let database_path = directory.path().join("attachments.sqlite");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("mutable.png");
+        fs::write(&source, b"original staged bytes").unwrap();
+
+        let mutation_source = source.clone();
+        let result = attach_node_attachment_at_path_with_hooks(
+            &database_path,
+            attachment_request(&workspace, "n-mutable", &source, "inline"),
+            move |_| {
+                fs::write(&mutation_source, b"new external source bytes")
+                    .map_err(|error| error.to_string())?;
+                Ok(())
+            },
+            || Ok(()),
+        )
+        .expect("staged bytes remain the imported identity");
+
+        assert_eq!(
+            fs::read(workspace.join(&result.attachment.managed_path)).unwrap(),
+            b"original staged bytes"
+        );
+        assert_ne!(
+            result.attachment.content_hash,
+            sha256_file(&source).unwrap()
+        );
     }
 
     #[test]
@@ -751,9 +1097,10 @@ mod tests {
         let source = source_dir.join("portrait.png");
         fs::write(&source, b"bytes that must not become visible").unwrap();
 
-        let error = attach_node_attachment_at_path_with_hook(
+        let error = attach_node_attachment_at_path_with_hooks(
             &database_path,
             attachment_request(&workspace, "n-failing", &source, "inline"),
+            |_| Ok(()),
             || Err("injected pre-commit failure".into()),
         )
         .expect_err("injected failure rejects the import");
@@ -821,6 +1168,12 @@ mod tests {
             b"one identity, multiple presentation roles"
         );
         assert_eq!(inline.document.body, cover.document.body);
+        let presentation = read_node_attachment_presentation_at_path(&database_path, "n-shared")
+            .expect("canonical cover survives a fresh native read");
+        assert_eq!(
+            presentation.cover.expect("selected cover").id,
+            cover.attachment.id
+        );
     }
 
     #[test]
@@ -845,6 +1198,230 @@ mod tests {
         assert_eq!(result.attachment.mime_type, "application/pdf");
         assert!(result.document.body.contains("Attached file: evidence.pdf"));
         assert!(workspace.join(&result.attachment.managed_path).is_file());
+    }
+
+    #[test]
+    fn rejects_reusing_image_bytes_as_a_file_attachment() {
+        let directory = tempfile::tempdir().expect("temporary attachment workspace");
+        let workspace = directory.path().join("workspace");
+        let source_dir = directory.path().join("source");
+        let database_path = directory.path().join("attachments.sqlite");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("shared.png");
+        fs::write(&source, b"same bytes must retain their image identity").unwrap();
+
+        attach_node_attachment_at_path(
+            &database_path,
+            attachment_request(&workspace, "n-role", &source, "inline"),
+        )
+        .expect("image attachment imports");
+
+        let mut incompatible = attachment_request(&workspace, "n-role", &source, "file");
+        incompatible.kind = "file".into();
+        let error = attach_node_attachment_at_path(&database_path, incompatible)
+            .expect_err("the existing image identity cannot be reused as an arbitrary file");
+
+        assert!(error.contains("kind"));
+        let database = crate::db::connection::Database::open(&database_path).unwrap();
+        let usages = crate::db::repositories::NodeAttachmentRepository::new(database.connection())
+            .usages(
+                &crate::db::repositories::NodeAttachmentRepository::new(database.connection())
+                    .find_by_content_identity("n-role", &sha256_file(&source).unwrap())
+                    .unwrap()
+                    .unwrap()
+                    .id,
+            )
+            .unwrap();
+        assert_eq!(usages, vec!["inline"]);
+    }
+
+    #[test]
+    fn sqlite_rejects_an_incompatible_usage_role_even_outside_the_command_service() {
+        let directory = tempfile::tempdir().expect("temporary attachment workspace");
+        let workspace = directory.path().join("workspace");
+        let source_dir = directory.path().join("source");
+        let database_path = directory.path().join("attachments.sqlite");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("schema-guard.png");
+        fs::write(&source, b"image bytes protected by the SQLite usage guard").unwrap();
+
+        let attached = attach_node_attachment_at_path(
+            &database_path,
+            attachment_request(&workspace, "n-schema-guard", &source, "inline"),
+        )
+        .expect("valid image attachment imports");
+        let database = Database::open(&database_path).unwrap();
+        let error = database.connection().execute(
+            "INSERT INTO node_attachment_usage(attachment_id,role) VALUES(?1,'file')",
+            [&attached.attachment.id],
+        );
+
+        assert!(
+            error.is_err(),
+            "the database itself rejects image-as-file usage"
+        );
+    }
+
+    #[test]
+    fn reconciles_a_synced_stale_local_document_before_appending_an_attachment() {
+        let directory = tempfile::tempdir().expect("temporary attachment workspace");
+        let workspace = directory.path().join("workspace");
+        let source_dir = directory.path().join("source");
+        let database_path = directory.path().join("attachments.sqlite");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("new.png");
+        fs::write(&source, b"image after remote revision six").unwrap();
+
+        let database = crate::db::connection::Database::open(&database_path).unwrap();
+        let repository =
+            crate::db::repositories::NodeDocumentRepository::new(database.connection());
+        repository
+            .apply_reconciliation_with_projection(
+                &crate::db::repositories::DocumentContentInput {
+                    graph_node_id: "n-stale".into(),
+                    body: "[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"old local revision\"}]}]".into(),
+                    summary: "stale local".into(),
+                    content_origin: crate::db::repositories::graph::ContentOrigin::Seed,
+                    content_revision: 5,
+                    body_source_coordinates: vec!["episode-2.md#old".into()],
+                    neo4j_synced: true,
+                },
+                None,
+                Some(&crate::db::repositories::DocumentMetadataProjection {
+                    entity_type: "Event".into(),
+                    title: "Stale document".into(),
+                    schema_version: 1,
+                }),
+            )
+            .unwrap();
+        drop(database);
+
+        let mut request = attachment_request(&workspace, "n-stale", &source, "inline");
+        request.authoritative_document.body = "[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"remote revision six\"}]}]".into();
+        request.authoritative_document.summary = "remote six".into();
+        request.authoritative_document.content_revision = 6;
+        request.authoritative_document.body_source_coordinates =
+            vec!["episode-2.md#remote-six".into()];
+        request.authoritative_document.title = "Stale document".into();
+        let attached = attach_node_attachment_at_path(&database_path, request)
+            .expect("synced stale local document is reconciled to remote before attach");
+
+        assert_eq!(attached.document.content_revision, 7);
+        assert!(attached.document.body.contains("remote revision six"));
+        assert!(attached.document.body.contains(&attached.attachment.id));
+    }
+
+    #[test]
+    fn upgrades_a_legacy_document_without_metadata_from_the_remote_snapshot() {
+        let directory = tempfile::tempdir().expect("temporary attachment workspace");
+        let workspace = directory.path().join("workspace");
+        let source_dir = directory.path().join("source");
+        let database_path = directory.path().join("attachments.sqlite");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("legacy.png");
+        fs::write(&source, b"legacy local document upgrade").unwrap();
+
+        let database = crate::db::connection::Database::open(&database_path).unwrap();
+        let repository =
+            crate::db::repositories::NodeDocumentRepository::new(database.connection());
+        repository
+            .apply_reconciliation(
+                &crate::db::repositories::DocumentContentInput {
+                    graph_node_id: "n-legacy".into(),
+                    body: "[]".into(),
+                    summary: "legacy".into(),
+                    content_origin: crate::db::repositories::graph::ContentOrigin::Seed,
+                    content_revision: 0,
+                    body_source_coordinates: vec![],
+                    neo4j_synced: true,
+                },
+                None,
+            )
+            .unwrap();
+        drop(database);
+
+        let mut request = attachment_request(&workspace, "n-legacy", &source, "inline");
+        request.authoritative_document.content_revision = 1;
+        request.authoritative_document.body = "[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"canonical remote\"}]}]".into();
+        let attached = attach_node_attachment_at_path(&database_path, request)
+            .expect("legacy document is upgraded and attached");
+
+        assert_eq!(attached.document.content_revision, 2);
+        assert!(attached.document.body.contains("canonical remote"));
+        let reopened = crate::db::connection::Database::open(&database_path).unwrap();
+        let metadata_count: i64 = reopened
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM graph_node_metadata WHERE graph_node_id='n-legacy'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(metadata_count, 1);
+    }
+
+    #[test]
+    fn new_attachment_paths_do_not_expose_hostile_node_or_windows_filename_characters() {
+        let directory = tempfile::tempdir().expect("temporary attachment workspace");
+        let workspace = directory.path().join("workspace");
+        let source_dir = directory.path().join("source");
+        let database_path = directory.path().join("attachments.sqlite");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("hostile:name?.png");
+        fs::write(&source, b"platform safe asset bytes").unwrap();
+
+        let attached = attach_node_attachment_at_path(
+            &database_path,
+            attachment_request(&workspace, "root:archetype*?", &source, "inline"),
+        )
+        .expect("hostile logical ids are encoded into a portable managed path");
+
+        assert!(attached
+            .attachment
+            .managed_path
+            .starts_with("assets/attachments/"));
+        assert!(!attached.attachment.managed_path.contains(':'));
+        assert!(!attached.attachment.managed_path.contains('*'));
+        assert!(!attached.attachment.managed_path.contains('?'));
+        assert!(workspace.join(&attached.attachment.managed_path).is_file());
+    }
+
+    #[test]
+    fn legacy_asset_paths_remain_resolvable_while_new_paths_are_portable() {
+        let workspace = tempfile::tempdir().expect("temporary workspace");
+        let legacy = portable_path_to_workspace_path(
+            workspace.path(),
+            "assets/root:archetype/legacy-cover.png",
+        )
+        .expect("already-persisted legacy paths remain readable");
+        assert_eq!(
+            legacy,
+            workspace
+                .path()
+                .join("assets/root:archetype/legacy-cover.png")
+        );
+
+        let candidate = new_attachment_identity(
+            &attachment_request(
+                workspace.path(),
+                "root:archetype*?",
+                Path::new("/tmp/hostile:name?.png"),
+                "inline",
+            ),
+            "hostile:name?.png",
+            Path::new("/tmp/hostile:name?.png"),
+            "f00dbabe",
+        );
+        assert!(candidate.managed_path.starts_with("assets/attachments/"));
+        assert!(candidate.managed_path.ends_with("/f00dbabe.png"));
+        assert!(!candidate.managed_path.contains(':'));
+        assert!(!candidate.managed_path.contains('*'));
+        assert!(!candidate.managed_path.contains('?'));
     }
 
     fn attachment_request(

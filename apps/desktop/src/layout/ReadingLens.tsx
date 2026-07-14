@@ -1,9 +1,11 @@
-import { useEffect, useState, type CanvasNode } from "react";
+import { useEffect, useState } from "react";
+import type { CanvasNode } from "@research-canvas/schema";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { NodeReaderBody } from "../features/viewer/NodeReaderBody";
 import { GraphDocumentAuthoringActions } from "../features/viewer/GraphDocumentContent";
 import {
   readerRecordFromCanvasNode,
+  readerRecordWithCanonicalCover,
   readerRecordWithGraphNode,
   type ReaderRecord,
 } from "../features/viewer/readerRecord";
@@ -33,6 +35,34 @@ export function ReadingLens({
   useEffect(() => {
     setRecord(incomingRecord);
   }, [incomingRecordKey]);
+
+  const activeGraphNodeId = record?.graphNodeId ?? null;
+  useEffect(() => {
+    const readPresentation = workspace.transport?.readNodeAttachmentPresentation;
+    // The real WorkspaceTransport implements this native read. The guard
+    // preserves older/static test adapters, which legitimately have no local
+    // attachment database and retain their existing thumbnail/body fallback.
+    if (!activeGraphNodeId || typeof readPresentation !== "function") return;
+    let cancelled = false;
+    void readPresentation.call(workspace.transport, {
+        databasePath: workspace.databasePath ?? undefined,
+        graphNodeId: activeGraphNodeId,
+      })
+      .then((presentation) => {
+        if (!cancelled) {
+          setRecord((current) => current?.graphNodeId === activeGraphNodeId
+            ? readerRecordWithCanonicalCover(current, presentation.cover?.managedPath ?? null)
+            : current);
+        }
+      })
+      .catch(() => {
+        // Browser/static read layers intentionally have no attachment store;
+        // their existing layout/body media fallback remains valid.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeGraphNodeId, workspace.databasePath, workspace.transport]);
 
   if (!record) {
     return (

@@ -8,6 +8,7 @@ import { NodeReaderBody } from "../features/viewer/NodeReaderBody";
 import { GraphDocumentAuthoringActions } from "../features/viewer/GraphDocumentContent";
 import {
   readerRecordFromCanvasNode,
+  readerRecordWithCanonicalCover,
   readerRecordWithGraphNode,
   type ReaderRecord,
 } from "../features/viewer/readerRecord";
@@ -39,6 +40,32 @@ function NodeMode({ onClose, record }: { onClose: () => void; record: ReaderReco
   useEffect(() => {
     setActiveRecord(incomingRecord);
   }, [incomingRecordKey]);
+
+  const activeGraphNodeId = activeRecord?.graphNodeId ?? null;
+  useEffect(() => {
+    const readPresentation = workspace.transport?.readNodeAttachmentPresentation;
+    // Browser/static compatibility adapters have no local attachment store;
+    // desktop always supplies this method through WorkspaceTransport.
+    if (!activeGraphNodeId || typeof readPresentation !== "function") return;
+    let cancelled = false;
+    void readPresentation.call(workspace.transport, {
+        databasePath: workspace.databasePath ?? undefined,
+        graphNodeId: activeGraphNodeId,
+      })
+      .then((presentation) => {
+        if (!cancelled) {
+          setActiveRecord((current) => current?.graphNodeId === activeGraphNodeId
+            ? readerRecordWithCanonicalCover(current, presentation.cover?.managedPath ?? null)
+            : current);
+        }
+      })
+      .catch(() => {
+        // Static/browser readers retain their layout or inline fallback.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeGraphNodeId, workspace.databasePath, workspace.transport]);
 
   useEffect(() => {
     if (!activeRecord) onClose();

@@ -8,6 +8,8 @@ const state = {
   nodes: [] as Array<{ id: string; title: string; type: string }>,
   selectedNodeId: null as string | null,
   workingRoot: "/workspace/project",
+  databasePath: "/workspace/project/research-canvas.sqlite",
+  transport: undefined as { readNodeAttachmentPresentation?: ReturnType<typeof vi.fn> } | undefined,
 };
 
 vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
@@ -192,5 +194,39 @@ describe("ReadingLens", () => {
 
     expect(screen.getByTestId("reader-body")).toHaveTextContent("new-image.png");
     expect(screen.getByText("Updated pith")).toBeInTheDocument();
+  });
+
+  it("prefers the durable cover selected in the native attachment store after reload", async () => {
+    state.transport = {
+      readNodeAttachmentPresentation: vi.fn().mockResolvedValue({
+        cover: { managedPath: "assets/attachments/cover-hash/canonical-cover.png" },
+      }),
+    };
+    const record = {
+      kind: "graph",
+      graphNodeId: "timeline-cover",
+      canvasNode: null,
+      graphNode: {
+        graphNodeId: "timeline-cover",
+        title: "Timeline record",
+        body: "[]",
+        summary: "Original pith",
+        evidenceTags: [], sourceCoordinates: [], bodySourceCoordinates: [],
+        isTemporal: true, validFrom: "1700-01-01", validTo: null, temporalPrecision: "year",
+      },
+      title: "Timeline record", pith: "Original pith", coverReference: "assets/legacy-cover.png",
+      evidenceTags: [], sourceCoordinates: [], bodySourceCoordinates: [],
+      narrative: { historicity: null, claimKind: null, evidenceStatus: null, temporalRole: null, sourceKind: null },
+      ql: null, placeTags: [], temporal: null, placeCoverage: null,
+    } as never;
+
+    render(<ReadingLens recordOverride={record} onFullScreen={() => {}} onExitToCanvas={() => {}} />);
+
+    const cover = await screen.findByTestId("reader-cover");
+    expect(cover).toHaveAttribute(
+      "src",
+      "asset://localhost/%2Fworkspace%2Fproject%2Fassets%2Fattachments%2Fcover-hash%2Fcanonical-cover.png",
+    );
+    state.transport = undefined;
   });
 });

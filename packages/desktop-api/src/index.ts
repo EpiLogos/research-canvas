@@ -102,6 +102,11 @@ export interface AttachNodeAttachmentResult {
   expectedRemoteRevision: number;
 }
 
+/** Canonical media presentation stored independently from canvas layouts. */
+export interface NodeAttachmentPresentation {
+  cover: NodeAttachment | null;
+}
+
 export type PendingNodeStructure = Omit<
   NewGraphNodeInput,
   "body" | "summary" | "contentOrigin" | "contentRevision" | "bodySourceCoordinates"
@@ -601,6 +606,10 @@ export interface WorkspaceTransport {
     sourceAbsolutePath: string;
   }): Promise<string>;
   attachNodeAttachment(input: AttachNodeAttachmentInput): Promise<AttachNodeAttachmentResult>;
+  readNodeAttachmentPresentation(input: {
+    databasePath?: string;
+    graphNodeId: string;
+  }): Promise<NodeAttachmentPresentation>;
 
   // ---- Agent activity (WS6) ----
   listAgentActivity(input: { limit?: number }): Promise<AgentActivity[]>;
@@ -815,6 +824,12 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
         request: input,
       });
     },
+    async readNodeAttachmentPresentation(input) {
+      return invokeTauri<NodeAttachmentPresentation>(
+        "read_node_attachment_presentation_command",
+        { request: input },
+      );
+    },
     async listAgentActivity(input) {
       const rows = await invokeTauri<RawAgentActivityRow[]>("list_agent_activity_command", {
         limit: input.limit ?? null,
@@ -986,6 +1001,7 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     async upsertCanvasAppState() { throw new Error("read-only web build"); },
     async importNodeImage() { throw new Error("read-only web build"); },
     async attachNodeAttachment() { throw new Error("read-only web build"); },
+    async readNodeAttachmentPresentation() { throw new Error("read-only web build"); },
     async listAgentActivity(input) {
       const url = `${BRIDGE_BASE_URL}/agent-activity?limit=${input.limit ?? 50}`;
       const response = await fetch(url);
@@ -1509,6 +1525,7 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
     // ---- content / image import: not served by the static bundle ----
     importNodeImage: readOnlyReject,
     attachNodeAttachment: readOnlyReject,
+    readNodeAttachmentPresentation: readOnlyReject,
 
     // ---- agent activity (WS6): excluded from the exported bundle per design §6 ----
     listAgentActivity: readOnlyReject,

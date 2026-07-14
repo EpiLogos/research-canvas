@@ -1,7 +1,7 @@
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import type { Block, PartialBlock } from "@blocknote/core";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
@@ -50,6 +50,19 @@ export function BlockNoteDocument({
 }: BlockNoteDocumentProps) {
   const initialContent = useMemo(() => parseInitialContent(body), [body]);
   const editor = useCreateBlockNote({ initialContent });
+
+  // `useCreateBlockNote` deliberately treats initialContent as mount-time
+  // state. A reader, however, can receive an attachment/body revision while
+  // it remains open, so replace the read-only projection explicitly. Editable
+  // documents remain store-owned and must never be reset during typing.
+  useEffect(() => {
+    if (!editable) {
+      editor.replaceBlocks(
+        editor.document,
+        parseInitialContent(body) ?? [{ type: "paragraph" }],
+      );
+    }
+  }, [body, editable, editor]);
 
   return (
     <div className={["blocknote-document", className].filter(Boolean).join(" ")}>

@@ -379,7 +379,9 @@ function NodeDocumentBody({
         // BlockNote seeds its document only on mount. Re-mount when the
         // workspace becomes known so an early-opened reader upgrades stored
         // `assets/...` image paths to renderable Tauri URLs.
-        key={workspaceRoot ?? "unresolved-workspace"}
+        key={editable
+          ? (workspaceRoot ?? "unresolved-workspace")
+          : `${workspaceRoot ?? "unresolved-workspace"}:${displayBody}`}
         body={displayBody}
         editable={editable && localAuthorityAvailable}
         saveState={status}
