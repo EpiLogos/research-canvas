@@ -79,11 +79,31 @@ const remoteGraph: GraphNode = {
 
 const attachedBody = '[{"type":"image","props":{"url":"assets/attachments/native/reader-drop.png"}}]';
 
-function nativeCommandHarness() {
+function graphAfterLocalAttachment(): GraphNode {
+  return {
+    ...remoteGraph,
+    body: attachedBody,
+    summary: "Attachment added",
+    contentOrigin: "user_authored",
+    contentRevision: 4,
+    bodySourceCoordinates: [],
+  };
+}
+
+function nativeCommandHarness({
+  sharedGraphUnavailable = false,
+  remoteCasUnavailable = false,
+}: {
+  sharedGraphUnavailable?: boolean;
+  remoteCasUnavailable?: boolean;
+} = {}) {
   const calls: NativeCall[] = [];
   const invoke = async (command: string, args?: Record<string, unknown>): Promise<unknown> => {
     calls.push({ command, args });
-    if (command === "read_graph_node_command") return remoteGraph;
+    if (command === "read_graph_node_command") {
+      if (sharedGraphUnavailable) throw new Error("SharedGraphState is unavailable");
+      return remoteGraph;
+    }
     if (command === "attach_node_attachment_command") {
       return {
         attachment: {
@@ -111,9 +131,14 @@ function nativeCommandHarness() {
         },
         expectedRemoteOrigin: "seed",
         expectedRemoteRevision: 3,
+        remoteSyncEligible: true,
+        graphNode: graphAfterLocalAttachment(),
       };
     }
-    if (command === "compare_and_swap_graph_node_content_command") return { kind: "updated" };
+    if (command === "compare_and_swap_graph_node_content_command") {
+      if (remoteCasUnavailable) throw new Error("SharedGraphState is unavailable");
+      return { kind: "updated" };
+    }
     if (command === "acknowledge_local_node_document_sync_command") return { kind: "updated" };
     if (command === "read_node_attachment_presentation_command") return { cover: null };
     throw new Error(`unexpected native command: ${command}`);
@@ -228,5 +253,33 @@ describe("native drops at live reader roots", () => {
     rendered.unmount();
     expect(nativeDropHandlers).toHaveLength(0);
     expect(nativeUnlistenCalls).toBe(1);
+  });
+
+  it("keeps attachment, local document and reader visible when SharedGraphState is unavailable", async () => {
+    // This is intentionally not a mocked successful graph read. The desktop
+    // command bridge has no remote graph service, yet the native attachment
+    // response still carries its SQLite-durable reader projection.
+    const native = nativeCommandHarness({
+      sharedGraphUnavailable: true,
+      remoteCasUnavailable: true,
+    });
+    window.__TAURI_INTERNALS__ = { invoke: native.invoke as never };
+    const workspace = readerWorkspace();
+
+    render(
+      <CanvasWorkspaceContext.Provider value={workspace}>
+        <ReadingLens
+          recordOverride={readerRecordFromGraphNode(remoteGraph)}
+          onFullScreen={() => {}}
+          onExitToCanvas={() => {}}
+        />
+      </CanvasWorkspaceContext.Provider>,
+    );
+
+    await assertClosedReaderDrop();
+    expect(native.calls.some((call) => call.command === "attach_node_attachment_command")).toBe(true);
+    expect(native.calls.some((call) => call.command === "read_graph_node_command")).toBe(false);
+    expect(native.calls.some((call) => call.command === "compare_and_swap_graph_node_content_command")).toBe(true);
+    expect(screen.getByTestId("reader-root-body")).toHaveTextContent("reader-drop.png");
   });
 });

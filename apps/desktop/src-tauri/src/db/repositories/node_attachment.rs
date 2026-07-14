@@ -163,7 +163,11 @@ impl<'conn> NodeAttachmentRepository<'conn> {
                         a.content_hash,a.caption,a.role,a.provenance_source_path,a.created_at,a.updated_at
                  FROM node_attachment_presentation AS presentation
                  JOIN node_attachment AS a ON a.id = presentation.cover_attachment_id
-                 WHERE presentation.graph_node_id=?1",
+                 JOIN node_attachment_usage AS usage
+                   ON usage.attachment_id = a.id
+                  AND usage.role = 'cover'
+                 WHERE presentation.graph_node_id=?1
+                   AND a.kind = 'image'",
                 [graph_node_id],
                 node_attachment_from_row,
             )
@@ -176,7 +180,11 @@ impl<'conn> NodeAttachmentRepository<'conn> {
             "SELECT a.id,a.graph_node_id,a.managed_path,a.original_filename,a.mime_type,a.kind,
                     a.content_hash,a.caption,a.role,a.provenance_source_path,a.created_at,a.updated_at
              FROM node_attachment_presentation AS presentation
-             JOIN node_attachment AS a ON a.id = presentation.cover_attachment_id",
+             JOIN node_attachment AS a ON a.id = presentation.cover_attachment_id
+             JOIN node_attachment_usage AS usage
+               ON usage.attachment_id = a.id
+              AND usage.role = 'cover'
+             WHERE a.kind = 'image'",
         )?;
         let rows = statement.query_map([], node_attachment_from_row)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)

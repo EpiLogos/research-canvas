@@ -60,23 +60,33 @@ export function GraphDocumentContent({
  */
 export function GraphDocumentAuthoringActions({
   graphNodeId,
+  openGraphNode,
   onGraphNodeUpdated,
   nativeDropTarget = true,
 }: {
   graphNodeId: string;
+  openGraphNode?: GraphNode | null;
   onGraphNodeUpdated?: (graphNode: GraphNode) => void;
   /** The document editor already owns a drop target; live readers need one. */
   nativeDropTarget?: boolean;
 }) {
   const controls = (
     <div className="graph-document-content__linking" role="group" aria-label="Node authoring actions">
-      <InsertMediaButtons graphNodeId={graphNodeId} onGraphNodeUpdated={onGraphNodeUpdated} />
+      <InsertMediaButtons
+        graphNodeId={graphNodeId}
+        openGraphNode={openGraphNode}
+        onGraphNodeUpdated={onGraphNodeUpdated}
+      />
       <LinkFilePicker graphNodeId={graphNodeId} />
       <LinkNodePicker sourceGraphNodeId={graphNodeId} />
     </div>
   );
   return nativeDropTarget ? (
-    <NodeContentDropSurface graphNodeId={graphNodeId} onGraphNodeUpdated={onGraphNodeUpdated}>
+    <NodeContentDropSurface
+      graphNodeId={graphNodeId}
+      openGraphNode={openGraphNode}
+      onGraphNodeUpdated={onGraphNodeUpdated}
+    >
       {controls}
     </NodeContentDropSurface>
   ) : controls;
@@ -84,9 +94,11 @@ export function GraphDocumentAuthoringActions({
 
 function InsertMediaButtons({
   graphNodeId,
+  openGraphNode,
   onGraphNodeUpdated,
 }: {
   graphNodeId: string;
+  openGraphNode?: GraphNode | null;
   onGraphNodeUpdated?: (graphNode: GraphNode) => void;
 }) {
   const workspace = useCanvasWorkspace();
@@ -107,6 +119,7 @@ function InsertMediaButtons({
           kind: "image",
           role: "inline",
           caption,
+          openGraphNode,
         });
         onGraphNodeUpdated?.(attached.graphNode);
         return attached.graphNode;
@@ -121,6 +134,7 @@ function InsertMediaButtons({
           kind: "file",
           role: "file",
           caption: fileName,
+          openGraphNode,
         });
         onGraphNodeUpdated?.(attached.graphNode);
         return attached.graphNode;

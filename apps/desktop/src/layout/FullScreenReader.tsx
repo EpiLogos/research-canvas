@@ -87,6 +87,7 @@ function NodeMode({ onClose, record }: { onClose: () => void; record: ReaderReco
       actions={activeRecord.graphNodeId ? (
         <GraphDocumentAuthoringActions
           graphNodeId={activeRecord.graphNodeId}
+          openGraphNode={activeRecord.graphNode}
           nativeDropTarget={false}
           onGraphNodeUpdated={updateOpenRecord}
         />
@@ -101,6 +102,7 @@ function NodeMode({ onClose, record }: { onClose: () => void; record: ReaderReco
       {activeRecord.graphNodeId ? (
         <NodeContentDropSurface
           graphNodeId={activeRecord.graphNodeId}
+          openGraphNode={activeRecord.graphNode}
           className="reader-native-drop-surface"
           onGraphNodeUpdated={updateOpenRecord}
         >

@@ -105,6 +105,7 @@ export function ReadingLens({
       actions={record.graphNodeId ? (
         <GraphDocumentAuthoringActions
           graphNodeId={record.graphNodeId}
+          openGraphNode={record.graphNode}
           nativeDropTarget={false}
           onGraphNodeUpdated={updateOpenRecord}
         />
@@ -117,6 +118,7 @@ export function ReadingLens({
   return record.graphNodeId ? (
     <NodeContentDropSurface
       graphNodeId={record.graphNodeId}
+      openGraphNode={record.graphNode}
       className="reader-native-drop-surface"
       onGraphNodeUpdated={updateOpenRecord}
     >

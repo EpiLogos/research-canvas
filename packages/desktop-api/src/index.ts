@@ -92,14 +92,19 @@ export interface AttachNodeAttachmentInput {
   kind: "image" | "file";
   role: "inline" | "cover" | "file";
   caption?: string;
-  authoritativeDocument: AuthoritativeDocumentSnapshot;
+  /** Optional when the native SQLite projection is already open locally. */
+  authoritativeDocument?: AuthoritativeDocumentSnapshot;
 }
 
 export interface AttachNodeAttachmentResult {
   attachment: NodeAttachment;
   document: LocalNodeDocument;
+  /** The authoritative local projection after the durable attachment write. */
+  graphNode: GraphNode;
   expectedRemoteOrigin: ContentOrigin;
   expectedRemoteRevision: number;
+  /** False when native had only a pending local projection, not a CAS baseline. */
+  remoteSyncEligible: boolean;
 }
 
 /** Canonical media presentation stored independently from canvas layouts. */

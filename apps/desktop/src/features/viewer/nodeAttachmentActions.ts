@@ -8,7 +8,6 @@ import type {
 } from "@research-canvas/desktop-api";
 
 interface AttachmentTransport {
-  readGraphNode(input: { graphNodeId: string }): Promise<GraphNode>;
   attachNodeAttachment(input: {
     databasePath?: string;
     workspaceRoot: string;
@@ -17,7 +16,7 @@ interface AttachmentTransport {
     kind: "image" | "file";
     role: "inline" | "cover" | "file";
     caption?: string;
-    authoritativeDocument: {
+    authoritativeDocument?: {
       body: string;
       summary: string;
       contentOrigin: ContentOrigin;
@@ -57,9 +56,9 @@ export interface AttachedNodeMedia {
 /**
  * The one frontend mutation boundary for inline images, arbitrary files and
  * covers. It always asks the native service to attach bytes and update the
- * local document first, then projects that exact document through the normal
- * graph-content CAS ownership contract. A remote outage leaves explicit
- * pending local work rather than an untracked asset or a frozen reader.
+ * local document first, then makes an optional best-effort graph-content CAS
+ * from a known baseline. A remote outage leaves explicit pending local work
+ * rather than an untracked asset or a frozen reader.
  */
 export async function attachNodeMedia(input: {
   transport: AttachmentTransport;
@@ -70,6 +69,8 @@ export async function attachNodeMedia(input: {
   kind: "image" | "file";
   role: "inline" | "cover" | "file";
   caption?: string;
+  /** The reader/canvas record already open in this surface, if any. */
+  openGraphNode?: GraphNode | null;
 }): Promise<AttachedNodeMedia> {
   if (!input.databasePath) {
     throw new Error("Media attachments require the active workspace database.");
@@ -78,8 +79,8 @@ export async function attachNodeMedia(input: {
     throw new Error("Media attachments require the active workspace root.");
   }
 
-  const graphNode = await input.transport.readGraphNode({ graphNodeId: input.graphNodeId });
-  const remoteBaseline = graphBaseline(graphNode);
+  const openGraphNode = input.openGraphNode ?? null;
+  const remoteBaseline = openGraphNode ? graphBaseline(openGraphNode) : null;
   const attached = await input.transport.attachNodeAttachment({
     databasePath: input.databasePath,
     workspaceRoot: input.workspaceRoot,
@@ -88,19 +89,23 @@ export async function attachNodeMedia(input: {
     kind: input.kind,
     role: input.role,
     caption: input.caption ?? "",
-    authoritativeDocument: {
-      body: graphNode.body,
-      summary: graphNode.summary,
-      contentOrigin: remoteBaseline.origin,
-      contentRevision: remoteBaseline.revision,
-      bodySourceCoordinates: graphNode.bodySourceCoordinates,
-      entityType: graphNode.entityType,
-      title: graphNode.title,
-      schemaVersion: graphNode.seedSchemaVersion ?? 1,
-    },
+    ...(openGraphNode && remoteBaseline
+      ? {
+          authoritativeDocument: {
+            body: openGraphNode.body,
+            summary: openGraphNode.summary,
+            contentOrigin: remoteBaseline.origin,
+            contentRevision: remoteBaseline.revision,
+            bodySourceCoordinates: openGraphNode.bodySourceCoordinates,
+            entityType: openGraphNode.entityType,
+            title: openGraphNode.title,
+            schemaVersion: openGraphNode.seedSchemaVersion ?? 1,
+          },
+        }
+      : {}),
   });
 
-  const localGraph = graphWithLocalDocument(graphNode, attached.document);
+  const localGraph = attached.graphNode;
   // Cover selection is durable presentation data, never a request to sync
   // document content. In particular, the native service can return a pending
   // local document here (from an earlier prose/media edit); CASing it merely
@@ -114,16 +119,23 @@ export async function attachNodeMedia(input: {
   }
   // Other idempotent attachment requests can preserve an already-synced
   // document. Avoid a rejected equal-revision CAS in that narrow case.
-  if (documentMatchesGraphNode(attached.document, graphNode)) {
+  if (openGraphNode && documentMatchesGraphNode(attached.document, openGraphNode)) {
     return { attachment: attached.attachment, graphNode: localGraph, remoteSynced: true };
+  }
+  // Native has already committed the asset, attachment, presentation and
+  // document. A pending local projection does not contain a trustworthy
+  // remote revision, so leave it durable and visible instead of attempting a
+  // speculative CAS that could overwrite a different remote document.
+  if (!attached.remoteSyncEligible) {
+    return { attachment: attached.attachment, graphNode: localGraph, remoteSynced: false };
   }
   let mutation: GraphContentCasMutation;
   try {
     mutation = await input.transport.compareAndSwapGraphNodeContent({
       graphNodeId: input.graphNodeId,
-      expectedRemoteRevision: remoteBaseline.legacy ? null : attached.expectedRemoteRevision,
-      expectedRemoteOrigin: remoteBaseline.legacy ? null : attached.expectedRemoteOrigin,
-      allowLegacyNull: remoteBaseline.legacy,
+      expectedRemoteRevision: remoteBaseline?.legacy ? null : attached.expectedRemoteRevision,
+      expectedRemoteOrigin: remoteBaseline?.legacy ? null : attached.expectedRemoteOrigin,
+      allowLegacyNull: remoteBaseline?.legacy ?? false,
       body: attached.document.body,
       summary: attached.document.summary,
       contentOrigin: attached.document.contentOrigin,
@@ -161,17 +173,6 @@ function graphBaseline(graphNode: GraphNode): { origin: ContentOrigin; revision:
     };
   }
   return { origin: "user_authored", revision: 0, legacy: true };
-}
-
-function graphWithLocalDocument(graphNode: GraphNode, document: LocalNodeDocument): GraphNode {
-  return {
-    ...graphNode,
-    body: document.body,
-    summary: document.summary,
-    contentOrigin: document.contentOrigin,
-    contentRevision: document.contentRevision,
-    bodySourceCoordinates: document.bodySourceCoordinates,
-  };
 }
 
 function documentMatchesGraphNode(document: LocalNodeDocument, graphNode: GraphNode): boolean {

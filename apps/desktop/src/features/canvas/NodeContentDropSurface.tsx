@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type DragEvent, type ClipboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent, type ClipboardEvent, type ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import {
@@ -17,6 +17,8 @@ interface NodeContentDropSurfaceProps {
   children: ReactNode;
   /** Lets reader roots attach the native listener without changing layout. */
   className?: string;
+  /** The graph snapshot currently rendered by this surface, if available. */
+  openGraphNode?: GraphNode | null;
   /** Lets a live reader replace its open record after a durable drop. */
   onGraphNodeUpdated?: (graphNode: GraphNode) => void;
 }
@@ -87,11 +89,17 @@ export function NodeContentDropSurface({
   graphNodeId,
   children,
   className,
+  openGraphNode,
   onGraphNodeUpdated,
 }: NodeContentDropSurfaceProps) {
   const workspace = useCanvasWorkspace();
   const [active, setActive] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // The Tauri listener must outlive updates to the reader record it owns.
+  // Read the latest snapshot at drop time instead of unregistering/rebinding
+  // the window listener whenever an attachment updates the local document.
+  const openGraphNodeRef = useRef(openGraphNode);
+  openGraphNodeRef.current = openGraphNode;
 
   const runIngest = useCallback(
     async (items: IngestResult[]) => {
@@ -116,6 +124,7 @@ export function NodeContentDropSurface({
               sourceAbsolutePath,
               kind: "image",
               role: "inline",
+              openGraphNode: openGraphNodeRef.current,
             });
             onGraphNodeUpdated?.(attached.graphNode);
             return attached.graphNode;
@@ -134,6 +143,7 @@ export function NodeContentDropSurface({
       workspace.databasePath,
       workspace.transport,
       workspace.workingRoot,
+      onGraphNodeUpdated,
     ],
   );
 
@@ -153,6 +163,7 @@ export function NodeContentDropSurface({
               sourceAbsolutePath,
               kind,
               role: kind === "image" ? "inline" : "file",
+              openGraphNode: openGraphNodeRef.current,
             });
             onGraphNodeUpdated?.(attached.graphNode);
           } else if (kind === "image") {
@@ -175,6 +186,7 @@ export function NodeContentDropSurface({
       workspace.databasePath,
       workspace.transport,
       workspace.workingRoot,
+      onGraphNodeUpdated,
     ],
   );
 

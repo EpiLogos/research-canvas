@@ -13,9 +13,10 @@ use crate::{
     db::{
         connection::Database,
         repositories::{
-            graph::{ContentOrigin, EntityType},
-            DocumentContentInput, DocumentMetadataProjection, LocalNodeDocument, NodeAttachment,
-            NodeAttachmentRepository, NodeDocumentMutation, NodeDocumentRepository,
+            graph::{ContentOrigin, EntityType, GraphNode},
+            DocumentContentInput, DocumentMetadataProjection, GraphNodeMetadataRepository,
+            LocalNodeDocument, NodeAttachment, NodeAttachmentRepository, NodeDocumentMutation,
+            NodeDocumentRepository, SyncState,
         },
         transaction::TransactionGuard,
     },
@@ -62,7 +63,7 @@ pub struct AttachNodeAttachmentRequest {
     pub role: String,
     #[serde(default)]
     pub caption: String,
-    pub authoritative_document: AuthoritativeDocumentSnapshot,
+    pub authoritative_document: Option<AuthoritativeDocumentSnapshot>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,11 +71,25 @@ pub struct AttachNodeAttachmentRequest {
 pub struct AttachNodeAttachmentResult {
     pub attachment: NodeAttachment,
     pub document: LocalNodeDocument,
-    /// The exact remote baseline the caller read before this local-first
-    /// mutation. It lets the JS transport perform its normal CAS projection
-    /// without reconstructing ownership from a stale local document.
+    /// The local graph projection after the one SQLite attachment transaction.
+    /// It is the reader's immediately visible state and does not depend on a
+    /// live `SharedGraphState`.
+    pub graph_node: GraphNode,
+    /// The remote baseline supplied by the caller or recovered from a synced
+    /// local projection. It lets the JS transport make a best-effort CAS only
+    /// after the local attachment transaction has succeeded.
     pub expected_remote_origin: String,
     pub expected_remote_revision: i64,
+    /// A caller-provided or synced local baseline is safe to CAS after the
+    /// local write. A pending local-only projection is not: it has no
+    /// trustworthy remote revision, so the renderer must retain it locally.
+    pub remote_sync_eligible: bool,
+}
+
+#[derive(Debug, Clone)]
+struct AttachmentBaseline {
+    snapshot: AuthoritativeDocumentSnapshot,
+    remote_sync_eligible: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -245,6 +260,7 @@ where
     let database = Database::open(database_path).map_err(|error| error.to_string())?;
     let attachment_repo = NodeAttachmentRepository::new(database.connection());
     let document_repo = NodeDocumentRepository::new(database.connection());
+    let metadata_repo = GraphNodeMetadataRepository::new(database.connection());
     // Every attachment operation obtains the SQLite writer lock before
     // sweeping or staging bytes. That makes the recovery pass safe across
     // processes: another import cannot have an uncommitted staged or
@@ -254,6 +270,16 @@ where
     let mut staged: Option<PathBuf> = None;
     let mut published_target: Option<PathBuf> = None;
     let result = (|| -> Result<AttachNodeAttachmentResult, String> {
+        // Resolve this before touching the filesystem. A caller snapshot is
+        // useful when it is available, but the opened SQLite document and
+        // metadata projection are the offline authority. In particular, a
+        // caller snapshot never replaces pending local authored content.
+        let baseline = resolve_attachment_baseline(
+            &document_repo,
+            &metadata_repo,
+            &request.graph_node_id,
+            request.authoritative_document.as_ref(),
+        )?;
         recover_attachment_files(workspace_root, &attachment_repo)?;
 
         // Copy before hashing: attachment identity must name the immutable
@@ -309,15 +335,11 @@ where
                     ensure_local_document(
                         &document_repo,
                         &request.graph_node_id,
-                        &request.authoritative_document,
+                        &baseline.snapshot,
                     )
                 })?
         } else {
-            ensure_local_document(
-                &document_repo,
-                &request.graph_node_id,
-                &request.authoritative_document,
-            )?
+            ensure_local_document(&document_repo, &request.graph_node_id, &baseline.snapshot)?
         };
 
         if new_attachment {
@@ -344,6 +366,8 @@ where
                 &request.role,
             )?
         };
+        let graph_node =
+            graph_node_from_local_projection(&metadata_repo, &request.graph_node_id, &document)?;
 
         before_commit()?;
         if new_attachment {
@@ -354,8 +378,10 @@ where
         Ok(AttachNodeAttachmentResult {
             attachment: attachment.clone(),
             document,
-            expected_remote_origin: request.authoritative_document.content_origin.clone(),
-            expected_remote_revision: request.authoritative_document.content_revision,
+            graph_node,
+            expected_remote_origin: baseline.snapshot.content_origin,
+            expected_remote_revision: baseline.snapshot.content_revision,
+            remote_sync_eligible: baseline.remote_sync_eligible,
         })
     })();
 
@@ -387,6 +413,123 @@ where
             Err(error)
         }
     }
+}
+
+fn resolve_attachment_baseline(
+    documents: &NodeDocumentRepository<'_>,
+    metadata: &GraphNodeMetadataRepository<'_>,
+    graph_node_id: &str,
+    caller_snapshot: Option<&AuthoritativeDocumentSnapshot>,
+) -> Result<AttachmentBaseline, String> {
+    if let Some(snapshot) = caller_snapshot {
+        return Ok(AttachmentBaseline {
+            snapshot: snapshot.clone(),
+            remote_sync_eligible: true,
+        });
+    }
+
+    let metadata = metadata
+        .get(graph_node_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| {
+            format!(
+                "attachment needs either a caller snapshot or a local graph metadata projection for {graph_node_id}"
+            )
+        })?;
+    let document = documents
+        .get_node_document(graph_node_id)
+        .map_err(|error| error.to_string())?;
+    if let Some(document) = &document {
+        if document.content_origin != metadata.content_origin
+            || document.content_revision != metadata.content_revision
+            || document.body_source_coordinates != metadata.body_source_coordinates
+        {
+            return Err(format!(
+                "local document and graph metadata projections disagree for {graph_node_id}"
+            ));
+        }
+    }
+    let remote_sync_eligible = metadata.sync_state == SyncState::Synced
+        && document
+            .as_ref()
+            .map(|document| document.neo4j_synced)
+            .unwrap_or(true);
+    let (body, summary, content_origin, content_revision, body_source_coordinates) = match document
+    {
+        Some(document) => (
+            document.body,
+            document.summary,
+            document.content_origin.as_str().to_string(),
+            document.content_revision,
+            document.body_source_coordinates,
+        ),
+        None => (
+            "[]".to_string(),
+            String::new(),
+            metadata.content_origin.as_str().to_string(),
+            metadata.content_revision,
+            metadata.body_source_coordinates.clone(),
+        ),
+    };
+    Ok(AttachmentBaseline {
+        snapshot: AuthoritativeDocumentSnapshot {
+            body,
+            summary,
+            content_origin,
+            content_revision,
+            body_source_coordinates,
+            entity_type: metadata.entity_type.as_str().to_string(),
+            title: metadata.title,
+            schema_version: metadata.schema_version,
+        },
+        remote_sync_eligible,
+    })
+}
+
+fn graph_node_from_local_projection(
+    metadata_repository: &GraphNodeMetadataRepository<'_>,
+    graph_node_id: &str,
+    document: &LocalNodeDocument,
+) -> Result<GraphNode, String> {
+    let record = metadata_repository
+        .get_with_timestamps(graph_node_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("local graph metadata projection is missing for {graph_node_id}"))?;
+    let metadata = record.metadata;
+    Ok(GraphNode {
+        graph_node_id: metadata.graph_node_id,
+        entity_type: metadata.entity_type,
+        title: metadata.title,
+        body: document.body.clone(),
+        summary: document.summary.clone(),
+        archetypal_resonance: metadata.archetypal_resonance,
+        coordinate: metadata.coordinate,
+        source_coordinates: metadata.source_coordinates,
+        evidence_tags: metadata.evidence_tags,
+        source_kind: metadata.source_kind,
+        content_origin: Some(document.content_origin),
+        content_revision: Some(document.content_revision),
+        seed_schema_version: metadata.seed_schema_version,
+        body_source_coordinates: document.body_source_coordinates.clone(),
+        historicity: metadata.historicity,
+        claim_kind: metadata.claim_kind,
+        evidence_status: metadata.evidence_status,
+        temporal_role: metadata.temporal_role,
+        place_coverage: metadata.place_coverage,
+        ql_form: metadata.ql_form,
+        ql_unit_id: metadata.ql_unit_id,
+        ql_arc: metadata.ql_arc,
+        ql_topology: metadata.ql_topology,
+        ql_schema_version: metadata.ql_schema_version,
+        ql_source_coordinates: metadata.ql_source_coordinates,
+        ql_completeness_status: metadata.ql_completeness_status,
+        is_temporal: metadata.is_temporal,
+        valid_from: metadata.valid_from,
+        valid_to: metadata.valid_to,
+        temporal_precision: metadata.temporal_precision,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
+    })
 }
 
 fn ensure_local_document(
@@ -1017,7 +1160,7 @@ mod tests {
                 kind: "image".into(),
                 role: "inline".into(),
                 caption: "A portrait".into(),
-                authoritative_document: AuthoritativeDocumentSnapshot {
+                authoritative_document: Some(AuthoritativeDocumentSnapshot {
                     body: "[]".into(),
                     summary: "A timeline record".into(),
                     content_origin: "seed".into(),
@@ -1026,7 +1169,7 @@ mod tests {
                     entity_type: "Event".into(),
                     title: "Timeline record".into(),
                     schema_version: 1,
-                },
+                }),
             },
         )
         .expect("attachment succeeds without a pre-existing local document");
@@ -1535,6 +1678,214 @@ mod tests {
     }
 
     #[test]
+    fn sqlite_rejects_primary_kind_role_changes_that_conflict_with_cover_usage() {
+        let (_directory, database_path, selected, _, _) = selected_cover_fixture();
+        let database = Database::open(&database_path).unwrap();
+
+        let corruption = database.connection().execute(
+            "UPDATE node_attachment SET kind='file', role='file' WHERE id=?1",
+            [&selected.id],
+        );
+        assert!(
+            corruption.is_err(),
+            "a selected image cover cannot be converted into a file through direct SQL"
+        );
+        let selected_cover = NodeAttachmentRepository::new(database.connection())
+            .selected_cover_for_node(&selected.graph_node_id)
+            .unwrap()
+            .expect("the rejected mutation preserves the canonical cover");
+        assert_eq!(selected_cover.kind, "image");
+        assert_eq!(
+            NodeAttachmentRepository::new(database.connection())
+                .usages(&selected.id)
+                .unwrap(),
+            vec!["cover"]
+        );
+
+        let unused = NodeAttachment {
+            id: "unreferenced-kind-change".into(),
+            graph_node_id: "n-unreferenced".into(),
+            managed_path: "assets/attachments/unreferenced/kind-change.png".into(),
+            original_filename: "kind-change.png".into(),
+            mime_type: "image/png".into(),
+            kind: "image".into(),
+            content_hash: "unreferenced-kind-change-hash".into(),
+            caption: String::new(),
+            role: "inline".into(),
+            provenance_source_path: "/vault/kind-change.png".into(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+        };
+        NodeAttachmentRepository::new(database.connection())
+            .insert(&unused)
+            .expect("create an unreferenced attachment for the legal control");
+        let valid_change = database.connection().execute(
+            "UPDATE node_attachment SET kind='file', role='file' WHERE id=?1",
+            [&unused.id],
+        );
+        assert_eq!(
+            valid_change.expect("an attachment with no incompatible usage remains mutable"),
+            1
+        );
+    }
+
+    #[test]
+    fn canonical_cover_queries_hide_historical_primary_record_corruption() {
+        // Upgrade safety is deliberately tested against the real 0022 schema:
+        // that historical schema allowed a primary image record to become a
+        // file while a cover usage/presentation row remained. The new query is
+        // defensive even if a database was corrupted before 0023 could guard
+        // it.
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::migrations::MigrationRunner::migrate_through(
+            &connection,
+            "0022_node_attachment_presentation_indirect_guards",
+        )
+        .unwrap();
+        let attachment = NodeAttachment {
+            id: "historical-corrupt-cover".into(),
+            graph_node_id: "n-historical-cover".into(),
+            managed_path: "assets/attachments/historical/cover.png".into(),
+            original_filename: "cover.png".into(),
+            mime_type: "image/png".into(),
+            kind: "image".into(),
+            content_hash: "historical-corrupt-cover-hash".into(),
+            caption: String::new(),
+            role: "inline".into(),
+            provenance_source_path: "/vault/cover.png".into(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+        };
+        let repository = NodeAttachmentRepository::new(&connection);
+        repository.insert(&attachment).unwrap();
+        repository.ensure_usage(&attachment.id, "cover").unwrap();
+        repository
+            .select_cover(&attachment.graph_node_id, &attachment.id)
+            .unwrap();
+        connection
+            .execute(
+                "UPDATE node_attachment SET kind='file', role='file' WHERE id=?1",
+                [&attachment.id],
+            )
+            .expect("the pre-0023 schema permitted this historical corruption");
+
+        assert!(repository
+            .selected_cover_for_node(&attachment.graph_node_id)
+            .unwrap()
+            .is_none());
+        assert!(repository.selected_covers().unwrap().is_empty());
+    }
+
+    #[test]
+    fn attaches_from_the_local_sqlite_projection_without_a_remote_snapshot() {
+        let directory = tempfile::tempdir().expect("temporary offline attachment workspace");
+        let workspace = directory.path().join("workspace");
+        let source_dir = directory.path().join("source");
+        let database_path = directory.path().join("attachments.sqlite");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("offline-cover.png");
+        fs::write(&source, b"offline cover bytes").unwrap();
+
+        let database =
+            Database::open(&database_path).expect("open the local-only SQLite workspace");
+        let documents = NodeDocumentRepository::new(database.connection());
+        documents
+            .apply_reconciliation_with_projection(
+                &DocumentContentInput {
+                    graph_node_id: "n-offline".into(),
+                    body: "[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Offline reader body\"}]}]".into(),
+                    summary: "Offline reader pith".into(),
+                    content_origin: ContentOrigin::Seed,
+                    content_revision: 7,
+                    body_source_coordinates: vec!["episode-2.md#offline".into()],
+                    neo4j_synced: true,
+                },
+                None,
+                Some(&DocumentMetadataProjection {
+                    entity_type: "Event".into(),
+                    title: "Offline reader node".into(),
+                    schema_version: 1,
+                }),
+            )
+            .expect("seed an authoritative local graph/document projection");
+        drop(database);
+
+        let request: AttachNodeAttachmentRequest = serde_json::from_value(serde_json::json!({
+            "workspaceRoot": workspace,
+            "graphNodeId": "n-offline",
+            "sourceAbsolutePath": source,
+            "kind": "image",
+            "role": "cover",
+            "caption": "An offline canonical cover"
+        }))
+        .expect("attachment requests may omit an unavailable remote graph snapshot");
+        let attached = attach_node_attachment_at_path(&database_path, request)
+            .expect("durably attach without any SharedGraphState or remote graph read");
+
+        assert!(workspace.join(&attached.attachment.managed_path).is_file());
+        assert_eq!(attached.document.summary, "Offline reader pith");
+        assert_eq!(attached.graph_node.title, "Offline reader node");
+        assert_eq!(attached.graph_node.summary, "Offline reader pith");
+        assert_eq!(attached.graph_node.content_revision, Some(7));
+        assert!(attached.remote_sync_eligible);
+        let reopened = Database::open(&database_path).unwrap();
+        let durable_document = NodeDocumentRepository::new(reopened.connection())
+            .get_node_document("n-offline")
+            .unwrap()
+            .expect("local document survives reopening the SQLite workspace");
+        assert_eq!(durable_document.body, attached.document.body);
+        let presentation = NodeAttachmentRepository::new(reopened.connection())
+            .selected_cover_for_node("n-offline")
+            .unwrap()
+            .expect("offline cover selection survives reopening the SQLite workspace");
+        assert_eq!(presentation.id, attached.attachment.id);
+    }
+
+    #[test]
+    fn caller_snapshot_never_replaces_a_pending_local_document() {
+        let directory = tempfile::tempdir().expect("temporary pending attachment workspace");
+        let workspace = directory.path().join("workspace");
+        let source_dir = directory.path().join("source");
+        let database_path = directory.path().join("attachments.sqlite");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&source_dir).unwrap();
+        let first_source = source_dir.join("first.png");
+        let second_source = source_dir.join("second.png");
+        fs::write(&first_source, b"first local attachment").unwrap();
+        fs::write(&second_source, b"second local attachment").unwrap();
+
+        let first = attach_node_attachment_at_path(
+            &database_path,
+            attachment_request(&workspace, "n-pending-local", &first_source, "inline"),
+        )
+        .expect("first local attachment creates a pending authored document");
+        assert!(!first.document.neo4j_synced);
+
+        let mut second_request =
+            attachment_request(&workspace, "n-pending-local", &second_source, "inline");
+        let caller_snapshot = second_request
+            .authoritative_document
+            .as_mut()
+            .expect("test request carries a caller snapshot");
+        caller_snapshot.body = "[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"remote replacement must not win\"}]}]".into();
+        caller_snapshot.summary = "Remote replacement".into();
+        caller_snapshot.content_revision = 99;
+        let second = attach_node_attachment_at_path(&database_path, second_request)
+            .expect("second attachment preserves pending local document before appending");
+
+        assert!(!second.document.neo4j_synced);
+        assert!(second.document.body.contains(&first.attachment.id));
+        assert!(second.document.body.contains(&second.attachment.id));
+        assert!(!second
+            .document
+            .body
+            .contains("remote replacement must not win"));
+        assert_ne!(second.document.summary, "Remote replacement");
+        assert_eq!(second.graph_node.body, second.document.body);
+    }
+
+    #[test]
     fn attachment_service_sweeps_crash_residue_without_touching_referenced_bytes() {
         let directory = tempfile::tempdir().expect("temporary attachment workspace");
         let workspace = directory.path().join("workspace");
@@ -1623,12 +1974,15 @@ mod tests {
         drop(database);
 
         let mut request = attachment_request(&workspace, "n-stale", &source, "inline");
-        request.authoritative_document.body = "[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"remote revision six\"}]}]".into();
-        request.authoritative_document.summary = "remote six".into();
-        request.authoritative_document.content_revision = 6;
-        request.authoritative_document.body_source_coordinates =
-            vec!["episode-2.md#remote-six".into()];
-        request.authoritative_document.title = "Stale document".into();
+        let snapshot = request
+            .authoritative_document
+            .as_mut()
+            .expect("test request carries a remote snapshot");
+        snapshot.body = "[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"remote revision six\"}]}]".into();
+        snapshot.summary = "remote six".into();
+        snapshot.content_revision = 6;
+        snapshot.body_source_coordinates = vec!["episode-2.md#remote-six".into()];
+        snapshot.title = "Stale document".into();
         let attached = attach_node_attachment_at_path(&database_path, request)
             .expect("synced stale local document is reconciled to remote before attach");
 
@@ -1668,8 +2022,12 @@ mod tests {
         drop(database);
 
         let mut request = attachment_request(&workspace, "n-legacy", &source, "inline");
-        request.authoritative_document.content_revision = 1;
-        request.authoritative_document.body = "[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"canonical remote\"}]}]".into();
+        let snapshot = request
+            .authoritative_document
+            .as_mut()
+            .expect("test request carries a remote snapshot");
+        snapshot.content_revision = 1;
+        snapshot.body = "[{\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"canonical remote\"}]}]".into();
         let attached = attach_node_attachment_at_path(&database_path, request)
             .expect("legacy document is upgraded and attached");
 
@@ -1761,7 +2119,7 @@ mod tests {
             kind: "image".into(),
             role: role.into(),
             caption: "A source-derived image".into(),
-            authoritative_document: AuthoritativeDocumentSnapshot {
+            authoritative_document: Some(AuthoritativeDocumentSnapshot {
                 body: "[]".into(),
                 summary: "A timeline record".into(),
                 content_origin: "seed".into(),
@@ -1770,7 +2128,7 @@ mod tests {
                 entity_type: "Event".into(),
                 title: "Timeline record".into(),
                 schema_version: 1,
-            },
+            }),
         }
     }
 

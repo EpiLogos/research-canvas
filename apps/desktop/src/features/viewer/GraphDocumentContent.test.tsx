@@ -207,7 +207,6 @@ describe("GraphDocumentContent — cutover + mounted content/linking affordances
     const attachedBody = '[{"type":"image","props":{"url":"assets/attachments/hash/native.png"}}]';
     const durableTransport = {
       ...transport,
-      readGraphNode: vi.fn().mockResolvedValue(remote),
       attachNodeAttachment: vi.fn().mockResolvedValue({
         attachment: {
           id: "native-drop", graphNodeId: "g1", managedPath: "assets/attachments/hash/native.png",
@@ -219,6 +218,13 @@ describe("GraphDocumentContent — cutover + mounted content/linking affordances
           contentOrigin: "user_authored", contentRevision: 4, bodySourceCoordinates: [],
         },
         expectedRemoteOrigin: "seed", expectedRemoteRevision: 3,
+        remoteSyncEligible: true,
+        graphNode: {
+          ...remote,
+          body: attachedBody,
+          contentOrigin: "user_authored",
+          contentRevision: 4,
+        },
       }),
       compareAndSwapGraphNodeContent: vi.fn().mockResolvedValue({ kind: "updated" }),
       acknowledgeLocalNodeDocumentSync: vi.fn().mockResolvedValue({ kind: "updated" }),

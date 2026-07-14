@@ -194,6 +194,7 @@ export function InspectorTab() {
               sourceAbsolutePath: entry.absolutePath,
               kind: "image",
               role: "cover",
+              openGraphNode: node.graph ?? null,
             })
               .then(({ attachment }) => {
                 // Layout keeps only a portable reference. The card and reader
