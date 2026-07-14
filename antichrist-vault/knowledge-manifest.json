@@ -1,0 +1,212 @@
+{
+  "schemaVersion": 1,
+  "contentRevision": 2,
+  "linkTargets": {
+    "double-helix": "graph:double-helix",
+    "ep-0.1-(now-ep-1.0)/Episode_0_1_The_Naked_Face_v9": "source:antichrist-vault/episodes/1/ep-0.1-(now-ep-1.0)/Episode_0_1_The_Naked_Face_v9.md",
+    "ep-1.1/handover/seed": "source:antichrist-vault/episodes/1/ep-1.1/handover/seed.md",
+    "ep-1.1/ql-units/QL Master Canvas": "graph:ql-position-wheel",
+    "ep-1.1/ql-units/self-identity": "graph:self-identity-parent",
+    "position-0": "graph:ql-pos-0",
+    "position-1": "graph:ql-pos-1",
+    "position-2": "graph:ql-pos-2",
+    "position-3": "graph:ql-pos-3",
+    "position-4": "graph:ql-pos-4",
+    "position-5": "graph:ql-pos-5",
+    "self-identity": "graph:self-identity-parent",
+    "unit-deficiency": "graph:deficiency-unit",
+    "unit-ontological": "graph:ontological-unit",
+    "unit-social-power": "graph:social-power-unit",
+    "unit-solar-system": "graph:solar-system-unit",
+    "unit-spectral-christs-chain": "graph:christ-sixfold-lineage",
+    "unit-spectral-devils-chain": "graph:devil-sixfold-lineage"
+  },
+  "sources": [
+    {
+      "path": "antichrist-vault/episodes/1/ep-0.1-(now-ep-1.0)/Chat-Log-ep-0.1.md",
+      "role": "episode-chat"
+    },
+    {
+      "path": "antichrist-vault/episodes/1/ep-1.1/ep-1.1-script-v1.md",
+      "role": "episode-script"
+    },
+    {
+      "path": "antichrist-vault/episodes/1/ep-1.1/ql-units/self-identity.md",
+      "role": "ql-unit"
+    },
+    {
+      "path": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-christs-chain.md",
+      "role": "ql-unit"
+    },
+    {
+      "path": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-devils-chain.md",
+      "role": "ql-unit"
+    },
+    {
+      "path": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Chat-log-0.2.md",
+      "role": "episode-chat"
+    },
+    {
+      "path": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Episode_0_2_The_Fire_of_the_Gods_v4.md",
+      "role": "episode-script"
+    },
+    {
+      "path": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report3.md",
+      "role": "research-report"
+    },
+    {
+      "path": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report5.md",
+      "role": "research-report"
+    },
+    {
+      "path": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md",
+      "role": "research-report"
+    },
+    {
+      "path": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/episode-2-research-timeline.md",
+      "role": "timeline-ledger"
+    }
+  ],
+  "documents": [
+    {
+      "slug": "banda-genocide",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md",
+      "startHeading": "The Banda genocide: corporate sovereignty's first atrocity",
+      "endHeading": "Financial innovations that still govern the world"
+    },
+    {
+      "slug": "christ-sixfold-lineage",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-christs-chain.md",
+      "startHeading": "QL Unit — The Spectral Christ's Chain (Protagonist)"
+    },
+    {
+      "slug": "devil-sixfold-lineage",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-devils-chain.md",
+      "startHeading": "QL Unit — The Spectral Devil's Chain (Antagonist)"
+    },
+    {
+      "slug": "figure-cecil-rhodes",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report3.md",
+      "startHeading": "The making of Cecil Rhodes: vicarage to vision of world dominion"
+    },
+    {
+      "slug": "figure-jesus-of-nazareth",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-christs-chain.md",
+      "startHeading": "[[position-4|#4]] — Jesus: The Historical Person",
+      "endHeading": "[[position-5|#5]] — God-Man: Divine-Human Integration"
+    },
+    {
+      "slug": "myth-christ-logos",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-christs-chain.md",
+      "startHeading": "[[position-3|#3]] — Christ: The Logos Incarnate",
+      "endHeading": "[[position-4|#4]] — Jesus: The Historical Person"
+    },
+    {
+      "slug": "myth-devil",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-devils-chain.md",
+      "startHeading": "[[position-0|#0]] — The Devil: General Daemonic Lord",
+      "endHeading": "[[position-1|#1]] — Mithra: The Arian Age Balanced Sacrificer"
+    },
+    {
+      "slug": "myth-lucifer",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-devils-chain.md",
+      "startHeading": "[[position-3|#3]] — Lucifer: The Light-Bearer Fallen",
+      "endHeading": "[[position-4|#4]] — Satan: The Devourer"
+    },
+    {
+      "slug": "myth-mithra",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-devils-chain.md",
+      "startHeading": "[[position-1|#1]] — Mithra: The Arian Age Balanced Sacrificer",
+      "endHeading": "[[position-2|#2]] — Prometheus: The Bridge"
+    },
+    {
+      "slug": "myth-pan",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-devils-chain.md",
+      "startHeading": "[[position-5|#5]] — Pan: The All",
+      "endHeading": "The Sacrifice Diagnostic — Summary"
+    },
+    {
+      "slug": "myth-prometheus",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-devils-chain.md",
+      "startHeading": "[[position-2|#2]] — Prometheus: The Bridge",
+      "endHeading": "[[position-3|#3]] — Lucifer: The Light-Bearer Fallen"
+    },
+    {
+      "slug": "myth-satan",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-devils-chain.md",
+      "startHeading": "[[position-4|#4]] — Satan: The Devourer",
+      "endHeading": "[[position-5|#5]] — Pan: The All"
+    },
+    {
+      "slug": "place-banda-islands",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md",
+      "startHeading": "The Banda genocide: corporate sovereignty's first atrocity",
+      "endHeading": "Financial innovations that still govern the world"
+    },
+    {
+      "slug": "place-prague",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md",
+      "startHeading": "Rudolf II's Prague: where alchemy met astronomy",
+      "endHeading": "The long death and its aftermath"
+    },
+    {
+      "slug": "source-episode-1-chat",
+      "source": "antichrist-vault/episodes/1/ep-0.1-(now-ep-1.0)/Chat-Log-ep-0.1.md"
+    },
+    {
+      "slug": "source-episode-1-script",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ep-1.1-script-v1.md"
+    },
+    {
+      "slug": "source-episode-2-chat",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Chat-log-0.2.md"
+    },
+    {
+      "slug": "source-episode-2-script",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Episode_0_2_The_Fire_of_the_Gods_v4.md"
+    },
+    {
+      "slug": "source-episode-2-timeline",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/episode-2-research-timeline.md",
+      "startHeading": "Episode 2 Research Timeline"
+    },
+    {
+      "slug": "source-report-3-rhodes",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report3.md",
+      "startHeading": "The making of Cecil Rhodes: vicarage to vision of world dominion"
+    },
+    {
+      "slug": "source-report-5-occult-psyops",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report5.md",
+      "startHeading": "The hidden and the revealed: occultism, psyops, and power from Hollywood to Langley"
+    },
+    {
+      "slug": "source-report-8-power-metamorphosis",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md",
+      "startHeading": "From Medici to Rhodes: four centuries of power's metamorphosis"
+    },
+    {
+      "slug": "stargate-remote-viewing",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report5.md",
+      "startHeading": "Project Stargate: when the CIA investigated psychics",
+      "endHeading": "The Process Church: from Scientology to animal rescue"
+    },
+    {
+      "slug": "technological-occultation",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report5.md",
+      "startHeading": "MK-ULTRA: what survived the shredder",
+      "endHeading": "Project Stargate: when the CIA investigated psychics"
+    },
+    {
+      "slug": "thinker-carl-jung",
+      "source": "antichrist-vault/episodes/1/ep-1.1/ql-units/self-identity.md",
+      "startHeading": "Key Traditions Converging on Self-Identity"
+    },
+    {
+      "slug": "thinker-marsilio-ficino",
+      "source": "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md",
+      "startHeading": "Rudolf II's Prague: where alchemy met astronomy",
+      "endHeading": "The long death and its aftermath"
+    }
+  ]
+}

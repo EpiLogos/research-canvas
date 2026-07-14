@@ -82,26 +82,38 @@ const ROOT_CONSTELLATION_SLUG: &str = "root-archetypal-field";
 const ROOT_CONSTELLATION_TITLE: &str = "Root Archetypal Field";
 const ROOT_CONSTELLATION_SUMMARY: &str = "A real ontology-backed canvas for the bounded QL units, archetypal images, animal quaternity, conceptual operations, historical forms, and claim provenance extracted from the Antichrist research vault.";
 const RESONANCE_SOURCE: &str = "antichrist-vault/episodes/episode-1-2-archetypal-resonance.md";
-const SELF_IDENTITY_SOURCE: &str = "antichrist-vault/episodes/1/ql-units/self-identity.md";
-const ONTOLOGICAL_SOURCE: &str = "antichrist-vault/episodes/1/ql-units/unit-ontological.md";
-const SOLAR_SYSTEM_SOURCE: &str = "antichrist-vault/episodes/1/ql-units/unit-solar-system.md";
-const SOCIAL_POWER_SOURCE: &str = "antichrist-vault/episodes/1/ql-units/unit-social-power.md";
-const DEFICIENCY_SOURCE: &str = "antichrist-vault/episodes/1/ql-units/unit-deficiency.md";
+const SELF_IDENTITY_SOURCE: &str = "antichrist-vault/episodes/1/ep-1.1/ql-units/self-identity.md";
+const ONTOLOGICAL_SOURCE: &str = "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-ontological.md";
+const SOLAR_SYSTEM_SOURCE: &str =
+    "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-solar-system.md";
+const SOCIAL_POWER_SOURCE: &str =
+    "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-social-power.md";
+const DEFICIENCY_SOURCE: &str = "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-deficiency.md";
 const DEVIL_CHAIN_SOURCE: &str =
-    "antichrist-vault/episodes/1/ql-units/unit-spectral-devils-chain.md";
+    "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-devils-chain.md";
 const CHRIST_CHAIN_SOURCE: &str =
-    "antichrist-vault/episodes/1/ql-units/unit-spectral-christs-chain.md";
-const DOUBLE_HELIX_SOURCE: &str = "antichrist-vault/episodes/1/ql-units/double-helix.md";
-const POSITION_0_SOURCE: &str = "antichrist-vault/episodes/1/ql-units/position-0.md";
-const POSITION_1_SOURCE: &str = "antichrist-vault/episodes/1/ql-units/position-1.md";
-const POSITION_2_SOURCE: &str = "antichrist-vault/episodes/1/ql-units/position-2.md";
-const POSITION_3_SOURCE: &str = "antichrist-vault/episodes/1/ql-units/position-3.md";
-const POSITION_4_SOURCE: &str = "antichrist-vault/episodes/1/ql-units/position-4.md";
-const POSITION_5_SOURCE: &str = "antichrist-vault/episodes/1/ql-units/position-5.md";
+    "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-christs-chain.md";
+const DOUBLE_HELIX_SOURCE: &str = "antichrist-vault/episodes/1/ep-1.1/ql-units/double-helix.md";
+const POSITION_0_SOURCE: &str = "antichrist-vault/episodes/1/ep-1.1/ql-units/position-0.md";
+const POSITION_1_SOURCE: &str = "antichrist-vault/episodes/1/ep-1.1/ql-units/position-1.md";
+const POSITION_2_SOURCE: &str = "antichrist-vault/episodes/1/ep-1.1/ql-units/position-2.md";
+const POSITION_3_SOURCE: &str = "antichrist-vault/episodes/1/ep-1.1/ql-units/position-3.md";
+const POSITION_4_SOURCE: &str = "antichrist-vault/episodes/1/ep-1.1/ql-units/position-4.md";
+const POSITION_5_SOURCE: &str = "antichrist-vault/episodes/1/ep-1.1/ql-units/position-5.md";
 const TIMELINE_SOURCE: &str =
     "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/episode-2-research-timeline.md";
 const TECHNOLOGICAL_OCCULTATION_SOURCE: &str =
     "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report6.md";
+const REPORT_3_SOURCE: &str =
+    "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report3.md";
+const REPORT_5_SOURCE: &str =
+    "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report5.md";
+const REPORT_8_SOURCE: &str =
+    "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md";
+const EPISODE_1_CHAT_SOURCE: &str =
+    "antichrist-vault/episodes/1/ep-0.1-(now-ep-1.0)/Chat-Log-ep-0.1.md";
+const EPISODE_2_CHAT_SOURCE: &str =
+    "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Chat-log-0.2.md";
 
 pub async fn seed_root_archetypal_field(
     graph_repo: &GraphRepository,
@@ -416,28 +428,57 @@ fn metadata_record(seed: &SeedGraphNode) -> Result<GraphNodeMetadataRecord, Stri
 }
 
 impl NodeSeed {
+    fn reader_projection(
+        &self,
+    ) -> (
+        String,
+        Vec<String>,
+        crate::db::repositories::graph::ContentOrigin,
+        i64,
+    ) {
+        let (body, source_coordinates, content_origin, content_revision) =
+            if let Some(compiled) = crate::db::corpus_knowledge::document_for_slug(self.slug) {
+                (
+                    compiled.body,
+                    compiled.source_coordinates,
+                    crate::db::repositories::graph::ContentOrigin::CorpusCompiled,
+                    compiled.content_revision,
+                )
+            } else {
+                (
+                    body_for(self.title, self.summary, self.evidence_tags),
+                    self.source_coordinates
+                        .iter()
+                        .map(|value| (*value).to_string())
+                        .collect(),
+                    crate::db::repositories::graph::ContentOrigin::Seed,
+                    1,
+                )
+            };
+        (
+            with_explicit_ql_metadata(self, body),
+            source_coordinates,
+            content_origin,
+            content_revision,
+        )
+    }
+
     fn to_document_input(&self, namespace: &str) -> DocumentContentInput {
+        let (body, body_source_coordinates, content_origin, content_revision) =
+            self.reader_projection();
         DocumentContentInput {
             graph_node_id: graph_id(namespace, self.slug),
-            body: body_for(self.title, self.summary, self.evidence_tags),
+            body,
             summary: self.summary.to_string(),
-            content_origin: crate::db::repositories::graph::ContentOrigin::Seed,
-            content_revision: 1,
-            body_source_coordinates: self
-                .source_coordinates
-                .iter()
-                .map(|value| value.to_string())
-                .collect(),
+            content_origin,
+            content_revision,
+            body_source_coordinates,
             neo4j_synced: false,
         }
     }
 
     fn to_graph_node(&self, namespace: &str) -> SeedGraphNode {
-        let source_coordinates = self
-            .source_coordinates
-            .iter()
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>();
+        let (body, source_coordinates, content_origin, content_revision) = self.reader_projection();
         let is_claim = self.entity_type == "Claim";
         let is_interpretive = self.evidence_tags.contains(&"interpretive_vector");
         let ql_metadata = ql_metadata_for_seed(self);
@@ -453,17 +494,17 @@ impl NodeSeed {
             graph_node_id: graph_id(namespace, self.slug),
             entity_type: self.entity_type.to_string(),
             title: self.title.to_string(),
-            body: body_for(self.title, self.summary, self.evidence_tags),
+            body,
             summary: self.summary.to_string(),
             archetypal_resonance: Some(self.summary.to_string()),
             coordinate: self.coordinate.map(str::to_string),
             source_coordinates: source_coordinates.clone(),
             evidence_tags,
             source_kind: self.source_kind.map(str::to_string),
-            content_origin: crate::db::repositories::graph::ContentOrigin::Seed,
-            content_revision: 1,
+            content_origin,
+            content_revision,
             seed_schema_version: 1,
-            body_source_coordinates: source_coordinates,
+            body_source_coordinates: source_coordinates.clone(),
             historicity: match self.entity_type {
                 "Event" | "Figure" | "People" | "Institution" | "Place" => {
                     Some(crate::db::repositories::graph::Historicity::Historical)
@@ -494,10 +535,13 @@ impl NodeSeed {
                 None
             },
             temporal_role: if self.is_temporal {
-                Some(if is_claim {
-                    crate::db::repositories::graph::TemporalRole::ClaimAboutTime
-                } else {
-                    crate::db::repositories::graph::TemporalRole::OccurredAt
+                Some(match self.entity_type {
+                    "Claim" => crate::db::repositories::graph::TemporalRole::ClaimAboutTime,
+                    "Figure" | "People" => {
+                        crate::db::repositories::graph::TemporalRole::ActiveDuring
+                    }
+                    "Myth" => crate::db::repositories::graph::TemporalRole::MythLocatedAt,
+                    _ => crate::db::repositories::graph::TemporalRole::OccurredAt,
                 })
             } else {
                 None
@@ -516,11 +560,18 @@ impl NodeSeed {
             ql_schema_version: ql_metadata.map(|_| 1),
             ql_source_coordinates: ql_metadata
                 .map(|_| {
-                    self.source_coordinates
-                        .iter()
-                        .filter(|coordinate| coordinate.starts_with('#'))
-                        .map(|coordinate| (*coordinate).to_string())
-                        .collect()
+                    // The compiled reader body contributes an exact file-and-section
+                    // citation. The seed's explicit # coordinates are a separate,
+                    // declared QL contract and must remain queryable rather than
+                    // being erased by that richer reader projection.
+                    let mut coordinates = std::collections::BTreeSet::new();
+                    coordinates.extend(
+                        self.source_coordinates
+                            .iter()
+                            .map(|coordinate| (*coordinate).to_string()),
+                    );
+                    coordinates.extend(source_coordinates.clone());
+                    coordinates.into_iter().collect()
                 })
                 .unwrap_or_default(),
             ql_completeness_status: ql_metadata.map(|metadata| metadata.completeness),
@@ -978,6 +1029,64 @@ fn graph_id(namespace: &str, slug: &str) -> String {
     format!("{namespace}:{slug}")
 }
 
+/// QL metadata is authoritative graph structure, but must also be legible in
+/// the reading surface. The compact card still uses the pith; this inserts a
+/// small, explicit field block at the beginning of the long-form document.
+fn with_explicit_ql_metadata(seed: &NodeSeed, body: String) -> String {
+    let Some(metadata) = ql_metadata_for_seed(seed) else {
+        return body;
+    };
+    let Ok(mut blocks) = serde_json::from_str::<Vec<serde_json::Value>>(&body) else {
+        return body;
+    };
+    let text_block = |text: String| {
+        serde_json::json!({
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": text, "styles": {} }]
+        })
+    };
+    let mut ql_blocks = vec![
+        serde_json::json!({
+            "type": "heading",
+            "props": { "level": 2 },
+            "content": [{ "type": "text", "text": "QL metadata", "styles": {} }]
+        }),
+        text_block(format!(
+            "QL form: {}",
+            humanize_ql_value(metadata.form.as_str())
+        )),
+        text_block(format!("QL unit: {}", seed.title)),
+        text_block(format!(
+            "QL arc: {}",
+            humanize_ql_value(metadata.arc.as_str())
+        )),
+        text_block(format!(
+            "QL topology: {}",
+            humanize_ql_value(metadata.topology.as_str())
+        )),
+        text_block(format!(
+            "QL completeness: {}",
+            humanize_ql_value(metadata.completeness.as_str())
+        )),
+    ];
+    ql_blocks.append(&mut blocks);
+    serde_json::to_string(&ql_blocks).unwrap_or(body)
+}
+
+fn humanize_ql_value(value: &str) -> String {
+    value
+        .split('_')
+        .map(|word| {
+            let mut characters = word.chars();
+            match characters.next() {
+                Some(first) => format!("{}{}", first.to_ascii_uppercase(), characters.as_str()),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn body_for(title: &str, summary: &str, evidence_tags: &[&str]) -> String {
     serde_json::json!([
         {
@@ -1015,7 +1124,7 @@ fn local_relationship_record(namespace: &str, seed: &RelSeed) -> NodeRelationshi
         target_graph_node_id: graph_id(namespace, seed.target),
         rel_type: seed.rel_type.to_string(),
         properties: relationship_properties(seed, namespace),
-        source_coordinates: relationship_source_coordinates(),
+        source_coordinates: relationship_source_coordinates(seed),
         evidence_tags: seed
             .evidence_tags
             .iter()
@@ -1031,15 +1140,33 @@ fn local_relationship_record(namespace: &str, seed: &RelSeed) -> NodeRelationshi
     }
 }
 
-fn relationship_source_coordinates() -> Vec<String> {
-    vec![RESONANCE_SOURCE.to_string(), TIMELINE_SOURCE.to_string()]
+fn relationship_source_coordinates(relationship: &RelSeed) -> Vec<String> {
+    let seeds = node_seeds();
+    let mut coordinates = std::collections::BTreeSet::new();
+    for slug in [relationship.source, relationship.target] {
+        if let Some(compiled_coordinates) =
+            crate::db::corpus_knowledge::source_coordinates_for_slug(slug)
+        {
+            coordinates.extend(compiled_coordinates);
+        } else if let Some(node) = seeds.iter().find(|node| node.slug == slug) {
+            coordinates.extend(
+                node.source_coordinates
+                    .iter()
+                    .map(|coordinate| (*coordinate).to_string()),
+            );
+        }
+    }
+    if coordinates.is_empty() {
+        coordinates.extend([RESONANCE_SOURCE.to_string(), TIMELINE_SOURCE.to_string()]);
+    }
+    coordinates.into_iter().collect()
 }
 
 fn relationship_properties(seed: &RelSeed, namespace: &str) -> serde_json::Value {
     let mut value = serde_json::json!({
         "seed_key": relationship_seed_key(namespace, seed),
         "evidence_tags": seed.evidence_tags,
-        "source_coordinates": relationship_source_coordinates(),
+        "source_coordinates": relationship_source_coordinates(seed),
     });
     if let Some(dominance) = seed.dominance {
         value["dominance"] = serde_json::Value::String(dominance.to_string());
@@ -1535,7 +1662,7 @@ fn c(
 }
 
 fn node_seeds() -> Vec<NodeSeed> {
-    vec![
+    let mut seeds = vec![
         n(
             "root-ecology",
             "Constellation",
@@ -3363,6 +3490,339 @@ fn node_seeds() -> Vec<NodeSeed> {
             None,
             None,
         ),
+    ];
+    seeds.extend(corpus_node_seeds());
+    seeds
+}
+
+/// A bounded first corpus pass that puts source documents, mythic images,
+/// thinkers, places, and historically situated records in the same durable
+/// graph without treating a constellation as a timeline container. Each slug
+/// below must have a body in the checked-in compiler artifact.
+fn corpus_node_seeds() -> Vec<NodeSeed> {
+    vec![
+        n(
+            "source-episode-1-chat",
+            "Source",
+            "Episode 1 working chat log",
+            "Long-form working discussion retained as a source document, with its proposals and tensions available in the reader.",
+            None,
+            &[EPISODE_1_CHAT_SOURCE],
+            &["episode_1", "chat_log", "source_material"],
+            Some("episode-chat"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "source-episode-1-script",
+            "Source",
+            "Episode 1.1 script draft",
+            "Episode script retained as an addressable source rather than compressed into a card summary.",
+            None,
+            &["antichrist-vault/episodes/1/ep-1.1/ep-1.1-script-v1.md"],
+            &["episode_1", "script", "source_material"],
+            Some("episode-script"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "source-episode-2-chat",
+            "Source",
+            "Episode 2 working chat log",
+            "Long-form planning and research discussion retained as source material for Episode 2.",
+            None,
+            &[EPISODE_2_CHAT_SOURCE],
+            &["episode_2", "chat_log", "source_material"],
+            Some("episode-chat"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "source-episode-2-script",
+            "Source",
+            "Episode 2: The Fire of the Gods",
+            "Episode 2 script material retained as a reader document with its source location intact.",
+            None,
+            &["antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Episode_0_2_The_Fire_of_the_Gods_v4.md"],
+            &["episode_2", "script", "source_material"],
+            Some("episode-script"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "source-episode-2-timeline",
+            "Source",
+            "Episode 2 research timeline ledger",
+            "Evidence-tagged chronological ledger whose documented, contested, and interpretive statuses remain explicit.",
+            None,
+            &[TIMELINE_SOURCE],
+            &["episode_2", "timeline_ledger", "source_material"],
+            Some("timeline-ledger"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "source-report-3-rhodes",
+            "Source",
+            "Research Report 3: Cecil Rhodes",
+            "Research report on Cecil Rhodes, institutional formation, and the limits of its claims.",
+            None,
+            &[REPORT_3_SOURCE],
+            &["episode_2", "research_report", "source_material"],
+            Some("research-report"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "source-report-5-occult-psyops",
+            "Source",
+            "Research Report 5: occultism, psyops, and power",
+            "Evidence-disciplined research on occult imagery, intelligence programs, and the boundary between record and inference.",
+            None,
+            &[REPORT_5_SOURCE],
+            &["episode_2", "research_report", "source_material"],
+            Some("research-report"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "source-report-8-power-metamorphosis",
+            "Source",
+            "Research Report 8: power's metamorphosis",
+            "Research report tracing corporate, financial, imperial, and initiatory forms without collapsing structural analysis into proven causality.",
+            None,
+            &[REPORT_8_SOURCE],
+            &["episode_2", "research_report", "source_material"],
+            Some("research-report"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "myth-devil",
+            "Myth",
+            "The Devil",
+            "Mythic image at QL #0 in the Spectral Devil's Chain; not a documented historical event.",
+            Some("#0"),
+            &["#0", DEVIL_CHAIN_SOURCE],
+            &["mythic_image", "ql_positioned", "interpretive_vector"],
+            Some("mythic-image"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "myth-mithra",
+            "Myth",
+            "Mithra",
+            "Mythic image at QL #1 in the Spectral Devil's Chain, preserved as mythic rather than historical evidence.",
+            Some("#1"),
+            &["#1", DEVIL_CHAIN_SOURCE],
+            &["mythic_image", "ql_positioned", "interpretive_vector"],
+            Some("mythic-image"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "myth-prometheus",
+            "Myth",
+            "Prometheus",
+            "Mythic bridge image at QL #2 shared by the two spectral lineages.",
+            Some("#2"),
+            &["#2", DEVIL_CHAIN_SOURCE, CHRIST_CHAIN_SOURCE],
+            &["mythic_image", "ql_positioned", "interpretive_vector"],
+            Some("mythic-image"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "myth-lucifer",
+            "Myth",
+            "Lucifer",
+            "Mythic light-bearer image at QL #3 in the Spectral Devil's Chain.",
+            Some("#3"),
+            &["#3", DEVIL_CHAIN_SOURCE],
+            &["mythic_image", "ql_positioned", "interpretive_vector"],
+            Some("mythic-image"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "myth-satan",
+            "Myth",
+            "Satan",
+            "Mythic devourer image at QL #4 in the Spectral Devil's Chain.",
+            Some("#4"),
+            &["#4", DEVIL_CHAIN_SOURCE],
+            &["mythic_image", "ql_positioned", "interpretive_vector"],
+            Some("mythic-image"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "myth-pan",
+            "Myth",
+            "Pan",
+            "Mythic image of completed sacrifice at QL #5 in the Spectral Devil's Chain.",
+            Some("#5"),
+            &["#5", DEVIL_CHAIN_SOURCE],
+            &["mythic_image", "ql_positioned", "interpretive_vector"],
+            Some("mythic-image"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "myth-christ-logos",
+            "Myth",
+            "Christ as Logos",
+            "Mythic and theological Logos image at QL #3, kept distinct from the historical Jesus figure.",
+            Some("#3"),
+            &["#3", CHRIST_CHAIN_SOURCE],
+            &["mythic_image", "ql_positioned", "interpretive_vector"],
+            Some("mythic-image"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "figure-jesus-of-nazareth",
+            "Figure",
+            "Jesus of Nazareth",
+            "Historical person distinguished from the Christ/Logos archetypal image in the reader and graph.",
+            Some("#4"),
+            &["#4", CHRIST_CHAIN_SOURCE],
+            &["historical_figure", "ql_positioned", "interpretive_vector"],
+            Some("historical-figure"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "figure-cecil-rhodes",
+            "Figure",
+            "Cecil Rhodes",
+            "Documented historical figure whose reader retains the report's distinctions between record, inference, and interpretation.",
+            None,
+            &[REPORT_3_SOURCE],
+            &["documented", "historical_figure"],
+            Some("historical-figure"),
+            true,
+            Some("1853-01-01"),
+            Some("1902-01-01"),
+            Some("year"),
+        ),
+        n(
+            "thinker-carl-jung",
+            "Figure",
+            "C. G. Jung",
+            "Thinker cited in the Self-Identity source for the Self archetype, individuation, and the psychoid nature of number.",
+            None,
+            &[SELF_IDENTITY_SOURCE],
+            &["thinker", "source_citation", "interpretive_vector"],
+            Some("thinker"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "thinker-marsilio-ficino",
+            "Figure",
+            "Marsilio Ficino",
+            "Thinker and translator cited in the research corpus's account of Medici Hermetic patronage and its later intellectual afterlives.",
+            None,
+            &[REPORT_8_SOURCE, TIMELINE_SOURCE],
+            &["thinker", "source_citation", "documented"],
+            Some("thinker"),
+            true,
+            Some("1460-01-01"),
+            None,
+            Some("decade"),
+        ),
+        n(
+            "place-banda-islands",
+            "Place",
+            "Banda Islands",
+            "Place node for the 1621 Banda genocide, preserving geography separately from evidence status and archetypal resonance.",
+            None,
+            &[REPORT_8_SOURCE, TIMELINE_SOURCE],
+            &["place", "historical_geography", "documented"],
+            Some("place"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "place-prague",
+            "Place",
+            "Prague",
+            "Place node for Rudolf II's court, where the research source discusses alchemy, astronomy, and Kunstkammer culture.",
+            None,
+            &[REPORT_8_SOURCE, TIMELINE_SOURCE],
+            &["place", "historical_geography", "documented"],
+            Some("place"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "technological-occultation",
+            "Event",
+            "MK-ULTRA and technological occultation",
+            "Documented CIA behavioural-research program material, held apart from the larger interpretive claim that technology itself is occultation.",
+            None,
+            &[REPORT_5_SOURCE],
+            &["documented", "research_program"],
+            Some("research-program"),
+            true,
+            Some("1953-01-01"),
+            Some("1973-01-01"),
+            Some("year"),
+        ),
+        n(
+            "stargate-remote-viewing",
+            "Event",
+            "Stargate remote-viewing programs",
+            "Documented U.S. remote-viewing program lineage, preserved separately from interpretations about its significance.",
+            None,
+            &[REPORT_5_SOURCE, TIMELINE_SOURCE],
+            &["documented", "research_program"],
+            Some("research-program"),
+            true,
+            Some("1972-01-01"),
+            Some("1995-01-01"),
+            Some("year"),
+        ),
     ]
 }
 
@@ -3741,6 +4201,7 @@ fn relationship_seeds() -> Vec<RelSeed> {
         }
     }
 
+    relationships.extend(corpus_relationship_seeds());
     relationships
 }
 
@@ -3758,6 +4219,130 @@ fn r(
         dominance,
         evidence_tags,
     }
+}
+
+fn corpus_relationship_seeds() -> Vec<RelSeed> {
+    vec![
+        r(
+            "myth-devil",
+            "PART_OF",
+            "devil-sixfold-lineage",
+            None,
+            &["structural_membership", "interpretive_vector"],
+        ),
+        r(
+            "myth-mithra",
+            "PART_OF",
+            "devil-sixfold-lineage",
+            None,
+            &["structural_membership", "interpretive_vector"],
+        ),
+        r(
+            "myth-prometheus",
+            "PART_OF",
+            "devil-sixfold-lineage",
+            None,
+            &["structural_membership", "interpretive_vector"],
+        ),
+        r(
+            "myth-prometheus",
+            "PART_OF",
+            "christ-sixfold-lineage",
+            None,
+            &["structural_membership", "interpretive_vector"],
+        ),
+        r(
+            "myth-lucifer",
+            "PART_OF",
+            "devil-sixfold-lineage",
+            None,
+            &["structural_membership", "interpretive_vector"],
+        ),
+        r(
+            "myth-satan",
+            "PART_OF",
+            "devil-sixfold-lineage",
+            None,
+            &["structural_membership", "interpretive_vector"],
+        ),
+        r(
+            "myth-pan",
+            "PART_OF",
+            "devil-sixfold-lineage",
+            None,
+            &["structural_membership", "interpretive_vector"],
+        ),
+        r(
+            "myth-christ-logos",
+            "PART_OF",
+            "christ-sixfold-lineage",
+            None,
+            &["structural_membership", "interpretive_vector"],
+        ),
+        r(
+            "figure-jesus-of-nazareth",
+            "INSTANTIATES",
+            "myth-christ-logos",
+            None,
+            &["interpretive_vector"],
+        ),
+        r(
+            "banda-genocide",
+            "LOCATED_AT",
+            "place-banda-islands",
+            None,
+            &["documented"],
+        ),
+        r(
+            "banda-genocide",
+            "SOURCED_FROM",
+            "source-report-8-power-metamorphosis",
+            None,
+            &["documented"],
+        ),
+        r(
+            "figure-cecil-rhodes",
+            "SOURCED_FROM",
+            "source-report-3-rhodes",
+            None,
+            &["documented"],
+        ),
+        r(
+            "thinker-carl-jung",
+            "SOURCED_FROM",
+            "self-identity-parent",
+            None,
+            &["source_citation"],
+        ),
+        r(
+            "thinker-marsilio-ficino",
+            "SOURCED_FROM",
+            "source-episode-2-timeline",
+            None,
+            &["documented"],
+        ),
+        r(
+            "stargate-remote-viewing",
+            "SOURCED_FROM",
+            "source-report-5-occult-psyops",
+            None,
+            &["documented"],
+        ),
+        r(
+            "technological-occultation",
+            "SOURCED_FROM",
+            "source-report-5-occult-psyops",
+            None,
+            &["documented"],
+        ),
+        r(
+            "mk-ultra-midnight-climax",
+            "SOURCED_FROM",
+            "source-report-5-occult-psyops",
+            None,
+            &["documented"],
+        ),
+    ]
 }
 
 #[cfg(test)]
@@ -3817,6 +4402,101 @@ mod tests {
     }
 
     #[test]
+    fn corpus_compiled_seed_uses_real_reader_prose_and_typed_cross_domain_nodes() {
+        let documents = root_archetypal_document_inputs("corpus-test");
+        let devil_document = documents
+            .iter()
+            .find(|document| document.graph_node_id == "corpus-test:devil-sixfold-lineage")
+            .expect("compiled Devil lineage document");
+        assert!(devil_document.body.contains("The Divided Individual"));
+        assert!(devil_document.body.contains("The Sacrifice Diagnostic"));
+        assert!(devil_document.body.contains("QL form: Complete Sixfold"));
+        assert!(devil_document
+            .body
+            .contains("QL unit: Devil Sixfold Spectral Lineage"));
+        assert!(devil_document.body.contains("QL arc: Night"));
+        assert!(devil_document.body.contains("QL completeness: Complete"));
+        assert!(!devil_document.body.contains("Directions: read this node"));
+        assert_eq!(devil_document.content_revision, 2);
+        assert_eq!(
+            devil_document.content_origin,
+            ContentOrigin::CorpusCompiled,
+            "generated prose remains distinguishable from a generic seed"
+        );
+        assert_eq!(
+            devil_document.body_source_coordinates,
+            vec![
+                "antichrist-vault/episodes/1/ep-1.1/ql-units/unit-spectral-devils-chain.md#ql-unit-the-spectral-devil-s-chain-antagonist".to_string()
+            ]
+        );
+
+        let source_document = documents
+            .iter()
+            .find(|document| document.graph_node_id == "corpus-test:source-episode-1-chat")
+            .expect("chat transcript source document");
+        assert!(source_document.body.len() > 10_000);
+        assert!(source_document
+            .body_source_coordinates
+            .iter()
+            .all(|coordinate| !coordinate.starts_with('/')));
+
+        let seeds = node_seeds();
+        for (slug, entity_type) in [
+            ("myth-devil", "Myth"),
+            ("thinker-carl-jung", "Figure"),
+            ("source-report-5-occult-psyops", "Source"),
+            ("place-banda-islands", "Place"),
+        ] {
+            assert_eq!(
+                seeds
+                    .iter()
+                    .find(|seed| seed.slug == slug)
+                    .map(|seed| seed.entity_type),
+                Some(entity_type),
+                "{slug} must be a typed corpus seed",
+            );
+        }
+        assert!(relationship_seeds().iter().any(|relationship| {
+            relationship.source == "banda-genocide"
+                && relationship.target == "place-banda-islands"
+                && relationship.rel_type == "LOCATED_AT"
+        }));
+        assert!(relationship_seeds().iter().any(|relationship| {
+            relationship.source == "myth-devil"
+                && relationship.target == "devil-sixfold-lineage"
+                && relationship.rel_type == "PART_OF"
+        }));
+        let rhodes = seeds
+            .iter()
+            .find(|seed| seed.slug == "figure-cecil-rhodes")
+            .expect("Cecil Rhodes figure seed")
+            .to_graph_node("corpus-test");
+        assert_eq!(
+            rhodes.temporal_role.map(|role| role.as_str()),
+            Some("active_during"),
+            "a thinker or figure's active span is not an event occurrence",
+        );
+    }
+
+    #[test]
+    fn every_seeded_relationship_has_two_materialized_node_endpoints() {
+        let known_slugs = node_seeds()
+            .into_iter()
+            .map(|seed| seed.slug)
+            .collect::<std::collections::BTreeSet<_>>();
+        let missing_endpoints = relationship_seeds()
+            .into_iter()
+            .flat_map(|relationship| [relationship.source, relationship.target])
+            .filter(|slug| !known_slugs.contains(slug))
+            .collect::<std::collections::BTreeSet<_>>();
+
+        assert!(
+            missing_endpoints.is_empty(),
+            "every relation must point at a projected graph node: {missing_endpoints:?}"
+        );
+    }
+
+    #[test]
     fn local_root_projection_persists_seeded_relations_for_the_offline_timeline() {
         let directory = tempfile::tempdir().expect("temporary root projection directory");
         let path = directory.path().join("root-projection.sqlite");
@@ -3857,7 +4537,11 @@ mod tests {
         assert!(event_relation
             .source_coordinates
             .iter()
-            .any(|coordinate| coordinate == TIMELINE_SOURCE));
+            .any(|coordinate| {
+                coordinate == "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md#the-banda-genocide-corporate-sovereignty-s-first-atrocity"
+            }),
+            "the historical relation keeps the report section that grounds it",
+        );
         assert!(event_relation
             .evidence_tags
             .iter()
@@ -3890,6 +4574,39 @@ mod tests {
         }));
         assert!(timeline.nodes.iter().any(|node| {
             node.node.graph_node_id == "root-test:lamb-sheep" && node.relation_companion
+        }));
+
+        let myth_document = NodeDocumentRepository::new(database.connection())
+            .get_node_document("root-test:myth-devil")
+            .expect("read compiled myth document")
+            .expect("myth document exists");
+        assert_eq!(myth_document.content_origin, ContentOrigin::CorpusCompiled);
+        assert!(myth_document.body.contains("The Fear of Formlessness"));
+        let myth_metadata: (String, String, String) = database
+            .connection()
+            .query_row(
+                "SELECT entity_type, historicity, source_kind
+                 FROM graph_node_metadata WHERE graph_node_id='root-test:myth-devil'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("typed myth metadata");
+        assert_eq!(
+            myth_metadata,
+            ("Myth".into(), "mythic".into(), "mythic-image".into())
+        );
+        let place_relationships = relationship_repository
+            .list_involving(&std::collections::BTreeSet::from([
+                "root-test:banda-genocide".to_string(),
+                "root-test:place-banda-islands".to_string(),
+            ]))
+            .expect("read place relation");
+        let place_relation = place_relationships
+            .iter()
+            .find(|relationship| relationship.rel_type == "LOCATED_AT")
+            .expect("Banda place relation");
+        assert!(place_relation.source_coordinates.iter().any(|coordinate| {
+            coordinate == "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md#the-banda-genocide-corporate-sovereignty-s-first-atrocity"
         }));
     }
 
