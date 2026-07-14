@@ -1,7 +1,7 @@
 // apps/desktop/src-tauri/tests/graph_commands.rs
 use research_canvas_desktop_lib::commands::graph::{
-    ConnectGraphNodesRequest, CreateGraphNodeRequest, LoadCanvasViewRequest,
-    UpsertNodeLayoutRequest,
+    ConnectGraphNodesRequest, CreateGraphNodeRequest, DisconnectGraphNodesRequest,
+    LoadCanvasViewRequest, UpsertNodeLayoutRequest,
 };
 
 #[test]
@@ -84,7 +84,30 @@ fn load_canvas_view_request_and_layout_request_deserialize() {
     assert_eq!(layout_with_path.database_path.as_deref(), Some("/tmp/x.db"));
 
     let conn: ConnectGraphNodesRequest = serde_json::from_str(
-        r#"{"sourceGraphNodeId":"a","targetGraphNodeId":"b","relType":"INSTANTIATES","properties":{"dominance":"dominant"}}"#,
+        r#"{"databasePath":"/tmp/relationship.sqlite","sourceGraphNodeId":"a","targetGraphNodeId":"b","relType":"INSTANTIATES","properties":{"dominance":"dominant"},"canonicalKey":"user:a:INSTANTIATES:b","origin":"user_authored","revision":4,"expectedRevision":3,"sourceCoordinates":["vault/a.md#link"],"evidenceTags":["user-curated"]}"#,
     ).expect("conn");
     assert_eq!(conn.rel_type, "INSTANTIATES");
+    assert_eq!(
+        conn.database_path.as_deref(),
+        Some("/tmp/relationship.sqlite")
+    );
+    assert_eq!(conn.canonical_key.as_deref(), Some("user:a:INSTANTIATES:b"));
+    assert_eq!(
+        conn.origin.expect("explicit user owner").as_str(),
+        "user_authored"
+    );
+    assert_eq!(conn.revision, Some(4));
+    assert_eq!(conn.expected_revision, Some(3));
+    assert_eq!(conn.source_coordinates, vec!["vault/a.md#link"]);
+    assert_eq!(conn.evidence_tags, vec!["user-curated"]);
+
+    let disconnect: DisconnectGraphNodesRequest = serde_json::from_str(
+        r#"{"databasePath":"/tmp/relationship.sqlite","relationshipId":"relationship:local"}"#,
+    )
+    .expect("disconnect");
+    assert_eq!(
+        disconnect.database_path.as_deref(),
+        Some("/tmp/relationship.sqlite")
+    );
+    assert_eq!(disconnect.relationship_id, "relationship:local");
 }

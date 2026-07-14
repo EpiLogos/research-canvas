@@ -74,6 +74,75 @@ fn flush_canvas_layout_persists_nodes_edges_and_viewport_in_one_transaction() {
 }
 
 #[test]
+fn flush_canvas_layout_removes_an_omitted_edge_before_a_fresh_reopen() {
+    let dir = tempdir().expect("temp dir");
+    let db_path = dir.path().join("edge-removal.sqlite");
+    let canvas_id = {
+        let database = Database::open(&db_path).expect("open");
+        ConstellationRepository::new(database.connection())
+            .create(
+                "WS1".to_string(),
+                "ws1".to_string(),
+                None,
+                "/tmp/ws1".to_string(),
+                None,
+                None,
+                serde_json::json!({}),
+            )
+            .expect("create project")
+            .primary_canvas_id
+            .expect("canvas")
+    };
+
+    let initial = FlushCanvasLayoutRequest {
+        database_path: db_path.to_string_lossy().to_string(),
+        canvas_id: canvas_id.clone(),
+        layouts: vec![
+            node("n1", &canvas_id, 10.0, 20.0),
+            node("n2", &canvas_id, 30.0, 40.0),
+        ],
+        edges: vec![EdgeLayoutPayload {
+            id: "graph:relationship-1".to_string(),
+            canvas_id: canvas_id.clone(),
+            source_graph_node_id: "n1".to_string(),
+            target_graph_node_id: "n2".to_string(),
+            relation_kind: "INSTANTIATES".to_string(),
+            source_handle_id: None,
+            target_handle_id: None,
+            style_json: "{}".to_string(),
+        }],
+        viewport_json: r#"{"x":0,"y":0,"zoom":1}"#.to_string(),
+        app_state_json: "{}".to_string(),
+    };
+    flush_canvas_layout_at(initial).expect("persist semantic edge presentation");
+
+    // Deleting an edge removes it from the client snapshot. A later flush
+    // must treat that snapshot as authoritative rather than only upserting
+    // its remaining rows, otherwise the deleted edge returns on restart.
+    flush_canvas_layout_at(FlushCanvasLayoutRequest {
+        database_path: db_path.to_string_lossy().to_string(),
+        canvas_id: canvas_id.clone(),
+        layouts: vec![
+            node("n1", &canvas_id, 10.0, 20.0),
+            node("n2", &canvas_id, 30.0, 40.0),
+        ],
+        edges: vec![],
+        viewport_json: r#"{"x":0,"y":0,"zoom":1}"#.to_string(),
+        app_state_json: "{}".to_string(),
+    })
+    .expect("persist removed edge snapshot");
+
+    let reopened = Database::open(&db_path).expect("reopen durable layout");
+    assert!(
+        LayoutRepository::new(reopened.connection())
+            .list_edge_layout(&canvas_id)
+            .expect("read durable edges")
+            .is_empty(),
+        "an omitted semantic edge must not be redrawn after reopening the canvas"
+    );
+}
+
+#[test]
 fn flush_canvas_layout_rolls_back_when_a_node_violates_the_canvas_foreign_key() {
     let dir = tempdir().expect("temp dir");
     let db_path = dir.path().join("rollback.sqlite");

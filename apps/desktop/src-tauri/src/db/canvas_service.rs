@@ -1,11 +1,16 @@
 // apps/desktop/src-tauri/src/db/canvas_service.rs
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 
 use crate::db::{
     connection::Database,
     repositories::{
-        graph::{EntityType, GraphNode, GraphRelationship, GraphRepository},
-        layout::{EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord},
+        graph::{
+            canonical_relationship_key, EntityType, GraphNode, GraphRelationship, GraphRepository,
+        },
+        layout::{CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord},
+        NodeRelationshipRepository,
     },
 };
 
@@ -57,6 +62,19 @@ pub struct CanvasService {
     db_path: String,
 }
 
+/// SQLite's part of a canvas hydration. Keeping this as a single operation is
+/// important: a relationship tombstone is a global semantic assertion, while
+/// a layout row is merely one canvas's presentation of it. In particular,
+/// legacy canvases can contain `graph:<relationship-id>` rows without any
+/// corresponding `node_layout` rows, so endpoint-scoped tombstone queries are
+/// insufficient here.
+struct LocalCanvasProjection {
+    layout_rows: Vec<NodeLayoutRecord>,
+    edge_rows: Vec<EdgeLayoutRecord>,
+    app_state: Option<CanvasAppStateRecord>,
+    tombstones: Vec<GraphRelationship>,
+}
+
 /// Default title used when a layout row has no `__canvasNode` sidecar (or the
 /// sidecar has no usable title) and no matching Neo4j node — should only
 /// happen for layout rows written before the sidecar carried a title.
@@ -83,23 +101,30 @@ impl CanvasService {
         // non-`Send` `Connection`/`LayoutRepository` are dropped before the
         // Neo4j `.await`s below (required for this future to be `Send`,
         // which `#[tauri::command]` needs).
-        let (layout_rows, edge_rows, app_state) = {
-            let db = Database::open(&self.db_path).map_err(|e| e.to_string())?;
-            let conn = db.connection();
-            let layout_repo = LayoutRepository::new(conn);
-            let layout_rows = layout_repo
-                .list_node_layout(canvas_id)
-                .map_err(|e| e.to_string())?;
-            let edge_rows = layout_repo
-                .list_edge_layout(canvas_id)
-                .map_err(|e| e.to_string())?;
-            let app_state = layout_repo
-                .get_app_state(canvas_id)
-                .map_err(|e| e.to_string())?;
-            (layout_rows, edge_rows, app_state)
-        };
+        let LocalCanvasProjection {
+            layout_rows,
+            edge_rows,
+            app_state,
+            tombstones,
+        } = load_local_canvas_projection_at_path(&self.db_path, canvas_id)?;
 
-        let relationships = self.graph.list_relationships().await?;
+        let tombstoned_canonical_keys = tombstones
+            .iter()
+            .map(canonical_key_for_relationship)
+            .collect::<BTreeSet<_>>();
+        // Tombstones form the local delete outbox for canvas reads too. A
+        // stale remote edge must neither reappear nor prevent layout loading;
+        // every online canvas refresh retries its canonical deletion.
+        for tombstone in &tombstones {
+            let _ = self
+                .graph
+                .disconnect_by_canonical_relationship(tombstone)
+                .await;
+        }
+        let relationships = filter_tombstoned_relationships(
+            self.graph.list_relationships().await?,
+            &tombstoned_canonical_keys,
+        );
 
         // 2. Substance from Neo4j, batch-fetched for exactly the layout rows'
         // ids. Contract/decoding failures are fatal: synthesizing on a batch
@@ -175,6 +200,78 @@ impl CanvasService {
             app_state: app_state_json,
         })
     }
+}
+
+fn load_local_canvas_projection_at_path(
+    database_path: impl AsRef<std::path::Path>,
+    canvas_id: &str,
+) -> Result<LocalCanvasProjection, String> {
+    // This scope intentionally ends before callers make Neo4j requests: the
+    // rusqlite connection is not Send, whereas Tauri command futures are.
+    let database = Database::open(database_path).map_err(|error| error.to_string())?;
+    let connection = database.connection();
+    let layout = LayoutRepository::new(connection);
+    let layout_rows = layout
+        .list_node_layout(canvas_id)
+        .map_err(|error| error.to_string())?;
+    let edge_rows = layout
+        .list_edge_layout(canvas_id)
+        .map_err(|error| error.to_string())?;
+    let app_state = layout
+        .get_app_state(canvas_id)
+        .map_err(|error| error.to_string())?;
+    let tombstones = NodeRelationshipRepository::new(connection)
+        .list_tombstones()
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|relationship| relationship.as_graph_relationship())
+        .collect::<Vec<_>>();
+    let tombstoned_layout_edge_ids = tombstones
+        .iter()
+        .map(|relationship| graph_layout_edge_id(&relationship.id))
+        .collect::<BTreeSet<_>>();
+
+    Ok(LocalCanvasProjection {
+        layout_rows,
+        edge_rows: filter_tombstoned_layout_edges(edge_rows, &tombstoned_layout_edge_ids),
+        app_state,
+        tombstones,
+    })
+}
+
+fn canonical_key_for_relationship(relationship: &GraphRelationship) -> String {
+    canonical_relationship_key(
+        &relationship.source_graph_node_id,
+        &relationship.target_graph_node_id,
+        &relationship.rel_type,
+        &relationship.properties,
+    )
+}
+
+fn graph_layout_edge_id(relationship_id: &str) -> String {
+    format!("graph:{relationship_id}")
+}
+
+fn filter_tombstoned_layout_edges(
+    edges: Vec<EdgeLayoutRecord>,
+    tombstoned_layout_edge_ids: &BTreeSet<String>,
+) -> Vec<EdgeLayoutRecord> {
+    edges
+        .into_iter()
+        .filter(|edge| !tombstoned_layout_edge_ids.contains(&edge.id))
+        .collect()
+}
+
+fn filter_tombstoned_relationships(
+    relationships: Vec<GraphRelationship>,
+    tombstoned_canonical_keys: &BTreeSet<String>,
+) -> Vec<GraphRelationship> {
+    relationships
+        .into_iter()
+        .filter(|relationship| {
+            !tombstoned_canonical_keys.contains(&canonical_key_for_relationship(relationship))
+        })
+        .collect()
 }
 
 /// Minimal shape of the `__canvasNode` sidecar stored in `style_json`
@@ -274,5 +371,171 @@ fn edge_dto_from_record(r: EdgeLayoutRecord) -> EdgeLayoutDto {
         source_handle_id: r.source_handle_id,
         target_handle_id: r.target_handle_id,
         style: serde_json::from_str(&r.style_json).unwrap_or_else(|_| serde_json::json!({})),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{
+        connection::Database,
+        repositories::{
+            graph::ContentOrigin, ConstellationRepository, NodeRelationshipRecord,
+            RelationshipMutation, SyncState,
+        },
+        root_archetypal_seed::ensure_root_archetypal_local_projection,
+    };
+
+    fn relationship(id: &str, canonical_key: &str) -> GraphRelationship {
+        GraphRelationship {
+            id: id.into(),
+            rel_type: "INSTANTIATES".into(),
+            source_graph_node_id: "event".into(),
+            target_graph_node_id: "archetype".into(),
+            properties: serde_json::json!({"canonicalKey": canonical_key}),
+        }
+    }
+
+    #[test]
+    fn canvas_relationship_projection_suppresses_remote_edges_with_local_tombstones() {
+        let tombstones = BTreeSet::from(["user:event:INSTANTIATES:archetype".to_string()]);
+        let visible = filter_tombstoned_relationships(
+            vec![
+                relationship("neo4j-stale", "user:event:INSTANTIATES:archetype"),
+                relationship("neo4j-live", "user:event:INSTANTIATES:other"),
+            ],
+            &tombstones,
+        );
+
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].id, "neo4j-live");
+    }
+
+    #[test]
+    fn canvas_layout_projection_suppresses_a_stale_graph_edge_for_a_tombstone() {
+        let tombstoned_layout_edge_ids = BTreeSet::from([graph_layout_edge_id("relationship-1")]);
+        let visible = filter_tombstoned_layout_edges(
+            vec![
+                EdgeLayoutRecord {
+                    id: "graph:relationship-1".into(),
+                    canvas_id: "canvas".into(),
+                    source_graph_node_id: "event".into(),
+                    target_graph_node_id: "archetype".into(),
+                    relation_kind: "INSTANTIATES".into(),
+                    source_handle_id: None,
+                    target_handle_id: None,
+                    style_json: "{}".into(),
+                    created_at: "2026-01-01T00:00:00Z".into(),
+                    updated_at: "2026-01-01T00:00:00Z".into(),
+                },
+                EdgeLayoutRecord {
+                    id: "manual-research-connection".into(),
+                    canvas_id: "canvas".into(),
+                    source_graph_node_id: "event".into(),
+                    target_graph_node_id: "note".into(),
+                    relation_kind: "reference".into(),
+                    source_handle_id: None,
+                    target_handle_id: None,
+                    style_json: "{}".into(),
+                    created_at: "2026-01-01T00:00:00Z".into(),
+                    updated_at: "2026-01-01T00:00:00Z".into(),
+                },
+            ],
+            &tombstoned_layout_edge_ids,
+        );
+
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].id, "manual-research-connection");
+    }
+
+    #[test]
+    fn sqlite_canvas_projection_filters_tombstones_without_node_layout_rows() {
+        let directory = tempfile::tempdir().expect("temporary database directory");
+        let database_path = directory.path().join("canvas-projection.sqlite");
+        let (canvas_id, relationship_id) = {
+            let database = Database::open(&database_path).expect("open migrated database");
+            ensure_root_archetypal_local_projection(
+                database.connection(),
+                &directory.path().to_string_lossy(),
+                "canvas-projection-test",
+            )
+            .expect("project real relationship endpoints into SQLite");
+            let constellation = ConstellationRepository::new(database.connection())
+                .create(
+                    "Legacy presentation".to_string(),
+                    "legacy-presentation".to_string(),
+                    None,
+                    directory.path().to_string_lossy().to_string(),
+                    None,
+                    None,
+                    serde_json::json!({}),
+                )
+                .expect("create constellation with a real canvas");
+            let canvas_id = constellation
+                .primary_canvas_id
+                .expect("constellation primary canvas");
+            let relationship_id = "test:legacy-no-layout-tombstone".to_string();
+            let relationships = NodeRelationshipRepository::new(database.connection());
+            assert_eq!(
+                relationships
+                    .merge(
+                        &NodeRelationshipRecord {
+                            relationship_id: relationship_id.clone(),
+                            source_graph_node_id: "canvas-projection-test:banda-genocide"
+                                .to_string(),
+                            target_graph_node_id: "canvas-projection-test:medici-template"
+                                .to_string(),
+                            rel_type: "INSTANTIATES".to_string(),
+                            properties: serde_json::json!({
+                                "canonicalKey": "test:legacy-no-layout-tombstone"
+                            }),
+                            source_coordinates: vec![],
+                            evidence_tags: vec![],
+                            origin: ContentOrigin::UserAuthored,
+                            sync_state: SyncState::Pending,
+                            revision: 1,
+                            remote_revision: None,
+                            is_tombstone: false,
+                            created_at: None,
+                            updated_at: None,
+                        },
+                        None,
+                    )
+                    .expect("create local semantic relationship"),
+                RelationshipMutation::Created
+            );
+            assert!(relationships
+                .tombstone(&relationship_id)
+                .expect("write relationship tombstone")
+                .is_some());
+            LayoutRepository::new(database.connection())
+                .upsert_edge_layout(&EdgeLayoutRecord {
+                    id: graph_layout_edge_id(&relationship_id),
+                    canvas_id: canvas_id.clone(),
+                    source_graph_node_id: "canvas-projection-test:banda-genocide".to_string(),
+                    target_graph_node_id: "canvas-projection-test:medici-template".to_string(),
+                    relation_kind: "INSTANTIATES".to_string(),
+                    source_handle_id: None,
+                    target_handle_id: None,
+                    style_json: "{}".to_string(),
+                    created_at: "2026-07-14T00:00:00Z".to_string(),
+                    updated_at: "2026-07-14T00:00:00Z".to_string(),
+                })
+                .expect("seed stale legacy semantic presentation");
+            (canvas_id, relationship_id)
+        };
+
+        let projection = load_local_canvas_projection_at_path(&database_path, &canvas_id)
+            .expect("hydrate local canvas boundary");
+        assert!(
+            projection.layout_rows.is_empty(),
+            "the fixture deliberately models a legacy canvas without node layouts"
+        );
+        assert_eq!(projection.tombstones.len(), 1);
+        assert_eq!(projection.tombstones[0].id, relationship_id);
+        assert!(
+            projection.edge_rows.is_empty(),
+            "a global semantic tombstone suppresses graph:<relationship-id> even without endpoints"
+        );
     }
 }

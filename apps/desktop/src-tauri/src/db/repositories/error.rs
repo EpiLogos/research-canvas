@@ -8,6 +8,8 @@ pub enum RepositoryError {
     CorruptData(String),
     #[error("repository storage is busy")]
     Busy,
+    #[error("repository optimistic concurrency conflict: {0}")]
+    Conflict(String),
     #[error("repository storage failed: {0}")]
     Storage(#[source] Error),
 }

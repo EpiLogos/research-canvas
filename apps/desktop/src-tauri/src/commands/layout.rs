@@ -112,10 +112,8 @@ pub fn flush_canvas_layout_at(
             let repo = LayoutRepository::new(&transaction);
             repo.upsert_node_layouts(&node_records)
                 .map_err(|error| error.to_string())?;
-            for edge in &edge_records {
-                repo.upsert_edge_layout(edge)
-                    .map_err(|error| error.to_string())?;
-            }
+            repo.replace_edge_layouts(&request.canvas_id, &edge_records)
+                .map_err(|error| error.to_string())?;
             repo.upsert_app_state(&app_state)
                 .map_err(|error| error.to_string())?;
         }

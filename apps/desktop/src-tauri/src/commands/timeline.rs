@@ -354,7 +354,11 @@ fn merge_relationships_by_canonical_key(
     remote: impl IntoIterator<Item = GraphRelationship>,
 ) -> Vec<GraphRelationship> {
     let mut merged = BTreeMap::new();
-    for relationship in local.into_iter().chain(remote) {
+    // Remote records are opportunistic enrichment. Insert them first so the
+    // locally persisted contract wins on a canonical-key collision: local
+    // ownership/CAS rules are the authority even when a stale Neo4j edge is
+    // still present.
+    for relationship in remote.into_iter().chain(local) {
         let key = canonical_relationship_key(
             &relationship.source_graph_node_id,
             &relationship.target_graph_node_id,
@@ -411,10 +415,22 @@ fn rebuild_timeline_relation_companions(
 fn apply_remote_timeline_enrichment(
     view: &mut TimelineView,
     remote: Result<(Vec<GraphRelationship>, Vec<GraphNode>), String>,
+    tombstoned_canonical_keys: &BTreeSet<String>,
 ) {
     let Ok((remote_relationships, remote_nodes)) = remote else {
         return;
     };
+    let remote_relationships = remote_relationships
+        .into_iter()
+        .filter(|relationship| {
+            !tombstoned_canonical_keys.contains(&canonical_relationship_key(
+                &relationship.source_graph_node_id,
+                &relationship.target_graph_node_id,
+                &relationship.rel_type,
+                &relationship.properties,
+            ))
+        })
+        .collect::<Vec<_>>();
     view.relationships = merge_relationships_by_canonical_key(
         std::mem::take(&mut view.relationships),
         remote_relationships,
@@ -513,10 +529,12 @@ pub fn load_timeline_view_at_path(
         .iter()
         .map(|node| node.node.graph_node_id.clone())
         .collect::<BTreeSet<_>>();
-    let relationships = NodeRelationshipRepository::new(database.connection())
+    let persisted_relationships = NodeRelationshipRepository::new(database.connection())
         .list_involving(&temporal_ids)
-        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())?;
+    let relationships = persisted_relationships
         .into_iter()
+        .filter(|relationship| !relationship.is_tombstone)
         .map(|relationship| relationship.as_graph_relationship())
         .collect::<Vec<_>>();
     let companion_ids = relationships
@@ -571,6 +589,23 @@ pub fn load_timeline_view_at_path(
         lanes: lane_ids.into_iter().map(|id| TimelineLane { id }).collect(),
         diagnostics,
     })
+}
+
+fn local_relationship_tombstones_at_path(
+    path: impl AsRef<std::path::Path>,
+    temporal_ids: &BTreeSet<String>,
+) -> Result<Vec<GraphRelationship>, String> {
+    let database = Database::open(path).map_err(|error| error.to_string())?;
+    NodeRelationshipRepository::new(database.connection())
+        .list_involving(temporal_ids)
+        .map_err(|error| error.to_string())
+        .map(|relationships| {
+            relationships
+                .into_iter()
+                .filter(|relationship| relationship.is_tombstone)
+                .map(|relationship| relationship.as_graph_relationship())
+                .collect()
+        })
 }
 
 fn matches_filters(
@@ -702,7 +737,7 @@ pub async fn load_timeline_view_command(
         .db_path
         .clone()
         .ok_or_else(|| "App not bootstrapped yet".to_string())?;
-    let mut view = load_timeline_view_at_path(path, request)?;
+    let mut view = load_timeline_view_at_path(&path, request)?;
     // Keep the timeline usable in a local/offline bootstrap, but when the
     // canonical graph is available carry the real temporal links with the
     // temporal nodes. This keeps the timeline its own first-class lens rather
@@ -718,6 +753,30 @@ pub async fn load_timeline_view_command(
             .filter(|node| !node.relation_companion)
             .map(|node| node.node.graph_node_id.as_str())
             .collect::<std::collections::BTreeSet<_>>();
+        let tombstones = local_relationship_tombstones_at_path(
+            &path,
+            &temporal_ids
+                .iter()
+                .map(|graph_node_id| (*graph_node_id).to_string())
+                .collect(),
+        )?;
+        let tombstoned_canonical_keys = tombstones
+            .iter()
+            .map(|relationship| {
+                canonical_relationship_key(
+                    &relationship.source_graph_node_id,
+                    &relationship.target_graph_node_id,
+                    &relationship.rel_type,
+                    &relationship.properties,
+                )
+            })
+            .collect::<BTreeSet<_>>();
+        // A pending tombstone is its own durable delete outbox: every online
+        // timeline refresh retries the canonical remote deletion, while the
+        // local tombstone continues to suppress stale remote read results.
+        for tombstone in &tombstones {
+            let _ = graph.disconnect_by_canonical_relationship(tombstone).await;
+        }
         let remote_relationships = match graph
             .relationships_involving(
                 &temporal_ids
@@ -763,7 +822,11 @@ pub async fn load_timeline_view_command(
                 Err(_) => return Ok(view),
             }
         };
-        apply_remote_timeline_enrichment(&mut view, Ok((remote_relationships, remote_nodes)));
+        apply_remote_timeline_enrichment(
+            &mut view,
+            Ok((remote_relationships, remote_nodes)),
+            &tombstoned_canonical_keys,
+        );
     }
     Ok(view)
 }
@@ -862,6 +925,7 @@ mod local_relationship_projection_tests {
             sync_state: SyncState::Pending,
             revision: 1,
             remote_revision: None,
+            is_tombstone: false,
             created_at: None,
             updated_at: None,
         }
@@ -1084,7 +1148,10 @@ mod local_relationship_projection_tests {
             "sqlite-relationship-17",
             "event-1888",
             "archetype-antichrist",
-            serde_json::json!({"seed_key": "root:event-1888:INSTANTIATES:antichrist"}),
+            serde_json::json!({
+                "seed_key": "root:event-1888:INSTANTIATES:antichrist",
+                "reading": "locally-authoritative user reading",
+            }),
         );
         let mut local_view = TimelineView {
             workspace_id: "sqlite:/offline".into(),
@@ -1112,7 +1179,11 @@ mod local_relationship_projection_tests {
                 .map(|relationship| relationship.id.clone())
                 .collect::<BTreeSet<_>>(),
         );
-        apply_remote_timeline_enrichment(&mut local_view, Err("Bolt unavailable".into()));
+        apply_remote_timeline_enrichment(
+            &mut local_view,
+            Err("Bolt unavailable".into()),
+            &BTreeSet::new(),
+        );
         assert_eq!(
             local_view
                 .nodes
@@ -1135,15 +1206,26 @@ mod local_relationship_projection_tests {
             "neo4j-element-id-9:17",
             "event-1888",
             "archetype-antichrist",
-            serde_json::json!({"seed_key": "root:event-1888:INSTANTIATES:antichrist"}),
+            serde_json::json!({
+                "seed_key": "root:event-1888:INSTANTIATES:antichrist",
+                "reading": "stale remote reading",
+            }),
         );
-        apply_remote_timeline_enrichment(&mut local_view, Ok((vec![remote_copy], vec![archetype])));
+        apply_remote_timeline_enrichment(
+            &mut local_view,
+            Ok((vec![remote_copy], vec![archetype])),
+            &BTreeSet::new(),
+        );
         assert_eq!(
             local_view.relationships.len(),
             1,
             "local and remote copies are one semantic edge"
         );
-        assert_eq!(local_view.relationships[0].id, "neo4j-element-id-9:17");
+        assert_eq!(local_view.relationships[0].id, "sqlite-relationship-17");
+        assert_eq!(
+            local_view.relationships[0].properties["reading"], "locally-authoritative user reading",
+            "remote enrichment must not replace a local relationship contract",
+        );
         assert!(local_view.nodes.iter().any(|node| {
             node.node.graph_node_id == "archetype-antichrist" && node.relation_companion
         }));
@@ -1156,5 +1238,35 @@ mod local_relationship_projection_tests {
             presentation_ids.contains(relationship.source_graph_node_id.as_str())
                 && presentation_ids.contains(relationship.target_graph_node_id.as_str())
         }));
+    }
+
+    #[test]
+    fn tombstoned_local_canonical_key_suppresses_a_stale_remote_relationship() {
+        let event = projected_node("event-1888", EntityType::Event, true);
+        let archetype = projected_node("archetype-antichrist", EntityType::Archetype, false);
+        let stale_remote = timeline_relationship(
+            "neo4j-stale-deleted-edge",
+            "event-1888",
+            "archetype-antichrist",
+            serde_json::json!({"canonicalKey": "user:event-1888:INSTANTIATES:archetype-antichrist"}),
+        );
+        let tombstoned_canonical_keys =
+            BTreeSet::from(["user:event-1888:INSTANTIATES:archetype-antichrist".to_string()]);
+        let mut local_view = TimelineView {
+            workspace_id: "sqlite:/offline-delete".into(),
+            nodes: vec![temporal_timeline_node(event)],
+            relationships: vec![],
+            lanes: vec![],
+            diagnostics: vec![],
+        };
+
+        apply_remote_timeline_enrichment(
+            &mut local_view,
+            Ok((vec![stale_remote], vec![archetype])),
+            &tombstoned_canonical_keys,
+        );
+
+        assert!(local_view.relationships.is_empty());
+        assert_eq!(local_view.nodes.len(), 1, "no stale companion is surfaced");
     }
 }

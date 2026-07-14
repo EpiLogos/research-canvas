@@ -1,7 +1,9 @@
 // apps/desktop/src-tauri/src/db/repositories/graph.rs
 use serde::{Deserialize, Serialize};
 
-pub(crate) use super::relationship_vocabulary::{canonical_relationship_key, validate_rel_type};
+pub(crate) use super::relationship_vocabulary::{
+    canonical_relationship_key, canonicalize_relationship_properties, validate_rel_type,
+};
 
 macro_rules! controlled_string_enum {
     ($name:ident { $($variant:ident => $value:literal),+ $(,)? }) => {
@@ -384,6 +386,7 @@ pub struct SeedGraphNode {
 
 use neo4rs::query;
 
+#[derive(Clone)]
 pub struct GraphRepository {
     graph: crate::db::neo4j::SharedGraph,
     database: String,
@@ -1311,12 +1314,18 @@ impl GraphRepository {
             rel,
             properties,
         )?;
+        let canonical_key = canonical_relationship_key(
+            source_graph_node_id,
+            target_graph_node_id,
+            rel,
+            &properties,
+        );
         // Properties are a JSON object; serialize to an APOC map after adding
         // the durable canonical key used to reconcile local and remote copies.
         let props_str = serde_json::to_string(&properties).map_err(|e| e.to_string())?;
         let cypher = format!(
             "MATCH (s:TheoryNode {{graph_node_id: $src}}), (t {{graph_node_id: $tgt}}) \
-             CREATE (s)-[r:{rel}]->(t) \
+             MERGE (s)-[r:{rel} {{canonicalKey: $canonical_key}}]->(t) \
              SET r += apoc.convert.fromJsonMap($props) \
              RETURN elementId(r) AS id, type(r) AS rel_type, \
                     s.graph_node_id AS src, t.graph_node_id AS tgt, $props AS props"
@@ -1324,6 +1333,7 @@ impl GraphRepository {
         let q = query(&cypher)
             .param("src", source_graph_node_id.to_string())
             .param("tgt", target_graph_node_id.to_string())
+            .param("canonical_key", canonical_key)
             .param("props", props_str);
         let mut rows = self
             .graph
@@ -1476,6 +1486,39 @@ impl GraphRepository {
             .run_on(&self.database, q)
             .await
             .map_err(|e| format!("disconnect failed: {e}"))?;
+        Ok(())
+    }
+
+    /// Deletes a remotely projected edge by its semantic contract, never by a
+    /// locally generated SQLite id. The caller already removed the local
+    /// authoritative row; an unavailable or stale remote is deliberately
+    /// non-fatal at that boundary.
+    pub async fn disconnect_by_canonical_relationship(
+        &self,
+        relationship: &GraphRelationship,
+    ) -> Result<(), String> {
+        let rel = validate_rel_type(&relationship.rel_type)?;
+        let canonical_key = canonical_relationship_key(
+            &relationship.source_graph_node_id,
+            &relationship.target_graph_node_id,
+            rel,
+            &relationship.properties,
+        );
+        let cypher = format!(
+            "MATCH (s:TheoryNode {{graph_node_id: $src}})-[r:{rel}]->(t:TheoryNode {{graph_node_id: $tgt}}) \
+             WHERE coalesce(r.canonicalKey, r.canonical_key, r.seed_key) = $canonical_key \
+             DELETE r"
+        );
+        self.graph
+            .run_on(
+                &self.database,
+                query(&cypher)
+                    .param("src", relationship.source_graph_node_id.clone())
+                    .param("tgt", relationship.target_graph_node_id.clone())
+                    .param("canonical_key", canonical_key),
+            )
+            .await
+            .map_err(|error| format!("disconnect_by_canonical_relationship failed: {error}"))?;
         Ok(())
     }
 
@@ -1715,25 +1758,12 @@ fn relationship_properties_with_canonical_key(
     rel_type: &str,
     properties: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    let mut properties = properties
-        .as_object()
-        .cloned()
-        .ok_or_else(|| "relationship properties must be a JSON object".to_string())?;
-    if !properties.contains_key("canonicalKey")
-        && !properties.contains_key("canonical_key")
-        && !properties.contains_key("seed_key")
-    {
-        properties.insert(
-            "canonicalKey".into(),
-            serde_json::Value::String(canonical_relationship_key(
-                source_graph_node_id,
-                target_graph_node_id,
-                rel_type,
-                &serde_json::Value::Object(properties.clone()),
-            )),
-        );
-    }
-    Ok(serde_json::Value::Object(properties))
+    canonicalize_relationship_properties(
+        source_graph_node_id,
+        target_graph_node_id,
+        rel_type,
+        properties,
+    )
 }
 
 #[cfg(test)]

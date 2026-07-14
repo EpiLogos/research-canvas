@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     env, fs,
     path::{Path, PathBuf},
 };
@@ -14,8 +15,9 @@ use crate::{
         connection::Database,
         repositories::{
             AnnotationRepository, CanvasGraphRepository, Constellation, ConstellationRepository,
-            EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord, ResourceRootRecord,
-            ResourceRootRepository, SavedSequenceRecord, SavedSequenceRepository,
+            EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord, NodeRelationshipRepository,
+            ResourceRootRecord, ResourceRootRepository, SavedSequenceRecord,
+            SavedSequenceRepository,
         },
         root_archetypal_seed::ensure_root_archetypal_local_projection,
     },
@@ -370,8 +372,13 @@ pub fn load_constellation_document_at(
     let snapshot = graph
         .load_canvas_snapshot(&canvas_id)
         .map_err(|error| error.to_string())?;
+    let tombstoned_semantic_edge_ids = tombstoned_semantic_edge_ids(database.connection())?;
     let layout_nodes = layout_node_payloads(database.connection(), &canvas_id)?;
-    let layout_edges = layout_edge_payloads(database.connection(), &canvas_id)?;
+    let layout_edges = layout_edge_payloads(
+        database.connection(),
+        &canvas_id,
+        &tombstoned_semantic_edge_ids,
+    )?;
 
     let annotations = AnnotationRepository::new(database.connection())
         .list_for_canvas(&canvas_id)
@@ -385,14 +392,16 @@ pub fn load_constellation_document_at(
             .map(node_payload)
             .collect::<Result<Vec<_>, _>>()?
     };
-    let edges = if snapshot.edges.is_empty() {
+    let snapshot_edges = snapshot
+        .edges
+        .into_iter()
+        .filter(|edge| !tombstoned_semantic_edge_ids.contains(&edge.id))
+        .map(edge_payload)
+        .collect::<Result<Vec<_>, _>>()?;
+    let edges = if snapshot_edges.is_empty() {
         layout_edges
     } else {
-        snapshot
-            .edges
-            .into_iter()
-            .map(edge_payload)
-            .collect::<Result<Vec<_>, _>>()?
+        snapshot_edges
     };
 
     Ok(ConstellationDocumentPayload {
@@ -941,13 +950,35 @@ fn layout_node_payloads(
 fn layout_edge_payloads(
     connection: &Connection,
     canvas_id: &str,
+    tombstoned_layout_edge_ids: &BTreeSet<String>,
 ) -> Result<Vec<CanvasEdgePayload>, String> {
-    LayoutRepository::new(connection)
+    let layout = LayoutRepository::new(connection);
+    // A legacy canvas document has no semantic edge snapshot of its own and
+    // falls back to edge_layout. Suppress only layout rows whose exact graph
+    // relationship has a local tombstone; unrelated/manual rows retain their
+    // historical presentation and remain available to the reader.
+    layout
         .list_edge_layout(canvas_id)
         .map_err(|error| error.to_string())?
         .into_iter()
+        .filter(|edge| !tombstoned_layout_edge_ids.contains(&edge.id))
         .map(layout_edge_payload)
         .collect()
+}
+
+/// `canvas_edges` (older substance snapshots) and `edge_layout` (the current
+/// presentation store) encode semantic relation drawings as
+/// `graph:<local-relationship-id>`. Keep their tombstone filter in one place
+/// so either legacy load path cannot revive a deleted local assertion.
+fn tombstoned_semantic_edge_ids(connection: &Connection) -> Result<BTreeSet<String>, String> {
+    let relationships = NodeRelationshipRepository::new(connection)
+        .list_tombstones()
+        .map_err(|error| error.to_string())?;
+    Ok(relationships
+        .into_iter()
+        .filter(|relationship| relationship.is_tombstone)
+        .map(|relationship| format!("graph:{}", relationship.relationship_id))
+        .collect())
 }
 
 fn layout_node_payload(record: NodeLayoutRecord) -> Result<CanvasNodePayload, String> {

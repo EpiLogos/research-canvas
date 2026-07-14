@@ -12,11 +12,15 @@ fn open_temp_database() -> (TempDir, Database) {
 }
 
 fn make_canvas(database: &Database) -> String {
+    make_canvas_with_slug(database, "ws1")
+}
+
+fn make_canvas_with_slug(database: &Database, slug: &str) -> String {
     let projects = ConstellationRepository::new(database.connection());
     let project = projects
         .create(
-            "WS1".to_string(),
-            "ws1".to_string(),
+            format!("Workspace {slug}"),
+            slug.to_string(),
             None,
             "/tmp/ws1".to_string(),
             None,
@@ -101,10 +105,49 @@ fn edge_layout_upserts_updates_in_place_and_deletes() {
     assert_eq!(after_update.len(), 1);
     assert_eq!(after_update[0].relation_kind, "opposes");
 
-    repo.delete_edge_layout("e1").expect("delete edge");
+    repo.delete_edge_layout(&canvas_id, "e1")
+        .expect("delete edge");
     assert!(repo
         .list_edge_layout(&canvas_id)
         .expect("list empty")
+        .is_empty());
+}
+
+#[test]
+fn semantic_edge_layouts_are_scoped_to_the_canvas_not_the_relationship_id() {
+    let (_dir, database) = open_temp_database();
+    let first_canvas_id = make_canvas(&database);
+    let second_canvas_id = make_canvas_with_slug(&database, "ws2");
+    let repo = LayoutRepository::new(database.connection());
+    let semantic_layout_id = "graph:relationship-shared-across-canvases";
+
+    repo.upsert_edge_layout(&edge(semantic_layout_id, &first_canvas_id, "INSTANTIATES"))
+        .expect("persist first canvas presentation");
+    repo.upsert_edge_layout(&edge(semantic_layout_id, &second_canvas_id, "ECHOES"))
+        .expect("persist second canvas presentation");
+
+    let first = repo
+        .list_edge_layout(&first_canvas_id)
+        .expect("read first canvas layouts");
+    let second = repo
+        .list_edge_layout(&second_canvas_id)
+        .expect("read second canvas layouts");
+    assert_eq!(first.len(), 1, "second canvas must not move first row");
+    assert_eq!(first[0].relation_kind, "INSTANTIATES");
+    assert_eq!(second.len(), 1);
+    assert_eq!(second[0].relation_kind, "ECHOES");
+
+    repo.delete_edge_layout(&second_canvas_id, semantic_layout_id)
+        .expect("remove only the second presentation");
+    assert_eq!(
+        repo.list_edge_layout(&first_canvas_id)
+            .expect("first presentation remains")
+            .len(),
+        1
+    );
+    assert!(repo
+        .list_edge_layout(&second_canvas_id)
+        .expect("second presentation removed")
         .is_empty());
 }
 

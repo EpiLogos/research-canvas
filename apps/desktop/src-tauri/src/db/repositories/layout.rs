@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
 
@@ -121,8 +123,7 @@ impl<'conn> LayoutRepository<'conn> {
                 id, canvas_id, source_graph_node_id, target_graph_node_id, relation_kind,
                 source_handle_id, target_handle_id, style_json, created_at, updated_at
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-             ON CONFLICT(id) DO UPDATE SET
-                canvas_id            = excluded.canvas_id,
+             ON CONFLICT(canvas_id, id) DO UPDATE SET
                 source_graph_node_id = excluded.source_graph_node_id,
                 target_graph_node_id = excluded.target_graph_node_id,
                 relation_kind        = excluded.relation_kind,
@@ -146,10 +147,58 @@ impl<'conn> LayoutRepository<'conn> {
         Ok(())
     }
 
-    pub fn delete_edge_layout(&self, id: &str) -> Result<()> {
-        self.connection
-            .execute("DELETE FROM edge_layout WHERE id = ?1", params![id])?;
+    /// Reconciles the complete edge snapshot for one canvas. Layout writes
+    /// are authoritative presentations, not an append-only event stream: an
+    /// edge omitted by the client must be removed before the next hydration
+    /// can redraw it.
+    ///
+    /// Call this inside the caller's transaction with all current canvas
+    /// edges. The canvas-id check prevents a malformed mixed-canvas snapshot
+    /// from deleting a valid edge in a different canvas.
+    pub fn replace_edge_layouts(
+        &self,
+        canvas_id: &str,
+        records: &[EdgeLayoutRecord],
+    ) -> Result<()> {
+        if let Some(record) = records.iter().find(|record| record.canvas_id != canvas_id) {
+            return Err(rusqlite::Error::InvalidParameterName(format!(
+                "edge layout {} belongs to canvas {}, not {canvas_id}",
+                record.id, record.canvas_id
+            )));
+        }
+
+        let retained_ids = records
+            .iter()
+            .map(|record| record.id.as_str())
+            .collect::<BTreeSet<_>>();
+        for existing in self.list_edge_layout(canvas_id)? {
+            if !retained_ids.contains(existing.id.as_str()) {
+                self.delete_edge_layout(canvas_id, &existing.id)?;
+            }
+        }
+        for record in records {
+            self.upsert_edge_layout(record)?;
+        }
         Ok(())
+    }
+
+    /// Deletes exactly one canvas-scoped presentation row.
+    pub fn delete_edge_layout(&self, canvas_id: &str, id: &str) -> Result<()> {
+        self.connection.execute(
+            "DELETE FROM edge_layout WHERE canvas_id = ?1 AND id = ?2",
+            params![canvas_id, id],
+        )?;
+        Ok(())
+    }
+
+    /// A semantic relationship deletion is global: remove every canvas
+    /// presentation of its reserved `graph:<relationship-id>` layout key.
+    /// Manual edge ids never match that key and remain untouched.
+    pub fn delete_edge_layouts_by_id(&self, id: &str) -> Result<usize> {
+        let deleted = self
+            .connection
+            .execute("DELETE FROM edge_layout WHERE id = ?1", params![id])?;
+        Ok(deleted)
     }
 
     pub fn get_app_state(&self, canvas_id: &str) -> Result<Option<CanvasAppStateRecord>> {

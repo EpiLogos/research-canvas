@@ -78,6 +78,14 @@ const MIGRATIONS: &[Migration] = &[
             "../../migrations/0016_graph_relationship_structural_vocabulary_repair.sql"
         ),
     },
+    Migration {
+        version: "0017_graph_relationship_tombstones",
+        sql: include_str!("../../migrations/0017_graph_relationship_tombstones.sql"),
+    },
+    Migration {
+        version: "0018_canvas_scoped_edge_layout",
+        sql: include_str!("../../migrations/0018_canvas_scoped_edge_layout.sql"),
+    },
 ];
 
 impl MigrationRunner {

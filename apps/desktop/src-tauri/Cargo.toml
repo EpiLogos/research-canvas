@@ -33,6 +33,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }

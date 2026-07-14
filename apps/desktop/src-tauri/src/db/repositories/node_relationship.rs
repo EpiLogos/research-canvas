@@ -34,6 +34,9 @@ pub struct NodeRelationshipRecord {
     pub sync_state: SyncState,
     pub revision: i64,
     pub remote_revision: Option<i64>,
+    /// A local, durable deletion intent. Tombstones retain the canonical
+    /// contract so stale remote projections can be suppressed and retried.
+    pub is_tombstone: bool,
     #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
@@ -87,7 +90,8 @@ impl<'conn> NodeRelationshipRepository<'conn> {
             .query_row(
                 "SELECT relationship_id, source_graph_node_id, target_graph_node_id, rel_type,
                         properties_json, source_coordinates_json, evidence_tags_json, origin,
-                        sync_state, relationship_revision, remote_revision, created_at, updated_at
+                        sync_state, relationship_revision, remote_revision, created_at, updated_at,
+                        is_tombstone
                  FROM graph_relationship WHERE relationship_id=?1",
                 [relationship_id],
                 relationship_from_row,
@@ -116,7 +120,8 @@ impl<'conn> NodeRelationshipRepository<'conn> {
         let sql = format!(
             "SELECT relationship_id, source_graph_node_id, target_graph_node_id, rel_type,
                     properties_json, source_coordinates_json, evidence_tags_json, origin,
-                    sync_state, relationship_revision, remote_revision, created_at, updated_at
+                    sync_state, relationship_revision, remote_revision, created_at, updated_at,
+                    is_tombstone
              FROM graph_relationship
              WHERE source_graph_node_id IN ({placeholders})
                 OR target_graph_node_id IN ({placeholders})
@@ -127,6 +132,23 @@ impl<'conn> NodeRelationshipRepository<'conn> {
             rusqlite::params_from_iter(graph_node_ids.iter()),
             relationship_from_row,
         )?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// A relationship tombstone is global, not canvas-local. Legacy canvas
+    /// substance can lack a node_layout row, so readers need this indexed
+    /// outbox view to suppress `graph:<relationship-id>` consistently.
+    pub fn list_tombstones(&self) -> RepositoryResult<Vec<NodeRelationshipRecord>> {
+        let mut statement = self.connection.prepare(
+            "SELECT relationship_id, source_graph_node_id, target_graph_node_id, rel_type,
+                    properties_json, source_coordinates_json, evidence_tags_json, origin,
+                    sync_state, relationship_revision, remote_revision, created_at, updated_at,
+                    is_tombstone
+             FROM graph_relationship
+             WHERE is_tombstone=1
+             ORDER BY relationship_id",
+        )?;
+        let rows = statement.query_map([], relationship_from_row)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
@@ -156,8 +178,8 @@ impl<'conn> NodeRelationshipRepository<'conn> {
                 "INSERT INTO graph_relationship(
                     relationship_id, source_graph_node_id, target_graph_node_id, rel_type,
                     properties_json, source_coordinates_json, evidence_tags_json, origin,
-                    sync_state, relationship_revision, remote_revision
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                    sync_state, relationship_revision, remote_revision, is_tombstone
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
                  ON CONFLICT(relationship_id) DO NOTHING",
                 record_params(incoming)?,
             )?;
@@ -176,6 +198,12 @@ impl<'conn> NodeRelationshipRepository<'conn> {
         };
 
         if same_contract(&current, incoming) {
+            return Ok(RelationshipMutation::Preserved);
+        }
+        // A corpus/seed replay must never resurrect an explicit local delete.
+        // Authored reconnection is allowed only with a higher revision and the
+        // normal expected-revision CAS below.
+        if current.is_tombstone && incoming.origin != ContentOrigin::UserAuthored {
             return Ok(RelationshipMutation::Preserved);
         }
         if current.origin == ContentOrigin::UserAuthored
@@ -207,8 +235,8 @@ impl<'conn> NodeRelationshipRepository<'conn> {
                 source_graph_node_id=?2, target_graph_node_id=?3, rel_type=?4,
                 properties_json=?5, source_coordinates_json=?6, evidence_tags_json=?7,
                 origin=?8, sync_state=?9, relationship_revision=?10, remote_revision=?11,
-                updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
-             WHERE relationship_id=?1 AND relationship_revision=?12",
+                is_tombstone=?12, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE relationship_id=?1 AND relationship_revision=?13",
             update_params(incoming, current.revision)?,
         )?;
         if affected == 1 {
@@ -222,6 +250,41 @@ impl<'conn> NodeRelationshipRepository<'conn> {
             current_revision,
             reason: "relationship changed during merge".into(),
         })
+    }
+
+    /// Sets a durable tombstone instead of physically deleting the local
+    /// projection. The returned relationship preserves its canonical key for
+    /// remote delete retries; exact delete replays retain the same tombstone.
+    pub fn tombstone(
+        &self,
+        relationship_id: &str,
+    ) -> RepositoryResult<Option<(NodeRelationshipRecord, bool)>> {
+        let Some(record) = self.get(relationship_id)? else {
+            return Ok(None);
+        };
+        if record.is_tombstone {
+            return Ok(Some((record, false)));
+        }
+        let tombstone_revision = record.revision.checked_add(1).ok_or_else(|| {
+            RepositoryError::Validation(
+                "relationship revision cannot exceed the safe integer range".into(),
+            )
+        })?;
+        let affected = self.connection.execute(
+            "UPDATE graph_relationship
+             SET is_tombstone=1, sync_state='pending', remote_revision=NULL,
+                 relationship_revision=?2,
+                 updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE relationship_id=?1 AND relationship_revision=?3",
+            rusqlite::params![relationship_id, tombstone_revision, record.revision],
+        )?;
+        if affected == 1 {
+            Ok(Some((record, true)))
+        } else {
+            Err(RepositoryError::Conflict(format!(
+                "relationship changed while writing tombstone: {relationship_id}"
+            )))
+        }
     }
 }
 
@@ -237,11 +300,12 @@ fn same_contract(left: &NodeRelationshipRecord, right: &NodeRelationshipRecord) 
         && left.sync_state == right.sync_state
         && left.revision == right.revision
         && left.remote_revision == right.remote_revision
+        && left.is_tombstone == right.is_tombstone
 }
 
 fn record_params(
     record: &NodeRelationshipRecord,
-) -> RepositoryResult<[rusqlite::types::Value; 11]> {
+) -> RepositoryResult<[rusqlite::types::Value; 12]> {
     Ok([
         record.relationship_id.clone().into(),
         record.source_graph_node_id.clone().into(),
@@ -257,14 +321,15 @@ fn record_params(
             Some(revision) => revision.into(),
             None => rusqlite::types::Value::Null,
         },
+        record.is_tombstone.into(),
     ])
 }
 
 fn update_params(
     record: &NodeRelationshipRecord,
     current_revision: i64,
-) -> RepositoryResult<[rusqlite::types::Value; 12]> {
-    let [id, source, target, rel_type, properties, coordinates, tags, origin, sync, revision, remote] =
+) -> RepositoryResult<[rusqlite::types::Value; 13]> {
+    let [id, source, target, rel_type, properties, coordinates, tags, origin, sync, revision, remote, tombstone] =
         record_params(record)?;
     Ok([
         id,
@@ -278,6 +343,7 @@ fn update_params(
         sync,
         revision,
         remote,
+        tombstone,
         current_revision.into(),
     ])
 }
@@ -359,6 +425,7 @@ fn relationship_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<NodeRelati
         remote_revision: row.get(10)?,
         created_at: row.get(11)?,
         updated_at: row.get(12)?,
+        is_tombstone: row.get::<_, i64>(13)? != 0,
     })
 }
 
@@ -465,6 +532,7 @@ mod tests {
             sync_state: SyncState::Pending,
             revision,
             remote_revision: None,
+            is_tombstone: false,
             created_at: None,
             updated_at: None,
         }
@@ -562,6 +630,7 @@ mod tests {
             sync_state: SyncState::Pending,
             revision: 1,
             remote_revision: None,
+            is_tombstone: false,
             created_at: None,
             updated_at: None,
         };

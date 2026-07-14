@@ -160,8 +160,20 @@ describe("linkMarkdownFileToNode", () => {
     const { deps, compareAndSwapGraphNodeContent } = makeDeps(node);
     const createGraphNode = deps.createGraphNode as ReturnType<typeof vi.fn>;
     const connectGraphNodes = deps.connectGraphNodes as ReturnType<typeof vi.fn>;
-    createGraphNode.mockResolvedValueOnce(
-      makeNode({ graphNodeId: "src1", entityType: "Source", title: "notes.md" }),
+    (deps.upsertLocalNodeDocument as ReturnType<typeof vi.fn>).mockImplementationOnce(async (input) => ({
+      mutation: { kind: "created" as const },
+      document: {
+        graphNodeId: input.graphNodeId,
+        body: input.body,
+        summary: input.summary,
+        neo4jSynced: false,
+        contentOrigin: "user_authored" as const,
+        contentRevision: input.contentRevision!,
+        bodySourceCoordinates: input.bodySourceCoordinates ?? [],
+      },
+    }));
+    createGraphNode.mockImplementationOnce(async (input) =>
+      makeNode({ graphNodeId: input.graphNodeId!, entityType: "Source", title: "notes.md" }),
     );
     const actions = createContentLinkingActions(deps);
 
@@ -174,18 +186,62 @@ describe("linkMarkdownFileToNode", () => {
     const createArg = createGraphNode.mock.calls[0][0];
     expect(createArg.entityType).toBe("Source");
     expect(createArg.title).toBe("notes.md");
+    expect(createArg.graphNodeId).toEqual(expect.any(String));
     expect(JSON.parse(createArg.body)).toEqual([
       { type: "heading", props: { level: 1 }, content: [{ type: "text", text: "Heading" }] },
       { type: "paragraph", content: [{ type: "text", text: "body text" }] },
     ]);
 
     expect(connectGraphNodes).toHaveBeenCalledWith({
+      databasePath: "/tmp/workspace.sqlite",
       sourceGraphNodeId: "n1",
-      targetGraphNodeId: "src1",
+      targetGraphNodeId: createArg.graphNodeId,
       relType: "SOURCED_FROM",
     });
 
+    expect(deps.upsertLocalNodeDocument).toHaveBeenCalledWith(expect.objectContaining({
+      databasePath: "/tmp/workspace.sqlite",
+      graphNodeId: createArg.graphNodeId,
+      contentOrigin: "user_authored",
+      contentRevision: 0,
+      metadataProjection: { entityType: "Source", title: "notes.md", schemaVersion: 1 },
+    }));
+
     expect(compareAndSwapGraphNodeContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates the durable local SOURCED_FROM edge when remote Source projection is unavailable", async () => {
+    const node = makeNode({ graphNodeId: "n1", body: "[]" });
+    const { deps } = makeDeps(node);
+    const createGraphNode = deps.createGraphNode as ReturnType<typeof vi.fn>;
+    const connectGraphNodes = deps.connectGraphNodes as ReturnType<typeof vi.fn>;
+    (deps.upsertLocalNodeDocument as ReturnType<typeof vi.fn>).mockImplementationOnce(async (input) => ({
+      mutation: { kind: "created" as const },
+      document: {
+        graphNodeId: input.graphNodeId,
+        body: input.body,
+        summary: input.summary,
+        neo4jSynced: false,
+        contentOrigin: "user_authored" as const,
+        contentRevision: input.contentRevision!,
+        bodySourceCoordinates: input.bodySourceCoordinates ?? [],
+      },
+    }));
+    createGraphNode.mockRejectedValueOnce(new Error("graph service unavailable"));
+
+    await createContentLinkingActions(deps).linkMarkdownFileToNode({
+      graphNodeId: "n1",
+      fileName: "offline-source.md",
+      markdown: "# Durable source",
+    });
+
+    const localSourceId = (deps.upsertLocalNodeDocument as ReturnType<typeof vi.fn>).mock.calls[0][0].graphNodeId;
+    expect(connectGraphNodes).toHaveBeenCalledWith({
+      databasePath: "/tmp/workspace.sqlite",
+      sourceGraphNodeId: "n1",
+      targetGraphNodeId: localSourceId,
+      relType: "SOURCED_FROM",
+    });
   });
 });
 
@@ -203,6 +259,7 @@ describe("linkNodes", () => {
     });
 
     expect(connectGraphNodes).toHaveBeenCalledWith({
+      databasePath: "/tmp/workspace.sqlite",
       sourceGraphNodeId: "n1",
       targetGraphNodeId: "n2",
       relType: "INSTANTIATES",

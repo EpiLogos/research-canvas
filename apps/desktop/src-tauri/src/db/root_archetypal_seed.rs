@@ -9,7 +9,8 @@ use crate::db::repositories::{
     },
     layout::{LayoutRepository, NodeLayoutRecord},
     ConstellationRepository, DocumentContentInput, DocumentReconciliationItem,
-    NodeDocumentMutation, NodeDocumentRepository,
+    NodeDocumentMutation, NodeDocumentRepository, NodeRelationshipRecord,
+    NodeRelationshipRepository, RelationshipMutation,
 };
 use crate::db::transaction::TransactionGuard;
 
@@ -122,13 +123,13 @@ pub async fn seed_root_archetypal_field(
 
     let relationships = relationship_seeds();
     for rel in &relationships {
-        let properties = relationship_properties(rel);
+        let properties = relationship_properties(rel, namespace);
         graph_repo
             .merge_seed_relationship(
                 &graph_id(namespace, rel.source),
                 &graph_id(namespace, rel.target),
                 rel.rel_type,
-                &format!("{namespace}:{}:{}:{}", rel.source, rel.rel_type, rel.target),
+                &relationship_seed_key(namespace, rel),
                 properties,
             )
             .await?;
@@ -338,6 +339,23 @@ pub fn ensure_root_archetypal_local_projection(
             return Err(format!(
                 "local document and graph metadata postcondition failed for {}",
                 seed.graph_node_id
+            ));
+        }
+    }
+    // The local graph is a first-class, offline-capable projection. Seed the
+    // same semantic and structural relationship contract here in the existing
+    // transaction; Neo4j seed materialisation is a separate eventual-sync
+    // concern and must never be the only place the graph exists.
+    let relationship_repository = NodeRelationshipRepository::new(connection);
+    for relationship in relationship_seeds() {
+        let record = local_relationship_record(namespace, &relationship);
+        if let RelationshipMutation::Conflict { reason, .. } = relationship_repository
+            .merge(&record, None)
+            .map_err(|error| error.to_string())?
+        {
+            return Err(format!(
+                "canonical relationship projection conflicted for {}: {reason}",
+                record.relationship_id
             ));
         }
     }
@@ -982,13 +1000,46 @@ fn body_for(title: &str, summary: &str, evidence_tags: &[&str]) -> String {
     .to_string()
 }
 
-fn relationship_properties(seed: &RelSeed) -> serde_json::Value {
+fn relationship_seed_key(namespace: &str, seed: &RelSeed) -> String {
+    format!(
+        "{namespace}:{}:{}:{}",
+        seed.source, seed.rel_type, seed.target
+    )
+}
+
+fn local_relationship_record(namespace: &str, seed: &RelSeed) -> NodeRelationshipRecord {
+    let seed_key = relationship_seed_key(namespace, seed);
+    NodeRelationshipRecord {
+        relationship_id: format!("root-rel:{seed_key}"),
+        source_graph_node_id: graph_id(namespace, seed.source),
+        target_graph_node_id: graph_id(namespace, seed.target),
+        rel_type: seed.rel_type.to_string(),
+        properties: relationship_properties(seed, namespace),
+        source_coordinates: relationship_source_coordinates(),
+        evidence_tags: seed
+            .evidence_tags
+            .iter()
+            .map(|tag| (*tag).to_string())
+            .collect(),
+        origin: crate::db::repositories::graph::ContentOrigin::Seed,
+        sync_state: SyncState::Pending,
+        revision: 1,
+        remote_revision: None,
+        is_tombstone: false,
+        created_at: None,
+        updated_at: None,
+    }
+}
+
+fn relationship_source_coordinates() -> Vec<String> {
+    vec![RESONANCE_SOURCE.to_string(), TIMELINE_SOURCE.to_string()]
+}
+
+fn relationship_properties(seed: &RelSeed, namespace: &str) -> serde_json::Value {
     let mut value = serde_json::json!({
+        "seed_key": relationship_seed_key(namespace, seed),
         "evidence_tags": seed.evidence_tags,
-        "source_coordinates": [
-            "antichrist-vault/episodes/episode-1-2-archetypal-resonance.md",
-            "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/episode-2-research-timeline.md"
-        ]
+        "source_coordinates": relationship_source_coordinates(),
     });
     if let Some(dominance) = seed.dominance {
         value["dominance"] = serde_json::Value::String(dominance.to_string());
@@ -3714,7 +3765,10 @@ mod tests {
     use super::*;
     use crate::db::{
         connection::Database,
-        repositories::{ConstellationRepository, NodeDocumentMutation, NodeDocumentRepository},
+        repositories::{
+            graph::ContentOrigin, ConstellationRepository, NodeDocumentMutation,
+            NodeDocumentRepository, NodeRelationshipRepository,
+        },
     };
 
     fn fake_canvas_ids(constellations: &[ConstellationSeed]) -> HashMap<&'static str, String> {
@@ -3759,6 +3813,150 @@ mod tests {
         assert_eq!(
             stored.content_origin,
             crate::db::repositories::graph::ContentOrigin::UserAuthored
+        );
+    }
+
+    #[test]
+    fn local_root_projection_persists_seeded_relations_for_the_offline_timeline() {
+        let directory = tempfile::tempdir().expect("temporary root projection directory");
+        let path = directory.path().join("root-projection.sqlite");
+        let database = Database::open(&path).expect("migrated SQLite database");
+
+        let first = ensure_root_archetypal_local_projection(
+            database.connection(),
+            &directory.path().to_string_lossy(),
+            "root-test",
+        )
+        .expect("project root seed locally");
+        let second = ensure_root_archetypal_local_projection(
+            database.connection(),
+            &directory.path().to_string_lossy(),
+            "root-test",
+        )
+        .expect("replay root projection idempotently");
+        assert_eq!(first.nodes_projected, second.nodes_projected);
+
+        let relationship_repository = NodeRelationshipRepository::new(database.connection());
+        let event_relations = relationship_repository
+            .list_involving(&std::collections::BTreeSet::from([
+                "root-test:banda-genocide".to_string(),
+            ]))
+            .expect("read projected historical relationships");
+        let event_relation = event_relations
+            .iter()
+            .find(|relationship| {
+                relationship.source_graph_node_id == "root-test:banda-genocide"
+                    && relationship.target_graph_node_id == "root-test:lamb-sheep"
+                    && relationship.rel_type == "INSTANTIATES"
+            })
+            .expect("real seeded event-to-archetypal relationship");
+        assert_eq!(event_relation.origin, ContentOrigin::Seed);
+        assert_eq!(event_relation.revision, 1);
+        assert_eq!(event_relation.sync_state, SyncState::Pending);
+        assert!(event_relation.properties.get("seed_key").is_some());
+        assert!(event_relation
+            .source_coordinates
+            .iter()
+            .any(|coordinate| coordinate == TIMELINE_SOURCE));
+        assert!(event_relation
+            .evidence_tags
+            .iter()
+            .any(|tag| tag == "documented"));
+
+        let structural = relationship_repository
+            .list_involving(&std::collections::BTreeSet::from([
+                "root-test:root-ecology".to_string(),
+            ]))
+            .expect("read projected structural relationships");
+        assert!(structural.iter().any(|relationship| {
+            relationship.rel_type == "NESTS"
+                && relationship.target_graph_node_id == "root-test:spectral-lineage-field"
+        }));
+
+        let workspace_id = crate::commands::timeline::timeline_workspace_identity(&path)
+            .expect("timeline workspace identity");
+        let timeline = crate::commands::timeline::load_timeline_view_at_path(
+            &path,
+            crate::commands::timeline::LoadTimelineViewRequest {
+                workspace_id,
+                filters: crate::commands::timeline::TimelineFilters::default(),
+            },
+        )
+        .expect("load offline timeline from normal root projection");
+        assert!(timeline.relationships.iter().any(|relationship| {
+            relationship.source_graph_node_id == "root-test:banda-genocide"
+                && relationship.target_graph_node_id == "root-test:lamb-sheep"
+                && relationship.rel_type == "INSTANTIATES"
+        }));
+        assert!(timeline.nodes.iter().any(|node| {
+            node.node.graph_node_id == "root-test:lamb-sheep" && node.relation_companion
+        }));
+    }
+
+    #[test]
+    fn relation_conflict_rolls_back_earlier_root_document_projection() {
+        let directory = tempfile::tempdir().expect("temporary root projection directory");
+        let path = directory.path().join("root-projection-rollback.sqlite");
+        let database = Database::open(&path).expect("migrated SQLite database");
+        let namespace = "rollback-test";
+        ensure_root_archetypal_local_projection(
+            database.connection(),
+            &directory.path().to_string_lossy(),
+            namespace,
+        )
+        .expect("initial local root projection");
+
+        let document_id = format!("{namespace}:banda-genocide");
+        let relationship_id = format!(
+            "root-rel:{}",
+            relationship_seed_key(
+                namespace,
+                &RelSeed {
+                    source: "banda-genocide",
+                    target: "lamb-sheep",
+                    rel_type: "INSTANTIATES",
+                    dominance: None,
+                    evidence_tags: &["documented"],
+                },
+            )
+        );
+        database
+            .connection()
+            .execute(
+                "DELETE FROM node_document WHERE graph_node_id=?1",
+                [&document_id],
+            )
+            .expect("remove one document before replay");
+        database
+            .connection()
+            .execute(
+                "UPDATE graph_relationship SET properties_json=?1 WHERE relationship_id=?2",
+                rusqlite::params![
+                    serde_json::json!({
+                        "seed_key": format!(
+                            "{namespace}:banda-genocide:INSTANTIATES:lamb-sheep"
+                        ),
+                        "reading": "conflicting pre-existing seed contract",
+                    })
+                    .to_string(),
+                    relationship_id,
+                ],
+            )
+            .expect("inject a same-revision seed conflict");
+
+        let error = ensure_root_archetypal_local_projection(
+            database.connection(),
+            &directory.path().to_string_lossy(),
+            namespace,
+        )
+        .expect_err("a conflicting relationship must reject the entire root projection");
+        assert!(error.contains("canonical relationship projection conflicted"));
+        assert!(
+            NodeDocumentRepository::new(database.connection())
+                .get_node_document(&document_id)
+                .expect("read document after rejected transaction")
+                .is_none(),
+            "the document inserted before the relation phase must be rolled back",
         );
     }
 

@@ -54,7 +54,7 @@ fn db_migrations_applies_initial_migration_to_a_real_temp_database() {
             row.get(0)
         })
         .expect("migration count");
-    assert_eq!(applied_migrations, 16);
+    assert_eq!(applied_migrations, 18);
 }
 
 #[test]
@@ -69,7 +69,7 @@ fn db_migrations_migration_runner_is_idempotent_and_deterministic() {
             row.get(0)
         })
         .expect("migration count");
-    assert_eq!(applied_migrations, 16);
+    assert_eq!(applied_migrations, 18);
 }
 
 #[test]
@@ -143,14 +143,14 @@ fn db_migrations_upgrade_0010_without_touching_documents_or_canvas_layouts() {
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row
                 .get::<_, i64>(0))
             .unwrap(),
-        16
+        18
     );
     assert!(table_exists(&reopened, "graph_node_metadata"));
     assert!(table_exists(&reopened, "timeline_layout"));
 }
 
 #[test]
-fn db_migrations_0016_creates_the_exact_local_relationship_projection_inventory() {
+fn db_migrations_0017_creates_the_exact_local_relationship_tombstone_inventory() {
     let (_dir, database) = open_temp_database();
     let connection = database.connection();
 
@@ -177,6 +177,7 @@ fn db_migrations_0016_creates_the_exact_local_relationship_projection_inventory(
             "remote_revision",
             "created_at",
             "updated_at",
+            "is_tombstone",
         ],
     );
 
@@ -197,6 +198,7 @@ fn db_migrations_0016_creates_the_exact_local_relationship_projection_inventory(
             "idx_graph_relationship_source",
             "idx_graph_relationship_sync",
             "idx_graph_relationship_target",
+            "idx_graph_relationship_tombstone",
             "idx_graph_relationship_type",
             "sqlite_autoindex_graph_relationship_1",
         ],
@@ -293,12 +295,13 @@ fn db_migrations_0016_upgrades_a_real_applied_0015_relationship_projection_witho
         )
         .expect("insert valid historical relationship row");
 
-    MigrationRunner::migrate(&connection).expect("upgrade applied 0015 database to 0016");
+    MigrationRunner::migrate(&connection)
+        .expect("upgrade applied relationship tombstone migration");
     let preserved = connection
         .query_row(
             "SELECT relationship_id, source_graph_node_id, target_graph_node_id, rel_type,
                     properties_json, source_coordinates_json, evidence_tags_json, origin,
-                    sync_state, relationship_revision, remote_revision, created_at, updated_at
+                    sync_state, relationship_revision, remote_revision, is_tombstone, created_at, updated_at
              FROM graph_relationship WHERE relationship_id='legacy-instantiates'",
             [],
             |row| {
@@ -314,8 +317,9 @@ fn db_migrations_0016_upgrades_a_real_applied_0015_relationship_projection_witho
                     row.get::<_, String>(8)?,
                     row.get::<_, i64>(9)?,
                     row.get::<_, Option<i64>>(10)?,
-                    row.get::<_, String>(11)?,
+                    row.get::<_, i64>(11)?,
                     row.get::<_, String>(12)?,
+                    row.get::<_, String>(13)?,
                 ))
             },
         )
@@ -332,6 +336,7 @@ fn db_migrations_0016_upgrades_a_real_applied_0015_relationship_projection_witho
         sync_state,
         relationship_revision,
         remote_revision,
+        is_tombstone,
         created_at,
         updated_at,
     ) = preserved;
@@ -349,6 +354,7 @@ fn db_migrations_0016_upgrades_a_real_applied_0015_relationship_projection_witho
     assert_eq!(sync_state, "conflict");
     assert_eq!(relationship_revision, 12);
     assert_eq!(remote_revision, Some(34));
+    assert_eq!(is_tombstone, 0, "legacy active relationship stays active");
     assert_eq!(created_at, "2024-01-02T03:04:05.000Z");
     assert_eq!(updated_at, "2025-06-07T08:09:10.000Z");
     connection
@@ -366,7 +372,153 @@ fn db_migrations_0016_upgrades_a_real_applied_0015_relationship_projection_witho
             row.get(0)
         })
         .expect("migration count after upgrade");
-    assert_eq!(applied_migrations, 16);
+    assert_eq!(applied_migrations, 18);
+}
+
+#[test]
+fn db_migrations_0018_preserves_edge_layouts_and_scopes_ids_to_each_canvas() {
+    let dir = tempdir().expect("temp dir");
+    let path = dir.path().join("canvas-scoped-edge-layout.sqlite");
+    let connection = Connection::open(&path).expect("fixture database");
+    MigrationRunner::migrate_through(&connection, "0017_graph_relationship_tombstones")
+        .expect("apply authentic pre-0018 schema");
+    connection
+        .execute_batch(
+            "INSERT INTO projects(id, display_name, slug, root_path)
+                VALUES
+                  ('project-a', 'Project A', 'project-a', '/project-a'),
+                  ('project-b', 'Project B', 'project-b', '/project-b');
+             INSERT INTO canvases(id, project_id, name)
+                VALUES
+                  ('canvas-a', 'project-a', 'Canvas A'),
+                  ('canvas-b', 'project-b', 'Canvas B');
+             INSERT INTO edge_layout(
+                id, canvas_id, source_graph_node_id, target_graph_node_id,
+                relation_kind, style_json, created_at, updated_at
+             ) VALUES (
+                'graph:relationship-existing', 'canvas-a', 'source-a', 'target-a',
+                'INSTANTIATES', '{\"stroke\":\"#abc\"}',
+                '2026-01-02T03:04:05Z', '2026-01-03T04:05:06Z'
+             );",
+        )
+        .expect("insert authentic 0017 edge-layout row");
+
+    MigrationRunner::migrate(&connection).expect("migrate edge layout identity");
+    let preserved = connection
+        .query_row(
+            "SELECT canvas_id, id, source_graph_node_id, target_graph_node_id,
+                    relation_kind, style_json, created_at, updated_at
+             FROM edge_layout WHERE canvas_id='canvas-a' AND id='graph:relationship-existing'",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                ))
+            },
+        )
+        .expect("pre-migration layout survives");
+    assert_eq!(
+        preserved,
+        (
+            "canvas-a".to_string(),
+            "graph:relationship-existing".to_string(),
+            "source-a".to_string(),
+            "target-a".to_string(),
+            "INSTANTIATES".to_string(),
+            "{\"stroke\":\"#abc\"}".to_string(),
+            "2026-01-02T03:04:05Z".to_string(),
+            "2026-01-03T04:05:06Z".to_string(),
+        )
+    );
+    connection
+        .execute(
+            "INSERT INTO edge_layout(
+                id, canvas_id, source_graph_node_id, target_graph_node_id,
+                relation_kind, style_json
+             ) VALUES (?1, 'canvas-b', 'source-b', 'target-b', 'ECHOES', '{}')",
+            ["graph:relationship-existing"],
+        )
+        .expect("same semantic layout id can coexist in a second canvas");
+    let count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM edge_layout WHERE id='graph:relationship-existing'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count canvas-scoped rows");
+    assert_eq!(count, 2);
+}
+
+#[test]
+fn db_migrations_0017_upgrades_an_applied_0016_row_with_an_active_tombstone_default() {
+    let dir = tempdir().expect("temp dir");
+    let path = dir.path().join("relationship-tombstone-upgrade.sqlite");
+    let connection = Connection::open(&path).expect("fixture database");
+    MigrationRunner::migrate_through(
+        &connection,
+        "0016_graph_relationship_structural_vocabulary_repair",
+    )
+    .expect("apply the real schema through 0016");
+    connection
+        .execute_batch(
+            "INSERT INTO graph_node_metadata(
+                graph_node_id, entity_type, title, content_origin, content_revision,
+                schema_version, sync_state
+             ) VALUES
+                ('upgrade-source', 'Event', 'Upgrade source', 'corpus_compiled', 1, 1, 'pending'),
+                ('upgrade-target', 'Archetype', 'Upgrade target', 'corpus_compiled', 1, 1, 'pending');
+             INSERT INTO graph_relationship(
+                relationship_id, source_graph_node_id, target_graph_node_id, rel_type,
+                properties_json, source_coordinates_json, evidence_tags_json, origin,
+                sync_state, relationship_revision, remote_revision, created_at, updated_at
+             ) VALUES (
+                'upgrade-active', 'upgrade-source', 'upgrade-target', 'INSTANTIATES',
+                '{\"canonicalKey\":\"upgrade:active\",\"reading\":\"preserve me\"}',
+                '[\"vault/upgrade.md\"]', '[\"documented\"]', 'user_authored',
+                'pending', 9, NULL, '2026-01-01T00:00:00.000Z', '2026-01-02T00:00:00.000Z'
+             );",
+        )
+        .expect("insert real 0016 relationship fixture");
+
+    MigrationRunner::migrate(&connection).expect("upgrade 0016 database to tombstone schema");
+    let row = connection
+        .query_row(
+            "SELECT properties_json, origin, sync_state, relationship_revision, is_tombstone,
+                    created_at, updated_at
+             FROM graph_relationship WHERE relationship_id='upgrade-active'",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                ))
+            },
+        )
+        .expect("legacy row survives tombstone migration");
+    assert_eq!(
+        row,
+        (
+            "{\"canonicalKey\":\"upgrade:active\",\"reading\":\"preserve me\"}".into(),
+            "user_authored".into(),
+            "pending".into(),
+            9,
+            0,
+            "2026-01-01T00:00:00.000Z".into(),
+            "2026-01-02T00:00:00.000Z".into(),
+        ),
+    );
 }
 
 #[test]

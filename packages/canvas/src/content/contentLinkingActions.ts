@@ -25,6 +25,7 @@ export interface ContentLinkingDeps {
     databasePath: string; graphNodeId: string; expectedRevision: number; expectedOrigin: "user_authored";
   }) => Promise<SyncAcknowledgementMutation>;
   connectGraphNodes: (input: {
+    databasePath?: string;
     sourceGraphNodeId: string;
     targetGraphNodeId: string;
     relType: string;
@@ -147,18 +148,62 @@ export function createContentLinkingActions(deps: ContentLinkingDeps): ContentLi
     },
 
     async linkMarkdownFileToNode({ graphNodeId, fileName, markdown }) {
-      const source = await deps.createGraphNode({
-        entityType: "Source",
-        title: fileName,
-        body: markdownToBlockNoteJson(markdown),
-        isTemporal: false,
-        sourceCoordinates: [],
+      if (!deps.databasePath) {
+        throw new Error("markdown source linking requires the authoritative local document store");
+      }
+      const sourceGraphNodeId = crypto.randomUUID();
+      const sourceBody = markdownToBlockNoteJson(markdown);
+      const sourceLocalWrite = await deps.upsertLocalNodeDocument({
+        databasePath: deps.databasePath,
+        graphNodeId: sourceGraphNodeId,
+        body: sourceBody,
+        summary: fileName,
+        neo4jSynced: false,
+        contentOrigin: "user_authored",
+        contentRevision: 0,
+        bodySourceCoordinates: [],
+        metadataProjection: {
+          entityType: "Source",
+          title: fileName,
+          schemaVersion: 1,
+        },
       });
+      if (sourceLocalWrite.mutation.kind !== "created") {
+        const reason = sourceLocalWrite.mutation.kind === "conflict"
+          ? `: ${sourceLocalWrite.mutation.reason}`
+          : "";
+        throw new Error(`local markdown source was not created (${sourceLocalWrite.mutation.kind})${reason}`);
+      }
+      // The source document and its relation are authoritative local work.
+      // Remote Source creation is only an opportunistic projection; a Bolt
+      // outage must not leave a local Source orphaned without SOURCED_FROM.
+      let remoteSource: GraphNode | null = null;
+      try {
+        remoteSource = await deps.createGraphNode({
+          graphNodeId: sourceGraphNodeId,
+          entityType: "Source",
+          title: fileName,
+          body: sourceBody,
+          summary: fileName,
+          contentOrigin: "user_authored",
+          contentRevision: 0,
+          bodySourceCoordinates: [],
+          isTemporal: false,
+          sourceCoordinates: [],
+        });
+      } catch {
+        // The local document and relationship remain pending; a later normal
+        // connect retry projects their canonical relation when available.
+      }
       await deps.connectGraphNodes({
+        databasePath: deps.databasePath,
         sourceGraphNodeId: graphNodeId,
-        targetGraphNodeId: source.graphNodeId,
+        targetGraphNodeId: sourceGraphNodeId,
         relType: "SOURCED_FROM",
       });
+      if (remoteSource && remoteSource.graphNodeId !== sourceGraphNodeId) {
+        throw new Error("remote markdown source did not retain its local graph identity");
+      }
       const { node, local } = await readContent(graphNodeId);
       const body = appendBlocksToBody(local.body, [
         { type: "paragraph", content: [{ type: "text", text: `Linked source: ${fileName}` }] },
@@ -171,6 +216,7 @@ export function createContentLinkingActions(deps: ContentLinkingDeps): ContentLi
         throw new Error(`unknown relationship kind: ${String(kind)}`);
       }
       return deps.connectGraphNodes({
+        databasePath: deps.databasePath,
         sourceGraphNodeId,
         targetGraphNodeId,
         // map the typed `kind` to the transport's `relType` field (WS0 §5.2 / WS2);

@@ -515,10 +515,17 @@ export interface WorkspaceTransport {
   compareAndSwapGraphNodeContent(input: GraphContentCasInput): Promise<GraphContentCasMutation>;
   deleteGraphNode(input: { graphNodeId: string }): Promise<void>;
   connectGraphNodes(input: {
+    databasePath?: string;
     sourceGraphNodeId: string; targetGraphNodeId: string;
     relType: string; properties?: Record<string, unknown>;
+    canonicalKey?: string;
+    origin?: ContentOrigin;
+    revision?: number;
+    expectedRevision?: number;
+    sourceCoordinates?: string[];
+    evidenceTags?: string[];
   }): Promise<GraphRelationship>;
-  disconnectGraphNodes(input: { relationshipId: string }): Promise<void>;
+  disconnectGraphNodes(input: { databasePath?: string; relationshipId: string }): Promise<void>;
   searchGraph(input: { query: string; limit?: number }): Promise<GraphNode[]>;
 
   // ---- Layout (SQLite) ----
