@@ -68,6 +68,10 @@ const MIGRATIONS: &[Migration] = &[
         version: "0014_remove_selection_click_timeline_layouts",
         sql: include_str!("../../migrations/0014_remove_selection_click_timeline_layouts.sql"),
     },
+    Migration {
+        version: "0015_graph_relationship_projection",
+        sql: include_str!("../../migrations/0015_graph_relationship_projection.sql"),
+    },
 ];
 
 impl MigrationRunner {

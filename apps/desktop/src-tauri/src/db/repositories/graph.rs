@@ -619,7 +619,7 @@ const REL_TYPES: &[&str] = &[
     "RESONATES_WITH",
 ];
 
-fn validate_rel_type(rel_type: &str) -> Result<&str, String> {
+pub(crate) fn validate_rel_type(rel_type: &str) -> Result<&str, String> {
     REL_TYPES
         .iter()
         .find(|r| **r == rel_type)

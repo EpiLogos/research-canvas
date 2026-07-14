@@ -19,7 +19,7 @@ pub enum SyncState {
 }
 
 impl SyncState {
-    fn as_str(self) -> &'static str {
+    pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::Pending => "pending",
             Self::Synced => "synced",

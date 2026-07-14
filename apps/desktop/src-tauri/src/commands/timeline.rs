@@ -12,8 +12,8 @@ use crate::{
                 EntityType, GraphNode, GraphRelationship, Historicity, TemporalPrecision,
                 TemporalRole,
             },
-            GraphNodeMetadataRepository, NodeDocumentRepository, TimelineLayoutMutation,
-            TimelineLayoutRecord, TimelineLayoutRepository,
+            GraphNodeMetadataRepository, NodeDocumentRepository, NodeRelationshipRepository,
+            TimelineLayoutMutation, TimelineLayoutRecord, TimelineLayoutRepository,
         },
     },
     SharedApiState,
@@ -353,12 +353,20 @@ pub fn load_timeline_view_at_path(
             },
         });
     }
+    let temporal_ids = nodes
+        .iter()
+        .map(|node| node.node.graph_node_id.clone())
+        .collect::<BTreeSet<_>>();
+    let relationships = NodeRelationshipRepository::new(database.connection())
+        .list_involving(&temporal_ids)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|relationship| relationship.as_graph_relationship())
+        .collect();
     Ok(TimelineView {
         workspace_id,
         nodes,
-        // The local-only terminal bridge deliberately has no Neo4j handle.
-        // The desktop command fills this with canonical temporal links below.
-        relationships: Vec::new(),
+        relationships,
         lanes: lane_ids.into_iter().map(|id| TimelineLane { id }).collect(),
         diagnostics,
     })
@@ -508,7 +516,12 @@ pub async fn load_timeline_view_command(
             .iter()
             .map(|node| node.node.graph_node_id.as_str())
             .collect::<std::collections::BTreeSet<_>>();
-        view.relationships = graph
+        let mut relationships = view
+            .relationships
+            .into_iter()
+            .map(|relationship| (relationship.id.clone(), relationship))
+            .collect::<BTreeMap<_, _>>();
+        for relationship in graph
             .list_relationships()
             .await?
             .into_iter()
@@ -516,7 +529,10 @@ pub async fn load_timeline_view_command(
                 temporal_ids.contains(relationship.source_graph_node_id.as_str())
                     && temporal_ids.contains(relationship.target_graph_node_id.as_str())
             })
-            .collect();
+        {
+            relationships.insert(relationship.id.clone(), relationship);
+        }
+        view.relationships = relationships.into_values().collect();
     }
     Ok(view)
 }
@@ -533,4 +549,250 @@ pub async fn upsert_timeline_layout_command(
         .clone()
         .ok_or_else(|| "App not bootstrapped yet".to_string())?;
     upsert_timeline_layout_at_path(path, request)
+}
+
+#[cfg(test)]
+mod local_relationship_projection_tests {
+    use std::collections::BTreeSet;
+
+    use super::*;
+    use crate::db::{
+        connection::Database,
+        repositories::{
+            graph::{
+                ClaimKind, ContentOrigin, EntityType, EvidenceStatus, Historicity, PlaceCoverage,
+                TemporalPrecision, TemporalRole,
+            },
+            DocumentContentInput, GraphMetadataMutation, GraphNodeMetadataRecord,
+            GraphNodeMetadataRepository, NodeDocumentRepository, NodeRelationshipRecord,
+            NodeRelationshipRepository, RelationshipMutation, SyncState,
+        },
+    };
+
+    fn metadata(
+        graph_node_id: &str,
+        entity_type: EntityType,
+        is_temporal: bool,
+    ) -> GraphNodeMetadataRecord {
+        GraphNodeMetadataRecord {
+            graph_node_id: graph_node_id.into(),
+            entity_type,
+            title: graph_node_id.into(),
+            archetypal_resonance: None,
+            coordinate: None,
+            source_coordinates: vec![format!("vault/{graph_node_id}.md")],
+            evidence_tags: vec!["documented".into()],
+            source_kind: Some("vault-file".into()),
+            content_origin: ContentOrigin::CorpusCompiled,
+            content_revision: 1,
+            seed_schema_version: Some(1),
+            body_source_coordinates: vec![format!("vault/{graph_node_id}.md#body")],
+            historicity: Some(if is_temporal {
+                Historicity::Historical
+            } else {
+                Historicity::Theoretical
+            }),
+            claim_kind: Some(ClaimKind::Fact),
+            evidence_status: Some(EvidenceStatus::Documented),
+            temporal_role: is_temporal.then_some(TemporalRole::OccurredAt),
+            place_coverage: Some(PlaceCoverage::Resolved),
+            ql_form: None,
+            ql_unit_id: None,
+            ql_arc: None,
+            ql_topology: None,
+            ql_schema_version: None,
+            ql_source_coordinates: vec![],
+            ql_completeness_status: None,
+            is_temporal,
+            valid_from: is_temporal.then_some("1888".into()),
+            valid_to: None,
+            temporal_precision: is_temporal.then_some(TemporalPrecision::Year),
+            schema_version: 1,
+            sync_state: SyncState::Pending,
+            remote_revision: None,
+        }
+    }
+
+    fn relationship(
+        relationship_id: &str,
+        source_graph_node_id: &str,
+        target_graph_node_id: &str,
+        rel_type: &str,
+    ) -> NodeRelationshipRecord {
+        NodeRelationshipRecord {
+            relationship_id: relationship_id.into(),
+            source_graph_node_id: source_graph_node_id.into(),
+            target_graph_node_id: target_graph_node_id.into(),
+            rel_type: rel_type.into(),
+            properties: serde_json::json!({"reading": "concrete historical expression"}),
+            source_coordinates: vec!["episodes/2/timeline.md#1888".into()],
+            evidence_tags: vec!["documented".into(), "timeline".into()],
+            origin: ContentOrigin::CorpusCompiled,
+            sync_state: SyncState::Pending,
+            revision: 1,
+            remote_revision: None,
+            created_at: None,
+            updated_at: None,
+        }
+    }
+
+    #[test]
+    fn local_relationships_round_trip_and_offline_timeline_projects_temporal_endpoints() {
+        let directory = tempfile::tempdir().expect("temporary SQLite directory");
+        let path = directory.path().join("timeline.sqlite");
+
+        {
+            let database = Database::open(&path).expect("migrated SQLite database");
+            let metadata_repository = GraphNodeMetadataRepository::new(database.connection());
+            for (graph_node_id, entity_type, is_temporal) in [
+                ("event-1888", EntityType::Event, true),
+                ("archetype-antichrist", EntityType::Archetype, false),
+                ("unrelated-source", EntityType::Source, false),
+                ("unrelated-work", EntityType::Work, false),
+            ] {
+                assert_eq!(
+                    metadata_repository
+                        .save(&metadata(graph_node_id, entity_type, is_temporal), None)
+                        .expect("persist graph metadata"),
+                    GraphMetadataMutation::Created
+                );
+            }
+            assert!(matches!(
+                NodeDocumentRepository::new(database.connection())
+                    .apply_reconciliation(
+                        &DocumentContentInput {
+                            graph_node_id: "event-1888".into(),
+                            body: "Historical event detail".into(),
+                            summary: "Historical event pith".into(),
+                            content_origin: ContentOrigin::CorpusCompiled,
+                            content_revision: 1,
+                            body_source_coordinates: vec!["episodes/2/timeline.md#1888".into()],
+                            neo4j_synced: false,
+                        },
+                        None,
+                    )
+                    .expect("persist timeline document"),
+                crate::db::repositories::NodeDocumentMutation::Created
+            ));
+
+            let relationship_repository = NodeRelationshipRepository::new(database.connection());
+            let temporal_link = relationship(
+                "event-1888-instantiates-antichrist",
+                "event-1888",
+                "archetype-antichrist",
+                "INSTANTIATES",
+            );
+            assert_eq!(
+                relationship_repository
+                    .merge(&temporal_link)
+                    .expect("persist local relationship"),
+                RelationshipMutation::Created
+            );
+            assert_eq!(
+                relationship_repository
+                    .merge(&temporal_link)
+                    .expect("replay local relationship"),
+                RelationshipMutation::Preserved
+            );
+            let reloaded = relationship_repository
+                .get("event-1888-instantiates-antichrist")
+                .expect("reload local relationship")
+                .expect("persisted local relationship");
+            assert_eq!(reloaded.relationship_id, temporal_link.relationship_id);
+            assert_eq!(
+                reloaded.source_graph_node_id,
+                temporal_link.source_graph_node_id
+            );
+            assert_eq!(
+                reloaded.target_graph_node_id,
+                temporal_link.target_graph_node_id
+            );
+            assert_eq!(reloaded.rel_type, temporal_link.rel_type);
+            assert_eq!(reloaded.properties, temporal_link.properties);
+            assert_eq!(
+                reloaded.source_coordinates,
+                temporal_link.source_coordinates
+            );
+            assert_eq!(reloaded.evidence_tags, temporal_link.evidence_tags);
+            assert_eq!(reloaded.origin, temporal_link.origin);
+            assert_eq!(reloaded.sync_state, temporal_link.sync_state);
+            assert_eq!(reloaded.revision, temporal_link.revision);
+            assert!(reloaded.created_at.is_some());
+            assert!(reloaded.updated_at.is_some());
+            assert_eq!(
+                relationship_repository
+                    .list_involving(&BTreeSet::from(["event-1888".to_string()]))
+                    .expect("list relationships for supplied node ids")
+                    .len(),
+                1
+            );
+            relationship_repository
+                .merge(&relationship(
+                    "unrelated-source-resonates-work",
+                    "unrelated-source",
+                    "unrelated-work",
+                    "RESONATES_WITH",
+                ))
+                .expect("persist unrelated relationship");
+        }
+
+        let workspace_id = timeline_workspace_identity(&path).expect("workspace identity");
+
+        let timeline = load_timeline_view_at_path(
+            &path,
+            LoadTimelineViewRequest {
+                workspace_id,
+                filters: TimelineFilters::default(),
+            },
+        )
+        .expect("load offline timeline");
+
+        assert_eq!(timeline.nodes.len(), 1);
+        assert_eq!(timeline.relationships.len(), 1);
+        let relationship = &timeline.relationships[0];
+        assert_eq!(relationship.id, "event-1888-instantiates-antichrist");
+        assert_eq!(relationship.source_graph_node_id, "event-1888");
+        assert_eq!(relationship.target_graph_node_id, "archetype-antichrist");
+        assert_eq!(relationship.rel_type, "INSTANTIATES");
+        assert_eq!(
+            relationship.properties,
+            serde_json::json!({"reading": "concrete historical expression"})
+        );
+    }
+
+    #[test]
+    fn local_relationship_repository_rejects_invalid_contract_values() {
+        let directory = tempfile::tempdir().expect("temporary SQLite directory");
+        let database = Database::open(directory.path().join("validation.sqlite"))
+            .expect("migrated SQLite database");
+        let repository = NodeRelationshipRepository::new(database.connection());
+
+        let mut invalid =
+            relationship("bad\u{0}relationship", "event", "archetype", "INSTANTIATES");
+        let error = repository
+            .merge(&invalid)
+            .expect_err("invalid relationship id rejected");
+        assert!(error.to_string().contains("relationship"));
+
+        invalid.relationship_id = "valid-id".into();
+        invalid.rel_type = "UNCONTROLLED".into();
+        let error = repository
+            .merge(&invalid)
+            .expect_err("invalid relationship type rejected");
+        assert!(error.to_string().contains("rel_type"));
+
+        invalid.rel_type = "INSTANTIATES".into();
+        invalid.properties = serde_json::json!(["not", "an", "object"]);
+        let error = repository
+            .merge(&invalid)
+            .expect_err("non-object relationship properties rejected");
+        assert!(error.to_string().contains("properties"));
+
+        invalid.properties = serde_json::json!({});
+        invalid.evidence_tags = vec!["ok".into(), "".into()];
+        let error = repository
+            .merge(&invalid)
+            .expect_err("invalid tag rejected");
+        assert!(error.to_string().contains("evidence"));
+    }
 }
