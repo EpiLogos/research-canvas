@@ -67,7 +67,8 @@ export interface NodeAttachment {
   kind: "image" | "file";
   contentHash: string;
   caption: string;
-  role: "inline" | "cover" | "file";
+  /** Immutable byte class; presentation roles live in attachment usage. */
+  role: "image" | "file";
   provenanceSourcePath: string;
   createdAt: string;
   updatedAt: string;

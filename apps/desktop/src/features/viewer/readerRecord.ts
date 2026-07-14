@@ -1,4 +1,5 @@
 import type { CanvasNode, GraphNodeContract } from "@research-canvas/schema";
+import type { LocalNodeDocument } from "@research-canvas/desktop-api";
 
 export interface ReaderRecord {
   kind: "graph" | "resource" | "canvas";
@@ -105,6 +106,28 @@ export function readerRecordWithGraphNode(
   graphNode: GraphNodeContract,
 ): ReaderRecord {
   return graphReaderRecord(graphNode, record.canvasNode, record.coverReference);
+}
+
+/**
+ * Rehydrates an opened reader from the durable local document projection.
+ * Pending local prose/media owns the reader body after a restart; structural
+ * graph metadata remains on the record's local projection.
+ */
+export function readerRecordWithLocalDocument(
+  record: ReaderRecord,
+  document: LocalNodeDocument,
+): ReaderRecord {
+  if (!record.graphNode || record.graphNode.graphNodeId !== document.graphNodeId) {
+    return record;
+  }
+  return readerRecordWithGraphNode(record, {
+    ...record.graphNode,
+    body: document.body,
+    summary: document.summary,
+    contentOrigin: document.contentOrigin,
+    contentRevision: document.contentRevision,
+    bodySourceCoordinates: document.bodySourceCoordinates,
+  });
 }
 
 /**

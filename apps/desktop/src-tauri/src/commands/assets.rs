@@ -421,24 +421,37 @@ fn resolve_attachment_baseline(
     graph_node_id: &str,
     caller_snapshot: Option<&AuthoritativeDocumentSnapshot>,
 ) -> Result<AttachmentBaseline, String> {
+    // Always inspect the durable local state before trusting a caller's
+    // snapshot. A caller may have read remote data before an earlier local
+    // edit went pending; that old remote revision is not a safe CAS baseline
+    // for the pending document we are about to extend.
+    let document = documents
+        .get_node_document(graph_node_id)
+        .map_err(|error| error.to_string())?;
+    let local_metadata = metadata
+        .get(graph_node_id)
+        .map_err(|error| error.to_string())?;
+    let local_sync_pending = document
+        .as_ref()
+        .map(|document| !document.neo4j_synced)
+        .unwrap_or(false)
+        || local_metadata
+            .as_ref()
+            .map(|metadata| metadata.sync_state != SyncState::Synced)
+            .unwrap_or(false);
     if let Some(snapshot) = caller_snapshot {
         return Ok(AttachmentBaseline {
             snapshot: snapshot.clone(),
-            remote_sync_eligible: true,
+            remote_sync_eligible: !local_sync_pending,
         });
     }
 
-    let metadata = metadata
-        .get(graph_node_id)
-        .map_err(|error| error.to_string())?
+    let metadata = local_metadata
         .ok_or_else(|| {
             format!(
                 "attachment needs either a caller snapshot or a local graph metadata projection for {graph_node_id}"
             )
         })?;
-    let document = documents
-        .get_node_document(graph_node_id)
-        .map_err(|error| error.to_string())?;
     if let Some(document) = &document {
         if document.content_origin != metadata.content_origin
             || document.content_revision != metadata.content_revision
@@ -795,7 +808,7 @@ fn new_attachment_identity(
         kind: request.kind.clone(),
         content_hash: content_hash.to_string(),
         caption: request.caption.clone(),
-        role: request.role.clone(),
+        role: request.kind.clone(),
         provenance_source_path: source.to_string_lossy().into_owned(),
         created_at: now.clone(),
         updated_at: now,
@@ -1711,7 +1724,7 @@ mod tests {
             kind: "image".into(),
             content_hash: "unreferenced-kind-change-hash".into(),
             caption: String::new(),
-            role: "inline".into(),
+            role: "image".into(),
             provenance_source_path: "/vault/kind-change.png".into(),
             created_at: "2026-01-01T00:00:00Z".into(),
             updated_at: "2026-01-01T00:00:00Z".into(),
@@ -1756,11 +1769,18 @@ mod tests {
             created_at: "2026-01-01T00:00:00Z".into(),
             updated_at: "2026-01-01T00:00:00Z".into(),
         };
+        // The current repository rejects the historical primary role. Insert
+        // the fixture through the real pre-0023 schema instead, which is the
+        // only path that could have produced this database state in release.
+        insert_historical_attachment(&connection, &attachment);
         let repository = NodeAttachmentRepository::new(&connection);
-        repository.insert(&attachment).unwrap();
         repository.ensure_usage(&attachment.id, "cover").unwrap();
-        repository
-            .select_cover(&attachment.graph_node_id, &attachment.id)
+        connection
+            .execute(
+                "INSERT INTO node_attachment_presentation(graph_node_id, cover_attachment_id, updated_at)
+                 VALUES(?1, ?2, '2026-01-01T00:00:00Z')",
+                [&attachment.graph_node_id, &attachment.id],
+            )
             .unwrap();
         connection
             .execute(
@@ -1774,6 +1794,78 @@ mod tests {
             .unwrap()
             .is_none());
         assert!(repository.selected_covers().unwrap().is_empty());
+    }
+
+    #[test]
+    fn repairs_legacy_image_file_cover_rows_before_they_can_be_selected() {
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        crate::db::migrations::MigrationRunner::migrate_through(
+            &connection,
+            "0023_node_attachment_primary_usage_guards",
+        )
+        .unwrap();
+        let attachment = NodeAttachment {
+            id: "legacy-image-file-cover".into(),
+            graph_node_id: "n-legacy-image-file-cover".into(),
+            managed_path: "assets/attachments/legacy/cover.png".into(),
+            original_filename: "cover.png".into(),
+            mime_type: "image/png".into(),
+            kind: "image".into(),
+            content_hash: "legacy-image-file-cover-hash".into(),
+            caption: String::new(),
+            role: "inline".into(),
+            provenance_source_path: "/vault/legacy-cover.png".into(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+        };
+        // This fixture deliberately bypasses the current repository
+        // validation because it represents a persisted 0023-era primary
+        // image/file mismatch, not a new write.
+        insert_historical_attachment(&connection, &attachment);
+        let repository = NodeAttachmentRepository::new(&connection);
+        repository.ensure_usage(&attachment.id, "cover").unwrap();
+        connection
+            .execute(
+                "INSERT INTO node_attachment_presentation(graph_node_id, cover_attachment_id, updated_at)
+                 VALUES(?1, ?2, '2026-01-01T00:00:00Z')",
+                [&attachment.graph_node_id, &attachment.id],
+            )
+            .unwrap();
+
+        // Simulate a database damaged before primary-record guard coverage.
+        connection
+            .execute_batch(
+                "DROP TRIGGER node_attachment_kind_role_update_guard;
+                 DROP TRIGGER node_attachment_primary_kind_usage_update_guard;",
+            )
+            .unwrap();
+        connection
+            .execute(
+                "UPDATE node_attachment SET kind='image', role='file' WHERE id=?1",
+                [&attachment.id],
+            )
+            .unwrap();
+
+        assert!(repository
+            .selected_cover_for_node(&attachment.graph_node_id)
+            .unwrap()
+            .is_none());
+        assert!(repository.selected_covers().unwrap().is_empty());
+
+        crate::db::migrations::MigrationRunner::migrate(&connection)
+            .expect("the primary-role migration repairs historical image/file rows");
+        let repaired = NodeAttachmentRepository::new(&connection)
+            .selected_cover_for_node(&attachment.graph_node_id)
+            .unwrap()
+            .expect("a repaired canonical image cover is readable again");
+        assert_eq!(repaired.kind, "image");
+        assert_eq!(repaired.role, "image");
+        assert!(connection
+            .execute(
+                "UPDATE node_attachment SET kind='image', role='file' WHERE id=?1",
+                [&attachment.id],
+            )
+            .is_err());
     }
 
     #[test]
@@ -1824,6 +1916,7 @@ mod tests {
             .expect("durably attach without any SharedGraphState or remote graph read");
 
         assert!(workspace.join(&attached.attachment.managed_path).is_file());
+        assert_eq!(attached.attachment.role, "image");
         assert_eq!(attached.document.summary, "Offline reader pith");
         assert_eq!(attached.graph_node.title, "Offline reader node");
         assert_eq!(attached.graph_node.summary, "Offline reader pith");
@@ -1840,6 +1933,74 @@ mod tests {
             .unwrap()
             .expect("offline cover selection survives reopening the SQLite workspace");
         assert_eq!(presentation.id, attached.attachment.id);
+    }
+
+    #[test]
+    fn pending_inline_attachment_reopens_through_the_reader_native_document_path() {
+        // This joins the two persistence boundaries under a real database:
+        // attach while remote sync is absent, destroy the original process
+        // connection, then use the same file-backed function as the reader
+        // command to recover the pending body after restart.
+        let directory = tempfile::tempdir().expect("temporary reader reopen workspace");
+        let workspace = directory.path().join("workspace");
+        let source_dir = directory.path().join("source");
+        let database_path = directory.path().join("attachments.sqlite");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("reader-inline.png");
+        fs::write(&source, b"offline reader inline image").unwrap();
+
+        let database = Database::open(&database_path).expect("seed reader database");
+        NodeDocumentRepository::new(database.connection())
+            .apply_reconciliation_with_projection(
+                &DocumentContentInput {
+                    graph_node_id: "n-reader-reopen".into(),
+                    body: r#"[{"type":"paragraph","content":[{"type":"text","text":"Canonical remote reader body"}]}]"#.into(),
+                    summary: "Canonical reader pith".into(),
+                    content_origin: ContentOrigin::Seed,
+                    content_revision: 9,
+                    body_source_coordinates: vec!["episode-2.md#reader-reopen".into()],
+                    neo4j_synced: true,
+                },
+                None,
+                Some(&DocumentMetadataProjection {
+                    entity_type: "Event".into(),
+                    title: "Reader reopen event".into(),
+                    schema_version: 1,
+                }),
+            )
+            .expect("seed the synced reader projection");
+        drop(database);
+
+        let attached = attach_node_attachment_at_path(
+            &database_path,
+            AttachNodeAttachmentRequest {
+                database_path: None,
+                workspace_root: workspace.to_string_lossy().into_owned(),
+                graph_node_id: "n-reader-reopen".into(),
+                source_absolute_path: source.to_string_lossy().into_owned(),
+                kind: "image".into(),
+                role: "inline".into(),
+                caption: "Offline reader inline attachment".into(),
+                authoritative_document: None,
+            },
+        )
+        .expect("attach an inline image without a remote graph read");
+        assert!(!attached.document.neo4j_synced);
+        assert!(attached.document.body.contains(&attached.attachment.id));
+        assert_eq!(attached.attachment.role, "image");
+
+        let reopened = crate::commands::node_document::read_local_node_document_at_path(
+            &database_path.to_string_lossy(),
+            "n-reader-reopen",
+        )
+        .expect("reader native document path survives process restart")
+        .expect("pending document remains available to a reopened reader");
+        assert!(!reopened.neo4j_synced);
+        assert!(reopened.body.contains("Canonical remote reader body"));
+        assert!(reopened.body.contains(&attached.attachment.id));
+        assert!(reopened.body.contains(&attached.attachment.managed_path));
+        assert_eq!(reopened.summary, "Canonical reader pith");
     }
 
     #[test]
@@ -1883,6 +2044,10 @@ mod tests {
             .contains("remote replacement must not win"));
         assert_ne!(second.document.summary, "Remote replacement");
         assert_eq!(second.graph_node.body, second.document.body);
+        assert!(
+            !second.remote_sync_eligible,
+            "a caller snapshot cannot make an already-pending local document safe to CAS"
+        );
     }
 
     #[test]
@@ -2103,6 +2268,37 @@ mod tests {
         assert!(!candidate.managed_path.contains(':'));
         assert!(!candidate.managed_path.contains('*'));
         assert!(!candidate.managed_path.contains('?'));
+    }
+
+    /// Inserts a fixture through an historic schema without passing current
+    /// runtime validation. This is intentionally confined to migration tests:
+    /// production writes always use `NodeAttachmentRepository::insert`.
+    fn insert_historical_attachment(
+        connection: &rusqlite::Connection,
+        attachment: &NodeAttachment,
+    ) {
+        connection
+            .execute(
+                "INSERT INTO node_attachment(
+                   id,graph_node_id,managed_path,original_filename,mime_type,kind,content_hash,
+                   caption,role,provenance_source_path,created_at,updated_at)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+                rusqlite::params![
+                    &attachment.id,
+                    &attachment.graph_node_id,
+                    &attachment.managed_path,
+                    &attachment.original_filename,
+                    &attachment.mime_type,
+                    &attachment.kind,
+                    &attachment.content_hash,
+                    &attachment.caption,
+                    &attachment.role,
+                    &attachment.provenance_source_path,
+                    &attachment.created_at,
+                    &attachment.updated_at,
+                ],
+            )
+            .expect("historic schema accepts its original primary attachment role");
     }
 
     fn attachment_request(

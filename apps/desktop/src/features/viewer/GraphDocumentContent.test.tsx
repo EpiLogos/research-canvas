@@ -211,7 +211,7 @@ describe("GraphDocumentContent — cutover + mounted content/linking affordances
         attachment: {
           id: "native-drop", graphNodeId: "g1", managedPath: "assets/attachments/hash/native.png",
           originalFilename: "native.png", mimeType: "image/png", kind: "image", contentHash: "hash",
-          caption: "", role: "inline", provenanceSourcePath: "/vault/native.png", createdAt: "", updatedAt: "",
+          caption: "", role: "image", provenanceSourcePath: "/vault/native.png", createdAt: "", updatedAt: "",
         },
         document: {
           graphNodeId: "g1", body: attachedBody, summary: "", neo4jSynced: false,

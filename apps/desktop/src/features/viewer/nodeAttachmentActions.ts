@@ -151,15 +151,19 @@ export async function attachNodeMedia(input: {
   }
 
   try {
-    await input.transport.acknowledgeLocalNodeDocumentSync({
+    const acknowledgement = await input.transport.acknowledgeLocalNodeDocumentSync({
       databasePath: input.databasePath,
       graphNodeId: input.graphNodeId,
       expectedRevision: attached.document.contentRevision,
       expectedOrigin: attached.document.contentOrigin,
     });
+    if (acknowledgement.kind !== "updated" && acknowledgement.kind !== "preserved") {
+      return { attachment: attached.attachment, graphNode: localGraph, remoteSynced: false };
+    }
   } catch {
     // The attachment/document remains durable and pending; the reader still
     // receives the authoritative new local body below.
+    return { attachment: attached.attachment, graphNode: localGraph, remoteSynced: false };
   }
   return { attachment: attached.attachment, graphNode: localGraph, remoteSynced: true };
 }

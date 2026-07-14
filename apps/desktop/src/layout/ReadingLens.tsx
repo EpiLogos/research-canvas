@@ -9,6 +9,7 @@ import {
   readerRecordFromCanvasNode,
   readerRecordWithCanonicalCover,
   readerRecordWithGraphNode,
+  readerRecordWithLocalDocument,
   type ReaderRecord,
 } from "../features/viewer/readerRecord";
 import { ReaderSurface, type ReaderSurfaceVariant } from "../features/viewer/ReaderSurface";
@@ -39,6 +40,31 @@ export function ReadingLens({
   }, [incomingRecordKey]);
 
   const activeGraphNodeId = record?.graphNodeId ?? null;
+  useEffect(() => {
+    const readLocalDocument = workspace.transport?.readLocalNodeDocument;
+    // A pending SQLite document is the local authority after closing or
+    // restarting the reader. This read never needs SharedGraphState.
+    if (!activeGraphNodeId || !workspace.databasePath || typeof readLocalDocument !== "function") return;
+    let cancelled = false;
+    void readLocalDocument.call(workspace.transport, {
+      databasePath: workspace.databasePath,
+      graphNodeId: activeGraphNodeId,
+    })
+      .then((document) => {
+        if (!cancelled && document && !document.neo4jSynced) {
+          setRecord((current) => current?.graphNodeId === activeGraphNodeId
+            ? readerRecordWithLocalDocument(current, document)
+            : current);
+        }
+      })
+      .catch(() => {
+        // Static/browser adapters do not own a local document projection.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeGraphNodeId, workspace.databasePath, workspace.transport]);
+
   useEffect(() => {
     const readPresentation = workspace.transport?.readNodeAttachmentPresentation;
     // The real WorkspaceTransport implements this native read. The guard

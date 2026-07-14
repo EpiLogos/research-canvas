@@ -11,6 +11,7 @@ import {
   readerRecordFromCanvasNode,
   readerRecordWithCanonicalCover,
   readerRecordWithGraphNode,
+  readerRecordWithLocalDocument,
   type ReaderRecord,
 } from "../features/viewer/readerRecord";
 import { ReaderSurface } from "../features/viewer/ReaderSurface";
@@ -43,6 +44,29 @@ function NodeMode({ onClose, record }: { onClose: () => void; record: ReaderReco
   }, [incomingRecordKey]);
 
   const activeGraphNodeId = activeRecord?.graphNodeId ?? null;
+  useEffect(() => {
+    const readLocalDocument = workspace.transport?.readLocalNodeDocument;
+    if (!activeGraphNodeId || !workspace.databasePath || typeof readLocalDocument !== "function") return;
+    let cancelled = false;
+    void readLocalDocument.call(workspace.transport, {
+      databasePath: workspace.databasePath,
+      graphNodeId: activeGraphNodeId,
+    })
+      .then((document) => {
+        if (!cancelled && document && !document.neo4jSynced) {
+          setActiveRecord((current) => current?.graphNodeId === activeGraphNodeId
+            ? readerRecordWithLocalDocument(current, document)
+            : current);
+        }
+      })
+      .catch(() => {
+        // Static/browser readers retain the open record's graph fallback.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeGraphNodeId, workspace.databasePath, workspace.transport]);
+
   useEffect(() => {
     const readPresentation = workspace.transport?.readNodeAttachmentPresentation;
     // Browser/static compatibility adapters have no local attachment store;

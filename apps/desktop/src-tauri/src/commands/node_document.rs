@@ -87,9 +87,19 @@ pub async fn read_local_node_document_command(
     api_state: tauri::State<'_, SharedApiState>,
 ) -> Result<Option<LocalNodeDocument>, String> {
     let path = resolve_db_path(&request.database_path, &api_state)?;
-    let db = Database::open(&path).map_err(|e| e.to_string())?;
+    read_local_node_document_at_path(&path, &request.graph_node_id)
+}
+
+/// The reader's durable-document boundary. Keeping the file-backed operation
+/// outside the Tauri wrapper lets native regression tests exercise exactly the
+/// same reopen path the reader command uses.
+pub fn read_local_node_document_at_path(
+    path: &str,
+    graph_node_id: &str,
+) -> Result<Option<LocalNodeDocument>, String> {
+    let db = Database::open(path).map_err(|e| e.to_string())?;
     NodeDocumentRepository::new(db.connection())
-        .get_node_document(&request.graph_node_id)
+        .get_node_document(graph_node_id)
         .map_err(|e| e.to_string())
 }
 

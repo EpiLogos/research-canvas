@@ -14,9 +14,8 @@ pub struct NodeAttachment {
     pub kind: String,
     pub content_hash: String,
     pub caption: String,
-    /// The first role that introduced this identity. All current roles are
-    /// read from `node_attachment_usage`; retaining this field keeps old
-    /// consumers and exports able to render a single primary role.
+    /// The immutable byte class (`image` or `file`). Presentation roles are
+    /// independently stored in `node_attachment_usage`.
     pub role: String,
     pub provenance_source_path: String,
     pub created_at: String,
@@ -136,9 +135,9 @@ impl<'conn> NodeAttachmentRepository<'conn> {
                 "cover attachment belongs to a different graph node".into(),
             ));
         }
-        if attachment.kind != "image" {
+        if attachment.kind != "image" || attachment.role != "image" {
             return Err(RepositoryError::Validation(
-                "only image attachments can be selected as a cover".into(),
+                "only primary image attachments can be selected as a cover".into(),
             ));
         }
         self.ensure_usage(attachment_id, "cover")?;
@@ -167,7 +166,8 @@ impl<'conn> NodeAttachmentRepository<'conn> {
                    ON usage.attachment_id = a.id
                   AND usage.role = 'cover'
                  WHERE presentation.graph_node_id=?1
-                   AND a.kind = 'image'",
+                   AND a.kind = 'image'
+                   AND a.role = 'image'",
                 [graph_node_id],
                 node_attachment_from_row,
             )
@@ -184,7 +184,8 @@ impl<'conn> NodeAttachmentRepository<'conn> {
              JOIN node_attachment_usage AS usage
                ON usage.attachment_id = a.id
               AND usage.role = 'cover'
-             WHERE a.kind = 'image'",
+             WHERE a.kind = 'image'
+               AND a.role = 'image'",
         )?;
         let rows = statement.query_map([], node_attachment_from_row)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -215,14 +216,24 @@ fn validate_attachment(attachment: &NodeAttachment) -> RepositoryResult<()> {
             "unknown attachment kind".into(),
         ));
     }
-    if (attachment.kind == "image" && attachment.role == "file")
+    if (attachment.kind == "image" && attachment.role != "image")
         || (attachment.kind == "file" && attachment.role != "file")
     {
         return Err(RepositoryError::Validation(
             "attachment kind and primary role are incompatible".into(),
         ));
     }
-    validate_role(&attachment.role)
+    validate_primary_role(&attachment.role)
+}
+
+fn validate_primary_role(role: &str) -> RepositoryResult<()> {
+    if matches!(role, "image" | "file") {
+        Ok(())
+    } else {
+        Err(RepositoryError::Validation(
+            "unknown attachment primary role".into(),
+        ))
+    }
 }
 
 fn validate_role(role: &str) -> RepositoryResult<()> {

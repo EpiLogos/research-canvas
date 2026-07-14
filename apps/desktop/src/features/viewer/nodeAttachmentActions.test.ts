@@ -28,7 +28,7 @@ describe("attachNodeMedia", () => {
         attachment: {
           id: "cover-1", graphNodeId: "n-cover", managedPath: "assets/attachments/hash/cover.png",
           originalFilename: "cover.png", mimeType: "image/png", kind: "image", contentHash: "hash",
-          caption: "", role: "cover", provenanceSourcePath: "/vault/cover.png", createdAt: "", updatedAt: "",
+          caption: "", role: "image", provenanceSourcePath: "/vault/cover.png", createdAt: "", updatedAt: "",
         },
         document: {
           graphNodeId: "n-cover", body: remote.body, summary: remote.summary, neo4jSynced: true,
@@ -71,7 +71,7 @@ describe("attachNodeMedia", () => {
         attachment: {
           id: "cover-pending", graphNodeId: "n-cover", managedPath: "assets/attachments/hash/pending-cover.png",
           originalFilename: "pending-cover.png", mimeType: "image/png", kind: "image", contentHash: "hash",
-          caption: "", role: "cover", provenanceSourcePath: "/vault/pending-cover.png", createdAt: "", updatedAt: "",
+          caption: "", role: "image", provenanceSourcePath: "/vault/pending-cover.png", createdAt: "", updatedAt: "",
         },
         // This is the real native cover result shape when an earlier inline
         // edit remains unsynced: cover selection preserves the durable local
@@ -111,5 +111,110 @@ describe("attachNodeMedia", () => {
     expect(result.remoteSynced).toBe(false);
     expect(result.graphNode.body).toBe(pendingBody);
     expect(result.graphNode.contentRevision).toBe(5);
+  });
+
+  it("does not CAS a native attachment that reports a pending caller snapshot", async () => {
+    const remote = graphNode();
+    const pendingBody = JSON.stringify([
+      { type: "image", props: { url: "assets/attachments/hash/pending-inline.png" } },
+    ]);
+    const compareAndSwapGraphNodeContent = vi.fn();
+    const acknowledgeLocalNodeDocumentSync = vi.fn();
+    const transport = {
+      attachNodeAttachment: vi.fn().mockResolvedValue({
+        attachment: {
+          id: "pending-inline", graphNodeId: "n-cover", managedPath: "assets/attachments/hash/pending-inline.png",
+          originalFilename: "pending-inline.png", mimeType: "image/png", kind: "image", contentHash: "pending-inline-hash",
+          caption: "", role: "image", provenanceSourcePath: "/vault/pending-inline.png", createdAt: "", updatedAt: "",
+        },
+        document: {
+          graphNodeId: "n-cover", body: pendingBody, summary: "Local pith", neo4jSynced: false,
+          contentOrigin: "user_authored", contentRevision: 5, bodySourceCoordinates: ["local#draft"],
+        },
+        expectedRemoteOrigin: "seed",
+        expectedRemoteRevision: 4,
+        // Native inspected SQLite first and found the caller snapshot stale
+        // relative to local pending work.
+        remoteSyncEligible: false,
+        graphNode: {
+          ...remote,
+          body: pendingBody,
+          summary: "Local pith",
+          contentOrigin: "user_authored",
+          contentRevision: 5,
+          bodySourceCoordinates: ["local#draft"],
+        },
+      }),
+      compareAndSwapGraphNodeContent,
+      acknowledgeLocalNodeDocumentSync,
+    };
+
+    const result = await attachNodeMedia({
+      transport,
+      databasePath: "/workspace/research-canvas.sqlite",
+      workspaceRoot: "/workspace",
+      graphNodeId: "n-cover",
+      sourceAbsolutePath: "/vault/pending-inline.png",
+      kind: "image",
+      role: "inline",
+      openGraphNode: remote,
+    });
+
+    expect(compareAndSwapGraphNodeContent).not.toHaveBeenCalled();
+    expect(acknowledgeLocalNodeDocumentSync).not.toHaveBeenCalled();
+    expect(result.remoteSynced).toBe(false);
+  });
+
+  it("does not report remote sync when acknowledgement rejects the durable local attachment", async () => {
+    const remote = graphNode();
+    const compareAndSwapGraphNodeContent = vi.fn().mockResolvedValue({ kind: "updated" });
+    const acknowledgeLocalNodeDocumentSync = vi.fn().mockResolvedValue({
+      kind: "conflict",
+      current_revision: 5,
+      current_origin: "user_authored",
+      reason: "local document changed before acknowledgement",
+    });
+    const attachedBody = JSON.stringify([
+      { type: "image", props: { url: "assets/attachments/hash/inline.png" } },
+    ]);
+    const transport = {
+      attachNodeAttachment: vi.fn().mockResolvedValue({
+        attachment: {
+          id: "inline-ack-conflict", graphNodeId: "n-cover", managedPath: "assets/attachments/hash/inline.png",
+          originalFilename: "inline.png", mimeType: "image/png", kind: "image", contentHash: "inline-hash",
+          caption: "", role: "image", provenanceSourcePath: "/vault/inline.png", createdAt: "", updatedAt: "",
+        },
+        document: {
+          graphNodeId: "n-cover", body: attachedBody, summary: "Pith", neo4jSynced: false,
+          contentOrigin: "user_authored", contentRevision: 5, bodySourceCoordinates: remote.bodySourceCoordinates,
+        },
+        expectedRemoteOrigin: "seed",
+        expectedRemoteRevision: 4,
+        remoteSyncEligible: true,
+        graphNode: {
+          ...remote,
+          body: attachedBody,
+          contentOrigin: "user_authored",
+          contentRevision: 5,
+        },
+      }),
+      compareAndSwapGraphNodeContent,
+      acknowledgeLocalNodeDocumentSync,
+    };
+
+    const result = await attachNodeMedia({
+      transport,
+      databasePath: "/workspace/research-canvas.sqlite",
+      workspaceRoot: "/workspace",
+      graphNodeId: "n-cover",
+      sourceAbsolutePath: "/vault/inline.png",
+      kind: "image",
+      role: "inline",
+      openGraphNode: remote,
+    });
+
+    expect(compareAndSwapGraphNodeContent).toHaveBeenCalledOnce();
+    expect(acknowledgeLocalNodeDocumentSync).toHaveBeenCalledOnce();
+    expect(result.remoteSynced).toBe(false);
   });
 });

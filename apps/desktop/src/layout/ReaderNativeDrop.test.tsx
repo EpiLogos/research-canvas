@@ -93,9 +93,19 @@ function graphAfterLocalAttachment(): GraphNode {
 function nativeCommandHarness({
   sharedGraphUnavailable = false,
   remoteCasUnavailable = false,
+  localDocument = null,
 }: {
   sharedGraphUnavailable?: boolean;
   remoteCasUnavailable?: boolean;
+  localDocument?: {
+    graphNodeId: string;
+    body: string;
+    summary: string;
+    neo4jSynced: boolean;
+    contentOrigin: "seed" | "corpus_compiled" | "user_authored" | "imported";
+    contentRevision: number;
+    bodySourceCoordinates: string[];
+  } | null;
 } = {}) {
   const calls: NativeCall[] = [];
   const invoke = async (command: string, args?: Record<string, unknown>): Promise<unknown> => {
@@ -104,6 +114,7 @@ function nativeCommandHarness({
       if (sharedGraphUnavailable) throw new Error("SharedGraphState is unavailable");
       return remoteGraph;
     }
+    if (command === "read_local_node_document_command") return localDocument;
     if (command === "attach_node_attachment_command") {
       return {
         attachment: {
@@ -115,7 +126,7 @@ function nativeCommandHarness({
           kind: "image",
           contentHash: "reader-native-drop-hash",
           caption: "",
-          role: "inline",
+          role: "image",
           provenanceSourcePath: "/vault/reader-drop.png",
           createdAt: "2026-01-01T00:00:00Z",
           updatedAt: "2026-01-01T00:00:00Z",
@@ -281,5 +292,83 @@ describe("native drops at live reader roots", () => {
     expect(native.calls.some((call) => call.command === "read_graph_node_command")).toBe(false);
     expect(native.calls.some((call) => call.command === "compare_and_swap_graph_node_content_command")).toBe(true);
     expect(screen.getByTestId("reader-root-body")).toHaveTextContent("reader-drop.png");
+  });
+
+  it("rehydrates a pending SQLite document when the ReadingLens is reopened", async () => {
+    const localDocument = {
+      graphNodeId: remoteGraph.graphNodeId,
+      body: attachedBody,
+      summary: "Attachment added offline",
+      neo4jSynced: false,
+      contentOrigin: "user_authored" as const,
+      contentRevision: 4,
+      bodySourceCoordinates: [],
+    };
+    const native = nativeCommandHarness({
+      sharedGraphUnavailable: true,
+      localDocument,
+    });
+    window.__TAURI_INTERNALS__ = { invoke: native.invoke as never };
+    const workspace = readerWorkspace();
+
+    const first = render(
+      <CanvasWorkspaceContext.Provider value={workspace}>
+        <ReadingLens
+          recordOverride={readerRecordFromGraphNode(remoteGraph)}
+          onFullScreen={() => {}}
+          onExitToCanvas={() => {}}
+        />
+      </CanvasWorkspaceContext.Provider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("reader-root-body")).toHaveTextContent("reader-drop.png"));
+    first.unmount();
+
+    render(
+      <CanvasWorkspaceContext.Provider value={workspace}>
+        <ReadingLens
+          recordOverride={readerRecordFromGraphNode(remoteGraph)}
+          onFullScreen={() => {}}
+          onExitToCanvas={() => {}}
+        />
+      </CanvasWorkspaceContext.Provider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("reader-root-body")).toHaveTextContent("reader-drop.png"));
+    expect(native.calls.filter((call) => call.command === "read_local_node_document_command")).toHaveLength(2);
+    expect(native.calls.some((call) => call.command === "read_graph_node_command")).toBe(false);
+  });
+
+  it("rehydrates a pending SQLite document when the FullScreenReader is reopened", async () => {
+    const localDocument = {
+      graphNodeId: remoteGraph.graphNodeId,
+      body: attachedBody,
+      summary: "Attachment added offline",
+      neo4jSynced: false,
+      contentOrigin: "user_authored" as const,
+      contentRevision: 4,
+      bodySourceCoordinates: [],
+    };
+    const native = nativeCommandHarness({
+      sharedGraphUnavailable: true,
+      localDocument,
+    });
+    window.__TAURI_INTERNALS__ = { invoke: native.invoke as never };
+    const workspace = readerWorkspace();
+
+    const first = render(
+      <CanvasWorkspaceContext.Provider value={workspace}>
+        <FullScreenReader mode="node" record={readerRecordFromGraphNode(remoteGraph)} onClose={() => {}} />
+      </CanvasWorkspaceContext.Provider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("reader-root-body")).toHaveTextContent("reader-drop.png"));
+    first.unmount();
+
+    render(
+      <CanvasWorkspaceContext.Provider value={workspace}>
+        <FullScreenReader mode="node" record={readerRecordFromGraphNode(remoteGraph)} onClose={() => {}} />
+      </CanvasWorkspaceContext.Provider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("reader-root-body")).toHaveTextContent("reader-drop.png"));
+    expect(native.calls.filter((call) => call.command === "read_local_node_document_command")).toHaveLength(2);
+    expect(native.calls.some((call) => call.command === "read_graph_node_command")).toBe(false);
   });
 });
