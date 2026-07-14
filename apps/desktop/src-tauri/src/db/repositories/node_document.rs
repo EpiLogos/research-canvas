@@ -338,6 +338,38 @@ impl<'conn> NodeDocumentRepository<'conn> {
         Ok(fresh_decision)
     }
 
+    /// Applies a reconciliation while a higher-level local operation owns the
+    /// transaction. Attachment insertion uses this to make the asset row,
+    /// usage role, document append, and metadata revision one SQLite commit.
+    /// Callers must have begun a transaction on this repository's connection.
+    pub(crate) fn apply_reconciliation_with_projection_in_existing_transaction(
+        &self,
+        incoming: &DocumentContentInput,
+        expected_revision: Option<i64>,
+        projection: Option<&DocumentMetadataProjection>,
+    ) -> RepositoryResult<NodeDocumentMutation> {
+        let fresh = self.get_node_document(&incoming.graph_node_id)?;
+        let decision = plan(fresh.as_ref(), incoming, expected_revision);
+        if matches!(decision, NodeDocumentMutation::Conflict { .. }) {
+            return Ok(decision);
+        }
+        if projection.is_none() && matches!(decision, NodeDocumentMutation::Preserved) {
+            return Ok(decision);
+        }
+        self.apply_planned_without_transaction(incoming, expected_revision, &decision)?;
+        if let Some(projection) = projection {
+            let accepted_document = self
+                .get_node_document(&incoming.graph_node_id)?
+                .ok_or_else(|| {
+                    RepositoryError::CorruptData(
+                        "accepted reconciliation has no persisted document".into(),
+                    )
+                })?;
+            self.ensure_metadata_projection(&accepted_document, projection)?;
+        }
+        Ok(decision)
+    }
+
     fn ensure_metadata_projection(
         &self,
         document: &LocalNodeDocument,

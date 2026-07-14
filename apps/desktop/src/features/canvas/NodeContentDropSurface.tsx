@@ -8,6 +8,7 @@ import {
 } from "@research-canvas/canvas";
 
 import { useCanvasWorkspace } from "./CanvasWorkspaceContext";
+import { attachNodeMedia } from "../viewer/nodeAttachmentActions";
 
 interface NodeContentDropSurfaceProps {
   graphNodeId: string;
@@ -45,6 +46,8 @@ async function ingest(
   graphNodeId: string,
   items: IngestResult[],
   actions: ContentLinkingActions,
+  addImageToNode: (graphNodeId: string, sourceAbsolutePath: string) => Promise<unknown> =
+    actions.addImageToNode,
 ): Promise<{ ok: boolean; message?: string }> {
   for (const item of items) {
     if (item.kind === "text") {
@@ -58,7 +61,7 @@ async function ingest(
       if (!path) {
         return { ok: false, message: NO_PATH_MESSAGE };
       }
-      await actions.addImageToNode(graphNodeId, path);
+      await addImageToNode(graphNodeId, path);
     }
   }
   return { ok: true };
@@ -73,7 +76,28 @@ export function NodeContentDropSurface({ graphNodeId, children }: NodeContentDro
     async (items: IngestResult[]) => {
       setErrorMessage(null);
       try {
-        const result = await ingest(graphNodeId, items, workspace.contentLinkingActions);
+        const result = await ingest(
+          graphNodeId,
+          items,
+          workspace.contentLinkingActions,
+          async (nodeId, sourceAbsolutePath) => {
+            // Tests and static/read-only contexts intentionally omit the
+            // native transport. Production desktop drops always use the same
+            // durable attachment operation as reader and inspector media.
+            if (!workspace.transport || !workspace.databasePath || !workspace.workingRoot) {
+              return workspace.contentLinkingActions.addImageToNode(nodeId, sourceAbsolutePath);
+            }
+            return attachNodeMedia({
+              transport: workspace.transport,
+              databasePath: workspace.databasePath,
+              workspaceRoot: workspace.workingRoot,
+              graphNodeId: nodeId,
+              sourceAbsolutePath,
+              kind: "image",
+              role: "inline",
+            });
+          },
+        );
         if (!result.ok) {
           setErrorMessage(result.message ?? "Failed to add the dropped/pasted content.");
         }

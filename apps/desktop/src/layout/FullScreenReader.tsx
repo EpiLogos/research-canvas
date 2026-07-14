@@ -6,7 +6,11 @@ import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { NodeContentPane } from "../features/viewer/NodeContentPane";
 import { NodeReaderBody } from "../features/viewer/NodeReaderBody";
 import { GraphDocumentAuthoringActions } from "../features/viewer/GraphDocumentContent";
-import { readerRecordFromCanvasNode, type ReaderRecord } from "../features/viewer/readerRecord";
+import {
+  readerRecordFromCanvasNode,
+  readerRecordWithGraphNode,
+  type ReaderRecord,
+} from "../features/viewer/readerRecord";
 import { ReaderSurface } from "../features/viewer/ReaderSurface";
 
 interface FullScreenReaderProps {
@@ -26,7 +30,15 @@ function NodeMode({ onClose, record }: { onClose: () => void; record: ReaderReco
   const workspace = useCanvasWorkspace();
   const node: CanvasNode | null =
     workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
-  const activeRecord = record ?? (node ? readerRecordFromCanvasNode(node) : null);
+  const incomingRecord = record ?? (node ? readerRecordFromCanvasNode(node) : null);
+  const incomingRecordKey = incomingRecord
+    ? `${incomingRecord.graphNodeId ?? incomingRecord.canvasNode?.id ?? "none"}:${incomingRecord.graphNode?.contentRevision ?? "local"}:${incomingRecord.graphNode?.body ?? incomingRecord.coverReference ?? ""}`
+    : "none";
+  const [activeRecord, setActiveRecord] = useState<ReaderRecord | null>(incomingRecord);
+
+  useEffect(() => {
+    setActiveRecord(incomingRecord);
+  }, [incomingRecordKey]);
 
   useEffect(() => {
     if (!activeRecord) onClose();
@@ -41,7 +53,12 @@ function NodeMode({ onClose, record }: { onClose: () => void; record: ReaderReco
         workspaceRoot={workspace.workingRoot}
         variant="full"
         onExit={onClose}
-        actions={activeRecord.graphNodeId ? <GraphDocumentAuthoringActions graphNodeId={activeRecord.graphNodeId} /> : undefined}
+        actions={activeRecord.graphNodeId ? (
+          <GraphDocumentAuthoringActions
+            graphNodeId={activeRecord.graphNodeId}
+            onGraphNodeUpdated={(graphNode) => setActiveRecord((current) => current ? readerRecordWithGraphNode(current, graphNode) : current)}
+          />
+        ) : undefined}
       >
         <NodeReaderBody node={activeRecord.canvasNode} record={activeRecord} affordances={false} />
       </ReaderSurface>

@@ -5,6 +5,21 @@ import { describe, expect, it, vi } from "vitest";
 import { createAnnotationStore, createCanvasStore } from "@research-canvas/canvas";
 import { CanvasWorkspaceContext } from "../canvas/CanvasWorkspaceContext";
 import { InspectorTab } from "./InspectorTab";
+import { attachNodeMedia } from "../viewer/nodeAttachmentActions";
+
+vi.mock("../canvas/WorkspaceFilePickerButton", () => ({
+  WorkspaceFilePickerButton: ({ buttonLabel, onSelect }: { buttonLabel: string; onSelect: (entry: unknown) => void }) => (
+    <button type="button" onClick={() => onSelect({ kind: "image", absolutePath: "/source/cover.png" })}>
+      {buttonLabel}
+    </button>
+  ),
+}));
+
+vi.mock("../viewer/nodeAttachmentActions", () => ({
+  attachNodeMedia: vi.fn().mockResolvedValue({
+    attachment: { managedPath: "assets/graph-node-1/content-addressed-cover.png" },
+  }),
+}));
 
 function renderInspector() {
   const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
@@ -44,15 +59,19 @@ function renderInspector() {
     updatedAt: "2026-01-01T00:00:00.000Z",
   });
   const updateNodeMetadata = vi.fn().mockResolvedValue(undefined);
+  const updateNodeStyle = vi.fn();
   const value = {
     store,
     annotationStore: createAnnotationStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" }),
     selectedNodeId: node.id,
     entries: [],
     updateNodeMetadata,
-    updateNodeStyle: vi.fn(),
+    updateNodeStyle,
     setNodeThumbnailFromAbsolutePath: vi.fn(),
     captureViewport: vi.fn(),
+    transport: {},
+    databasePath: "/workspace.sqlite",
+    workingRoot: "/workspace",
   } as unknown as ComponentProps<typeof CanvasWorkspaceContext.Provider>["value"];
 
   render(
@@ -60,7 +79,7 @@ function renderInspector() {
       <InspectorTab />
     </CanvasWorkspaceContext.Provider>,
   );
-  return { updateNodeMetadata, nodeId: node.id };
+  return { updateNodeMetadata, updateNodeStyle, nodeId: node.id };
 }
 
 describe("InspectorTab", () => {
@@ -84,6 +103,24 @@ describe("InspectorTab", () => {
     await waitFor(() => {
       expect(updateNodeMetadata).toHaveBeenCalledWith(nodeId, { title: "Banda campaign" });
       expect(updateNodeMetadata).toHaveBeenCalledWith(nodeId, { evidenceTags: ["archive", "documented"] });
+    });
+  });
+
+  it("sets a cover through the shared attachment service and persists only its portable path", async () => {
+    const { updateNodeStyle, nodeId } = renderInspector();
+
+    fireEvent.click(screen.getByRole("button", { name: /set image/i }));
+
+    await waitFor(() => {
+      expect(attachNodeMedia).toHaveBeenCalledWith(expect.objectContaining({
+        graphNodeId: "graph-node-1",
+        sourceAbsolutePath: "/source/cover.png",
+        kind: "image",
+        role: "cover",
+      }));
+      expect(updateNodeStyle).toHaveBeenCalledWith(nodeId, {
+        thumbnail: "assets/graph-node-1/content-addressed-cover.png",
+      });
     });
   });
 });

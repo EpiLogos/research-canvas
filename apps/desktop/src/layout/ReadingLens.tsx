@@ -1,9 +1,10 @@
-import type { CanvasNode } from "@research-canvas/schema";
+import { useEffect, useState, type CanvasNode } from "react";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { NodeReaderBody } from "../features/viewer/NodeReaderBody";
 import { GraphDocumentAuthoringActions } from "../features/viewer/GraphDocumentContent";
 import {
   readerRecordFromCanvasNode,
+  readerRecordWithGraphNode,
   type ReaderRecord,
 } from "../features/viewer/readerRecord";
 import { ReaderSurface, type ReaderSurfaceVariant } from "../features/viewer/ReaderSurface";
@@ -23,7 +24,15 @@ export function ReadingLens({
 }) {
   const workspace = useCanvasWorkspace();
   const selectedNode = nodeOverride ?? workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
-  const record = recordOverride ?? (selectedNode ? readerRecordFromCanvasNode(selectedNode) : null);
+  const incomingRecord = recordOverride ?? (selectedNode ? readerRecordFromCanvasNode(selectedNode) : null);
+  const incomingRecordKey = incomingRecord
+    ? `${incomingRecord.graphNodeId ?? incomingRecord.canvasNode?.id ?? "none"}:${incomingRecord.graphNode?.contentRevision ?? "local"}:${incomingRecord.graphNode?.body ?? incomingRecord.coverReference ?? ""}`
+    : "none";
+  const [record, setRecord] = useState<ReaderRecord | null>(incomingRecord);
+
+  useEffect(() => {
+    setRecord(incomingRecord);
+  }, [incomingRecordKey]);
 
   if (!record) {
     return (
@@ -57,7 +66,12 @@ export function ReadingLens({
       variant={variant as ReaderSurfaceVariant}
       onExit={onExitToCanvas}
       onFullScreen={() => onFullScreen(record)}
-      actions={record.graphNodeId ? <GraphDocumentAuthoringActions graphNodeId={record.graphNodeId} /> : undefined}
+      actions={record.graphNodeId ? (
+        <GraphDocumentAuthoringActions
+          graphNodeId={record.graphNodeId}
+          onGraphNodeUpdated={(graphNode) => setRecord((current) => current ? readerRecordWithGraphNode(current, graphNode) : current)}
+        />
+      ) : undefined}
     >
       <NodeReaderBody node={record.canvasNode} record={record} affordances={false} />
     </ReaderSurface>

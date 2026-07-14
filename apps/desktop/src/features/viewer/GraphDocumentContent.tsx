@@ -10,7 +10,8 @@ import { NodeContentDropSurface } from "../canvas/NodeContentDropSurface";
 import { LinkFilePicker } from "../canvas/LinkFilePicker";
 import { LinkNodePicker } from "../canvas/LinkNodePicker";
 import { useCanvasWorkspace } from "../canvas/CanvasWorkspaceContext";
-import { pickAndInsertImage, pickAndAttachFile } from "../canvas/insertMedia";
+import { pickAndInsertImage, pickAndAttachFile, type MediaPickerActions } from "../canvas/insertMedia";
+import { attachNodeMedia } from "./nodeAttachmentActions";
 
 interface GraphDocumentTransport {
   readGraphNode(input: { graphNodeId: string }): Promise<GraphNode>;
@@ -55,25 +56,67 @@ export function GraphDocumentContent({
  * details/action drawer. Keeping this separate from the document prevents the
  * controls from being mistaken for part of a node's authored long-form text.
  */
-export function GraphDocumentAuthoringActions({ graphNodeId }: { graphNodeId: string }) {
+export function GraphDocumentAuthoringActions({
+  graphNodeId,
+  onGraphNodeUpdated,
+}: {
+  graphNodeId: string;
+  onGraphNodeUpdated?: (graphNode: GraphNode) => void;
+}) {
   return (
     <div className="graph-document-content__linking" role="group" aria-label="Node authoring actions">
-      <InsertMediaButtons graphNodeId={graphNodeId} />
+      <InsertMediaButtons graphNodeId={graphNodeId} onGraphNodeUpdated={onGraphNodeUpdated} />
       <LinkFilePicker graphNodeId={graphNodeId} />
       <LinkNodePicker sourceGraphNodeId={graphNodeId} />
     </div>
   );
 }
 
-function InsertMediaButtons({ graphNodeId }: { graphNodeId: string }) {
+function InsertMediaButtons({
+  graphNodeId,
+  onGraphNodeUpdated,
+}: {
+  graphNodeId: string;
+  onGraphNodeUpdated?: (graphNode: GraphNode) => void;
+}) {
   const workspace = useCanvasWorkspace();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const runPicker = async (
-    picker: (graphNodeId: string, actions: typeof workspace.contentLinkingActions) => Promise<{ ok: boolean; message?: string }>,
+    picker: (graphNodeId: string, actions: MediaPickerActions) => Promise<{ ok: boolean; message?: string }>,
   ) => {
     setErrorMessage(null);
-    const result = await picker(graphNodeId, workspace.contentLinkingActions);
+    const actions: MediaPickerActions = {
+      addImageToNode: async (nodeId, sourceAbsolutePath, caption) => {
+        const attached = await attachNodeMedia({
+          transport: workspace.transport,
+          databasePath: workspace.databasePath,
+          workspaceRoot: workspace.workingRoot,
+          graphNodeId: nodeId,
+          sourceAbsolutePath,
+          kind: "image",
+          role: "inline",
+          caption,
+        });
+        onGraphNodeUpdated?.(attached.graphNode);
+        return attached.graphNode;
+      },
+      attachFileToNode: async (nodeId, sourceAbsolutePath, fileName) => {
+        const attached = await attachNodeMedia({
+          transport: workspace.transport,
+          databasePath: workspace.databasePath,
+          workspaceRoot: workspace.workingRoot,
+          graphNodeId: nodeId,
+          sourceAbsolutePath,
+          kind: "file",
+          role: "file",
+          caption: fileName,
+        });
+        onGraphNodeUpdated?.(attached.graphNode);
+        return attached.graphNode;
+      },
+    };
+    const result = await picker(graphNodeId, actions);
     if (!result.ok) {
       setErrorMessage(result.message ?? "The action failed.");
     }

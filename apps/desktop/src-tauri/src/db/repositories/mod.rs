@@ -6,6 +6,7 @@ pub mod error;
 pub mod graph;
 pub mod graph_metadata;
 pub mod layout;
+pub mod node_attachment;
 pub mod node_document;
 pub mod node_relationship;
 pub mod relationship_vocabulary;
@@ -31,6 +32,7 @@ pub use graph_metadata::{
     TemporalGraphNodeMetadataRecord,
 };
 pub use layout::{CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord};
+pub use node_attachment::{NodeAttachment, NodeAttachmentRepository};
 pub use node_document::{
     DocumentContentInput, DocumentMetadataProjection, DocumentReconciliationItem,
     LocalNodeDocument, NodeDocumentMutation, NodeDocumentRepository, PendingNodeDocumentSync,

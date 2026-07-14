@@ -86,6 +86,10 @@ const MIGRATIONS: &[Migration] = &[
         version: "0018_canvas_scoped_edge_layout",
         sql: include_str!("../../migrations/0018_canvas_scoped_edge_layout.sql"),
     },
+    Migration {
+        version: "0019_node_attachments",
+        sql: include_str!("../../migrations/0019_node_attachments.sql"),
+    },
 ];
 
 impl MigrationRunner {

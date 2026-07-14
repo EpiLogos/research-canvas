@@ -58,6 +58,50 @@ export interface LocalNodeDocumentWriteResult {
   document: LocalNodeDocument | null;
 }
 
+export interface NodeAttachment {
+  id: string;
+  graphNodeId: string;
+  managedPath: string;
+  originalFilename: string;
+  mimeType: string;
+  kind: "image" | "file";
+  contentHash: string;
+  caption: string;
+  role: "inline" | "cover" | "file";
+  provenanceSourcePath: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuthoritativeDocumentSnapshot {
+  body: string;
+  summary: string;
+  contentOrigin: ContentOrigin;
+  contentRevision: number;
+  bodySourceCoordinates: string[];
+  entityType: EntityType;
+  title: string;
+  schemaVersion: number;
+}
+
+export interface AttachNodeAttachmentInput {
+  databasePath?: string;
+  workspaceRoot: string;
+  graphNodeId: string;
+  sourceAbsolutePath: string;
+  kind: "image" | "file";
+  role: "inline" | "cover" | "file";
+  caption?: string;
+  authoritativeDocument: AuthoritativeDocumentSnapshot;
+}
+
+export interface AttachNodeAttachmentResult {
+  attachment: NodeAttachment;
+  document: LocalNodeDocument;
+  expectedRemoteOrigin: ContentOrigin;
+  expectedRemoteRevision: number;
+}
+
 export type PendingNodeStructure = Omit<
   NewGraphNodeInput,
   "body" | "summary" | "contentOrigin" | "contentRevision" | "bodySourceCoordinates"
@@ -556,6 +600,7 @@ export interface WorkspaceTransport {
     graphNodeId: string;
     sourceAbsolutePath: string;
   }): Promise<string>;
+  attachNodeAttachment(input: AttachNodeAttachmentInput): Promise<AttachNodeAttachmentResult>;
 
   // ---- Agent activity (WS6) ----
   listAgentActivity(input: { limit?: number }): Promise<AgentActivity[]>;
@@ -765,6 +810,11 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
         },
       });
     },
+    async attachNodeAttachment(input) {
+      return invokeTauri<AttachNodeAttachmentResult>("attach_node_attachment_command", {
+        request: input,
+      });
+    },
     async listAgentActivity(input) {
       const rows = await invokeTauri<RawAgentActivityRow[]>("list_agent_activity_command", {
         limit: input.limit ?? null,
@@ -935,6 +985,7 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     async upsertEdgeLayout() { throw new Error("read-only web build"); },
     async upsertCanvasAppState() { throw new Error("read-only web build"); },
     async importNodeImage() { throw new Error("read-only web build"); },
+    async attachNodeAttachment() { throw new Error("read-only web build"); },
     async listAgentActivity(input) {
       const url = `${BRIDGE_BASE_URL}/agent-activity?limit=${input.limit ?? 50}`;
       const response = await fetch(url);
@@ -1457,6 +1508,7 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
 
     // ---- content / image import: not served by the static bundle ----
     importNodeImage: readOnlyReject,
+    attachNodeAttachment: readOnlyReject,
 
     // ---- agent activity (WS6): excluded from the exported bundle per design §6 ----
     listAgentActivity: readOnlyReject,

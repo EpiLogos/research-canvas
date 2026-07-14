@@ -15,7 +15,27 @@ vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
 }));
 
 vi.mock("../features/viewer/NodeReaderBody", () => ({
-  NodeReaderBody: ({ node }: { node: { id: string } }) => <div data-testid="reader-body">reading:{node.id}</div>,
+  NodeReaderBody: ({ node, record }: { node: { id: string } | null; record?: { graphNode?: { body?: string } | null } | null }) => (
+    <div data-testid="reader-body">{record?.graphNode?.body ?? `reading:${node?.id ?? "none"}`}</div>
+  ),
+}));
+
+vi.mock("../features/viewer/GraphDocumentContent", () => ({
+  GraphDocumentAuthoringActions: ({ onGraphNodeUpdated }: { onGraphNodeUpdated?: (node: unknown) => void }) => (
+    <button
+      type="button"
+      onClick={() => onGraphNodeUpdated?.({
+        graphNodeId: "timeline-1",
+        title: "Timeline record",
+        body: '[{"type":"image","props":{"url":"assets/timeline-1/new-image.png"}}]',
+        summary: "Updated pith",
+        contentOrigin: "user_authored",
+        contentRevision: 2,
+      })}
+    >
+      Insert image
+    </button>
+  ),
 }));
 
 describe("ReadingLens", () => {
@@ -131,5 +151,46 @@ describe("ReadingLens", () => {
 
     expect(screen.getByTestId("reader-media-unresolved")).toHaveTextContent("Image source needs re-attaching");
     expect(screen.queryByTestId("reader-cover")).not.toBeInTheDocument();
+  });
+
+  it("replaces the open timeline reader record immediately after media insertion", () => {
+    const record = {
+      kind: "graph",
+      graphNodeId: "timeline-1",
+      canvasNode: null,
+      graphNode: {
+        graphNodeId: "timeline-1",
+        title: "Timeline record",
+        body: '[{"type":"paragraph","content":[{"type":"text","text":"Before"}]}]',
+        summary: "Original pith",
+        evidenceTags: [],
+        sourceCoordinates: [],
+        bodySourceCoordinates: [],
+        isTemporal: true,
+        validFrom: "1700-01-01",
+        validTo: null,
+        temporalPrecision: "year",
+      },
+      title: "Timeline record",
+      pith: "Original pith",
+      coverReference: null,
+      evidenceTags: [],
+      sourceCoordinates: [],
+      bodySourceCoordinates: [],
+      narrative: { historicity: null, claimKind: null, evidenceStatus: null, temporalRole: null, sourceKind: null },
+      ql: null,
+      placeTags: [],
+      temporal: { validFrom: "1700-01-01", validTo: null, precision: "year" },
+      placeCoverage: null,
+    } as never;
+
+    render(<ReadingLens recordOverride={record} onFullScreen={() => {}} onExitToCanvas={() => {}} />);
+    expect(screen.getByTestId("reader-body")).toHaveTextContent("Before");
+
+    fireEvent.click(screen.getByRole("button", { name: "Show reader details" }));
+    fireEvent.click(screen.getByRole("button", { name: "Insert image" }));
+
+    expect(screen.getByTestId("reader-body")).toHaveTextContent("new-image.png");
+    expect(screen.getByText("Updated pith")).toBeInTheDocument();
   });
 });

@@ -94,6 +94,19 @@ export function readerRecordFromCanvasNode(canvasNode: CanvasNode): ReaderRecord
   };
 }
 
+/**
+ * Replaces only the canonical graph substance of an already-open reader.
+ * This deliberately preserves the originating canvas/timeline context and an
+ * explicitly chosen cover while letting local-first mutations become visible
+ * without closing and reopening the reader surface.
+ */
+export function readerRecordWithGraphNode(
+  record: ReaderRecord,
+  graphNode: GraphNodeContract,
+): ReaderRecord {
+  return graphReaderRecord(graphNode, record.canvasNode, record.coverReference);
+}
+
 function graphReaderRecord(
   graphNode: GraphNodeContract,
   canvasNode: CanvasNode | null,

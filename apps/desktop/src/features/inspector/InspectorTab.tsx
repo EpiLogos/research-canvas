@@ -3,6 +3,7 @@ import type { GraphNodePatch } from "@research-canvas/desktop-api";
 import { walkSequenceGraph } from "@research-canvas/canvas";
 import { useCanvasWorkspace } from "../canvas/CanvasWorkspaceContext";
 import { WorkspaceFilePickerButton } from "../canvas/WorkspaceFilePickerButton";
+import { attachNodeMedia } from "../viewer/nodeAttachmentActions";
 
 const DOT_PRESETS = ["#4a4aff","#9b59b6","#27ae60","#e67e22","#e74c3c","#1abc9c","#f39c12","#888888"];
 const BG_PRESETS  = ["#0e0e22","#140a0a","#0a140a","#14100a","#0a0a14","#111111"];
@@ -182,7 +183,28 @@ export function InspectorTab() {
           entries={workspace.entries}
           filter={(entry) => entry.kind === "image"}
           onSelect={(entry) => {
-            void workspace.setNodeThumbnailFromAbsolutePath(node.id, entry.absolutePath);
+            if (!node.graphNodeId) {
+              return;
+            }
+            void attachNodeMedia({
+              transport: workspace.transport,
+              databasePath: workspace.databasePath,
+              workspaceRoot: workspace.workingRoot,
+              graphNodeId: node.graphNodeId,
+              sourceAbsolutePath: entry.absolutePath,
+              kind: "image",
+              role: "cover",
+            })
+              .then(({ attachment }) => {
+                // Layout keeps only a portable reference. The card and reader
+                // resolve this through the same workspace asset system as an
+                // inline image, never through a stale absolute asset URL.
+                workspace.updateNodeStyle(node.id, { thumbnail: attachment.managedPath });
+              })
+              .catch(() => {
+                // The shared workspace error surface should own transport
+                // failures; do not optimistically write a thumbnail URL.
+              });
           }}
         />
       </div>
