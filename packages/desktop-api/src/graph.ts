@@ -108,9 +108,15 @@ export interface TimelineFilters {
 }
 export interface TimelineValueFilter<T> { include?: T[]; exclude?: T[] }
 
+export interface TimelineYearRange {
+  startYear: number;
+  endYear: number;
+}
+
 export interface LoadTimelineViewRequest {
   workspaceId: string;
   filters?: TimelineFilters;
+  range?: TimelineYearRange;
 }
 
 export interface TimelineAnchor {

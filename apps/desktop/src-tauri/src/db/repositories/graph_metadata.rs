@@ -170,6 +170,40 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
+    /// Returns only temporal records whose inclusive temporal span intersects
+    /// the requested year window. The indexed `is_temporal, valid_from` prefix
+    /// keeps camera-driven timeline reads bounded before document bodies are
+    /// joined by the caller.
+    pub fn list_temporal_in_year_range(
+        &self,
+        start_year: i32,
+        end_year: i32,
+    ) -> RepositoryResult<Vec<TemporalGraphNodeMetadataRecord>> {
+        let mut statement = self.connection.prepare(
+            "SELECT graph_node_id, entity_type, title, archetypal_resonance, coordinate,
+             source_coordinates_json, evidence_tags_json, source_kind, content_origin,
+             content_revision, seed_schema_version, body_source_coordinates_json, historicity,
+             claim_kind, evidence_status, temporal_role, place_coverage, ql_form, ql_unit_id,
+             ql_arc, ql_topology, ql_schema_version, ql_source_coordinates_json,
+             ql_completeness_status, is_temporal, valid_from, valid_to, temporal_precision,
+             schema_version, sync_state, remote_revision, created_at, updated_at
+             FROM graph_node_metadata
+             WHERE is_temporal=1
+               AND valid_from IS NOT NULL
+               AND CAST(substr(valid_from, 1, 4) AS INTEGER) <= ?2
+               AND (valid_to IS NULL OR CAST(substr(valid_to, 1, 4) AS INTEGER) >= ?1)
+             ORDER BY graph_node_id",
+        )?;
+        let rows = statement.query_map([start_year, end_year], |row| {
+            Ok(TemporalGraphNodeMetadataRecord {
+                metadata: record_from_row(row)?,
+                created_at: row.get(31)?,
+                updated_at: row.get(32)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
     /// Optimistic, ownership-aware persistence. `expected_revision` is required
     /// for changing an existing row. Exact retries are preserved. Automated
     /// origins can never replace user-authored substance.

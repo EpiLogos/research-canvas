@@ -762,6 +762,7 @@ mod local_relationship_command_tests {
             LoadTimelineViewRequest {
                 workspace_id: timeline_workspace_identity(&path).expect("timeline workspace id"),
                 filters: TimelineFilters::default(),
+                range: None,
             },
         )
         .expect("offline timeline reads the normal local command relation");
@@ -839,6 +840,7 @@ mod local_relationship_command_tests {
             LoadTimelineViewRequest {
                 workspace_id: timeline_workspace_identity(&path).expect("timeline workspace id"),
                 filters: TimelineFilters::default(),
+                range: None,
             },
         )
         .expect("offline timeline reads only the retyped local relationship");
@@ -935,6 +937,7 @@ mod local_relationship_command_tests {
             LoadTimelineViewRequest {
                 workspace_id: timeline_workspace_identity(&path).expect("timeline workspace id"),
                 filters: TimelineFilters::default(),
+                range: None,
             },
         )
         .expect("offline timeline finds normal source relationship");

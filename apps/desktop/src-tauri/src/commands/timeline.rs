@@ -58,6 +58,15 @@ pub struct LoadTimelineViewRequest {
     pub workspace_id: String,
     #[serde(default)]
     pub filters: TimelineFilters,
+    #[serde(default)]
+    pub range: Option<TimelineYearRange>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TimelineYearRange {
+    pub start_year: i32,
+    pub end_year: i32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -473,10 +482,16 @@ pub fn load_timeline_view_at_path(
     }
     let database = Database::open(path.as_ref()).map_err(|error| error.to_string())?;
     let metadata_repository = GraphNodeMetadataRepository::new(database.connection());
-    let metadata = metadata_repository
-        .list_temporal()
-        .map_err(|error| error.to_string())?;
-    let documents = NodeDocumentRepository::new(database.connection());
+    let metadata = match request.range.as_ref() {
+        Some(range) => {
+            if range.start_year > range.end_year {
+                return Err("timeline range startYear must not exceed endYear".into());
+            }
+            metadata_repository.list_temporal_in_year_range(range.start_year, range.end_year)
+        }
+        None => metadata_repository.list_temporal(),
+    }
+    .map_err(|error| error.to_string())?;
     let layouts = TimelineLayoutRepository::new(database.connection())
         .list()
         .map_err(|error| error.to_string())?
@@ -509,19 +524,6 @@ pub fn load_timeline_view_at_path(
                 continue;
             }
         };
-        let Some(document) = documents
-            .get_node_document(&metadata.graph_node_id)
-            .map_err(|error| error.to_string())?
-        else {
-            diagnostics.push(TimelineDiagnostic {
-                graph_node_id: metadata.graph_node_id.clone(),
-                code: TimelineDiagnosticCode::MissingAuthoritativeDocument,
-                message: "temporal metadata has no authoritative node_document".into(),
-                valid_from: metadata.valid_from.clone(),
-                valid_to: metadata.valid_to.clone(),
-            });
-            continue;
-        };
         let layout_override = layouts.get(&metadata.graph_node_id).map(|layout| {
             lane_ids.insert(layout.lane.clone());
             TimelineLayoutOverride {
@@ -536,7 +538,9 @@ pub fn load_timeline_view_at_path(
         nodes.push(TimelineNode {
             anchor,
             layout_override,
-            node: graph_node_from_local_projection(&row, Some(document)),
+            // The timeline card needs metadata only. Full document bodies are
+            // fetched by the existing node reader after an explicit open.
+            node: graph_node_from_local_projection(&row, None),
             relation_companion: false,
         });
     }
@@ -1095,6 +1099,10 @@ mod local_relationship_projection_tests {
             LoadTimelineViewRequest {
                 workspace_id,
                 filters: TimelineFilters::default(),
+                range: Some(TimelineYearRange {
+                    start_year: 1800,
+                    end_year: 1900,
+                }),
             },
         )
         .expect("load offline timeline");
@@ -1120,6 +1128,23 @@ mod local_relationship_projection_tests {
         assert_eq!(
             relationship.properties,
             serde_json::json!({"reading": "concrete historical expression"})
+        );
+
+        let outside = load_timeline_view_at_path(
+            &path,
+            LoadTimelineViewRequest {
+                workspace_id: timeline.workspace_id.clone(),
+                filters: TimelineFilters::default(),
+                range: Some(TimelineYearRange {
+                    start_year: 1700,
+                    end_year: 1800,
+                }),
+            },
+        )
+        .expect("load an adjacent offline timeline window");
+        assert!(
+            outside.nodes.is_empty(),
+            "out-of-window events must not be read"
         );
     }
 

@@ -38,7 +38,7 @@ export interface TimelineStoreState {
   tier: () => ScaleTier;
 
   setWidth: (px: number) => void;
-  hydrate: (view: TimelineView) => void;
+  hydrate: (view: TimelineView, preserveViewport?: boolean) => void;
   pan: (deltaPx: number) => void;
   panVertical: (deltaPx: number, bounds: TimelineVerticalPanBounds) => void;
   resetVerticalPan: () => void;
@@ -101,13 +101,13 @@ export function createTimelineStore(
         set({ widthPx: px });
       }
     },
-    hydrate: (view) => {
+    hydrate: (view, preserveViewport = false) => {
       const items = projectNodes(view.nodes);
       // A workspace can survive a graph replacement while the shell still
       // remembers its last camera. Keep a deliberate focus inside this
       // timeline's historical domain, but do not reopen a populated timeline
       // at a completely unrelated century with every card off-screen.
-      const preserveViewport = get().manualViewport && isCameraNearTimeline(items, get().centerYear);
+      const keepCamera = preserveViewport || (get().manualViewport && isCameraNearTimeline(items, get().centerYear));
       set({
         items,
         // Older local terminal bridges may return a timeline payload from
@@ -116,8 +116,8 @@ export function createTimelineStore(
         relationships: view.relationships ?? [],
         lanes: view.lanes,
         diagnostics: view.diagnostics,
-        manualViewport: preserveViewport,
-        ...(!preserveViewport && items.length > 0
+        manualViewport: keepCamera,
+        ...(!keepCamera && items.length > 0
           ? fitViewportToItems(items, get().widthPx)
           : {}),
       });

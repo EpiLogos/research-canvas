@@ -5303,6 +5303,7 @@ mod tests {
             crate::commands::timeline::LoadTimelineViewRequest {
                 workspace_id: workspace_id.clone(),
                 filters: crate::commands::timeline::TimelineFilters::default(),
+                range: None,
             },
         )
         .expect("load offline timeline from normal root projection");

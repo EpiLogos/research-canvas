@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useStore } from "zustand";
 
-import type { ArchetypalLighting, GraphNode, LitInstance, TimelineLayoutMutationResult, TimelineRelationField as TimelineRelationFieldData, TimelineView } from "./contracts";
+import type { ArchetypalLighting, GraphNode, LitInstance, TimelineLayoutMutationResult, TimelineRelationField as TimelineRelationFieldData, TimelineView, TimelineYearRange } from "./contracts";
 import { createTimelineStore, type TimelineCardGeometryUpdate } from "./timelineStore";
 import { DEFAULT_TIMELINE_CARD_WIDTH_PX, FALLBACK_TIMELINE_LANE_ID, placeItems, type PlacedItem, type TimelinePresentation } from "./projection";
 import { generateTicks } from "./ticks";
@@ -14,7 +14,8 @@ import { ResonancePopover } from "./ResonancePopover";
 import { deriveTimelineCategory, TIMELINE_CATEGORIES, type TimelineCategory } from "./categories";
 
 export interface TimelineDataSource {
-  loadTimelineView(): Promise<TimelineView>;
+  loadTimelineView(range?: TimelineYearRange): Promise<TimelineView>;
+  loadNode?(graphNodeId: string): Promise<GraphNode>;
   archetypalLighting(operatorGraphNodeId: string): Promise<ArchetypalLighting>;
   resonancesForInstance(graphNodeId: string): Promise<LitInstance[]>;
   relationFieldForEvent?(graphNodeId: string): Promise<TimelineRelationFieldData>;
@@ -42,6 +43,8 @@ const TIMELINE_TAIL_DECELERATION_PX_PER_SECOND_SQUARED = 9_000;
 // Mount cards only near the camera. The margin keeps panning continuous while
 // capping the number of interactive cards and listeners at deep zoom levels.
 const TIMELINE_RENDER_OVERSCAN_PX = 320;
+const TIMELINE_LOAD_DEBOUNCE_MS = 120;
+const TIMELINE_MIN_QUERY_BUFFER_YEARS = 32;
 
 type TimelineNavigationDirection = "earlier" | "later";
 
@@ -74,6 +77,9 @@ export function TimelineLens({
   const knownRevisions = useRef(new Map<string, number>());
   const dataSourceEpoch = useRef(0);
   const relationFieldRequestVersion = useRef(0);
+  const timelineRequestVersion = useRef(0);
+  const loadedRange = useRef<TimelineYearRange | null>(null);
+  const timelineLoadTimer = useRef<number | null>(null);
   const [visibleCategories, setVisibleCategories] = useState<Record<TimelineCategory, boolean>>(() =>
     Object.fromEntries(TIMELINE_CATEGORIES.map((category) => [category.id, true])) as Record<TimelineCategory, boolean>,
   );
@@ -86,9 +92,13 @@ export function TimelineLens({
   } | null>(null);
   const heldNavigationKeys = useRef(new Set<"ArrowLeft" | "ArrowRight">());
 
-  // Load timeline nodes once on mount.
+  // Load only the initial camera window. Subsequent camera movement requests
+  // another bounded window instead of re-reading the whole temporal corpus.
   useEffect(() => {
     let cancelled = false;
+    const requestVersion = timelineRequestVersion.current + 1;
+    timelineRequestVersion.current = requestVersion;
+    const range = timelineRangeForViewport(store.getState().viewport());
     dataSourceEpoch.current += 1;
     saveQueues.current.clear();
     saveVersions.current.clear();
@@ -98,9 +108,12 @@ export function TimelineLens({
     setSaveErrors({});
     setLoaded(false);
     setLoadError(null);
-    void dataSource.loadTimelineView()
+    void dataSource.loadTimelineView(range)
       .then((view) => {
-        if (!cancelled) store.getState().hydrate(view);
+        if (!cancelled && timelineRequestVersion.current === requestVersion) {
+          loadedRange.current = range;
+          store.getState().hydrate(view);
+        }
       })
       .catch((error: unknown) => {
         if (!cancelled) {
@@ -108,10 +121,11 @@ export function TimelineLens({
         }
       })
       .finally(() => {
-        if (!cancelled) setLoaded(true);
+        if (!cancelled && timelineRequestVersion.current === requestVersion) setLoaded(true);
       });
     return () => {
       cancelled = true;
+      if (timelineLoadTimer.current !== null) window.clearTimeout(timelineLoadTimer.current);
     };
   }, [dataSource, store]);
 
@@ -132,6 +146,32 @@ export function TimelineLens({
 
   const viewport = state.viewport();
   useEffect(() => {
+    if (!loaded) return;
+    const range = timelineRangeForViewport(viewport);
+    if (loadedRange.current && range.startYear >= loadedRange.current.startYear && range.endYear <= loadedRange.current.endYear) {
+      return;
+    }
+    if (timelineLoadTimer.current !== null) window.clearTimeout(timelineLoadTimer.current);
+    timelineLoadTimer.current = window.setTimeout(() => {
+      const requestVersion = timelineRequestVersion.current + 1;
+      timelineRequestVersion.current = requestVersion;
+      void dataSource.loadTimelineView(range)
+        .then((view) => {
+          if (timelineRequestVersion.current !== requestVersion) return;
+          loadedRange.current = range;
+          setLoadError(null);
+          store.getState().hydrate(view, true);
+        })
+        .catch((error: unknown) => {
+          if (timelineRequestVersion.current !== requestVersion) return;
+          setLoadError(error instanceof Error ? error.message : String(error));
+        });
+    }, TIMELINE_LOAD_DEBOUNCE_MS);
+    return () => {
+      if (timelineLoadTimer.current !== null) window.clearTimeout(timelineLoadTimer.current);
+    };
+  }, [dataSource, loaded, store, viewport.centerYear, viewport.pixelsPerYear, viewport.widthPx]);
+  useEffect(() => {
     // Until the graph has hydrated, the store only holds its neutral startup
     // camera. Publishing that value would make the shell remember a fictitious
     // location and could reopen the next timeline far from its actual nodes.
@@ -151,13 +191,21 @@ export function TimelineLens({
     : tier === "century"
       ? "label"
       : "detail";
-  const allPlaced = placeItems(state.items, viewport, state.lanes);
+  // Cull by year before collision placement. Filtering after `placeItems`
+  // would still make every zoom frame walk the whole loaded window, which is
+  // the expensive path that caused deep-LOD freezes.
+  const renderYearRange = timelineRenderYearRange(viewport);
+  const layoutItems = state.items.filter((item) => {
+    const itemEnd = item.endYear ?? item.startYear;
+    return itemEnd >= renderYearRange.startYear && item.startYear <= renderYearRange.endYear;
+  });
+  const allPlaced = placeItems(layoutItems, viewport, state.lanes);
   const categoryPlaced = allPlaced.filter((p) => visibleCategories[deriveTimelineCategory(p.item.node)]);
   const placed = categoryPlaced.filter((placement) => isInsideTimelineRenderBand(placement, viewport.widthPx));
   const ticks = generateTicks(viewport, tier);
   const lighting = state.litMap;
   const lightingActive = state.lightingOperatorId !== null;
-  const showEmptyState = loaded && !loadError && categoryPlaced.length === 0;
+  const showEmptyState = loaded && !loadError && state.items.length === 0;
   const activeCategories = TIMELINE_CATEGORIES.filter((category) =>
     state.items.some((item) => deriveTimelineCategory(item.node) === category.id),
   );
@@ -177,6 +225,16 @@ export function TimelineLens({
         if (relationFieldRequestVersion.current === requestVersion) setRelationField(null);
       });
     }
+  };
+
+  const handleOpenNode = (graphNodeId: string, node: GraphNode) => {
+    if (!dataSource.loadNode) {
+      onOpenNode(graphNodeId, node);
+      return;
+    }
+    void dataSource.loadNode(graphNodeId)
+      .then((loadedNode) => onOpenNode(graphNodeId, loadedNode))
+      .catch(() => onOpenNode(graphNodeId, node));
   };
 
   const handleLightOperator = (operatorGraphNodeId: string) => {
@@ -474,7 +532,7 @@ export function TimelineLens({
                   filtered={false}
                   viewportWidth={viewport.widthPx}
                   onSelect={handleSelect}
-                  onOpen={onOpenNode}
+                  onOpen={handleOpenNode}
                   onResize={handleResizeNode}
                   onCommit={commitTimelineLayout}
                   onColorTag={handleColorTag}
@@ -510,6 +568,25 @@ function isInsideTimelineRenderBand(placement: PlacedItem, viewportWidth: number
   const right = Math.max(placement.startPx, placement.endPx) + halfCardWidth;
   return right >= -TIMELINE_RENDER_OVERSCAN_PX
     && left <= viewportWidth + TIMELINE_RENDER_OVERSCAN_PX;
+}
+
+function timelineRangeForViewport(viewport: { centerYear: number; pixelsPerYear: number; widthPx: number }): TimelineYearRange {
+  const visibleYears = viewport.widthPx / Math.max(viewport.pixelsPerYear, Number.EPSILON);
+  const bufferYears = Math.max(TIMELINE_MIN_QUERY_BUFFER_YEARS, visibleYears * 0.5);
+  return {
+    startYear: Math.floor(viewport.centerYear - visibleYears / 2 - bufferYears),
+    endYear: Math.ceil(viewport.centerYear + visibleYears / 2 + bufferYears),
+  };
+}
+
+function timelineRenderYearRange(viewport: { centerYear: number; pixelsPerYear: number; widthPx: number }): TimelineYearRange {
+  const pixelsPerYear = Math.max(viewport.pixelsPerYear, Number.EPSILON);
+  const visibleYears = viewport.widthPx / pixelsPerYear;
+  const overscanYears = TIMELINE_RENDER_OVERSCAN_PX / pixelsPerYear;
+  return {
+    startYear: viewport.centerYear - visibleYears / 2 - overscanYears,
+    endYear: viewport.centerYear + visibleYears / 2 + overscanYears,
+  };
 }
 
 function verticalPanBounds(placed: ReturnType<typeof placeItems>, trackHeight: number) {

@@ -78,6 +78,22 @@ describe("createTimelineDataSource", () => {
     expect(loaded.nodes[0]?.layoutOverride).toEqual(expect.objectContaining({ lane: "events", width: 100 }));
   });
 
+  test("forwards a bounded camera window to the transport", async () => {
+    const loadTimelineView = vi.fn(async () => ({
+      workspaceId: "sqlite:/canonical/workspace.sqlite",
+      nodes: [], relationships: [], lanes: [], diagnostics: [],
+    }));
+    const ds = createTimelineDataSource({
+      transport: { loadTimelineView, upsertTimelineLayout: vi.fn(), archetypalLighting: vi.fn(), resonancesForInstance: vi.fn() },
+      workspaceId: "sqlite:/canonical/workspace.sqlite",
+    });
+    await ds.loadTimelineView({ startYear: 1880, endYear: 1940 });
+    expect(loadTimelineView).toHaveBeenCalledWith({
+      workspaceId: "sqlite:/canonical/workspace.sqlite",
+      range: { startYear: 1880, endYear: 1940 },
+    });
+  });
+
   test("archetypalLighting forwards the operator id", async () => {
     const lighting: ArchetypalLighting = {
       operator: gnode("op", false),

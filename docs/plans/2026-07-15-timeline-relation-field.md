@@ -21,9 +21,11 @@ contextual list. Contextual nodes are not assigned fabricated dates.
 
 The lens also mounts cards only inside a 320px viewport overscan band and
 delegates pointer handling to each rendered timeline node, avoiding global
-pointer listeners for every card. The remaining tasks below describe the next
-phase: replacing the still-global temporal-event snapshot with a cached,
-indexed time-window query. They are not represented as complete by this slice.
+pointer listeners for every card. The temporal window is now bounded as well:
+the transport sends the camera range, SQLite applies an indexed year-span
+predicate, and the lens debounces boundary requests while culling before
+placement. Full document bodies remain lazy and are fetched only when a node
+is opened.
 
 ---
 

@@ -3,13 +3,14 @@ import type {
   ArchetypalLighting,
   LitInstance,
   TimelineView,
+  TimelineYearRange,
   WorkspaceTransport,
 } from "@research-canvas/desktop-api";
 
 type TimelineTransport = Pick<
   WorkspaceTransport,
   "loadTimelineView" | "loadTimelineRelationField" | "upsertTimelineLayout" | "archetypalLighting" | "resonancesForInstance"
->;
+> & Partial<Pick<WorkspaceTransport, "readGraphNode">>;
 
 /**
  * Adapt the WS0 §5.2 WorkspaceTransport to the narrow TimelineDataSource port
@@ -22,9 +23,12 @@ export function createTimelineDataSource(input: {
 }): TimelineDataSource {
   const { transport, workspaceId } = input;
   return {
-    async loadTimelineView(): Promise<TimelineView> {
-      return transport.loadTimelineView({ workspaceId });
+    async loadTimelineView(range?: TimelineYearRange): Promise<TimelineView> {
+      return transport.loadTimelineView({ workspaceId, ...(range ? { range } : {}) });
     },
+    ...(transport.readGraphNode
+      ? { async loadNode(graphNodeId: string) { return transport.readGraphNode!({ graphNodeId }); } }
+      : {}),
     async saveTimelineLayout(layout) {
       return transport.upsertTimelineLayout({ ...layout, workspaceId });
     },

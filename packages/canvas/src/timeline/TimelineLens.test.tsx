@@ -128,6 +128,13 @@ describe("TimelineLens", () => {
     expect(screen.queryByTestId("timeline-relationship-historical-cause")).not.toBeInTheDocument();
   });
 
+  test("requests a bounded temporal window on mount", async () => {
+    const loadTimelineView = vi.fn(makeDataSource().loadTimelineView);
+    render(<TimelineLens dataSource={makeDataSource({ loadTimelineView })} onOpenNode={() => {}} />);
+    await screen.findByTestId("timeline-node-banda");
+    expect(loadTimelineView).toHaveBeenCalledWith({ startYear: 1200, endYear: 2200 });
+  });
+
   test("mounts only historical cards inside the viewport render band", async () => {
     render(
       <TimelineLens

@@ -19,4 +19,5 @@ export type {
   TimelineLane,
   TimelineDiagnostic,
   TimelineLayoutMutationResult,
+  TimelineYearRange,
 } from "@research-canvas/desktop-api";
