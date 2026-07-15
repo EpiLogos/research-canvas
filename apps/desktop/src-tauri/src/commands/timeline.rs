@@ -241,6 +241,21 @@ pub struct TimelineView {
     pub diagnostics: Vec<TimelineDiagnostic>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimelineRelationField {
+    pub subject_graph_node_id: String,
+    pub relationships: Vec<GraphRelationship>,
+    pub contextual_nodes: Vec<GraphNode>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TimelineRelationFieldRequest {
+    pub workspace_id: String,
+    pub graph_node_id: String,
+}
+
 fn graph_node_from_local_projection(
     record: &TemporalGraphNodeMetadataRecord,
     document: Option<LocalNodeDocument>,
@@ -525,19 +540,46 @@ pub fn load_timeline_view_at_path(
             relation_companion: false,
         });
     }
-    let temporal_ids = nodes
-        .iter()
-        .map(|node| node.node.graph_node_id.clone())
-        .collect::<BTreeSet<_>>();
-    let persisted_relationships = NodeRelationshipRepository::new(database.connection())
-        .list_involving(&temporal_ids)
-        .map_err(|error| error.to_string())?;
-    let relationships = persisted_relationships
+    Ok(TimelineView {
+        workspace_id,
+        nodes,
+        relationships: Vec::new(),
+        lanes: lane_ids.into_iter().map(|id| TimelineLane { id }).collect(),
+        diagnostics,
+    })
+}
+
+pub fn load_timeline_relation_field_at_path(
+    path: impl AsRef<std::path::Path>,
+    workspace_id: &str,
+    graph_node_id: &str,
+) -> Result<TimelineRelationField, String> {
+    let expected_workspace = timeline_workspace_identity(&path)?;
+    if workspace_id != expected_workspace {
+        return Err(format!(
+            "workspaceId does not match active SQLite workspace: expected {expected_workspace}"
+        ));
+    }
+    let database = Database::open(path).map_err(|error| error.to_string())?;
+    let metadata_repository = GraphNodeMetadataRepository::new(database.connection());
+    let Some(subject) = metadata_repository
+        .get_with_timestamps(graph_node_id)
+        .map_err(|error| error.to_string())?
+    else {
+        return Err("timeline relation field subject graph node does not exist".into());
+    };
+    if !subject.metadata.is_temporal {
+        return Err("timeline relation field subject must be temporal".into());
+    }
+
+    let relationships = NodeRelationshipRepository::new(database.connection())
+        .list_involving(&BTreeSet::from([graph_node_id.to_string()]))
+        .map_err(|error| error.to_string())?
         .into_iter()
         .filter(|relationship| !relationship.is_tombstone)
         .map(|relationship| relationship.as_graph_relationship())
         .collect::<Vec<_>>();
-    let companion_ids = relationships
+    let endpoint_ids = relationships
         .iter()
         .flat_map(|relationship| {
             [
@@ -545,49 +587,26 @@ pub fn load_timeline_view_at_path(
                 relationship.target_graph_node_id.as_str(),
             ]
         })
-        .filter(|graph_node_id| !temporal_ids.contains(*graph_node_id))
+        .filter(|endpoint_id| *endpoint_id != graph_node_id)
         .collect::<BTreeSet<_>>();
-    let mut nodes_by_id = nodes
-        .iter()
-        .map(|node| (node.node.graph_node_id.clone(), node.node.clone()))
-        .collect::<BTreeMap<_, _>>();
-    for graph_node_id in companion_ids {
+    let documents = NodeDocumentRepository::new(database.connection());
+    let mut contextual_nodes = Vec::with_capacity(endpoint_ids.len());
+    for endpoint_id in endpoint_ids {
         let Some(metadata) = metadata_repository
-            .get_with_timestamps(graph_node_id)
+            .get_with_timestamps(endpoint_id)
             .map_err(|error| error.to_string())?
         else {
             continue;
         };
         let document = documents
-            .get_node_document(graph_node_id)
+            .get_node_document(endpoint_id)
             .map_err(|error| error.to_string())?;
-        nodes_by_id.insert(
-            graph_node_id.to_string(),
-            graph_node_from_local_projection(&metadata, document),
-        );
+        contextual_nodes.push(graph_node_from_local_projection(&metadata, document));
     }
-    nodes.extend(timeline_relation_companions(
-        &nodes,
-        &relationships,
-        &nodes_by_id,
-    ));
-    let presentation_ids = nodes
-        .iter()
-        .map(|node| node.node.graph_node_id.as_str())
-        .collect::<BTreeSet<_>>();
-    let relationships = relationships
-        .into_iter()
-        .filter(|relationship| {
-            presentation_ids.contains(relationship.source_graph_node_id.as_str())
-                && presentation_ids.contains(relationship.target_graph_node_id.as_str())
-        })
-        .collect();
-    Ok(TimelineView {
-        workspace_id,
-        nodes,
+    Ok(TimelineRelationField {
+        subject_graph_node_id: graph_node_id.to_string(),
         relationships,
-        lanes: lane_ids.into_iter().map(|id| TimelineLane { id }).collect(),
-        diagnostics,
+        contextual_nodes,
     })
 }
 
@@ -737,98 +756,90 @@ pub async fn load_timeline_view_command(
         .db_path
         .clone()
         .ok_or_else(|| "App not bootstrapped yet".to_string())?;
-    let mut view = load_timeline_view_at_path(&path, request)?;
-    // Keep the timeline usable in a local/offline bootstrap, but when the
-    // canonical graph is available carry the real temporal links with the
-    // temporal nodes. This keeps the timeline its own first-class lens rather
-    // than treating it as a constellation canvas.
-    if let Some(graph_state) = app_handle.try_state::<SharedGraphState>() {
-        let graph = crate::db::repositories::graph::GraphRepository::new(
-            graph_state.graph.clone(),
-            graph_state.database.clone(),
-        );
-        let temporal_ids = view
-            .nodes
-            .iter()
-            .filter(|node| !node.relation_companion)
-            .map(|node| node.node.graph_node_id.as_str())
-            .collect::<std::collections::BTreeSet<_>>();
-        let tombstones = local_relationship_tombstones_at_path(
-            &path,
-            &temporal_ids
-                .iter()
-                .map(|graph_node_id| (*graph_node_id).to_string())
-                .collect(),
-        )?;
-        let tombstoned_canonical_keys = tombstones
-            .iter()
-            .map(|relationship| {
-                canonical_relationship_key(
-                    &relationship.source_graph_node_id,
-                    &relationship.target_graph_node_id,
-                    &relationship.rel_type,
-                    &relationship.properties,
-                )
-            })
-            .collect::<BTreeSet<_>>();
-        // A pending tombstone is its own durable delete outbox: every online
-        // timeline refresh retries the canonical remote deletion, while the
-        // local tombstone continues to suppress stale remote read results.
-        for tombstone in &tombstones {
-            let _ = graph.disconnect_by_canonical_relationship(tombstone).await;
-        }
-        let remote_relationships = match graph
-            .relationships_involving(
-                &temporal_ids
-                    .iter()
-                    .map(|graph_node_id| (*graph_node_id).to_string())
-                    .collect::<Vec<_>>(),
+    let _ = app_handle;
+    load_timeline_view_at_path(&path, request)
+}
+
+#[tauri::command]
+pub async fn load_timeline_relation_field_command(
+    request: TimelineRelationFieldRequest,
+    api_state: tauri::State<'_, SharedApiState>,
+    app_handle: tauri::AppHandle,
+) -> Result<TimelineRelationField, String> {
+    let path = api_state
+        .lock()
+        .map_err(|_| "API state lock poisoned".to_string())?
+        .db_path
+        .clone()
+        .ok_or_else(|| "App not bootstrapped yet".to_string())?;
+    let mut field =
+        load_timeline_relation_field_at_path(&path, &request.workspace_id, &request.graph_node_id)?;
+    let Some(graph_state) = app_handle.try_state::<SharedGraphState>() else {
+        return Ok(field);
+    };
+    let graph = crate::db::repositories::graph::GraphRepository::new(
+        graph_state.graph.clone(),
+        graph_state.database.clone(),
+    );
+    let tombstones = local_relationship_tombstones_at_path(
+        &path,
+        &BTreeSet::from([request.graph_node_id.clone()]),
+    )?;
+    let tombstoned_keys = tombstones
+        .iter()
+        .map(|relationship| {
+            canonical_relationship_key(
+                &relationship.source_graph_node_id,
+                &relationship.target_graph_node_id,
+                &relationship.rel_type,
+                &relationship.properties,
             )
+        })
+        .collect::<BTreeSet<_>>();
+    for tombstone in &tombstones {
+        let _ = graph.disconnect_by_canonical_relationship(tombstone).await;
+    }
+    let Ok(remote_relationships) = graph.relationships_for_node(&request.graph_node_id).await
+    else {
+        return Ok(field);
+    };
+    field.relationships = merge_relationships_by_canonical_key(
+        std::mem::take(&mut field.relationships),
+        remote_relationships.into_iter().filter(|relationship| {
+            !tombstoned_keys.contains(&canonical_relationship_key(
+                &relationship.source_graph_node_id,
+                &relationship.target_graph_node_id,
+                &relationship.rel_type,
+                &relationship.properties,
+            ))
+        }),
+    );
+    let known_ids = field
+        .contextual_nodes
+        .iter()
+        .map(|node| node.graph_node_id.clone())
+        .collect::<BTreeSet<_>>();
+    let missing_ids = field
+        .relationships
+        .iter()
+        .flat_map(|relationship| {
+            [
+                relationship.source_graph_node_id.as_str(),
+                relationship.target_graph_node_id.as_str(),
+            ]
+        })
+        .filter(|node_id| *node_id != request.graph_node_id && !known_ids.contains(*node_id))
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
+    if !missing_ids.is_empty() {
+        if let Ok(nodes) = graph
+            .get_nodes(&missing_ids.into_iter().collect::<Vec<_>>())
             .await
         {
-            Ok(relationships) => relationships,
-            Err(_) => return Ok(view),
-        };
-        let displayed_ids = temporal_ids
-            .iter()
-            .map(|graph_node_id| (*graph_node_id).to_string())
-            .collect::<BTreeSet<_>>();
-        let known_ids = view
-            .nodes
-            .iter()
-            .map(|node| node.node.graph_node_id.as_str())
-            .collect::<BTreeSet<_>>();
-        let missing_endpoint_ids = remote_relationships
-            .iter()
-            .flat_map(|relationship| {
-                [
-                    relationship.source_graph_node_id.as_str(),
-                    relationship.target_graph_node_id.as_str(),
-                ]
-            })
-            .filter(|graph_node_id| {
-                !displayed_ids.contains(*graph_node_id) && !known_ids.contains(*graph_node_id)
-            })
-            .map(str::to_string)
-            .collect::<BTreeSet<_>>();
-        let remote_nodes = if missing_endpoint_ids.is_empty() {
-            Vec::new()
-        } else {
-            match graph
-                .get_nodes(&missing_endpoint_ids.into_iter().collect::<Vec<_>>())
-                .await
-            {
-                Ok(nodes) => nodes,
-                Err(_) => return Ok(view),
-            }
-        };
-        apply_remote_timeline_enrichment(
-            &mut view,
-            Ok((remote_relationships, remote_nodes)),
-            &tombstoned_canonical_keys,
-        );
+            field.contextual_nodes.extend(nodes);
+        }
     }
-    Ok(view)
+    Ok(field)
 }
 
 #[tauri::command]
@@ -975,7 +986,7 @@ mod local_relationship_projection_tests {
     }
 
     #[test]
-    fn local_relationships_round_trip_and_offline_timeline_projects_temporal_endpoints() {
+    fn local_relationships_stay_out_of_the_snapshot_and_load_for_a_focused_event() {
         let directory = tempfile::tempdir().expect("temporary SQLite directory");
         let path = directory.path().join("timeline.sqlite");
 
@@ -1088,12 +1099,20 @@ mod local_relationship_projection_tests {
         )
         .expect("load offline timeline");
 
-        assert_eq!(timeline.nodes.len(), 2);
-        assert!(timeline.nodes.iter().any(|node| {
-            node.node.graph_node_id == "archetype-antichrist" && node.relation_companion
-        }));
-        assert_eq!(timeline.relationships.len(), 1);
-        let relationship = &timeline.relationships[0];
+        assert_eq!(timeline.nodes.len(), 1);
+        assert!(timeline.relationships.is_empty());
+
+        let field =
+            load_timeline_relation_field_at_path(&path, &timeline.workspace_id, "event-1888")
+                .expect("load focused event relation field");
+        assert_eq!(field.subject_graph_node_id, "event-1888");
+        assert_eq!(field.contextual_nodes.len(), 1);
+        assert_eq!(
+            field.contextual_nodes[0].graph_node_id,
+            "archetype-antichrist"
+        );
+        assert_eq!(field.relationships.len(), 1);
+        let relationship = &field.relationships[0];
         assert_eq!(relationship.id, "event-1888-instantiates-antichrist");
         assert_eq!(relationship.source_graph_node_id, "event-1888");
         assert_eq!(relationship.target_graph_node_id, "archetype-antichrist");

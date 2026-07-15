@@ -129,6 +129,7 @@ pub fn run() {
             commands::graph::resonances_for_instance_command,
             commands::graph::load_canvas_view_command,
             commands::timeline::load_timeline_view_command,
+            commands::timeline::load_timeline_relation_field_command,
             commands::timeline::upsert_timeline_layout_command,
             commands::graph::upsert_node_layout_command,
             commands::graph::upsert_node_layouts_command,

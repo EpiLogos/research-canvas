@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useStore } from "zustand";
 
-import type { ArchetypalLighting, GraphNode, LitInstance, TimelineLayoutMutationResult, TimelineView } from "./contracts";
+import type { ArchetypalLighting, GraphNode, LitInstance, TimelineLayoutMutationResult, TimelineRelationField as TimelineRelationFieldData, TimelineView } from "./contracts";
 import { createTimelineStore, type TimelineCardGeometryUpdate } from "./timelineStore";
-import { FALLBACK_TIMELINE_LANE_ID, placeItems, type TimelinePresentation } from "./projection";
+import { DEFAULT_TIMELINE_CARD_WIDTH_PX, FALLBACK_TIMELINE_LANE_ID, placeItems, type PlacedItem, type TimelinePresentation } from "./projection";
 import { generateTicks } from "./ticks";
 import { TimelineAxis } from "./TimelineAxis";
 import { TimelineNode } from "./TimelineNode";
 import { TimelineRelationshipLayer } from "./TimelineRelationshipLayer";
+import { TimelineRelationField } from "./TimelineRelationField";
 import { ResonancePopover } from "./ResonancePopover";
 import { deriveTimelineCategory, TIMELINE_CATEGORIES, type TimelineCategory } from "./categories";
 
@@ -16,6 +17,7 @@ export interface TimelineDataSource {
   loadTimelineView(): Promise<TimelineView>;
   archetypalLighting(operatorGraphNodeId: string): Promise<ArchetypalLighting>;
   resonancesForInstance(graphNodeId: string): Promise<LitInstance[]>;
+  relationFieldForEvent?(graphNodeId: string): Promise<TimelineRelationFieldData>;
   saveTimelineLayout?(input: {
     graphNodeId: string; lane: string; offsetY: number; width: number; height: number;
     style: Record<string, unknown>; expectedRevision: number | null;
@@ -37,6 +39,9 @@ const WHEEL_ZOOM_BASE = 1.003;
 const TIMELINE_PAN_ACCELERATION_PX_PER_SECOND_SQUARED = 2_400;
 const TIMELINE_MAX_PAN_SPEED_PX_PER_SECOND = 2_400;
 const TIMELINE_TAIL_DECELERATION_PX_PER_SECOND_SQUARED = 9_000;
+// Mount cards only near the camera. The margin keeps panning continuous while
+// capping the number of interactive cards and listeners at deep zoom levels.
+const TIMELINE_RENDER_OVERSCAN_PX = 320;
 
 type TimelineNavigationDirection = "earlier" | "later";
 
@@ -60,6 +65,7 @@ export function TimelineLens({
   const state = useStore(store);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [resonances, setResonances] = useState<LitInstance[]>([]);
+  const [relationField, setRelationField] = useState<TimelineRelationFieldData | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
@@ -67,6 +73,7 @@ export function TimelineLens({
   const saveVersions = useRef(new Map<string, number>());
   const knownRevisions = useRef(new Map<string, number>());
   const dataSourceEpoch = useRef(0);
+  const relationFieldRequestVersion = useRef(0);
   const [visibleCategories, setVisibleCategories] = useState<Record<TimelineCategory, boolean>>(() =>
     Object.fromEntries(TIMELINE_CATEGORIES.map((category) => [category.id, true])) as Record<TimelineCategory, boolean>,
   );
@@ -86,6 +93,8 @@ export function TimelineLens({
     saveQueues.current.clear();
     saveVersions.current.clear();
     knownRevisions.current.clear();
+    relationFieldRequestVersion.current += 1;
+    setRelationField(null);
     setSaveErrors({});
     setLoaded(false);
     setLoadError(null);
@@ -143,11 +152,12 @@ export function TimelineLens({
       ? "label"
       : "detail";
   const allPlaced = placeItems(state.items, viewport, state.lanes);
-  const placed = allPlaced.filter((p) => visibleCategories[deriveTimelineCategory(p.item.node)]);
+  const categoryPlaced = allPlaced.filter((p) => visibleCategories[deriveTimelineCategory(p.item.node)]);
+  const placed = categoryPlaced.filter((placement) => isInsideTimelineRenderBand(placement, viewport.widthPx));
   const ticks = generateTicks(viewport, tier);
   const lighting = state.litMap;
   const lightingActive = state.lightingOperatorId !== null;
-  const showEmptyState = loaded && !loadError && placed.length === 0;
+  const showEmptyState = loaded && !loadError && categoryPlaced.length === 0;
   const activeCategories = TIMELINE_CATEGORIES.filter((category) =>
     state.items.some((item) => deriveTimelineCategory(item.node) === category.id),
   );
@@ -155,6 +165,18 @@ export function TimelineLens({
   const handleSelect = (graphNodeId: string) => {
     store.getState().setSelected(graphNodeId);
     void dataSource.resonancesForInstance(graphNodeId).then(setResonances);
+    if (dataSource.relationFieldForEvent) {
+      const requestVersion = relationFieldRequestVersion.current + 1;
+      relationFieldRequestVersion.current = requestVersion;
+      setRelationField(null);
+      void dataSource.relationFieldForEvent(graphNodeId).then((field) => {
+        if (relationFieldRequestVersion.current === requestVersion) setRelationField(field);
+      }).catch(() => {
+        // Relation context is supplementary. Keep the selected historical
+        // event interactive if a remote/local field read is temporarily unavailable.
+        if (relationFieldRequestVersion.current === requestVersion) setRelationField(null);
+      });
+    }
   };
 
   const handleLightOperator = (operatorGraphNodeId: string) => {
@@ -242,7 +264,7 @@ export function TimelineLens({
     dragState.current.lastX = event.clientX;
     dragState.current.lastY = event.clientY;
     if (deltaPx !== 0) store.getState().pan(deltaPx);
-    if (deltaY !== 0) store.getState().panVertical(deltaY, verticalPanBounds(placed, trackRef.current?.clientHeight ?? 480));
+    if (deltaY !== 0) store.getState().panVertical(deltaY, verticalPanBounds(categoryPlaced, trackRef.current?.clientHeight ?? 480));
   };
   const handlePointerUp = () => {
     dragState.current = null;
@@ -432,7 +454,7 @@ export function TimelineLens({
         >
           <TimelineAxis ticks={ticks} height={AXIS_HEIGHT} />
           <TimelineRelationshipLayer
-            relationships={state.relationships}
+            relationships={relationField?.relationships ?? []}
             placed={placed}
             viewportWidth={viewport.widthPx}
             lod={lod}
@@ -469,6 +491,9 @@ export function TimelineLens({
           onLightOperator={handleLightOperator}
         />
       )}
+      {relationField !== null && (
+        <TimelineRelationField field={relationField} onOpenNode={onOpenNode} />
+      )}
     </div>
   );
 }
@@ -477,6 +502,14 @@ function shouldLeaveArrowKeyAlone(target: EventTarget | null): boolean {
   if (document.querySelector('[role="dialog"][aria-modal="true"]')) return true;
   if (!(target instanceof HTMLElement)) return false;
   return target.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""], [role="textbox"]') !== null;
+}
+
+function isInsideTimelineRenderBand(placement: PlacedItem, viewportWidth: number): boolean {
+  const halfCardWidth = Math.max(placement.item.presentation.width, DEFAULT_TIMELINE_CARD_WIDTH_PX) / 2;
+  const left = Math.min(placement.startPx, placement.endPx) - halfCardWidth;
+  const right = Math.max(placement.startPx, placement.endPx) + halfCardWidth;
+  return right >= -TIMELINE_RENDER_OVERSCAN_PX
+    && left <= viewportWidth + TIMELINE_RENDER_OVERSCAN_PX;
 }
 
 function verticalPanBounds(placed: ReturnType<typeof placeItems>, trackHeight: number) {

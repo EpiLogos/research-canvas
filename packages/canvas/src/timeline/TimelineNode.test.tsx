@@ -61,6 +61,27 @@ function placed(
 }
 
 describe("TimelineNode", () => {
+  test("does not register global pointer listeners for every mounted timeline card", () => {
+    const addEventListener = vi.spyOn(window, "addEventListener");
+    render(
+      <TimelineNode
+        placed={placed({})}
+        lit={null}
+        selected={false}
+        dimmed={false}
+        filtered={false}
+        onSelect={() => {}}
+        onOpen={() => {}}
+        onResize={() => {}}
+        onColorTag={() => {}}
+      />,
+    );
+
+    expect(addEventListener).not.toHaveBeenCalledWith("pointermove", expect.any(Function));
+    expect(addEventListener).not.toHaveBeenCalledWith("pointerup", expect.any(Function));
+    addEventListener.mockRestore();
+  });
+
   test("renders the title and positions at startPx", () => {
     render(
       <TimelineNode
@@ -265,8 +286,8 @@ describe("TimelineNode", () => {
 
     const handle = screen.getByTestId("timeline-node-resize-n1-se");
     fireEvent.pointerDown(handle, { pointerId: 1, clientX: 100, clientY: 100 });
-    fireEvent.pointerMove(window, { pointerId: 1, clientX: 140, clientY: 130 });
-    fireEvent.pointerUp(window, { pointerId: 1 });
+    fireEvent.pointerMove(screen.getByTestId("timeline-node-n1"), { pointerId: 1, clientX: 140, clientY: 130 });
+    fireEvent.pointerUp(screen.getByTestId("timeline-node-n1"), { pointerId: 1 });
 
     expect(onResize).toHaveBeenCalledWith("n1", {
       positionX: 0,
@@ -313,8 +334,8 @@ describe("TimelineNode", () => {
 
       const handle = screen.getByTestId(`timeline-node-resize-n-${corner}-${corner}`);
       fireEvent.pointerDown(handle, { pointerId: 1, clientX: 100, clientY: 100 });
-      fireEvent.pointerMove(window, { pointerId: 1, ...end });
-      fireEvent.pointerUp(window, { pointerId: 1 });
+      fireEvent.pointerMove(screen.getByTestId(`timeline-node-n-${corner}`), { pointerId: 1, ...end });
+      fireEvent.pointerUp(screen.getByTestId(`timeline-node-n-${corner}`), { pointerId: 1 });
 
       expect(onResize).toHaveBeenCalledWith(`n-${corner}`, expected);
       unmount();
@@ -339,8 +360,8 @@ describe("TimelineNode", () => {
 
     const card = screen.getByTestId("timeline-node-card-n1");
     fireEvent.pointerDown(card, { pointerId: 1, clientX: 100, clientY: 100 });
-    fireEvent.pointerMove(window, { pointerId: 1, clientX: 135, clientY: 145 });
-    fireEvent.pointerUp(window, { pointerId: 1 });
+    fireEvent.pointerMove(screen.getByTestId("timeline-node-n1"), { pointerId: 1, clientX: 135, clientY: 145 });
+    fireEvent.pointerUp(screen.getByTestId("timeline-node-n1"), { pointerId: 1 });
 
     expect(screen.getByTestId("timeline-node-n1").style.left).toBe("200px");
     expect(onResize).toHaveBeenCalledWith("n1", {

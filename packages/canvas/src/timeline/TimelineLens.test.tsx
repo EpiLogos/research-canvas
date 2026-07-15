@@ -125,36 +125,21 @@ describe("TimelineLens", () => {
       expect(screen.getByTestId("timeline-node-banda")).toBeInTheDocument();
     });
     expect(screen.getByTestId("timeline-node-balfour")).toBeInTheDocument();
-    expect(screen.getByTestId("timeline-relationship-historical-cause")).toHaveAttribute(
-      "data-relation-kind",
-      "CAUSES",
-    );
+    expect(screen.queryByTestId("timeline-relationship-historical-cause")).not.toBeInTheDocument();
   });
 
-  test("renders a non-temporal relation companion so an event-to-archetype link has two visible endpoints", async () => {
-    const historicalEvent = event("event-1888", "The 1888 event", "1888-01-01");
-    const contextualArchetype = archetype("archetype-antichrist", "Antichrist archetype");
+  test("mounts only historical cards inside the viewport render band", async () => {
     render(
       <TimelineLens
+        initialViewport={{ centerYear: 1900, pixelsPerYear: 10 }}
         dataSource={makeDataSource({
           loadTimelineView: async () => ({
             workspaceId: "sqlite:/test",
             nodes: [
-              timelineRecord(historicalEvent, layout("event-1888", 240, 72)),
-              {
-                node: contextualArchetype,
-                anchor: { validFrom: "1888-01-01", validTo: null, precision: "year" },
-                layoutOverride: null,
-                relationCompanion: true,
-              },
+              timelineRecord(event("near", "Near event", "1900-01-01"), layout("near", 240, 72)),
+              timelineRecord(event("far", "Far event", "1700-01-01"), layout("far", 240, 72)),
             ],
-            relationships: [{
-              id: "event-instantiates-archetype",
-              relType: "INSTANTIATES",
-              sourceGraphNodeId: "event-1888",
-              targetGraphNodeId: "archetype-antichrist",
-              properties: {},
-            }],
+            relationships: [],
             lanes: [{ id: "events" }],
             diagnostics: [],
           }),
@@ -163,10 +148,58 @@ describe("TimelineLens", () => {
       />,
     );
 
-    const companion = await screen.findByTestId("timeline-node-archetype-antichrist");
-    expect(companion).toHaveAttribute("data-relation-companion", "true");
-    expect(companion).toHaveTextContent("linked context");
-    expect(screen.getByTestId("timeline-relationship-event-instantiates-archetype")).toBeInTheDocument();
+    expect(await screen.findByTestId("timeline-node-near")).toBeInTheDocument();
+    expect(screen.queryByTestId("timeline-node-far")).not.toBeInTheDocument();
+  });
+
+  test("keeps an archetypal relation off the historical axis until its event is focused", async () => {
+    const historicalEvent = event("event-1888", "The 1888 event", "1888-01-01");
+    const contextualArchetype = archetype("archetype-antichrist", "Antichrist archetype");
+    const relationFieldForEvent = vi.fn(async () => ({
+      subjectGraphNodeId: "event-1888",
+      contextualNodes: [contextualArchetype],
+      relationships: [{
+        id: "event-instantiates-archetype",
+        relType: "INSTANTIATES",
+        sourceGraphNodeId: "event-1888",
+        targetGraphNodeId: "archetype-antichrist",
+        properties: {},
+      }],
+    }));
+    const dataSource = makeDataSource({
+      loadTimelineView: async () => ({
+        workspaceId: "sqlite:/test",
+        nodes: [
+          timelineRecord(historicalEvent, layout("event-1888", 240, 72)),
+          {
+            node: contextualArchetype,
+            anchor: { validFrom: "1888-01-01", validTo: null, precision: "year" },
+            layoutOverride: null,
+            relationCompanion: true,
+          },
+        ],
+        relationships: [],
+        lanes: [{ id: "events" }],
+        diagnostics: [],
+      }),
+    }) as TimelineDataSource & { relationFieldForEvent: typeof relationFieldForEvent };
+    dataSource.relationFieldForEvent = relationFieldForEvent;
+    render(
+      <TimelineLens
+        dataSource={dataSource}
+        onOpenNode={() => {}}
+      />,
+    );
+
+    await screen.findByTestId("timeline-node-event-1888");
+    expect(screen.queryByTestId("timeline-node-archetype-antichrist")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("timeline-relation-field")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("timeline-node-event-1888"));
+
+    expect(relationFieldForEvent).toHaveBeenCalledWith("event-1888");
+    expect(await screen.findByTestId("timeline-relation-field")).toHaveTextContent("Antichrist archetype");
+    expect(screen.getByTestId("timeline-relation-event-instantiates-archetype")).toHaveTextContent("INSTANTIATES");
   });
 
   test("shows a visible load error instead of a dates-only surface", async () => {
@@ -395,8 +428,8 @@ describe("TimelineLens", () => {
 
     const handle = await screen.findByTestId("timeline-node-resize-banda-se");
     fireEvent.pointerDown(handle, { pointerId: 1, clientX: 100, clientY: 100 });
-    fireEvent.pointerMove(window, { pointerId: 1, clientX: 140, clientY: 122 });
-    fireEvent.pointerUp(window, { pointerId: 1 });
+    fireEvent.pointerMove(screen.getByTestId("timeline-node-banda"), { pointerId: 1, clientX: 140, clientY: 122 });
+    fireEvent.pointerUp(screen.getByTestId("timeline-node-banda"), { pointerId: 1 });
 
     await waitFor(() => {
       expect(screen.getByTestId("timeline-node-card-banda")).toHaveStyle({ width: "320px", height: "114px" });
@@ -413,8 +446,8 @@ describe("TimelineLens", () => {
 
     const card = await screen.findByTestId("timeline-node-card-banda");
     fireEvent.pointerDown(card, { pointerId: 1, clientX: 100, clientY: 100 });
-    fireEvent.pointerMove(window, { pointerId: 1, clientX: 160, clientY: 136 });
-    fireEvent.pointerUp(window, { pointerId: 1 });
+    fireEvent.pointerMove(screen.getByTestId("timeline-node-banda"), { pointerId: 1, clientX: 160, clientY: 136 });
+    fireEvent.pointerUp(screen.getByTestId("timeline-node-banda"), { pointerId: 1 });
 
     await waitFor(() => {
       expect(screen.getByTestId("timeline-node-card-banda").style.getPropertyValue("--timeline-card-offset-y")).toBe("36px");
@@ -427,8 +460,8 @@ describe("TimelineLens", () => {
     })} onOpenNode={() => {}} />);
     const handle = await screen.findByTestId("timeline-node-resize-banda-se");
     fireEvent.pointerDown(handle, { pointerId: 7, clientX: 100, clientY: 100 });
-    fireEvent.pointerMove(window, { pointerId: 7, clientX: 120, clientY: 110 });
-    fireEvent.pointerUp(window, { pointerId: 7 });
+    fireEvent.pointerMove(screen.getByTestId("timeline-node-banda"), { pointerId: 7, clientX: 120, clientY: 110 });
+    fireEvent.pointerUp(screen.getByTestId("timeline-node-banda"), { pointerId: 7 });
     expect(screen.getByTestId("timeline-node-card-banda")).toHaveStyle({ width: "300px", height: "102px" });
     expect(await screen.findByTestId("timeline-save-error-banda")).toHaveTextContent("Pending timeline edit: disk busy");
   });
@@ -444,8 +477,8 @@ describe("TimelineLens", () => {
     await waitFor(() => expect(saveTimelineLayout).toHaveBeenCalledTimes(1));
     const handle = screen.getByTestId("timeline-node-resize-banda-se");
     fireEvent.pointerDown(handle, { pointerId: 8, clientX: 100, clientY: 100 });
-    fireEvent.pointerMove(window, { pointerId: 8, clientX: 110, clientY: 105 });
-    fireEvent.pointerUp(window, { pointerId: 8 });
+    fireEvent.pointerMove(screen.getByTestId("timeline-node-banda"), { pointerId: 8, clientX: 110, clientY: 105 });
+    fireEvent.pointerUp(screen.getByTestId("timeline-node-banda"), { pointerId: 8 });
     await waitFor(() => expect(saveTimelineLayout).toHaveBeenLastCalledWith(expect.objectContaining({ expectedRevision: 8 })));
   });
 
@@ -461,8 +494,8 @@ describe("TimelineLens", () => {
     const rendered = render(<TimelineLens dataSource={oldSource} onOpenNode={() => {}} />);
     const handle = await screen.findByTestId("timeline-node-resize-banda-se");
     fireEvent.pointerDown(handle, { pointerId: 41, clientX: 100, clientY: 100 });
-    fireEvent.pointerMove(window, { pointerId: 41, clientX: 120, clientY: 110 });
-    fireEvent.pointerUp(window, { pointerId: 41 });
+    fireEvent.pointerMove(screen.getByTestId("timeline-node-banda"), { pointerId: 41, clientX: 120, clientY: 110 });
+    fireEvent.pointerUp(screen.getByTestId("timeline-node-banda"), { pointerId: 41 });
     await waitFor(() => expect(oldSave).toHaveBeenCalled());
     rendered.rerender(<TimelineLens dataSource={newSource} onOpenNode={() => {}} />);
     await waitFor(() => expect(screen.getByTestId("timeline-node-card-banda")).toHaveStyle({ width: "400px", height: "130px" }));
@@ -515,7 +548,10 @@ describe("TimelineLens", () => {
     expect(card.dataset.edgeFade).toBe("none");
 
     const track = screen.getByTestId("timeline-track");
-    fireEvent.wheel(track, { deltaY: -900, clientX: 980 });
+    // Keep the card in the render overscan while moving it far enough left to
+    // exercise its edge fade. A card far outside that band is deliberately
+    // unmounted rather than retained merely to compute a fade.
+    fireEvent.wheel(track, { deltaY: -900, clientX: 550 });
 
     await waitFor(() => {
       expect(screen.getByTestId("timeline-node-card-edge").dataset.edgeFade).not.toBe("none");

@@ -5301,19 +5301,28 @@ mod tests {
         let timeline = crate::commands::timeline::load_timeline_view_at_path(
             &path,
             crate::commands::timeline::LoadTimelineViewRequest {
-                workspace_id,
+                workspace_id: workspace_id.clone(),
                 filters: crate::commands::timeline::TimelineFilters::default(),
             },
         )
         .expect("load offline timeline from normal root projection");
-        assert!(timeline.relationships.iter().any(|relationship| {
+        assert!(timeline.relationships.is_empty());
+        assert!(timeline.nodes.iter().all(|node| !node.relation_companion));
+        let relation_field = crate::commands::timeline::load_timeline_relation_field_at_path(
+            &path,
+            &workspace_id,
+            "root-test:banda-genocide",
+        )
+        .expect("load the selected event relation field");
+        assert!(relation_field.relationships.iter().any(|relationship| {
             relationship.source_graph_node_id == "root-test:banda-genocide"
                 && relationship.target_graph_node_id == "root-test:lamb-sheep"
                 && relationship.rel_type == "INSTANTIATES"
         }));
-        assert!(timeline.nodes.iter().any(|node| {
-            node.node.graph_node_id == "root-test:lamb-sheep" && node.relation_companion
-        }));
+        assert!(relation_field
+            .contextual_nodes
+            .iter()
+            .any(|node| node.graph_node_id == "root-test:lamb-sheep"));
 
         let myth_document = NodeDocumentRepository::new(database.connection())
             .get_node_document("root-test:devil")

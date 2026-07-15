@@ -15,6 +15,7 @@ export type {
   TimelineLayoutOverride,
   TimelineViewNode,
   TimelineView,
+  TimelineRelationField,
   TimelineLane,
   TimelineDiagnostic,
   TimelineLayoutMutationResult,

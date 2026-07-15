@@ -171,6 +171,18 @@ export interface TimelineView {
   diagnostics: TimelineDiagnostic[];
 }
 
+/**
+ * The complete canonical relation neighbourhood for one focused historical
+ * event. Contextual nodes intentionally have no timeline anchor: their
+ * relationship to history is disclosed through the focused event, not by
+ * inventing an historical date for them.
+ */
+export interface TimelineRelationField {
+  subjectGraphNodeId: string;
+  relationships: GraphRelationship[];
+  contextualNodes: GraphNode[];
+}
+
 export interface CanvasView {
   canvasId: string;
   nodes: JoinedCanvasNode[];

@@ -43,7 +43,6 @@ export function TimelineRelationshipLayer({
         const x2 = target.startPx;
         const span = Math.max(Math.abs(x2 - x1), 36);
         const bend = Math.min(116, 26 + span * 0.12);
-        const midpoint = (x1 + x2) / 2;
         return (
           <g
             key={relationship.id}
@@ -55,12 +54,10 @@ export function TimelineRelationshipLayer({
               fill="none"
               stroke={style.stroke}
               strokeDasharray={style.dashed ? "5 5" : undefined}
-              strokeWidth="1.5"
+              strokeWidth="1"
+              opacity="0.55"
               vectorEffect="non-scaling-stroke"
             />
-            <text x={midpoint} y={VIEWBOX_HEIGHT / 2 - bend - 7} textAnchor="middle">
-              {relationship.relType.replaceAll("_", " ")}
-            </text>
           </g>
         );
       })}
