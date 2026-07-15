@@ -29,6 +29,7 @@ export type {
   TimelineDiagnostic,
   TimelineFilters,
   TimelineLane,
+  TimelineYearRange,
   TimelineLayoutOverride,
   UpsertTimelineLayoutInput,
   TimelineLayoutMutationResult,
@@ -182,6 +183,7 @@ import type {
   TimelineView,
   TimelineRelationField,
   TimelineLayoutOverride,
+  TimelineYearRange,
   UpsertTimelineLayoutInput,
   TimelineLayoutMutationResult,
 } from "./graph";
@@ -1425,7 +1427,7 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
         appState: bundle.appState
       };
     },
-    async loadTimelineView({ workspaceId, filters }) {
+    async loadTimelineView({ workspaceId, filters, range }) {
       const canonicalWorkspaceId = `static:${bundle.project.id}`;
       if (workspaceId.trim() === "" || workspaceId !== canonicalWorkspaceId) {
         throw new Error(`workspaceId does not match static bundle: expected ${canonicalWorkspaceId}`);
@@ -1440,6 +1442,7 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
       );
       const timelineLayoutById = new Map(bundle.timelineLayout.map((record) => [record.graphNodeId, record.layout]));
       const temporalRecords = temporalNodes
+        .filter((node) => !range || staticTimelineNodeIntersectsRange(node, range))
         .filter((node): node is GraphNode & { validFrom: string; temporalPrecision: NonNullable<GraphNode["temporalPrecision"]> } =>
           !invalid.includes(node) && typeof node.validFrom === "string" && node.temporalPrecision !== null
         )
@@ -1542,4 +1545,11 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
     upsertLocalNodeDocument: readOnlyReject,
     acknowledgeLocalNodeDocumentSync: readOnlyReject
   };
+}
+
+function staticTimelineNodeIntersectsRange(node: GraphNode, range: TimelineYearRange): boolean {
+  const start = parseStaticTimelineInstant(node.validFrom);
+  const end = parseStaticTimelineInstant(node.validTo) ?? start;
+  if (!start || !end) return false;
+  return start[0] <= range.endYear && end[0] >= range.startYear;
 }
