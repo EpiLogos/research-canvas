@@ -210,9 +210,9 @@
 }
 
 .timeline-node-card[data-lod="label"] {
-  height: 46px !important;
-  min-height: 46px;
-  grid-template-rows: auto 1fr;
+  height: 64px !important;
+  min-height: 64px;
+  grid-template-rows: auto auto 1fr;
 }
 
 .timeline-node-connector {
@@ -301,6 +301,11 @@
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
+}
+
+.timeline-node-card[data-lod="label"] .timeline-node-summary {
+  font-size: 10px;
+  -webkit-line-clamp: 1;
 }
 
 .timeline-node-color {

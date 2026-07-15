@@ -1,7 +1,8 @@
 use research_canvas_desktop_lib::{
     commands::timeline::{
         load_timeline_view_at_path, timeline_workspace_identity, upsert_timeline_layout_at_path,
-        LoadTimelineViewRequest, TimelineLayoutMutationResult, UpsertTimelineLayoutRequest,
+        LoadTimelineViewRequest, TimelineLayoutMutationResult, TimelineYearRange,
+        UpsertTimelineLayoutRequest,
     },
     db::connection::Database,
 };
@@ -122,6 +123,7 @@ fn timeline_layout_command_round_trips_without_touching_canvas_layout() {
         LoadTimelineViewRequest {
             workspace_id: timeline_workspace_identity(&path).unwrap(),
             filters: Default::default(),
+            range: None,
         },
     )
     .unwrap();
@@ -200,13 +202,14 @@ fn workspace_timeline_joins_authoritative_documents_layout_and_diagnostics() {
         LoadTimelineViewRequest {
             workspace_id: workspace_id.clone(),
             filters: Default::default(),
+            range: None,
         },
     )
     .unwrap();
 
     assert_eq!(view.workspace_id, workspace_id);
     assert_eq!(view.nodes.len(), 1);
-    assert_eq!(view.nodes[0].node.body, "authoritative body");
+    assert_eq!(view.nodes[0].node.body, "[]");
     assert_eq!(view.nodes[0].node.summary, "pithy face");
     assert_eq!(view.nodes[0].anchor.precision.as_str(), "day");
     assert_eq!(
@@ -220,6 +223,21 @@ fn workspace_timeline_joins_authoritative_documents_layout_and_diagnostics() {
     assert_eq!(view.lanes[0].id, "events");
     assert_eq!(view.diagnostics.len(), 1);
     assert_eq!(view.diagnostics[0].graph_node_id, "broken");
+
+    let bounded = load_timeline_view_at_path(
+        &path,
+        LoadTimelineViewRequest {
+            workspace_id: workspace_id.clone(),
+            filters: Default::default(),
+            range: Some(TimelineYearRange {
+                start_year: 1945,
+                end_year: 1945,
+            }),
+        },
+    )
+    .unwrap();
+    assert_eq!(bounded.nodes.len(), 1);
+    assert_eq!(bounded.nodes[0].node.summary, "pithy face");
     let wire = serde_json::to_value(&view).unwrap();
     assert_eq!(wire["nodes"][0]["anchor"]["precision"], "day");
     assert_eq!(wire["nodes"][0]["layoutOverride"]["offsetY"], 17.0);
@@ -277,6 +295,7 @@ fn temporal_grammar_workspace_identity_and_filters_are_strict() {
         LoadTimelineViewRequest {
             workspace_id: workspace_id.clone(),
             filters: Default::default(),
+            range: None,
         },
     )
     .unwrap();
@@ -325,7 +344,8 @@ fn temporal_grammar_workspace_identity_and_filters_are_strict() {
         &path,
         LoadTimelineViewRequest {
             workspace_id: "wrong".into(),
-            filters: Default::default()
+            filters: Default::default(),
+            range: None,
         }
     )
     .unwrap_err()
@@ -334,7 +354,8 @@ fn temporal_grammar_workspace_identity_and_filters_are_strict() {
         &path,
         LoadTimelineViewRequest {
             workspace_id: "".into(),
-            filters: Default::default()
+            filters: Default::default(),
+            range: None,
         }
     )
     .unwrap_err()

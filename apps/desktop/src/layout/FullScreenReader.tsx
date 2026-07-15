@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CanvasNode } from "@research-canvas/schema";
-import { readWorkspaceTextFile, type GraphNode } from "@research-canvas/desktop-api";
+import { readWorkspaceTextFile, type GraphNode, type TimelineRelationField as TimelineRelationFieldData } from "@research-canvas/desktop-api";
 import { SequencePresenter } from "@research-canvas/canvas";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { NodeContentDropSurface } from "../features/canvas/NodeContentDropSurface";
@@ -20,16 +20,28 @@ interface FullScreenReaderProps {
   mode: "node" | "sequence";
   onClose: () => void;
   record?: ReaderRecord | null;
+  relationField?: TimelineRelationFieldData | null;
+  onOpenRelatedNode?: (graphNodeId: string, node: GraphNode) => void;
 }
 
-export function FullScreenReader({ mode, onClose, record = null }: FullScreenReaderProps) {
+export function FullScreenReader({ mode, onClose, record = null, relationField = null, onOpenRelatedNode }: FullScreenReaderProps) {
   if (mode === "sequence") {
     return <SequenceMode onClose={onClose} />;
   }
-  return <NodeMode onClose={onClose} record={record} />;
+  return <NodeMode onClose={onClose} record={record} relationField={relationField} onOpenRelatedNode={onOpenRelatedNode} />;
 }
 
-function NodeMode({ onClose, record }: { onClose: () => void; record: ReaderRecord | null }) {
+function NodeMode({
+  onClose,
+  record,
+  relationField,
+  onOpenRelatedNode,
+}: {
+  onClose: () => void;
+  record: ReaderRecord | null;
+  relationField: TimelineRelationFieldData | null;
+  onOpenRelatedNode?: (graphNodeId: string, node: GraphNode) => void;
+}) {
   const workspace = useCanvasWorkspace();
   const node: CanvasNode | null =
     workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
@@ -116,6 +128,8 @@ function NodeMode({ onClose, record }: { onClose: () => void; record: ReaderReco
           onGraphNodeUpdated={updateOpenRecord}
         />
       ) : undefined}
+      relationField={relationField}
+      onOpenRelatedNode={onOpenRelatedNode}
     >
       <NodeReaderBody node={activeRecord.canvasNode} record={activeRecord} affordances={false} />
     </ReaderSurface>

@@ -105,7 +105,10 @@ describe("Shell timeline lens", () => {
       expect(screen.getByTestId("timeline-lens")).toBeInTheDocument();
       expect(screen.getByTestId("timeline-node-banda")).toBeInTheDocument();
     });
-    expect(loadTimelineView).toHaveBeenCalledWith({ workspaceId: "sqlite:/server-canonical/workspace.sqlite" });
+    expect(loadTimelineView).toHaveBeenCalledWith({
+      workspaceId: "sqlite:/server-canonical/workspace.sqlite",
+      range: { startYear: 1200, endYear: 2200 },
+    });
     expect(screen.queryByTestId("timeline-node-root-portal")).not.toBeInTheDocument();
   });
 
@@ -120,6 +123,7 @@ describe("Shell timeline lens", () => {
     rendered.rerender(<Shell />);
     await waitFor(() => expect(loadTimelineView).toHaveBeenCalledWith({
       workspaceId: "sqlite:/private/var/server-canonical.sqlite",
+      range: { startYear: 1200, endYear: 2200 },
     }));
   });
 
@@ -158,8 +162,8 @@ describe("Shell timeline lens", () => {
     const handle = await screen.findByTestId("timeline-node-resize-banda-se");
 
     fireEvent.pointerDown(handle, { pointerId: 1, clientX: 100, clientY: 100 });
-    fireEvent.pointerMove(window, { pointerId: 1, clientX: 124, clientY: 118 });
-    fireEvent.pointerUp(window, { pointerId: 1 });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 124, clientY: 118 });
+    fireEvent.pointerUp(handle, { pointerId: 1 });
 
     expect(resizeNode).not.toHaveBeenCalled();
     expect(updateNodeTimelineCard).not.toHaveBeenCalled();

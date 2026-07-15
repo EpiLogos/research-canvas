@@ -78,6 +78,9 @@ pub struct GraphNodeMetadataRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TemporalGraphNodeMetadataRecord {
     pub metadata: GraphNodeMetadataRecord,
+    /// The short face/subheading from the local document projection. This is
+    /// intentionally joined into timeline reads; the long body remains lazy.
+    pub summary: String,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -134,7 +137,8 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
              claim_kind, evidence_status, temporal_role, place_coverage, ql_form, ql_unit_id,
              ql_arc, ql_topology, ql_schema_version, ql_source_coordinates_json,
              ql_completeness_status, is_temporal, valid_from, valid_to, temporal_precision,
-             schema_version, sync_state, remote_revision, created_at, updated_at
+             schema_version, sync_state, remote_revision, created_at, updated_at,
+             COALESCE((SELECT summary FROM node_document WHERE graph_node_id = graph_node_metadata.graph_node_id), '')
              FROM graph_node_metadata WHERE graph_node_id = ?1",
                 [graph_node_id],
                 |row| {
@@ -142,6 +146,7 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
                         metadata: record_from_row(row)?,
                         created_at: row.get(31)?,
                         updated_at: row.get(32)?,
+                        summary: row.get(33)?,
                     })
                 },
             )
@@ -157,7 +162,8 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
              claim_kind, evidence_status, temporal_role, place_coverage, ql_form, ql_unit_id,
              ql_arc, ql_topology, ql_schema_version, ql_source_coordinates_json,
              ql_completeness_status, is_temporal, valid_from, valid_to, temporal_precision,
-             schema_version, sync_state, remote_revision, created_at, updated_at
+             schema_version, sync_state, remote_revision, created_at, updated_at,
+             COALESCE((SELECT summary FROM node_document WHERE graph_node_id = graph_node_metadata.graph_node_id), '')
              FROM graph_node_metadata WHERE is_temporal=1 ORDER BY graph_node_id",
         )?;
         let rows = statement.query_map([], |row| {
@@ -165,6 +171,7 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
                 metadata: record_from_row(row)?,
                 created_at: row.get(31)?,
                 updated_at: row.get(32)?,
+                summary: row.get(33)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -172,8 +179,8 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
 
     /// Returns only temporal records whose inclusive temporal span intersects
     /// the requested year window. The indexed `is_temporal, valid_from` prefix
-    /// keeps camera-driven timeline reads bounded before document bodies are
-    /// joined by the caller.
+    /// keeps camera-driven timeline reads bounded. Only the short document
+    /// summary is projected; long bodies remain lazy at the reader boundary.
     pub fn list_temporal_in_year_range(
         &self,
         start_year: i32,
@@ -186,7 +193,8 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
              claim_kind, evidence_status, temporal_role, place_coverage, ql_form, ql_unit_id,
              ql_arc, ql_topology, ql_schema_version, ql_source_coordinates_json,
              ql_completeness_status, is_temporal, valid_from, valid_to, temporal_precision,
-             schema_version, sync_state, remote_revision, created_at, updated_at
+             schema_version, sync_state, remote_revision, created_at, updated_at,
+             COALESCE((SELECT summary FROM node_document WHERE graph_node_id = graph_node_metadata.graph_node_id), '')
              FROM graph_node_metadata
              WHERE is_temporal=1
                AND valid_from IS NOT NULL
@@ -199,6 +207,7 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
                 metadata: record_from_row(row)?,
                 created_at: row.get(31)?,
                 updated_at: row.get(32)?,
+                summary: row.get(33)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)

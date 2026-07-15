@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 
-import { resolveKnowledgeCardPresentation } from "@research-canvas/canvas";
+import { resolveKnowledgeCardPresentation, TimelineRelationField } from "@research-canvas/canvas";
+import type { GraphNode, TimelineRelationField as TimelineRelationFieldData } from "@research-canvas/desktop-api";
 
 import { resolveReaderMediaReference } from "./readerMedia";
 import type { ReaderRecord } from "./readerRecord";
@@ -16,6 +17,8 @@ interface ReaderSurfaceProps {
   onFullScreen?: () => void;
   children: ReactNode;
   actions?: ReactNode;
+  relationField?: TimelineRelationFieldData | null;
+  onOpenRelatedNode?: (graphNodeId: string, node: GraphNode) => void;
 }
 
 /**
@@ -32,6 +35,8 @@ export function ReaderSurface({
   onFullScreen,
   children,
   actions,
+  relationField = null,
+  onOpenRelatedNode,
 }: ReaderSurfaceProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const media = record.coverReference
@@ -164,6 +169,16 @@ export function ReaderSurface({
               </div>
             ) : null}
           </aside>
+        ) : null}
+        {relationField && onOpenRelatedNode ? (
+          <TimelineRelationField
+            field={relationField}
+            resonances={[]}
+            showRelations
+            showArchetypalContext
+            compact
+            onOpenNode={onOpenRelatedNode}
+          />
         ) : null}
       </section>
     </>

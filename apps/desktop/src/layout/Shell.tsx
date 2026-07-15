@@ -17,7 +17,7 @@ import { SequencesManager } from "../features/sequences/SequencesManager";
 import { SettingsOverlay } from "../features/settings/SettingsOverlay";
 import { CommandPalette } from "../features/search/CommandPalette";
 import { TimelineLens } from "@research-canvas/canvas";
-import { createWorkspaceTransport, type GraphNode } from "@research-canvas/desktop-api";
+import { createWorkspaceTransport, type GraphNode, type TimelineRelationField } from "@research-canvas/desktop-api";
 import { createTimelineDataSource } from "../features/timeline/createTimelineDataSource";
 import {
   readerRecordFromCanvasNode,
@@ -36,6 +36,8 @@ export function Shell() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [readingOverlayOpen, setReadingOverlayOpen] = useState(false);
   const [readingRecord, setReadingRecord] = useState<ReaderRecord | null>(null);
+  const [readingRelationField, setReadingRelationField] = useState<TimelineRelationField | null>(null);
+  const readingRelationRequestVersion = useRef(0);
   const [drawingMode, setDrawingMode] = useState(false);
   const [strokeColour, setStrokeColour] = useState("#f97316");
   const timelineViewports = useRef(new Map<string, { centerYear: number; pixelsPerYear: number }>());
@@ -45,6 +47,7 @@ export function Shell() {
   const closeFullScreen = useCallback(() => {
     setFullScreenMode("closed");
     setFullScreenRecord(null);
+    setReadingRelationField(null);
   }, []);
   const timelineDataSource = useMemo(
     () => workspace.workspaceId ?
@@ -67,8 +70,25 @@ export function Shell() {
   );
 
   const openNodeDocument = useCallback(
-    (graphNodeId: string, timelineNode?: GraphNode) => {
+    (graphNodeId: string, timelineNode?: GraphNode, relationField?: TimelineRelationField) => {
       workspace.selectNode(graphNodeId);
+      const requestVersion = readingRelationRequestVersion.current + 1;
+      readingRelationRequestVersion.current = requestVersion;
+      setReadingRelationField(relationField ?? null);
+      const loadRelationField = workspace.transport?.loadTimelineRelationField;
+      const shouldLoadRelationField = timelineNode !== undefined
+        || readingOverlayOpen
+        || readingRelationField !== null;
+      if (!relationField && shouldLoadRelationField && workspace.workspaceId && loadRelationField) {
+        void loadRelationField({
+          workspaceId: workspace.workspaceId,
+          graphNodeId,
+        }).then((field) => {
+          if (readingRelationRequestVersion.current === requestVersion) setReadingRelationField(field);
+        }).catch(() => {
+          // Relation context is supplementary; the reader remains usable.
+        });
+      }
       const canvasNode = workspace.nodes.find((node) => node.id === graphNodeId) ?? null;
       setReadingRecord(
         timelineNode
@@ -79,7 +99,7 @@ export function Shell() {
       );
       setReadingOverlayOpen(true);
     },
-    [workspace],
+    [readingOverlayOpen, readingRelationField, workspace],
   );
 
   const setShellLens = useCallback(
@@ -115,6 +135,7 @@ export function Shell() {
     setFullScreenRecord(null);
     setReadingOverlayOpen(false);
     setReadingRecord(null);
+    setReadingRelationField(null);
   }, []);
 
   const openPalette = useCallback(() => {
@@ -133,12 +154,17 @@ export function Shell() {
   }, [closeOverlays]);
 
   const enterFullScreen = useCallback(
-    (mode: "node" | "sequence", record: ReaderRecord | null = null) => {
+    (
+      mode: "node" | "sequence",
+      record: ReaderRecord | null = null,
+      relationField: TimelineRelationField | null = readingRelationField,
+    ) => {
       closeOverlays();
       setFullScreenRecord(record);
+      setReadingRelationField(relationField);
       setFullScreenMode(mode);
     },
-    [closeOverlays],
+    [closeOverlays, readingRelationField],
   );
 
   // Leaving the annotations mode, or closing the browser panel entirely,
@@ -321,20 +347,25 @@ export function Shell() {
 
           {lens === "reading" && (
             <ReadingLens
-              onFullScreen={(record) => enterFullScreen("node", record)}
+              onFullScreen={(record, relationField) => enterFullScreen("node", record, relationField)}
               onExitToCanvas={() => setLens("canvas")}
+              relationField={readingRelationField}
+              onOpenRelatedNode={openNodeDocument}
             />
           )}
 
           {readingOverlayOpen && (
             <ReadingLens
               variant="overlay"
-              onFullScreen={(record) => enterFullScreen("node", record)}
+              onFullScreen={(record, relationField) => enterFullScreen("node", record, relationField)}
               onExitToCanvas={() => {
                 setReadingOverlayOpen(false);
                 setReadingRecord(null);
+                setReadingRelationField(null);
               }}
               recordOverride={readingRecord}
+              relationField={readingRelationField}
+              onOpenRelatedNode={openNodeDocument}
             />
           )}
 
@@ -362,7 +393,13 @@ export function Shell() {
           </BottomDock>
 
           {fullScreenMode !== "closed" && (
-            <FullScreenReader mode={fullScreenMode} record={fullScreenRecord} onClose={closeFullScreen} />
+            <FullScreenReader
+              mode={fullScreenMode}
+              record={fullScreenRecord}
+              relationField={readingRelationField}
+              onOpenRelatedNode={openNodeDocument}
+              onClose={closeFullScreen}
+            />
           )}
         </div>
       </div>

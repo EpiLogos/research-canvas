@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type { GraphNode, TimelineRelationField } from "@research-canvas/desktop-api";
 
 import type { ReaderRecord } from "./readerRecord";
 import { ReaderSurface } from "./ReaderSurface";
@@ -91,5 +92,46 @@ describe("ReaderSurface", () => {
     fireEvent.click(screen.getByTestId("reader-scrim"));
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the focused relation field as a compact reader affordance", () => {
+    const onOpenRelatedNode = vi.fn();
+    const relatedNode = {
+      ...record,
+      graphNodeId: "archetype-antichrist",
+      title: "Antichrist archetype",
+    } as unknown as GraphNode;
+    const relationField: TimelineRelationField = {
+      subjectGraphNodeId: "banda-1621",
+      contextualNodes: [relatedNode],
+      relationships: [{
+        id: "banda-instantiates-antichrist",
+        relType: "INSTANTIATES",
+        sourceGraphNodeId: "banda-1621",
+        targetGraphNodeId: "archetype-antichrist",
+        properties: {},
+      }],
+    };
+
+    render(
+      <ReaderSurface
+        record={record}
+        workspaceRoot="/workspace/project"
+        variant="overlay"
+        onExit={() => {}}
+        relationField={relationField}
+        onOpenRelatedNode={onOpenRelatedNode}
+      >
+        <article>Deep historical reading</article>
+      </ReaderSurface>,
+    );
+
+    const field = screen.getByTestId("timeline-relation-field");
+    expect(field).toHaveClass("timeline-relation-field--reader");
+    fireEvent.click(screen.getByRole("button", { name: "Antichrist archetype" }));
+    expect(onOpenRelatedNode).toHaveBeenCalledWith(
+      "archetype-antichrist",
+      expect.objectContaining({ graphNodeId: "archetype-antichrist" }),
+    );
   });
 });

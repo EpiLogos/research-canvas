@@ -26,7 +26,11 @@ export interface TimelineDataSource {
 
 export interface TimelineLensProps {
   dataSource: TimelineDataSource;
-  onOpenNode: (graphNodeId: string, node: GraphNode) => void;
+  onOpenNode: (
+    graphNodeId: string,
+    node: GraphNode,
+    relationField?: TimelineRelationFieldData,
+  ) => void;
   initialViewport?: { centerYear: number; pixelsPerYear: number };
   onViewportChange?: (viewport: { centerYear: number; pixelsPerYear: number }) => void;
 }
@@ -85,6 +89,7 @@ export function TimelineLens({
   );
   const [showRelations, setShowRelations] = useState(true);
   const [showArchetypalContext, setShowArchetypalContext] = useState(true);
+  const [relationFieldOpen, setRelationFieldOpen] = useState(false);
   const navigationRef = useRef<{
     direction: TimelineNavigationDirection;
     frameId: number;
@@ -224,9 +229,12 @@ export function TimelineLens({
         }
       : null
   );
+  const hasRelationContext = displayRelationField !== null
+    && (displayRelationField.relationships.length > 0 || resonances.length > 0);
 
   const handleSelect = (graphNodeId: string) => {
     store.getState().setSelected(graphNodeId);
+    setRelationFieldOpen(false);
     const resonanceVersion = resonanceRequestVersion.current + 1;
     resonanceRequestVersion.current = resonanceVersion;
     setResonances([]);
@@ -250,14 +258,28 @@ export function TimelineLens({
     }
   };
 
-  const handleOpenNode = (graphNodeId: string, node: GraphNode) => {
-    if (!dataSource.loadNode) {
-      onOpenNode(graphNodeId, node);
-      return;
+  const handleOpenNode = (graphNodeId: string, node: GraphNode, includeRelationField = true) => {
+    const contextField = includeRelationField ? relationField ?? undefined : undefined;
+    const open = (nextNode: GraphNode) => onOpenNode(
+      graphNodeId,
+      nextNode,
+      ...(contextField ? [contextField] : []),
+    );
+    setRelationFieldOpen(false);
+    setRelationField(null);
+    setResonances([]);
+    // Open against the bounded timeline projection immediately. The reader
+    // can mount while the optional full-document read runs, rather than
+    // making a second IPC round-trip block the primary interaction.
+    open(node);
+    if (dataSource.loadNode) {
+      void dataSource.loadNode(graphNodeId)
+        .then((nextNode) => open(nextNode))
+        .catch(() => {
+          // The projection is already a valid reader record; a failed deep
+          // read must not close it or surface as an unhandled rejection.
+        });
     }
-    void dataSource.loadNode(graphNodeId)
-      .then((loadedNode) => onOpenNode(graphNodeId, loadedNode))
-      .catch(() => onOpenNode(graphNodeId, node));
   };
 
   const handleLightOperator = (operatorGraphNodeId: string) => {
@@ -590,15 +612,36 @@ export function TimelineLens({
           </div>
         </div>
       </div>
-      {displayRelationField !== null && (
-        <TimelineRelationField
-          field={displayRelationField}
-          resonances={resonances}
-          showRelations={showRelations}
-          showArchetypalContext={showArchetypalContext}
-          onOpenNode={handleOpenNode}
-          onLightOperator={handleLightOperator}
-        />
+      {hasRelationContext && displayRelationField !== null && (
+        <div
+          className="timeline-relation-field-shell"
+          onMouseEnter={() => setRelationFieldOpen(true)}
+          onMouseLeave={() => setRelationFieldOpen(false)}
+          onFocus={() => setRelationFieldOpen(true)}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setRelationFieldOpen(false);
+          }}
+        >
+          <button
+            type="button"
+            className="timeline-relation-field-trigger"
+            data-testid="timeline-relation-field-trigger"
+            aria-expanded={relationFieldOpen}
+            onClick={() => setRelationFieldOpen((open) => !open)}
+          >
+            Relations
+          </button>
+          {relationFieldOpen && (
+            <TimelineRelationField
+              field={displayRelationField}
+              resonances={resonances}
+              showRelations={showRelations}
+              showArchetypalContext={showArchetypalContext}
+              onOpenNode={(graphNodeId, node) => handleOpenNode(graphNodeId, node, false)}
+              onLightOperator={handleLightOperator}
+            />
+          )}
+        </div>
       )}
     </div>
   );

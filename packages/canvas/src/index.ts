@@ -18,6 +18,7 @@ export * from "./content";
 export * from "./timeline/TimelineLens";
 export * from "./timeline/TimelineNode";
 export * from "./timeline/TimelineAxis";
+export * from "./timeline/TimelineRelationField";
 export * from "./timeline/ResonancePopover";
 export * from "./timeline/timelineStore";
 export * from "./timeline/projection";

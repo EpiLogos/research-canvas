@@ -281,7 +281,7 @@ fn graph_node_from_local_projection(
         ),
         None => (
             "[]".into(),
-            String::new(),
+            record.summary.clone(),
             Some(metadata.content_origin),
             Some(metadata.content_revision),
             metadata.body_source_coordinates.clone(),
@@ -954,6 +954,7 @@ mod local_relationship_projection_tests {
         graph_node_from_local_projection(
             &TemporalGraphNodeMetadataRecord {
                 metadata: metadata(graph_node_id, entity_type, is_temporal),
+                summary: String::new(),
                 created_at: "2026-07-14T00:00:00.000Z".into(),
                 updated_at: "2026-07-14T00:00:00.000Z".into(),
             },

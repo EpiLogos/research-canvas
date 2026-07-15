@@ -195,6 +195,7 @@ export function TimelineNode({
         <span
           className="timeline-node-marker"
           data-testid={`timeline-node-marker-${item.graphNodeId}`}
+          title={summary ? `${item.node.title} — ${summary}` : item.node.title}
           style={{ color: item.presentation.style.dotColour ?? categoryStyle.color }}
         >
           {item.node.title}
@@ -240,7 +241,7 @@ export function TimelineNode({
           {item.relationCompanion ? "linked context" : formatItemDate(item)}
         </span>
         <span className="timeline-node-title">{item.node.title}</span>
-        {lod === "detail" && summary && (
+        {(lod === "detail" || lod === "label") && summary && (
           <span
             className="timeline-node-summary"
             data-testid={`timeline-node-summary-${item.graphNodeId}`}

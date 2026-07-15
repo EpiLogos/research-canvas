@@ -37,6 +37,7 @@ export function TimelineRelationField({
   resonances,
   showRelations,
   showArchetypalContext,
+  compact = false,
   onOpenNode,
   onLightOperator,
 }: {
@@ -44,8 +45,9 @@ export function TimelineRelationField({
   resonances: LitInstance[];
   showRelations: boolean;
   showArchetypalContext: boolean;
+  compact?: boolean;
   onOpenNode: (graphNodeId: string, node: GraphNode) => void;
-  onLightOperator: (operatorGraphNodeId: string) => void;
+  onLightOperator?: (operatorGraphNodeId: string) => void;
 }): JSX.Element {
   const contextualById = new Map(field.contextualNodes.map((node) => [node.graphNodeId, node]));
   const resonanceByKey = new Map<string, LitInstance>();
@@ -103,7 +105,11 @@ export function TimelineRelationField({
   ) : <span>{fallbackId}</span>;
 
   return (
-    <aside className="timeline-relation-field" data-testid="timeline-relation-field" aria-label="Focused relations">
+    <aside
+      className={`timeline-relation-field${compact ? " timeline-relation-field--reader" : ""}`}
+      data-testid="timeline-relation-field"
+      aria-label={compact ? "Reader relation field" : "Focused relations"}
+    >
       <strong>Relation field</strong>
       {relationRows.length === 0 && resonanceRows.length === 0 ? (
         <p>No related entities in the current view</p>
@@ -124,7 +130,7 @@ export function TimelineRelationField({
                       </span>
                       <div className="timeline-relation-field__target">
                         {renderNode(node, otherId)}
-                        {resonance && (
+                        {resonance && onLightOperator && (
                           <button
                             type="button"
                             className="timeline-relation-field__action"
@@ -159,7 +165,7 @@ export function TimelineRelationField({
                       </span>
                       <div className="timeline-relation-field__target">
                         {renderNode(resonance.node, resonance.node.graphNodeId)}
-                        <button
+                        {onLightOperator && <button
                           type="button"
                           className="timeline-relation-field__action"
                           data-testid={`timeline-light-${resonance.node.graphNodeId}`}
@@ -167,7 +173,7 @@ export function TimelineRelationField({
                           onClick={() => onLightOperator(resonance.node.graphNodeId)}
                         >
                           Light
-                        </button>
+                        </button>}
                       </div>
                     </li>
                   );

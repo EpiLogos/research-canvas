@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CanvasNode } from "@research-canvas/schema";
-import type { GraphNode } from "@research-canvas/desktop-api";
+import type { GraphNode, TimelineRelationField as TimelineRelationFieldData } from "@research-canvas/desktop-api";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { NodeContentDropSurface } from "../features/canvas/NodeContentDropSurface";
 import { NodeReaderBody } from "../features/viewer/NodeReaderBody";
@@ -20,12 +20,16 @@ export function ReadingLens({
   variant = "lens",
   nodeOverride = null,
   recordOverride = null,
+  relationField = null,
+  onOpenRelatedNode,
 }: {
-  onFullScreen: (record: ReaderRecord) => void;
+  onFullScreen: (record: ReaderRecord, relationField?: TimelineRelationFieldData | null) => void;
   onExitToCanvas: () => void;
   variant?: "lens" | "overlay";
   nodeOverride?: CanvasNode | null;
   recordOverride?: ReaderRecord | null;
+  relationField?: TimelineRelationFieldData | null;
+  onOpenRelatedNode?: (graphNodeId: string, node: GraphNode) => void;
 }) {
   const workspace = useCanvasWorkspace();
   const selectedNode = nodeOverride ?? workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
@@ -127,7 +131,7 @@ export function ReadingLens({
       workspaceRoot={workspace.workingRoot}
       variant={variant as ReaderSurfaceVariant}
       onExit={onExitToCanvas}
-      onFullScreen={() => onFullScreen(record)}
+      onFullScreen={() => onFullScreen(record, relationField)}
       actions={record.graphNodeId ? (
         <GraphDocumentAuthoringActions
           graphNodeId={record.graphNodeId}
@@ -136,6 +140,8 @@ export function ReadingLens({
           onGraphNodeUpdated={updateOpenRecord}
         />
       ) : undefined}
+      relationField={relationField}
+      onOpenRelatedNode={onOpenRelatedNode}
     >
       <NodeReaderBody node={record.canvasNode} record={record} affordances={false} />
     </ReaderSurface>
