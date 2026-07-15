@@ -24,6 +24,7 @@ export type {
   NewGraphNodeInput,
   NodeLayout,
   TimelineView,
+  TimelineRelationField,
   TimelineAnchor,
   TimelineDiagnostic,
   TimelineFilters,
@@ -179,6 +180,7 @@ import type {
   NodeLayout,
   EdgeLayout,
   TimelineView,
+  TimelineRelationField,
   TimelineLayoutOverride,
   UpsertTimelineLayoutInput,
   TimelineLayoutMutationResult,
@@ -599,6 +601,7 @@ export interface WorkspaceTransport {
   // ---- Joined reads (both targets) ----
   loadCanvasView(input: { databasePath?: string; canvasId: string; lens: "canvas" | "timeline" }): Promise<CanvasView>;
   loadTimelineView(input: LoadTimelineViewRequest): Promise<TimelineView>;
+  loadTimelineRelationField?(input: { workspaceId: string; graphNodeId: string }): Promise<TimelineRelationField>;
   upsertTimelineLayout(input: UpsertTimelineLayoutInput): Promise<TimelineLayoutMutationResult>;
 
   // ---- Two-lens / archetypal lighting ----
@@ -807,6 +810,9 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async loadTimelineView(input) {
       return invokeTauri<TimelineView>("load_timeline_view_command", { request: input });
     },
+    async loadTimelineRelationField(input) {
+      return invokeTauri<TimelineRelationField>("load_timeline_relation_field_command", { request: input });
+    },
     async upsertTimelineLayout(input) {
       return invokeTauri<TimelineLayoutMutationResult>("upsert_timeline_layout_command", { request: input });
     },
@@ -984,6 +990,7 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
         body: input,
       });
     },
+    async loadTimelineRelationField() { throw new Error("read-only web build"); },
     async upsertTimelineLayout() { throw new Error("read-only web build"); },
     async archetypalLighting(input) {
       return requestJsonWithRetry<ArchetypalLighting>(
@@ -1445,39 +1452,10 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
           },
           layoutOverride: timelineLayoutById.get(node.graphNodeId) ?? null,
         }));
-      const temporalIds = new Set(temporalRecords.map((record) => record.node.graphNodeId));
-      const candidateRelationships = bundle.relationships.filter((relationship) =>
-        temporalIds.has(relationship.sourceGraphNodeId)
-        || temporalIds.has(relationship.targetGraphNodeId),
-      );
-      const companionAnchors = new Map<string, (typeof temporalRecords)[number]["anchor"]>();
-      for (const relationship of candidateRelationships) {
-        const sourceAnchor = temporalRecords.find((record) => record.node.graphNodeId === relationship.sourceGraphNodeId)?.anchor;
-        const targetAnchor = temporalRecords.find((record) => record.node.graphNodeId === relationship.targetGraphNodeId)?.anchor;
-        const register = (graphNodeId: string, anchor: typeof sourceAnchor) => {
-          if (!anchor || temporalIds.has(graphNodeId) || !nodeById.has(graphNodeId)) return;
-          const existing = companionAnchors.get(graphNodeId);
-          if (!existing || anchor.validFrom < existing.validFrom) companionAnchors.set(graphNodeId, anchor);
-        };
-        register(relationship.targetGraphNodeId, sourceAnchor);
-        register(relationship.sourceGraphNodeId, targetAnchor);
-      }
-      const companionRecords = [...companionAnchors.entries()].flatMap(([graphNodeId, anchor]) => {
-        const node = nodeById.get(graphNodeId);
-        return node ? [{ node, anchor, layoutOverride: null, relationCompanion: true }] : [];
-      });
-      const presentationIds = new Set([
-        ...temporalIds,
-        ...companionRecords.map((record) => record.node.graphNodeId),
-      ]);
-      const relationships = candidateRelationships.filter((relationship) =>
-        presentationIds.has(relationship.sourceGraphNodeId)
-        && presentationIds.has(relationship.targetGraphNodeId),
-      );
       return {
         workspaceId: canonicalWorkspaceId,
-        nodes: [...temporalRecords, ...companionRecords],
-        relationships,
+        nodes: temporalRecords,
+        relationships: [],
         lanes: [],
         diagnostics: invalid.map((node) => ({
           graphNodeId: node.graphNodeId,
@@ -1487,6 +1465,28 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
           validTo: node.validTo,
         })),
       };
+    },
+    async loadTimelineRelationField({ workspaceId, graphNodeId }) {
+      const canonicalWorkspaceId = `static:${bundle.project.id}`;
+      if (workspaceId.trim() === "" || workspaceId !== canonicalWorkspaceId) {
+        throw new Error(`workspaceId does not match static bundle: expected ${canonicalWorkspaceId}`);
+      }
+      if (!nodeById.get(graphNodeId)?.isTemporal) {
+        throw new Error("timeline relation field subject must be temporal");
+      }
+      const relationships = bundle.relationships.filter((relationship) =>
+        relationship.sourceGraphNodeId === graphNodeId || relationship.targetGraphNodeId === graphNodeId,
+      );
+      const contextualNodes = [...new Set(relationships.flatMap((relationship) => [
+        relationship.sourceGraphNodeId,
+        relationship.targetGraphNodeId,
+      ]))]
+        .filter((nodeId) => nodeId !== graphNodeId)
+        .flatMap((nodeId) => {
+          const node = nodeById.get(nodeId);
+          return node ? [node] : [];
+        });
+      return { subjectGraphNodeId: graphNodeId, relationships, contextualNodes };
     },
     async upsertTimelineLayout() { throw new Error("read-only static bundle"); },
     async archetypalLighting({ operatorGraphNodeId }) {

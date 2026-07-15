@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import type { CSSProperties, JSX, PointerEvent as ReactPointerEvent } from "react";
 import { computeCardViewportFade, type PlacedItem } from "./projection";
 import type { LitNodeState } from "./lighting";
@@ -99,7 +99,7 @@ export function TimelineNode({
     "--lane-offset": `${connectorOffset}px`,
   } as CSSProperties;
 
-  function handlePointerMove(event: PointerEvent) {
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
     const current = dragState.current;
     if (!current || event.pointerId !== current.pointerId) return;
     const deltaX = event.clientX - current.startX;
@@ -123,22 +123,13 @@ export function TimelineNode({
     onResize(item.graphNodeId, next);
   }
 
-  function handlePointerUp(event: PointerEvent) {
+  function handlePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
     const current = dragState.current;
     if (current?.pointerId === event.pointerId) {
       dragState.current = null;
       if (current.didMutate) onCommit?.(item.graphNodeId);
     }
   }
-
-  useEffect(() => {
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-    };
-  });
 
   const beginDrag = (event: ReactPointerEvent<HTMLElement>, mode: "move" | "resize", corner?: ResizeCorner) => {
     event.preventDefault();
@@ -177,6 +168,9 @@ export function TimelineNode({
       data-lod={lod}
       className={`timeline-node timeline-node--${placed.laneSide}`}
       style={style}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
       onClick={(event) => {
         if (suppressClick.current) {
           suppressClick.current = false;

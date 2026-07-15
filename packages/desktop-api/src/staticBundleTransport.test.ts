@@ -119,27 +119,29 @@ describe("createStaticBundleTransport", () => {
     expect(view.nodes[0].node.graphNodeId).toBe("node-banda");
   });
 
-  it("loads a first-class workspace timeline without a canvas membership scope", async () => {
+  it("loads historical timeline items first and defers contextual relations to focused events", async () => {
     const transport = createStaticBundleTransport(fixtureBundle());
     const view = await transport.loadTimelineView({ workspaceId: "static:11111111-1111-4111-8111-111111111111" });
     expect(view.workspaceId).toBe("static:11111111-1111-4111-8111-111111111111");
-    expect(view.nodes.map((record) => record.node.graphNodeId)).toEqual(["node-banda", "node-monopoly"]);
+    expect(view.nodes.map((record) => record.node.graphNodeId)).toEqual(["node-banda"]);
     expect(view.nodes[0].anchor).toEqual({
       validFrom: "1621-01-01",
       validTo: "1621-12-31",
       precision: "year",
     });
     expect(view.nodes[0].layoutOverride).toEqual({ lane: "events", offsetY: 22, width: 310, height: 96, style: { dotColour: "#123456" }, layoutRevision: 3 });
-    expect(view.nodes[1]).toMatchObject({
-      node: { graphNodeId: "node-monopoly", isTemporal: false },
-      relationCompanion: true,
-      layoutOverride: null,
+    expect(view.relationships).toEqual([]);
+
+    const field = await transport.loadTimelineRelationField!({
+      workspaceId: "static:11111111-1111-4111-8111-111111111111",
+      graphNodeId: "node-banda",
     });
-    expect(view.relationships).toEqual([expect.objectContaining({
+    expect(field.relationships).toEqual([expect.objectContaining({
       id: "rel-1",
       sourceGraphNodeId: "node-banda",
       targetGraphNodeId: "node-monopoly",
     })]);
+    expect(field.contextualNodes).toEqual([expect.objectContaining({ graphNodeId: "node-monopoly" })]);
     expect(view.diagnostics).toEqual([]);
   });
 

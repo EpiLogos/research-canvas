@@ -1858,6 +1858,80 @@ body[data-shell-dragging="true"] {
   cursor: pointer;
 }
 
+/* Focused relation field: contextual entities are disclosed from an event,
+   never assigned a false position on the historical axis. */
+.timeline-lens {
+  position: relative;
+}
+
+.timeline-relationship-layer {
+  pointer-events: none;
+}
+
+.timeline-relation-field {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 8;
+  width: min(22rem, calc(100% - 2rem));
+  max-height: min(24rem, 60vh);
+  overflow: auto;
+  padding: 0.9rem;
+  border: 1px solid rgba(244, 232, 208, 0.18);
+  border-radius: 0.75rem;
+  background: rgba(18, 14, 11, 0.96);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.34);
+  color: #f5f1e8;
+}
+
+.timeline-relation-field strong {
+  display: block;
+  margin-bottom: 0.6rem;
+  color: rgba(245, 241, 232, 0.78);
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.timeline-relation-field ul {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline-relation-field li {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, auto) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.45rem 0;
+}
+
+.timeline-relation-field li > span:first-child {
+  color: rgba(240, 180, 90, 0.82);
+  font-size: 0.68rem;
+  letter-spacing: 0.045em;
+}
+
+.timeline-relation-field button {
+  width: fit-content;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: #f5f1e8;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.timeline-relation-field button:hover,
+.timeline-relation-field button:focus-visible {
+  color: #f0b45a;
+  text-decoration: underline;
+}
+
 /* ─── Icon strip ──────────────────────────────────────── */
 .icon-strip {
   position: absolute;
