@@ -10,7 +10,6 @@ import { TimelineAxis } from "./TimelineAxis";
 import { TimelineNode } from "./TimelineNode";
 import { TimelineRelationshipLayer } from "./TimelineRelationshipLayer";
 import { TimelineRelationField } from "./TimelineRelationField";
-import { ResonancePopover } from "./ResonancePopover";
 import { deriveTimelineCategory, TIMELINE_CATEGORIES, type TimelineCategory } from "./categories";
 
 export interface TimelineDataSource {
@@ -77,12 +76,15 @@ export function TimelineLens({
   const knownRevisions = useRef(new Map<string, number>());
   const dataSourceEpoch = useRef(0);
   const relationFieldRequestVersion = useRef(0);
+  const resonanceRequestVersion = useRef(0);
   const timelineRequestVersion = useRef(0);
   const loadedRange = useRef<TimelineYearRange | null>(null);
   const timelineLoadTimer = useRef<number | null>(null);
   const [visibleCategories, setVisibleCategories] = useState<Record<TimelineCategory, boolean>>(() =>
     Object.fromEntries(TIMELINE_CATEGORIES.map((category) => [category.id, true])) as Record<TimelineCategory, boolean>,
   );
+  const [showRelations, setShowRelations] = useState(true);
+  const [showArchetypalContext, setShowArchetypalContext] = useState(true);
   const navigationRef = useRef<{
     direction: TimelineNavigationDirection;
     frameId: number;
@@ -104,7 +106,9 @@ export function TimelineLens({
     saveVersions.current.clear();
     knownRevisions.current.clear();
     relationFieldRequestVersion.current += 1;
+    resonanceRequestVersion.current += 1;
     setRelationField(null);
+    setResonances([]);
     setSaveErrors({});
     setLoaded(false);
     setLoadError(null);
@@ -209,14 +213,33 @@ export function TimelineLens({
   const activeCategories = TIMELINE_CATEGORIES.filter((category) =>
     state.items.some((item) => deriveTimelineCategory(item.node) === category.id),
   );
+  const displayRelationField = relationField ?? (
+    dataSource.relationFieldForEvent === undefined
+      && state.selectedNodeId !== null
+      && resonances.length > 0
+      ? {
+          subjectGraphNodeId: state.selectedNodeId,
+          contextualNodes: resonances.map((resonance) => resonance.node),
+          relationships: [],
+        }
+      : null
+  );
 
   const handleSelect = (graphNodeId: string) => {
     store.getState().setSelected(graphNodeId);
-    void dataSource.resonancesForInstance(graphNodeId).then(setResonances);
+    const resonanceVersion = resonanceRequestVersion.current + 1;
+    resonanceRequestVersion.current = resonanceVersion;
+    setResonances([]);
+    void dataSource.resonancesForInstance(graphNodeId).then((nextResonances) => {
+      if (resonanceRequestVersion.current === resonanceVersion) setResonances(nextResonances);
+    }).catch(() => {
+      if (resonanceRequestVersion.current === resonanceVersion) setResonances([]);
+    });
+
+    const requestVersion = relationFieldRequestVersion.current + 1;
+    relationFieldRequestVersion.current = requestVersion;
+    setRelationField(null);
     if (dataSource.relationFieldForEvent) {
-      const requestVersion = relationFieldRequestVersion.current + 1;
-      relationFieldRequestVersion.current = requestVersion;
-      setRelationField(null);
       void dataSource.relationFieldForEvent(graphNodeId).then((field) => {
         if (relationFieldRequestVersion.current === requestVersion) setRelationField(field);
       }).catch(() => {
@@ -449,6 +472,30 @@ export function TimelineLens({
             })}
           </div>
         )}
+        <div className="timeline-filters" aria-label="Timeline context filters">
+          <button
+            type="button"
+            className="timeline-filter"
+            data-testid="timeline-toggle-relations"
+            data-active={showRelations ? "true" : "false"}
+            aria-label={`${showRelations ? "Hide" : "Show"} relation links`}
+            aria-pressed={showRelations}
+            onClick={() => setShowRelations((visible) => !visible)}
+          >
+            Links
+          </button>
+          <button
+            type="button"
+            className="timeline-filter"
+            data-testid="timeline-toggle-archetypal"
+            data-active={showArchetypalContext ? "true" : "false"}
+            aria-label={`${showArchetypalContext ? "Hide" : "Show"} archetypal context`}
+            aria-pressed={showArchetypalContext}
+            onClick={() => setShowArchetypalContext((visible) => !visible)}
+          >
+            Archetypes
+          </button>
+        </div>
         {lightingActive && (
           <button
             type="button"
@@ -512,7 +559,7 @@ export function TimelineLens({
         >
           <TimelineAxis ticks={ticks} height={AXIS_HEIGHT} />
           <TimelineRelationshipLayer
-            relationships={relationField?.relationships ?? []}
+            relationships={showRelations ? relationField?.relationships ?? [] : []}
             placed={placed}
             viewportWidth={viewport.widthPx}
             lod={lod}
@@ -543,14 +590,15 @@ export function TimelineLens({
           </div>
         </div>
       </div>
-      {state.selectedNodeId !== null && (
-        <ResonancePopover
+      {displayRelationField !== null && (
+        <TimelineRelationField
+          field={displayRelationField}
           resonances={resonances}
+          showRelations={showRelations}
+          showArchetypalContext={showArchetypalContext}
+          onOpenNode={handleOpenNode}
           onLightOperator={handleLightOperator}
         />
-      )}
-      {relationField !== null && (
-        <TimelineRelationField field={relationField} onOpenNode={onOpenNode} />
       )}
     </div>
   );

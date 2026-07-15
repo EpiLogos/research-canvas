@@ -67,6 +67,29 @@ function makeDataSource(over: Partial<TimelineDataSource> = {}): TimelineDataSou
     resonancesForInstance: async (): Promise<LitInstance[]> => [
       { node: archetype("monopoly", "Monopoly mechanism"), relType: "INSTANTIATES", dominance: "dominant" },
     ],
+    relationFieldForEvent: async (graphNodeId: string) => ({
+      subjectGraphNodeId: graphNodeId,
+      contextualNodes: [
+        archetype("monopoly", "Monopoly mechanism"),
+        { ...event("balfour", "Balfour Declaration", "1917-01-01"), entityType: "Source" },
+      ],
+      relationships: [
+        {
+          id: `${graphNodeId}-instantiates-monopoly`,
+          relType: "INSTANTIATES" as const,
+          sourceGraphNodeId: graphNodeId,
+          targetGraphNodeId: "monopoly",
+          properties: {},
+        },
+        {
+          id: `${graphNodeId}-causes-balfour`,
+          relType: "CAUSES" as const,
+          sourceGraphNodeId: graphNodeId,
+          targetGraphNodeId: "balfour",
+          properties: {},
+        },
+      ],
+    }),
     saveTimelineLayout: async (input) => ({
       status: input.expectedRevision === null ? "created" : "updated",
       layout: {
@@ -265,16 +288,34 @@ describe("TimelineLens", () => {
     const node = await screen.findByTestId("timeline-node-banda");
     fireEvent.click(node);
     await waitFor(() => {
-      expect(screen.getByTestId("resonance-row-monopoly")).toBeInTheDocument();
+      expect(screen.getByTestId("timeline-relation-field")).toBeInTheDocument();
+      expect(screen.getByTestId("timeline-relation-banda-instantiates-monopoly")).toBeInTheDocument();
     });
+  });
+
+  test("keeps links and archetypal context independently toggleable", async () => {
+    render(<TimelineLens dataSource={makeDataSource()} onOpenNode={() => {}} />);
+    fireEvent.click(await screen.findByTestId("timeline-node-banda"));
+    await screen.findByTestId("timeline-relation-field");
+
+    fireEvent.click(screen.getByTestId("timeline-toggle-archetypal"));
+    expect(screen.queryByTestId("timeline-relation-banda-instantiates-monopoly")).not.toBeInTheDocument();
+    expect(screen.getByTestId("timeline-relation-banda-causes-balfour")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("timeline-toggle-relations"));
+    expect(screen.queryByTestId("timeline-relation-banda-causes-balfour")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("timeline-relation-banda-instantiates-monopoly")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("timeline-toggle-archetypal"));
+    expect(screen.getByTestId("timeline-resonance-monopoly")).toBeInTheDocument();
   });
 
   test("lighting an operator dims unlit nodes and marks lit ones", async () => {
     render(<TimelineLens dataSource={makeDataSource()} onOpenNode={() => {}} />);
     const node = await screen.findByTestId("timeline-node-banda");
     fireEvent.click(node); // loads resonances
-    const row = await screen.findByTestId("resonance-row-monopoly");
-    fireEvent.click(row); // light the operator
+    const light = await screen.findByTestId("timeline-light-monopoly");
+    fireEvent.click(light); // light the operator
     await waitFor(() => {
       expect(screen.getByTestId("timeline-node-banda").dataset.lit).toBe("dominant");
     });
@@ -286,8 +327,8 @@ describe("TimelineLens", () => {
     render(<TimelineLens dataSource={makeDataSource()} onOpenNode={() => {}} />);
     const node = await screen.findByTestId("timeline-node-banda");
     fireEvent.click(node);
-    const row = await screen.findByTestId("resonance-row-monopoly");
-    fireEvent.click(row);
+    const light = await screen.findByTestId("timeline-light-monopoly");
+    fireEvent.click(light);
     await waitFor(() => {
       expect(screen.getByTestId("timeline-node-banda").dataset.lit).toBe("dominant");
     });

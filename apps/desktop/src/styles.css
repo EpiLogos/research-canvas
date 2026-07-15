@@ -1915,6 +1915,56 @@ body[data-shell-dragging="true"] {
   letter-spacing: 0.045em;
 }
 
+.timeline-relation-field__section + .timeline-relation-field__section {
+  margin-top: 0.8rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid rgba(244, 232, 208, 0.1);
+}
+
+.timeline-relation-field__section h3 {
+  margin: 0 0 0.25rem;
+  color: rgba(245, 241, 232, 0.48);
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.timeline-relation-field__meta {
+  color: rgba(240, 180, 90, 0.82);
+  font-size: 0.68rem;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.timeline-relation-field__meta small {
+  color: rgba(245, 241, 232, 0.42);
+  font-size: inherit;
+}
+
+.timeline-relation-field__target {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.timeline-relation-field__action {
+  padding: 0.1rem 0.3rem;
+  border: 1px solid rgba(240, 180, 90, 0.3) !important;
+  border-radius: 0.25rem;
+  color: rgba(240, 180, 90, 0.86) !important;
+  font-size: 0.64rem !important;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.timeline-relation-field__action:hover,
+.timeline-relation-field__action:focus-visible {
+  background: rgba(240, 180, 90, 0.12);
+  text-decoration: none !important;
+}
+
 .timeline-relation-field button {
   width: fit-content;
   min-width: 0;
