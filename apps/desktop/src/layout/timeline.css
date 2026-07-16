@@ -51,6 +51,18 @@
   overflow-x: auto;
 }
 
+.timeline-filters--secondary {
+  max-width: min(42vw, 34rem);
+}
+
+.timeline-filter-label {
+  flex: 0 0 auto;
+  color: #707887;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .timeline-filter {
   display: inline-flex;
   align-items: center;

@@ -2,6 +2,7 @@ import type { TimelineDataSource } from "@research-canvas/canvas";
 import type {
   ArchetypalLighting,
   LitInstance,
+  TimelineFilters,
   TimelineView,
   TimelineYearRange,
   WorkspaceTransport,
@@ -23,8 +24,12 @@ export function createTimelineDataSource(input: {
 }): TimelineDataSource {
   const { transport, workspaceId } = input;
   return {
-    async loadTimelineView(range?: TimelineYearRange): Promise<TimelineView> {
-      return transport.loadTimelineView({ workspaceId, ...(range ? { range } : {}) });
+    async loadTimelineView(range?: TimelineYearRange, filters?: TimelineFilters): Promise<TimelineView> {
+      return transport.loadTimelineView({
+        workspaceId,
+        ...(range ? { range } : {}),
+        ...(filters ? { filters } : {}),
+      });
     },
     ...(transport.readGraphNode
       ? { async loadNode(graphNodeId: string) { return transport.readGraphNode!({ graphNodeId }); } }

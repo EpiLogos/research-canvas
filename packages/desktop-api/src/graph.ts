@@ -105,6 +105,8 @@ export interface TimelineFilters {
   entityTypes?: TimelineValueFilter<EntityType>;
   historicities?: TimelineValueFilter<Historicity>;
   temporalRoles?: TimelineValueFilter<TemporalRole>;
+  tags?: TimelineValueFilter<string>;
+  relationTypes?: TimelineValueFilter<string>;
 }
 export interface TimelineValueFilter<T> { include?: T[]; exclude?: T[] }
 
@@ -167,10 +169,10 @@ export interface TimelineView {
   workspaceId: string;
   nodes: TimelineViewNode[];
   /**
-   * Canonical links with at least one displayed temporal endpoint. Every link
-   * has presentation records for both endpoints; a non-temporal endpoint is
-   * returned as a `relationCompanion` rather than being misclassified as an
-   * historical moment.
+   * Canonical links whose two endpoints are inside the bounded temporal
+   * window. Non-temporal and out-of-window neighbours are deliberately left
+   * to the focused relation-field read, so the camera snapshot cannot pull a
+   * dense archetypal neighbourhood into every zoom frame.
    */
   relationships: GraphRelationship[];
   lanes: TimelineLane[];

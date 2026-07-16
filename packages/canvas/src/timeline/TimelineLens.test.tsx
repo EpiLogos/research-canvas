@@ -48,7 +48,7 @@ function makeDataSource(over: Partial<TimelineDataSource> = {}): TimelineDataSou
     loadTimelineView: async () => ({
       workspaceId: "sqlite:/test",
       nodes: [
-        timelineRecord(event("banda", "Banda genocide", "1621-01-01", "Company-state violence and forced monopoly in the Banda Islands."), layout("banda", 280, 92, { bgColour: "#172033", dotColour: "#79c0d4" })),
+        timelineRecord({ ...event("banda", "Banda genocide", "1621-01-01", "Company-state violence and forced monopoly in the Banda Islands."), evidenceTags: ["colonial", "documented"] }, layout("banda", 280, 92, { bgColour: "#172033", dotColour: "#79c0d4" })),
         timelineRecord({ ...event("balfour", "Balfour Declaration", "1917-01-01"), entityType: "Source" }, layout("balfour", 240, 72, { bgColour: "#27211a", dotColour: "#d0a24a" })),
       ], relationships: [{
         id: "historical-cause",
@@ -151,14 +151,71 @@ describe("TimelineLens", () => {
     expect(screen.getByTestId("timeline-node-summary-banda")).toHaveTextContent(
       "Company-state violence and forced monopoly in the Banda Islands.",
     );
+    expect(screen.getByTestId("timeline-relationship-historical-cause")).toBeInTheDocument();
+  });
+
+  test("links toggle gates the bounded relationship layer", async () => {
+    render(<TimelineLens dataSource={makeDataSource()} onOpenNode={() => {}} />);
+    await screen.findByTestId("timeline-relationship-historical-cause");
+
+    fireEvent.click(screen.getByTestId("timeline-toggle-relations"));
     expect(screen.queryByTestId("timeline-relationship-historical-cause")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("timeline-toggle-relations"));
+    expect(screen.getByTestId("timeline-relationship-historical-cause")).toBeInTheDocument();
+  });
+
+  test("relation type and tag filters become transport gates", async () => {
+    const loadTimelineView = vi.fn(makeDataSource().loadTimelineView);
+    render(<TimelineLens dataSource={makeDataSource({ loadTimelineView })} onOpenNode={() => {}} />);
+    await screen.findByTestId("timeline-node-banda");
+
+    fireEvent.click(screen.getByTestId("timeline-relation-type-CAUSES"));
+    await waitFor(() => expect(loadTimelineView).toHaveBeenLastCalledWith(
+      expect.objectContaining({ startYear: expect.any(Number), endYear: expect.any(Number) }),
+      { relationTypes: { include: [] } },
+    ));
+
+    fireEvent.click(screen.getByTestId("timeline-relation-types-all"));
+    fireEvent.click(screen.getByTestId("timeline-tag-colonial"));
+    await waitFor(() => expect(loadTimelineView).toHaveBeenLastCalledWith(
+      expect.objectContaining({ startYear: expect.any(Number), endYear: expect.any(Number) }),
+      { tags: { include: ["colonial"] } },
+    ));
+  });
+
+  test("keeps filter options available when a gate returns an empty window", async () => {
+    const base = makeDataSource();
+    const loadTimelineView = vi.fn(async (range: Parameters<TimelineDataSource["loadTimelineView"]>[0], filters: Parameters<TimelineDataSource["loadTimelineView"]>[1]) => {
+      if (filters) {
+        return {
+          workspaceId: "sqlite:/test",
+          nodes: [],
+          relationships: [],
+          lanes: [{ id: "events" }],
+          diagnostics: [],
+        };
+      }
+      return base.loadTimelineView(range);
+    });
+    render(<TimelineLens dataSource={makeDataSource({ loadTimelineView })} onOpenNode={() => {}} />);
+    await screen.findByTestId("timeline-node-banda");
+
+    fireEvent.click(screen.getByTestId("timeline-relation-type-CAUSES"));
+    await waitFor(() => expect(screen.queryByTestId("timeline-node-banda")).not.toBeInTheDocument());
+    expect(screen.getByTestId("timeline-relation-types-all")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("timeline-relation-types-all"));
+    fireEvent.click(screen.getByTestId("timeline-tag-colonial"));
+    await waitFor(() => expect(screen.queryByTestId("timeline-node-banda")).not.toBeInTheDocument());
+    expect(screen.getByTestId("timeline-tags-all")).toBeInTheDocument();
   });
 
   test("requests a bounded temporal window on mount", async () => {
     const loadTimelineView = vi.fn(makeDataSource().loadTimelineView);
     render(<TimelineLens dataSource={makeDataSource({ loadTimelineView })} onOpenNode={() => {}} />);
     await screen.findByTestId("timeline-node-banda");
-    expect(loadTimelineView).toHaveBeenCalledWith({ startYear: 1200, endYear: 2200 });
+    expect(loadTimelineView).toHaveBeenCalledWith({ startYear: 1200, endYear: 2200 }, undefined);
   });
 
   test("mounts only historical cards inside the viewport render band", async () => {

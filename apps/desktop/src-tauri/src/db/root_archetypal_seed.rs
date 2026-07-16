@@ -5307,7 +5307,16 @@ mod tests {
             },
         )
         .expect("load offline timeline from normal root projection");
-        assert!(timeline.relationships.is_empty());
+        let temporal_ids = timeline
+            .nodes
+            .iter()
+            .map(|node| node.node.graph_node_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        assert!(timeline.relationships.iter().all(|relationship| {
+            temporal_ids.contains(relationship.source_graph_node_id.as_str())
+                && temporal_ids.contains(relationship.target_graph_node_id.as_str())
+                && relationship.target_graph_node_id != "root-test:lamb-sheep"
+        }));
         assert!(timeline.nodes.iter().all(|node| !node.relation_companion));
         let relation_field = crate::commands::timeline::load_timeline_relation_field_at_path(
             &path,

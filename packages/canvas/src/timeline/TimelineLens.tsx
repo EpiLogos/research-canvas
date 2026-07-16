@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useStore } from "zustand";
 
-import type { ArchetypalLighting, GraphNode, LitInstance, TimelineLayoutMutationResult, TimelineRelationField as TimelineRelationFieldData, TimelineView, TimelineYearRange } from "./contracts";
+import type { ArchetypalLighting, GraphNode, LitInstance, TimelineFilters, TimelineLayoutMutationResult, TimelineRelationField as TimelineRelationFieldData, TimelineView, TimelineYearRange } from "./contracts";
 import { createTimelineStore, type TimelineCardGeometryUpdate } from "./timelineStore";
 import { DEFAULT_TIMELINE_CARD_WIDTH_PX, FALLBACK_TIMELINE_LANE_ID, placeItems, type PlacedItem, type TimelinePresentation } from "./projection";
 import { generateTicks } from "./ticks";
@@ -13,7 +13,7 @@ import { TimelineRelationField } from "./TimelineRelationField";
 import { deriveTimelineCategory, TIMELINE_CATEGORIES, type TimelineCategory } from "./categories";
 
 export interface TimelineDataSource {
-  loadTimelineView(range?: TimelineYearRange): Promise<TimelineView>;
+  loadTimelineView(range?: TimelineYearRange, filters?: TimelineFilters): Promise<TimelineView>;
   loadNode?(graphNodeId: string): Promise<GraphNode>;
   archetypalLighting(operatorGraphNodeId: string): Promise<ArchetypalLighting>;
   resonancesForInstance(graphNodeId: string): Promise<LitInstance[]>;
@@ -87,6 +87,10 @@ export function TimelineLens({
   const [visibleCategories, setVisibleCategories] = useState<Record<TimelineCategory, boolean>>(() =>
     Object.fromEntries(TIMELINE_CATEGORIES.map((category) => [category.id, true])) as Record<TimelineCategory, boolean>,
   );
+  const [relationTypeFilter, setRelationTypeFilter] = useState<string[] | null>(null);
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [knownRelationTypes, setKnownRelationTypes] = useState<string[]>([]);
+  const [knownTags, setKnownTags] = useState<string[]>([]);
   const [showRelations, setShowRelations] = useState(true);
   const [showArchetypalContext, setShowArchetypalContext] = useState(true);
   const [relationFieldOpen, setRelationFieldOpen] = useState(false);
@@ -98,6 +102,23 @@ export function TimelineLens({
     phase: "accelerating" | "coasting";
   } | null>(null);
   const heldNavigationKeys = useRef(new Set<"ArrowLeft" | "ArrowRight">());
+  const timelineFilters = useMemo<TimelineFilters | undefined>(() => {
+    const filters: TimelineFilters = {};
+    if (relationTypeFilter !== null) filters.relationTypes = { include: relationTypeFilter };
+    if (tagFilter.length > 0) filters.tags = { include: tagFilter };
+    return Object.keys(filters).length > 0 ? filters : undefined;
+  }, [relationTypeFilter, tagFilter]);
+  const timelineFiltersKey = useMemo(
+    () => JSON.stringify(timelineFilters ?? {}),
+    [timelineFilters],
+  );
+
+  useEffect(() => {
+    // Filter option vocabularies belong to the active data source. Do not let
+    // a previous workspace's relation types or tags survive a source swap.
+    setKnownRelationTypes([]);
+    setKnownTags([]);
+  }, [dataSource]);
 
   // Load only the initial camera window. Subsequent camera movement requests
   // another bounded window instead of re-reading the whole temporal corpus.
@@ -117,7 +138,8 @@ export function TimelineLens({
     setSaveErrors({});
     setLoaded(false);
     setLoadError(null);
-    void dataSource.loadTimelineView(range)
+    loadedRange.current = null;
+    void dataSource.loadTimelineView(range, timelineFilters)
       .then((view) => {
         if (!cancelled && timelineRequestVersion.current === requestVersion) {
           loadedRange.current = range;
@@ -136,7 +158,7 @@ export function TimelineLens({
       cancelled = true;
       if (timelineLoadTimer.current !== null) window.clearTimeout(timelineLoadTimer.current);
     };
-  }, [dataSource, store]);
+  }, [dataSource, store, timelineFilters, timelineFiltersKey]);
 
   // Track width measurement (ResizeObserver is mocked in tests; fall back to a
   // sensible default so layout math runs even before the observer fires).
@@ -164,7 +186,7 @@ export function TimelineLens({
     timelineLoadTimer.current = window.setTimeout(() => {
       const requestVersion = timelineRequestVersion.current + 1;
       timelineRequestVersion.current = requestVersion;
-      void dataSource.loadTimelineView(range)
+      void dataSource.loadTimelineView(range, timelineFilters)
         .then((view) => {
           if (timelineRequestVersion.current !== requestVersion) return;
           loadedRange.current = range;
@@ -179,7 +201,7 @@ export function TimelineLens({
     return () => {
       if (timelineLoadTimer.current !== null) window.clearTimeout(timelineLoadTimer.current);
     };
-  }, [dataSource, loaded, store, viewport.centerYear, viewport.pixelsPerYear, viewport.widthPx]);
+  }, [dataSource, loaded, store, timelineFilters, timelineFiltersKey, viewport.centerYear, viewport.pixelsPerYear, viewport.widthPx]);
   useEffect(() => {
     // Until the graph has hydrated, the store only holds its neutral startup
     // camera. Publishing that value would make the shell remember a fictitious
@@ -231,6 +253,39 @@ export function TimelineLens({
   );
   const hasRelationContext = displayRelationField !== null
     && (displayRelationField.relationships.length > 0 || resonances.length > 0);
+  useEffect(() => {
+    const next = [...new Set(state.relationships.map((relationship) => relationship.relType))].sort();
+    if (next.length === 0) return;
+    setKnownRelationTypes((current) => {
+      const merged = [...new Set([...current, ...next])].sort();
+      return current.length === merged.length && current.every((value, index) => value === merged[index])
+        ? current
+        : merged;
+    });
+  }, [state.relationships]);
+  useEffect(() => {
+    const next = [...new Set(state.items.flatMap((item) => item.node.evidenceTags))].sort();
+    if (next.length === 0) return;
+    setKnownTags((current) => {
+      const merged = [...new Set([...current, ...next])].sort();
+      return current.length === merged.length && current.every((value, index) => value === merged[index])
+        ? current
+        : merged;
+    });
+  }, [state.items]);
+  const availableRelationTypes = [...new Set([
+    ...knownRelationTypes,
+    ...state.relationships.map((relationship) => relationship.relType),
+  ])].sort();
+  const availableTags = [...new Set([
+    ...knownTags,
+    ...state.items.flatMap((item) => item.node.evidenceTags),
+  ])].sort();
+  const renderedRelationships = showRelations
+    ? state.relationships.filter((relationship) =>
+        relationTypeFilter === null || relationTypeFilter.includes(relationship.relType),
+      )
+    : [];
 
   const handleSelect = (graphNodeId: string) => {
     store.getState().setSelected(graphNodeId);
@@ -518,6 +573,78 @@ export function TimelineLens({
             Archetypes
           </button>
         </div>
+        {availableRelationTypes.length > 0 && (
+          <div className="timeline-filters timeline-filters--secondary" aria-label="Timeline relation type filters">
+            <span className="timeline-filter-label">Link types</span>
+            {relationTypeFilter !== null && (
+              <button
+                type="button"
+                className="timeline-filter"
+                data-testid="timeline-relation-types-all"
+                onClick={() => setRelationTypeFilter(null)}
+              >
+                All
+              </button>
+            )}
+            {availableRelationTypes.map((relationType) => {
+              const active = relationTypeFilter === null || relationTypeFilter.includes(relationType);
+              return (
+                <button
+                  key={relationType}
+                  type="button"
+                  className="timeline-filter"
+                  data-testid={`timeline-relation-type-${relationType}`}
+                  data-active={active ? "true" : "false"}
+                  aria-pressed={active}
+                  onClick={() => setRelationTypeFilter((current) => {
+                    if (current === null) return availableRelationTypes.filter((candidate) => candidate !== relationType);
+                    return current.includes(relationType)
+                      ? current.filter((candidate) => candidate !== relationType)
+                      : [...current, relationType];
+                  })}
+                >
+                  {relationType.replaceAll("_", " ")}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {availableTags.length > 0 && (
+          <div className="timeline-filters timeline-filters--secondary" aria-label="Timeline tag filters">
+            <span className="timeline-filter-label">Tags</span>
+            {tagFilter.length > 0 && (
+              <button
+                type="button"
+                className="timeline-filter"
+                data-testid="timeline-tags-all"
+                onClick={() => setTagFilter([])}
+              >
+                All
+              </button>
+            )}
+            {availableTags.map((tag) => {
+              const active = tagFilter.length === 0 || tagFilter.includes(tag);
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  className="timeline-filter"
+                  data-testid={`timeline-tag-${tag}`}
+                  data-active={active ? "true" : "false"}
+                  aria-pressed={active}
+                  onClick={() => setTagFilter((current) => {
+                    if (current.length === 0) return [tag];
+                    return current.includes(tag)
+                      ? current.filter((candidate) => candidate !== tag)
+                      : [...current, tag];
+                  })}
+                >
+                  {tag}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {lightingActive && (
           <button
             type="button"
@@ -581,7 +708,7 @@ export function TimelineLens({
         >
           <TimelineAxis ticks={ticks} height={AXIS_HEIGHT} />
           <TimelineRelationshipLayer
-            relationships={showRelations ? relationField?.relationships ?? [] : []}
+            relationships={renderedRelationships}
             placed={placed}
             viewportWidth={viewport.widthPx}
             lod={lod}

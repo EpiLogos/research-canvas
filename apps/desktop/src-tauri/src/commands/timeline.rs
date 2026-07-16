@@ -50,6 +50,10 @@ pub struct TimelineFilters {
     pub historicities: TimelineValueFilter<Historicity>,
     #[serde(default)]
     pub temporal_roles: TimelineValueFilter<TemporalRole>,
+    #[serde(default)]
+    pub tags: TimelineValueFilter<String>,
+    #[serde(default)]
+    pub relation_types: TimelineValueFilter<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -544,10 +548,31 @@ pub fn load_timeline_view_at_path(
             relation_companion: false,
         });
     }
+    let temporal_ids = nodes
+        .iter()
+        .map(|node| node.node.graph_node_id.clone())
+        .collect::<BTreeSet<_>>();
+    // The snapshot carries only the bounded relationship neighbourhood of the
+    // temporal rows just read. It never scans the global graph, and it keeps
+    // atemporal endpoints as relation data rather than assigning them dates.
+    let relationships = NodeRelationshipRepository::new(database.connection())
+        .list_involving(&temporal_ids)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .filter(|relationship| !relationship.is_tombstone)
+        .filter(|relationship| {
+            temporal_ids.contains(&relationship.source_graph_node_id)
+                && temporal_ids.contains(&relationship.target_graph_node_id)
+        })
+        .filter(|relationship| {
+            matches_string_value(&relationship.rel_type, &request.filters.relation_types)
+        })
+        .map(|relationship| relationship.as_graph_relationship())
+        .collect();
     Ok(TimelineView {
         workspace_id,
         nodes,
-        relationships: Vec::new(),
+        relationships,
         lanes: lane_ids.into_iter().map(|id| TimelineLane { id }).collect(),
         diagnostics,
     })
@@ -638,6 +663,24 @@ fn matches_filters(
     matches_value(Some(metadata.entity_type), &filters.entity_types)
         && matches_value(metadata.historicity, &filters.historicities)
         && matches_value(metadata.temporal_role, &filters.temporal_roles)
+        && matches_tags(&metadata.evidence_tags, &filters.tags)
+}
+
+fn matches_tags(tags: &[String], filter: &TimelineValueFilter<String>) -> bool {
+    let included = filter.include.is_empty()
+        || tags
+            .iter()
+            .any(|tag| filter.include.iter().any(|candidate| candidate == tag));
+    let excluded = tags
+        .iter()
+        .any(|tag| filter.exclude.iter().any(|candidate| candidate == tag));
+    included && !excluded
+}
+
+fn matches_string_value(value: &str, filter: &TimelineValueFilter<String>) -> bool {
+    let included =
+        filter.include.is_empty() || filter.include.iter().any(|candidate| candidate == value);
+    included && !filter.exclude.iter().any(|candidate| candidate == value)
 }
 
 fn matches_value<T: PartialEq + Copy>(value: Option<T>, filter: &TimelineValueFilter<T>) -> bool {
@@ -760,8 +803,80 @@ pub async fn load_timeline_view_command(
         .db_path
         .clone()
         .ok_or_else(|| "App not bootstrapped yet".to_string())?;
-    let _ = app_handle;
-    load_timeline_view_at_path(&path, request)
+    let relation_types = request.filters.relation_types.clone();
+    let mut view = load_timeline_view_at_path(&path, request)?;
+    let Some(graph_state) = app_handle.try_state::<SharedGraphState>() else {
+        return Ok(view);
+    };
+    let graph = crate::db::repositories::graph::GraphRepository::new(
+        graph_state.graph.clone(),
+        graph_state.database.clone(),
+    );
+    let temporal_ids = view
+        .nodes
+        .iter()
+        .filter(|node| !node.relation_companion)
+        .map(|node| node.node.graph_node_id.clone())
+        .collect::<BTreeSet<_>>();
+    let tombstones = local_relationship_tombstones_at_path(&path, &temporal_ids)?;
+    let tombstoned_keys = tombstones
+        .iter()
+        .map(|relationship| {
+            canonical_relationship_key(
+                &relationship.source_graph_node_id,
+                &relationship.target_graph_node_id,
+                &relationship.rel_type,
+                &relationship.properties,
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    for tombstone in &tombstones {
+        let _ = graph.disconnect_by_canonical_relationship(tombstone).await;
+    }
+    let Ok(remote_relationships) = graph
+        .relationships_involving(&temporal_ids.iter().cloned().collect::<Vec<_>>())
+        .await
+    else {
+        return Ok(view);
+    };
+    let remote_relationships = remote_relationships
+        .into_iter()
+        .filter(|relationship| {
+            temporal_ids.contains(&relationship.source_graph_node_id)
+                && temporal_ids.contains(&relationship.target_graph_node_id)
+        })
+        .filter(|relationship| matches_string_value(&relationship.rel_type, &relation_types))
+        .collect::<Vec<_>>();
+    let known_ids = view
+        .nodes
+        .iter()
+        .map(|node| node.node.graph_node_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let missing_endpoint_ids = remote_relationships
+        .iter()
+        .flat_map(|relationship| {
+            [
+                relationship.source_graph_node_id.as_str(),
+                relationship.target_graph_node_id.as_str(),
+            ]
+        })
+        .filter(|graph_node_id| !known_ids.contains(*graph_node_id))
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
+    let remote_nodes = if missing_endpoint_ids.is_empty() {
+        Vec::new()
+    } else {
+        graph
+            .get_nodes(&missing_endpoint_ids.into_iter().collect::<Vec<_>>())
+            .await
+            .unwrap_or_default()
+    };
+    apply_remote_timeline_enrichment(
+        &mut view,
+        Ok((remote_relationships, remote_nodes)),
+        &tombstoned_keys,
+    );
+    Ok(view)
 }
 
 #[tauri::command]
@@ -1000,6 +1115,7 @@ mod local_relationship_projection_tests {
             let metadata_repository = GraphNodeMetadataRepository::new(database.connection());
             for (graph_node_id, entity_type, is_temporal) in [
                 ("event-1888", EntityType::Event, true),
+                ("event-1917", EntityType::Event, true),
                 ("archetype-antichrist", EntityType::Archetype, false),
                 ("unrelated-source", EntityType::Source, false),
                 ("unrelated-work", EntityType::Work, false),
@@ -1083,6 +1199,17 @@ mod local_relationship_projection_tests {
             relationship_repository
                 .merge(
                     &relationship(
+                        "event-1888-causes-1917",
+                        "event-1888",
+                        "event-1917",
+                        "CAUSES",
+                    ),
+                    None,
+                )
+                .expect("persist bounded historical relationship");
+            relationship_repository
+                .merge(
+                    &relationship(
                         "unrelated-source-resonates-work",
                         "unrelated-source",
                         "unrelated-work",
@@ -1108,20 +1235,66 @@ mod local_relationship_projection_tests {
         )
         .expect("load offline timeline");
 
-        assert_eq!(timeline.nodes.len(), 1);
-        assert!(timeline.relationships.is_empty());
+        assert_eq!(timeline.nodes.len(), 2);
+        assert_eq!(timeline.relationships.len(), 1);
+        assert_eq!(timeline.relationships[0].rel_type, "CAUSES");
+
+        let relation_filtered = load_timeline_view_at_path(
+            &path,
+            LoadTimelineViewRequest {
+                workspace_id: timeline.workspace_id.clone(),
+                filters: TimelineFilters {
+                    relation_types: TimelineValueFilter {
+                        include: vec!["INSTANTIATES".into()],
+                        exclude: vec![],
+                    },
+                    ..TimelineFilters::default()
+                },
+                range: Some(TimelineYearRange {
+                    start_year: 1800,
+                    end_year: 1900,
+                }),
+            },
+        )
+        .expect("load relation-type filtered timeline");
+        assert_eq!(relation_filtered.nodes.len(), 2);
+        assert!(relation_filtered.relationships.is_empty());
+
+        let tag_filtered = load_timeline_view_at_path(
+            &path,
+            LoadTimelineViewRequest {
+                workspace_id: timeline.workspace_id.clone(),
+                filters: TimelineFilters {
+                    tags: TimelineValueFilter {
+                        include: vec![],
+                        exclude: vec!["documented".into()],
+                    },
+                    ..TimelineFilters::default()
+                },
+                range: Some(TimelineYearRange {
+                    start_year: 1800,
+                    end_year: 1900,
+                }),
+            },
+        )
+        .expect("load tag-filtered timeline");
+        assert!(tag_filtered.nodes.is_empty());
 
         let field =
             load_timeline_relation_field_at_path(&path, &timeline.workspace_id, "event-1888")
                 .expect("load focused event relation field");
         assert_eq!(field.subject_graph_node_id, "event-1888");
-        assert_eq!(field.contextual_nodes.len(), 1);
-        assert_eq!(
-            field.contextual_nodes[0].graph_node_id,
-            "archetype-antichrist"
-        );
-        assert_eq!(field.relationships.len(), 1);
-        let relationship = &field.relationships[0];
+        assert_eq!(field.contextual_nodes.len(), 2);
+        assert!(field
+            .contextual_nodes
+            .iter()
+            .any(|node| node.graph_node_id == "archetype-antichrist"));
+        assert_eq!(field.relationships.len(), 2);
+        let relationship = field
+            .relationships
+            .iter()
+            .find(|relationship| relationship.id == "event-1888-instantiates-antichrist")
+            .expect("focused archetype relationship");
         assert_eq!(relationship.id, "event-1888-instantiates-antichrist");
         assert_eq!(relationship.source_graph_node_id, "event-1888");
         assert_eq!(relationship.target_graph_node_id, "archetype-antichrist");
