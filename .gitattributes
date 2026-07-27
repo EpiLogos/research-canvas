@@ -1,2 +1,4 @@
+# Required high-resolution source media is stored with Git LFS. Workspace
+# database snapshots and generated archives are intentionally excluded from Git.
 *.tif filter=lfs diff=lfs merge=lfs -text
 *.tiff filter=lfs diff=lfs merge=lfs -text
