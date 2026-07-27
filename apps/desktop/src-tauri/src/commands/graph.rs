@@ -699,10 +699,7 @@ pub async fn resonances_for_instance_command(
 mod local_relationship_command_tests {
     use super::*;
     use crate::{
-        commands::timeline::{
-            load_timeline_view_at_path, timeline_workspace_identity, LoadTimelineViewRequest,
-            TimelineFilters,
-        },
+        commands::timeline::{load_timeline_relation_field_at_path, timeline_workspace_identity},
         db::{
             connection::Database,
             repositories::{
@@ -757,23 +754,22 @@ mod local_relationship_command_tests {
         assert_eq!(stored.revision, 1);
         assert!(stored.properties.get("canonicalKey").is_some());
 
-        let timeline = load_timeline_view_at_path(
+        let workspace_id = timeline_workspace_identity(&path).expect("timeline workspace id");
+        let relation_field = load_timeline_relation_field_at_path(
             &path,
-            LoadTimelineViewRequest {
-                workspace_id: timeline_workspace_identity(&path).expect("timeline workspace id"),
-                filters: TimelineFilters::default(),
-                range: None,
-            },
+            &workspace_id,
+            "command-test:banda-genocide",
         )
-        .expect("offline timeline reads the normal local command relation");
-        assert!(timeline.relationships.iter().any(|relationship| {
+        .expect("offline relation field reads the normal local command relation");
+        assert!(relation_field.relationships.iter().any(|relationship| {
             relationship.id == created.relationship.id
                 && relationship.source_graph_node_id == "command-test:banda-genocide"
                 && relationship.target_graph_node_id == "command-test:bull-ox"
         }));
-        assert!(timeline.nodes.iter().any(|node| {
-            node.node.graph_node_id == "command-test:bull-ox" && node.relation_companion
-        }));
+        assert!(relation_field
+            .contextual_nodes
+            .iter()
+            .any(|node| node.graph_node_id == "command-test:bull-ox"));
     }
 
     #[tokio::test]
@@ -835,20 +831,18 @@ mod local_relationship_command_tests {
         assert_eq!(tombstone.sync_state, SyncState::Pending);
         assert_eq!(tombstone.revision, 2);
 
-        let timeline = load_timeline_view_at_path(
+        let workspace_id = timeline_workspace_identity(&path).expect("timeline workspace id");
+        let relation_field = load_timeline_relation_field_at_path(
             &path,
-            LoadTimelineViewRequest {
-                workspace_id: timeline_workspace_identity(&path).expect("timeline workspace id"),
-                filters: TimelineFilters::default(),
-                range: None,
-            },
+            &workspace_id,
+            "disconnect-test:banda-genocide",
         )
-        .expect("offline timeline reads only the retyped local relationship");
-        assert!(!timeline
+        .expect("offline relation field reads only the retyped local relationship");
+        assert!(!relation_field
             .relationships
             .iter()
             .any(|relationship| relationship.id == original.relationship.id));
-        assert!(timeline.relationships.iter().any(|relationship| {
+        assert!(relation_field.relationships.iter().any(|relationship| {
             relationship.id == replacement.relationship.id && relationship.rel_type == "ECHOES"
         }));
 
@@ -932,23 +926,21 @@ mod local_relationship_command_tests {
         let relationship = connect_graph_nodes_local_first_at_path(&path, &request, None)
             .await
             .expect("normal source link command succeeds without a remote graph");
-        let timeline = load_timeline_view_at_path(
+        let workspace_id = timeline_workspace_identity(&path).expect("timeline workspace id");
+        let relation_field = load_timeline_relation_field_at_path(
             &path,
-            LoadTimelineViewRequest {
-                workspace_id: timeline_workspace_identity(&path).expect("timeline workspace id"),
-                filters: TimelineFilters::default(),
-                range: None,
-            },
+            &workspace_id,
+            "source-link-test:banda-genocide",
         )
-        .expect("offline timeline finds normal source relationship");
-        assert!(timeline
+        .expect("offline relation field finds normal source relationship");
+        assert!(relation_field
             .relationships
             .iter()
             .any(|candidate| candidate.id == relationship.relationship.id));
-        assert!(timeline
-            .nodes
+        assert!(relation_field
+            .contextual_nodes
             .iter()
-            .any(|node| { node.node.graph_node_id == source_id && node.relation_companion }));
+            .any(|node| node.graph_node_id == source_id));
     }
 }
 

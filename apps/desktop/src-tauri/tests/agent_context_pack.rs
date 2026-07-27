@@ -144,17 +144,37 @@ fn seed_layout_for_graph_node(database_path: &str, canvas_id: &str, graph_node_i
 
 struct EnvGuard {
     neo4j_uri: Option<String>,
+    neo4j_user: Option<String>,
     neo4j_password: Option<String>,
+    neo4j_database: Option<String>,
+    env_file: Option<String>,
 }
 
 impl EnvGuard {
     fn without_neo4j() -> Self {
         let guard = Self {
             neo4j_uri: std::env::var("NEO4J_URI").ok(),
+            neo4j_user: std::env::var("NEO4J_USER").ok(),
             neo4j_password: std::env::var("NEO4J_PASSWORD").ok(),
+            neo4j_database: std::env::var("NEO4J_DATABASE").ok(),
+            env_file: std::env::var("RESEARCH_CANVAS_ENV_FILE").ok(),
         };
         std::env::remove_var("NEO4J_URI");
+        std::env::remove_var("NEO4J_USER");
         std::env::remove_var("NEO4J_PASSWORD");
+        std::env::remove_var("NEO4J_DATABASE");
+        std::env::set_var("RESEARCH_CANVAS_ENV_FILE", "");
+        guard
+    }
+
+    fn using_test_neo4j() -> Self {
+        let guard = Self::without_neo4j();
+        let config =
+            support::Neo4jTestConfig::from_process_env().expect("graph integration config");
+        std::env::set_var("NEO4J_URI", config.uri);
+        std::env::set_var("NEO4J_USER", config.user);
+        std::env::set_var("NEO4J_PASSWORD", config.password);
+        std::env::set_var("NEO4J_DATABASE", config.database);
         guard
     }
 }
@@ -166,10 +186,25 @@ impl Drop for EnvGuard {
         } else {
             std::env::remove_var("NEO4J_URI");
         }
+        if let Some(value) = &self.neo4j_user {
+            std::env::set_var("NEO4J_USER", value);
+        } else {
+            std::env::remove_var("NEO4J_USER");
+        }
         if let Some(value) = &self.neo4j_password {
             std::env::set_var("NEO4J_PASSWORD", value);
         } else {
             std::env::remove_var("NEO4J_PASSWORD");
+        }
+        if let Some(value) = &self.neo4j_database {
+            std::env::set_var("NEO4J_DATABASE", value);
+        } else {
+            std::env::remove_var("NEO4J_DATABASE");
+        }
+        if let Some(value) = &self.env_file {
+            std::env::set_var("RESEARCH_CANVAS_ENV_FILE", value);
+        } else {
+            std::env::remove_var("RESEARCH_CANVAS_ENV_FILE");
         }
     }
 }
@@ -286,6 +321,7 @@ fn builds_file_only_context_pack_from_real_sqlite_search_and_vault_documents() {
 
 #[test]
 fn graph_context_pack_includes_selected_node_relationships_without_global_relationships() {
+    let _neo4j_env = EnvGuard::using_test_neo4j();
     let (graph, run_id, database_name) = support::neo4j_test_graph();
     support::block_on(async {
         graph
@@ -441,6 +477,7 @@ fn graph_context_pack_includes_selected_node_relationships_without_global_relati
 
 #[test]
 fn graph_context_pack_does_not_include_matches_when_canvas_has_no_layout_nodes() {
+    let _neo4j_env = EnvGuard::using_test_neo4j();
     let (graph, run_id, database_name) = support::neo4j_test_graph();
 
     let (temp_dir, database_path) = open_temp_database();

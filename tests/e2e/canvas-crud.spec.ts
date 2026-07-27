@@ -1,28 +1,24 @@
 import { expect, test } from "@playwright/test";
 import {
+  currentNodeCount,
   expectNoCanvasError,
-  selectCanvasNode,
   waitForWorkspace,
 } from "./support/canvas";
 
-test("creates nodes and restores the canvas after reload", async ({
+test("restores the graph-backed canvas after reload", async ({
   page
 }) => {
   await page.goto("/");
   await waitForWorkspace(page);
+  const initialNodeCount = await currentNodeCount(page);
 
-  await page.getByRole("button", { name: "Add note node" }).click();
-  await page.getByRole("button", { name: "Add resource node" }).click();
-  await page.locator(".fuzzy-picker-item", { hasText: "README.md" }).click();
-  await selectCanvasNode(page, "README.md");
-
-  await expect(page.locator(".canvas-footer")).toContainText("2 nodes");
+  await expect(page.locator(".canvas-flow")).toContainText("Christ Sixfold Spectral Lineage");
   await expectNoCanvasError(page);
 
   await page.reload();
   await waitForWorkspace(page);
 
-  await expect(page.locator(".canvas-footer")).toContainText("2 nodes");
-  await expect(page.locator(".canvas-flow")).toContainText("README.md");
+  await expect(page.locator(".canvas-footer")).toContainText(`${initialNodeCount} nodes`);
+  await expect(page.locator(".canvas-flow")).toContainText("Christ Sixfold Spectral Lineage");
   await expectNoCanvasError(page);
 });

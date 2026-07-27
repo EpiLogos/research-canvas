@@ -246,6 +246,13 @@ export interface WorkspaceBootstrap {
   /** Server-derived identity of the canonical SQLite path. */
   workspaceId: string;
   constellations: ConstellationTreeNode[];
+  /**
+   * The monorepo root (not a constellation's content root, which for the
+   * root-archetypal-field constellation is `antichrist-vault/`). Callers
+   * that need to run shell commands (e.g. the embedded terminal) should
+   * use this, not a constellation's `rootPath`.
+   */
+  workspaceRoot: string;
 }
 
 export interface ConstellationDocument {
@@ -872,6 +879,8 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
 }
 
 export function createBrowserBridgeTransport(): WorkspaceTransport {
+  let activeDatabasePath: string | undefined;
+
   return {
     async attachConstellationResourceRoot(request) {
       return requestJsonWithRetry<ResourceRoot>(
@@ -886,7 +895,9 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       );
     },
     async bootstrapWorkspace() {
-      return requestJsonWithRetry<WorkspaceBootstrap>("/workspace/bootstrap");
+      const result = await requestJsonWithRetry<WorkspaceBootstrap>("/workspace/bootstrap");
+      activeDatabasePath = result.databasePath;
+      return result;
     },
     async detachConstellationResourceRoot({ constellationId, rootPath }) {
       await requestJsonWithRetry<void>(
@@ -913,8 +924,26 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       const beaconPath = `${BRIDGE_BASE_URL}/workspace/constellation/${request.constellationId}/persist?sessionId=${encodeURIComponent(browserSessionId())}`;
       return navigator.sendBeacon(beaconPath, JSON.stringify(request));
     },
-    flushCanvasLayout() {
-      throw new Error("read-only web build");
+    async flushCanvasLayout(input) {
+      const databasePath = input.databasePath ?? activeDatabasePath;
+      if (!databasePath) {
+        throw new Error("flushCanvasLayout: no database path in input or context");
+      }
+      await requestJsonWithRetry<{ writtenNodes: number; writtenEdges: number }>(
+        "/workspace/canvas/layout",
+        {
+          method: "POST",
+          body: buildFlushRequest({
+            databasePath,
+            canvasId: input.canvasId,
+            layouts: input.layouts,
+            edges: input.edges,
+            viewport: input.viewport,
+            appState: input.appState,
+          }),
+        },
+      );
+      return true;
     },
     async persistConstellationDocument(request) {
       return requestJsonWithRetry<ConstellationDocument>(

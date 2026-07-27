@@ -1,38 +1,41 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 
 export async function waitForWorkspace(page: Page) {
   await expect(page.locator(".canvas-footer")).toBeVisible({ timeout: 30_000 });
 }
 
-export async function openRightTab(
-  page: Page,
-  tab: "Content" | "Inspector" | "Sequences" | "Terminal",
-) {
-  const buttons = page.getByRole("button", { name: tab, exact: true });
-  await buttons.nth(tab === "Sequences" ? 1 : 0).click();
+export async function currentNodeCount(page: Page): Promise<number> {
+  const text = await page.locator(".canvas-footer").textContent();
+  const match = text?.match(/(\d+) nodes/);
+  if (!match) throw new Error(`Could not read node count from canvas footer: ${text}`);
+  return Number(match[1]);
 }
 
-export async function selectCanvasNode(page: Page, title: string) {
-  const node = canvas(page)
-    .locator(".react-flow__node")
-    .filter({ hasText: title })
+export async function fitCanvas(page: Page) {
+  await page.getByRole("button", { name: "Fit view" }).dispatchEvent("click");
+  await page.waitForTimeout(350);
+}
+
+export async function openConstellation(page: Page, name: string) {
+  const row = page
+    .locator("[data-testid='lo-constellations'] .lo-constellation-item")
+    .filter({ hasText: name })
     .first();
-  await expect(node).toBeVisible();
-  await node.click();
+  await expect(row).toBeAttached();
+  await row.dispatchEvent("click");
+  await expect(page.getByRole("tab", { name })).toBeVisible();
+  await waitForWorkspace(page);
 }
 
-export async function selectFirstNoteNode(page: Page) {
-  const node = canvas(page).locator(".react-flow__node:has(.note-node)").first();
-  await expect(node).toBeVisible();
-  await node.click();
-}
-
-export function canvas(page: Page): Locator {
-  return page.locator(".canvas-flow");
-}
-
-export function selectedCanvasNode(page: Page): Locator {
-  return canvas(page).locator(".react-flow__node.selected").first();
+export async function openFilesBrowserView(page: Page) {
+  const overlay = page.getByTestId("left-overlay");
+  if ((await overlay.getAttribute("data-open")) !== "true") {
+    await page.getByRole("button", { name: "Files & Constellation" }).dispatchEvent("click");
+  }
+  await expect(overlay).toHaveAttribute("data-open", "true");
+  await overlay.dispatchEvent("pointerenter");
+  await page.getByTestId("browser-files").dispatchEvent("click");
+  await expect(page.getByTestId("browser-files")).toHaveAttribute("data-active", "true");
 }
 
 export async function expectNoCanvasError(page: Page) {

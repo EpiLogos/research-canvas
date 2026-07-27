@@ -24,6 +24,6 @@ test("public viewer opens a real exported bundle and falls back on mobile", asyn
   await page.reload();
 
   await expect(
-    page.getByRole("heading", { name: /sequence-first exploration/i })
+    page.getByRole("heading", { name: /resource exploration/i })
   ).toBeVisible();
 });

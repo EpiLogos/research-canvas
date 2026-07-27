@@ -32,6 +32,10 @@ fn create_project(database_path: &str, root_path: &std::path::Path) -> String {
 
 fn run_agent(args: &[&str]) -> std::process::Output {
     Command::new(agent_binary_path())
+        // The repository may have an author-owned ignored .env. Agent CLI
+        // tests must be hermetic and exercise only the configuration they
+        // provide, never credentials discovered from that local file.
+        .env("RESEARCH_CANVAS_ENV_FILE", "")
         .args(args)
         .output()
         .expect("run agent_research")

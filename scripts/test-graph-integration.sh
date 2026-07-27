@@ -9,12 +9,16 @@ test_password=""
 sentinel_token=""
 
 graph_targets=(
+  agent_context_pack
+  agent_graph_curation
   neo4j_connect
   graph_schema
   graph_node_crud
+  graph_node_evidence_patch
   graph_node_update_delete
   graph_list_nodes
   graph_relationships
+  graph_search_context
   graph_lighting
   canvas_view_join
   graph_seed_operators
@@ -33,10 +37,13 @@ compose() {
 cleanup() {
   local status=$?
   trap - EXIT
-  if [[ "$status" -ne 0 ]]; then
-    compose logs --no-color neo4j-test >&2 || true
+  if [[ -n "$test_password" ]]; then
+    export NEO4J_TEST_PASSWORD="$test_password"
+    if [[ "$status" -ne 0 ]]; then
+      compose logs --no-color neo4j-test >&2 || true
+    fi
+    compose down --volumes --remove-orphans >/dev/null 2>&1 || true
   fi
-  compose down --volumes --remove-orphans >/dev/null 2>&1 || true
   exit "$status"
 }
 
@@ -112,13 +119,8 @@ export RUST_MIN_STACK="${RUST_MIN_STACK:-16777216}"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
 export CARGO_PROFILE_TEST_DEBUG="${CARGO_PROFILE_TEST_DEBUG:-0}"
 
-cargo_test_targets=()
-for target in "${graph_targets[@]}"; do
-  cargo_test_targets+=(--test "$target")
-done
-
-cargo test --offline \
+cargo test --locked \
   --manifest-path "$repo_root/apps/desktop/src-tauri/Cargo.toml" \
-  "${cargo_test_targets[@]}" \
+  --all-targets \
   -- \
   --test-threads=1

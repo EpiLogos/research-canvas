@@ -54,7 +54,10 @@ fn db_migrations_applies_initial_migration_to_a_real_temp_database() {
             row.get(0)
         })
         .expect("migration count");
-    assert_eq!(applied_migrations, 18);
+    assert_eq!(
+        applied_migrations,
+        MigrationRunner::migration_count() as i64
+    );
 }
 
 #[test]
@@ -69,7 +72,10 @@ fn db_migrations_migration_runner_is_idempotent_and_deterministic() {
             row.get(0)
         })
         .expect("migration count");
-    assert_eq!(applied_migrations, 18);
+    assert_eq!(
+        applied_migrations,
+        MigrationRunner::migration_count() as i64
+    );
 }
 
 #[test]
@@ -143,7 +149,7 @@ fn db_migrations_upgrade_0010_without_touching_documents_or_canvas_layouts() {
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row
                 .get::<_, i64>(0))
             .unwrap(),
-        18
+        MigrationRunner::migration_count() as i64
     );
     assert!(table_exists(&reopened, "graph_node_metadata"));
     assert!(table_exists(&reopened, "timeline_layout"));
@@ -372,7 +378,10 @@ fn db_migrations_0016_upgrades_a_real_applied_0015_relationship_projection_witho
             row.get(0)
         })
         .expect("migration count after upgrade");
-    assert_eq!(applied_migrations, 18);
+    assert_eq!(
+        applied_migrations,
+        MigrationRunner::migration_count() as i64
+    );
 }
 
 #[test]

@@ -139,6 +139,12 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
     timelineCard: { offsetY: number; width?: number; height?: number },
   ) => void;
   workingRoot: string | null;
+  /**
+   * The monorepo root, distinct from `workingRoot` (a constellation's
+   * content root, e.g. `antichrist-vault/`). Use this for shell commands
+   * such as the embedded terminal's working directory.
+   */
+  repoRoot: string | null;
   flyToNode: (nodeId: string, viewport?: { x: number; y: number; zoom: number }) => void;
   flyToEdge: (edgeId: string, viewport?: { x: number; y: number; zoom: number }) => void;
   registerFlyToNode: (fn: (nodeId: string, viewport?: { x: number; y: number; zoom: number }) => void) => void;
@@ -178,6 +184,7 @@ export function CanvasWorkspaceProvider({
   const [isHydrated, setIsHydrated] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [workingRoot, setWorkingRoot] = useState<string | null>(null);
+  const [repoRoot, setRepoRoot] = useState<string | null>(null);
   const [canvasTabState, setCanvasTabState] = useState<CanvasTabState>({
     tabs: [],
     activeTabId: null,
@@ -250,6 +257,7 @@ export function CanvasWorkspaceProvider({
         setConstellations(workspace.constellations);
         setDatabasePath(workspace.databasePath);
         setWorkspaceId(workspace.workspaceId);
+        setRepoRoot(workspace.workspaceRoot);
         setActiveConstellationId((current) =>
           current && workspace.constellations.some((constellation) => constellation.id === current)
             ? current
@@ -443,6 +451,24 @@ export function CanvasWorkspaceProvider({
         persistQueued = false;
 
         try {
+          // Annotations are independent SQLite substance. Persist them before
+          // the heavier layout flush so a slow or unavailable layout backend
+          // cannot strand a completed stroke during reload or app shutdown.
+          const writeSubstance = shouldWriteSubstanceOnLayoutFlush();
+          const serialized = stores.store.getState().serialize();
+          await transport.persistConstellationDocument({
+            annotations: stores.annotationStore.getState().serialize(),
+            canvasId: activeCanvasId,
+            databasePath,
+            edges: writeSubstance ? serialized.edges : [],
+            nodes: writeSubstance ? serialized.nodes : [],
+            constellationId: activeConstellation.id,
+          });
+
+          if (cancelled) {
+            return;
+          }
+
           const snapshot = serializeLayoutSnapshot(stores.store.getState().serialize());
           const viewport = captureViewportRef.current();
           const result = await transport.flushCanvasLayout({
@@ -462,22 +488,6 @@ export function CanvasWorkspaceProvider({
             setErrorMessage("failed to persist canvas layout");
           } else {
             setErrorMessage(null);
-            // Annotations-only write: nodes/edges substance is owned by Neo4j
-            // (WS4a Task 6 cutover). shouldWriteSubstanceOnLayoutFlush() returns
-            // false (permanently), so nodes/edges are always empty here.
-            // canvas_annotations has no FK dependency on canvas_nodes (confirmed
-            // in migrations/0001_initial.sql), so the annotation write is safe
-            // independently of whether any node rows exist.
-            const writeSubstance = shouldWriteSubstanceOnLayoutFlush();
-            const serialized = stores.store.getState().serialize();
-            await transport.persistConstellationDocument({
-              annotations: stores.annotationStore.getState().serialize(),
-              canvasId: activeCanvasId,
-              databasePath,
-              edges: writeSubstance ? serialized.edges : [],
-              nodes: writeSubstance ? serialized.nodes : [],
-              constellationId: activeConstellation.id,
-            });
           }
         } catch (error) {
           if (cancelled) {
@@ -830,6 +840,7 @@ export function CanvasWorkspaceProvider({
       constellations,
       resourceRoots,
       workingRoot,
+      repoRoot,
       canvasTabs: canvasTabState.tabs,
       activeCanvasTabId: canvasTabState.activeTabId,
       activeCanvasViewport: activeCanvasTab?.viewport ?? null,
@@ -1243,7 +1254,8 @@ export function CanvasWorkspaceProvider({
       selectNode,
       stores,
       transport,
-      workingRoot
+      workingRoot,
+      repoRoot
     ]
   );
 

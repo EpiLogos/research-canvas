@@ -266,6 +266,7 @@ describe("schema package", () => {
         width: 4,
         opacity: 0.8
       },
+      text: null,
       bounds: {
         position: { x: 0, y: 0 },
         size: { width: 20, height: 30 }
@@ -275,6 +276,7 @@ describe("schema package", () => {
     });
 
     expect(parsed.points).toHaveLength(2);
+    expect(parsed.text).toBeUndefined();
   });
 
   it("validates edge with sequencing fields", () => {

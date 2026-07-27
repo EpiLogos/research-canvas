@@ -129,11 +129,13 @@ pub struct GraphNode {
     pub archetypal_resonance: Option<String>,
     pub coordinate: Option<String>,
     pub source_coordinates: Vec<String>,
+    #[serde(default)]
     pub evidence_tags: Vec<String>,
     pub source_kind: Option<String>,
     pub content_origin: Option<ContentOrigin>,
     pub content_revision: Option<i64>,
     pub seed_schema_version: Option<i64>,
+    #[serde(default)]
     pub body_source_coordinates: Vec<String>,
     pub historicity: Option<Historicity>,
     pub claim_kind: Option<ClaimKind>,
@@ -145,6 +147,7 @@ pub struct GraphNode {
     pub ql_arc: Option<QlArc>,
     pub ql_topology: Option<QlTopology>,
     pub ql_schema_version: Option<i64>,
+    #[serde(default)]
     pub ql_source_coordinates: Vec<String>,
     pub ql_completeness_status: Option<QlCompletenessStatus>,
     pub is_temporal: bool,
@@ -1358,6 +1361,7 @@ impl GraphRepository {
         title: &str,
     ) -> Result<(GraphNode, bool), String> {
         let generated_id = uuid::Uuid::new_v4().to_string();
+        let coordinate = format!("vault-file:{canonical_path}");
         let now = now_rfc3339();
         let q = query(
             "MERGE (n:TheoryNode:Source {coordinate: $coordinate}) \
@@ -1367,7 +1371,7 @@ impl GraphRepository {
                 n.is_temporal = false, n.created_at = $now, n.updated_at = $now \
              RETURN n, n.graph_node_id = $id AS created",
         )
-        .param("coordinate", canonical_path.to_string())
+        .param("coordinate", coordinate)
         .param("id", generated_id)
         .param("title", title.to_string())
         .param("now", now);
@@ -1406,7 +1410,7 @@ impl GraphRepository {
             "MATCH (s:TheoryNode {graph_node_id: $src}), (t:TheoryNode {graph_node_id: $tgt}) \
              MERGE (s)-[r:SOURCED_FROM {sourcePath: $source_path}]->(t) \
              ON CREATE SET r.quote = $quote, r.note = $note, r.canonicalKey = $canonical_key, r.__agent_created = $marker \
-             WITH r, r.__agent_created = $marker AS created \
+             WITH s, t, r, coalesce(r.__agent_created = $marker, false) AS created \
              REMOVE r.__agent_created \
              RETURN elementId(r) AS id, type(r) AS rel_type, \
                     s.graph_node_id AS src, t.graph_node_id AS tgt, \

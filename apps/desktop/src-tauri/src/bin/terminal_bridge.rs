@@ -12,6 +12,7 @@ use research_canvas_desktop_lib::{
             PersistConstellationDocumentRequest, ResourceRootLookupRequest,
             ResourceRootMutationRequest, UpdateSavedSequenceRequest,
         },
+        layout::{flush_canvas_layout_at, FlushCanvasLayoutRequest},
         search::{
             rebuild_constellation_search_index_command, search_constellation_command,
             RebuildConstellationSearchIndexRequest, SearchConstellationRequest,
@@ -132,7 +133,7 @@ fn handle_request(
     }
 
     if method == Method::Get && path == "/workspace/bootstrap" {
-        let database_path = session_database_path(&request);
+        let database_path = session_database_path(&request)?;
         let payload = bootstrap_workspace_at(&database_path)?;
         return respond_json(request, StatusCode(200), payload);
     }
@@ -152,7 +153,7 @@ fn handle_request(
     }
 
     if method == Method::Get && path == "/workspace/search" {
-        let database_path = session_database_path(&request);
+        let database_path = session_database_path(&request)?;
         let database_path = database_path.to_string_lossy().to_string();
         let constellation_id = query_param(&url, "constellationId")
             .ok_or_else(|| "missing constellationId query parameter".to_string())?;
@@ -173,6 +174,17 @@ fn handle_request(
         return respond_json(request, StatusCode(200), hits);
     }
 
+    if method == Method::Post && path == "/workspace/canvas/layout" {
+        let body = read_body(&mut request)?;
+        let mut input: FlushCanvasLayoutRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        input.database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let payload = flush_canvas_layout_at(input)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
     if method == Method::Get && path == "/graph/canvas-view" {
         let graph_state = match graph_state.as_ref() {
             Some(state) => state,
@@ -181,7 +193,7 @@ fn handle_request(
         let canvas_id = query_param(&url, "canvasId")
             .ok_or_else(|| "missing canvasId query parameter".to_string())?;
         let lens = query_param(&url, "lens").unwrap_or_else(|| "canvas".to_string());
-        let database_path = session_database_path(&request)
+        let database_path = session_database_path(&request)?
             .to_string_lossy()
             .to_string();
         let repo = GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
@@ -196,7 +208,7 @@ fn handle_request(
         let body = read_body(&mut request)?;
         let input: LoadTimelineViewRequest =
             serde_json::from_str(&body).map_err(|error| error.to_string())?;
-        let payload = load_timeline_view_at_path(session_database_path(&request), input)?;
+        let payload = load_timeline_view_at_path(session_database_path(&request)?, input)?;
         return respond_json(request, StatusCode(200), payload);
     }
 
@@ -273,13 +285,13 @@ fn handle_request(
         };
 
         if method == Method::Get && action.is_empty() {
-            let database_path = session_database_path(&request);
+            let database_path = session_database_path(&request)?;
             let payload = load_constellation_document_at(&database_path, &constellation_id)?;
             return respond_json(request, StatusCode(200), payload);
         }
 
         if method == Method::Get && action == "resource-roots" {
-            let database_path = session_database_path(&request)
+            let database_path = session_database_path(&request)?
                 .to_string_lossy()
                 .to_string();
             let payload = list_constellation_resource_roots_at(ResourceRootLookupRequest {
@@ -290,7 +302,7 @@ fn handle_request(
         }
 
         if method == Method::Post && action == "persist" {
-            let database_path = session_database_path(&request)
+            let database_path = session_database_path(&request)?
                 .to_string_lossy()
                 .to_string();
             let body = match read_body(&mut request) {
@@ -312,7 +324,7 @@ fn handle_request(
         }
 
         if method == Method::Post && action == "resource-roots" {
-            let database_path = session_database_path(&request)
+            let database_path = session_database_path(&request)?
                 .to_string_lossy()
                 .to_string();
             let body = read_body(&mut request)?;
@@ -328,7 +340,7 @@ fn handle_request(
         }
 
         if method == Method::Delete && action == "resource-roots" {
-            let database_path = session_database_path(&request)
+            let database_path = session_database_path(&request)?
                 .to_string_lossy()
                 .to_string();
             let body = read_body(&mut request)?;
@@ -344,7 +356,7 @@ fn handle_request(
         }
 
         if method == Method::Get && action == "sequences" {
-            let database_path = session_database_path(&request)
+            let database_path = session_database_path(&request)?
                 .to_string_lossy()
                 .to_string();
             let payload = list_saved_sequences_command(ListSavedSequencesRequest {
@@ -356,7 +368,7 @@ fn handle_request(
         }
 
         if method == Method::Post && action == "sequences" {
-            let database_path = session_database_path(&request)
+            let database_path = session_database_path(&request)?
                 .to_string_lossy()
                 .to_string();
             let body = read_body(&mut request)?;
@@ -377,7 +389,7 @@ fn handle_request(
         let sequence_id = sequence_id.to_string();
 
         if method == Method::Put {
-            let database_path = session_database_path(&request)
+            let database_path = session_database_path(&request)?
                 .to_string_lossy()
                 .to_string();
             let body = read_body(&mut request)?;
@@ -401,7 +413,7 @@ fn handle_request(
         }
 
         if method == Method::Delete {
-            let database_path = session_database_path(&request)
+            let database_path = session_database_path(&request)?
                 .to_string_lossy()
                 .to_string();
             delete_saved_sequence_command(DeleteSavedSequenceRequest {
@@ -546,7 +558,7 @@ fn header(name: &str, value: &str) -> Header {
     Header::from_bytes(name.as_bytes(), value.as_bytes()).expect("valid header")
 }
 
-fn session_database_path(request: &tiny_http::Request) -> std::path::PathBuf {
+fn session_database_path(request: &tiny_http::Request) -> Result<std::path::PathBuf, String> {
     let session_id = request
         .headers()
         .iter()

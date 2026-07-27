@@ -20,7 +20,7 @@ export const annotationSchema = z.object({
   annotationType: z.enum(["stroke", "highlight", "arrow", "callout"]),
   points: z.array(pointSchema).min(1),
   style: annotationStyleSchema,
-  text: z.string().optional(),
+  text: z.preprocess((value) => value === null ? undefined : value, z.string().optional()),
   bounds: z.object({
     position: positionSchema,
     size: sizeSchema
@@ -32,4 +32,3 @@ export const annotationSchema = z.object({
 export type AnnotationPoint = z.infer<typeof pointSchema>;
 export type AnnotationStyle = z.infer<typeof annotationStyleSchema>;
 export type Annotation = z.infer<typeof annotationSchema>;
-

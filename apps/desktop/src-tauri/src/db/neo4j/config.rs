@@ -47,6 +47,13 @@ impl Neo4jConfig {
 }
 
 fn default_dotenv_path() -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os("RESEARCH_CANVAS_ENV_FILE") {
+        return if path.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(path))
+        };
+    }
     find_up(Path::new(env!("CARGO_MANIFEST_DIR")), ".env")
 }
 

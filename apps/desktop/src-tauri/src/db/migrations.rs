@@ -113,8 +113,12 @@ const MIGRATIONS: &[Migration] = &[
 ];
 
 impl MigrationRunner {
+    pub const fn migration_count() -> usize {
+        MIGRATIONS.len()
+    }
+
     pub fn migrate(connection: &Connection) -> Result<()> {
-        Self::migrate_selected(connection, MIGRATIONS.len())
+        Self::migrate_selected(connection, Self::migration_count())
     }
 
     /// Executes the real ordered migration chain through an inclusive version.

@@ -130,8 +130,14 @@ describe("GraphApp (mounted web entry, real static-bundle transport)", () => {
     // bundle's resonance graph), and lighting that operator marks the instance
     // as lit — driven entirely by bundle.lightingIndex, no backend.
     fireEvent.click(event);
-    const row = await screen.findByTestId("resonance-row-node-monopoly");
-    fireEvent.click(row);
+    // The shared timeline now keeps relation/resonance context collapsed until
+    // requested. The static viewer must follow that same production path.
+    expect(screen.queryByTestId("timeline-relation-field")).toBeNull();
+    fireEvent.click(await screen.findByTestId("timeline-relation-field-trigger"));
+    expect(await screen.findByTestId("timeline-resonance-node-monopoly")).toHaveTextContent(
+      "Monopoly mechanism",
+    );
+    fireEvent.click(screen.getByTestId("timeline-light-node-monopoly"));
 
     await waitFor(() => {
       expect(

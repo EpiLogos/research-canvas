@@ -17,6 +17,7 @@ pub mod db;
 pub mod export;
 pub mod fs;
 pub mod pty;
+pub mod workspace;
 
 use std::sync::{Arc, Mutex};
 

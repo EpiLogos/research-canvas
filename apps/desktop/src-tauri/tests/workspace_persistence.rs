@@ -548,7 +548,10 @@ fn production_bootstrap_rolls_back_full_projection_when_a_document_conflicts() {
     let historical_canvas_id: String = db
         .connection()
         .query_row(
-            "SELECT id FROM canvases WHERE kind='constellation:historical-forms'",
+            "SELECT c.id
+             FROM canvases c
+             JOIN projects p ON p.id=c.project_id
+             WHERE p.slug='historical-forms' AND c.is_primary=1",
             [],
             |row| row.get(0),
         )
@@ -656,7 +659,10 @@ fn production_bootstrap_rejects_incompatible_metadata_only_rows_without_partial_
     let canvas_id: String = db
         .connection()
         .query_row(
-            "SELECT id FROM canvases WHERE kind='constellation:historical-forms'",
+            "SELECT c.id
+             FROM canvases c
+             JOIN projects p ON p.id=c.project_id
+             WHERE p.slug='historical-forms' AND c.is_primary=1",
             [],
             |row| row.get(0),
         )
@@ -742,7 +748,10 @@ fn production_bootstrap_rejects_synced_metadata_without_exact_remote_revision() 
         let canvas_id: String = db
             .connection()
             .query_row(
-                "SELECT id FROM canvases WHERE kind='constellation:historical-forms'",
+                "SELECT c.id
+                 FROM canvases c
+                 JOIN projects p ON p.id=c.project_id
+                 WHERE p.slug='historical-forms' AND c.is_primary=1",
                 [],
                 |row| row.get(0),
             )

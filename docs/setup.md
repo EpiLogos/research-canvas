@@ -1,91 +1,75 @@
-# Setup
+# Local setup
 
-This is a local-first tool. Distribution is "clone the repo and run it" — there are no packaged installers. This document gets a fresh machine to a running desktop app with a live Neo4j graph and the research agent wired in.
+The authoritative partner runbook is the repository [README](../README.md).
+Research Canvas is local-first: the desktop app uses a persistent local SQLite
+file and a loopback-only Neo4j 5.26 Community container. A clone does not contain
+or synchronize workspace database data.
 
-## Prerequisites
+## Start and stop
 
-- Node 20+ and `pnpm` 10+ (`corepack enable` then `corepack prepare pnpm@10.25.0 --activate`).
-- Rust toolchain (`rustup`, stable) and the Tauri v2 system dependencies for your OS.
-- Docker + Docker Compose (for Neo4j).
-- Python 3.11+ (for the Graphiti MCP server).
-- A Google Gemini API key.
-
-## 1. Install JS dependencies
+Install Node 20+, pnpm 10.25.0, Rust stable, Docker Compose v2, Git LFS, and the
+Tauri v2 prerequisites for the operating system. Then run:
 
 ```bash
-pnpm install
+./scripts/research-canvas start
 ```
 
-## 2. Environment
-
-Copy the example env file and fill in the secrets. `.env` is git-ignored; `.env.example` is committed with blanks.
+If `.env` is absent, the command creates it from `.env.example` and stops. Set
+`NEO4J_PASSWORD`, then run `start` again. Neo4j is ready only after an
+authenticated `RETURN 1` query succeeds—not merely when its container is
+running. The default Bolt URI is `bolt://127.0.0.1:17687`; the browser UI is
+`http://127.0.0.1:17474`.
 
 ```bash
-cp .env.example .env
+./scripts/research-canvas stop
 ```
 
-| Env var | Default | Used by |
-|---|---|---|
-| `NEO4J_URI` | `bolt://127.0.0.1:17687` | Rust app (`neo4rs`), Graphiti MCP |
-| `NEO4J_USER` | `neo4j` | both |
-| `NEO4J_PASSWORD` | (required, set your own) | both |
-| `NEO4J_DATABASE` | `neo4j` | both |
-| `GOOGLE_API_KEY` | (required for Graphiti) | Graphiti MCP only |
-| `GRAPHITI_LLM_MODEL` | `gemini-2.5-flash` | Graphiti MCP only |
-| `GRAPHITI_EMBEDDER_MODEL` | `gemini-embedding-001` | Graphiti MCP only |
-| `GRAPHITI_RERANKER_MODEL` | `gemini-2.5-flash-lite` | Graphiti MCP only |
+`stop` preserves the `antichristproject_neo4j_data` volume and the local SQLite
+workspace.
 
-Both the Tauri app and the Graphiti MCP server load this same `.env`.
+## Data and snapshots
 
-### Real graph integration tests
+The normal SQLite file is below the operating system’s local application-data
+directory at
+`research-canvas/workspace/research-canvas-authoring.sqlite`. Set
+`RESEARCH_CANVAS_DATA_DIR` to override its containing directory or
+`RESEARCH_CANVAS_DATABASE_PATH` to override the exact file. Tests use explicit
+temporary paths and never use the normal workspace.
 
-Run `pnpm test:graph:integration` for the Neo4j-backed Rust suite. The command
-starts a digest-pinned Neo4j Community container on a dynamically assigned
-loopback Bolt port with a random per-run password, waits for its health check,
-writes a random server sentinel, runs every graph integration target against a
-unique run namespace, and removes the container and its anonymous data on
-success or failure. The fixture reads the sentinel back before any test schema
-or graph mutation. It does not use the persistent development service on port
-`17687` or its `neo4j_data` volume.
-
-Graph integration targets fail when the required test configuration is absent,
-when it identifies the development endpoint/database, or when Docker cannot
-start the disposable dependency. Pure Rust and SQLite tests remain runnable
-through ordinary `cargo test` target selection without Neo4j.
-
-## 3. Start Neo4j (Docker)
-
-The repo ships a single-service `docker-compose.yml` at its root:
+An old `$TMPDIR/research-canvas-authoring.sqlite` is copied once with SQLite’s
+backup API only if the persistent destination does not exist. The source remains
+untouched.
 
 ```bash
-docker compose up -d neo4j
+./scripts/research-canvas backup ~/Research-Canvas-Backups
+./scripts/research-canvas restore <snapshot-archive>
+./scripts/research-canvas verify
 ```
 
-This starts `neo4j:5.26-community` with APOC enabled, exposing the browser UI on `http://127.0.0.1:17474` and the bolt protocol on `127.0.0.1:17687`. Graphiti requires Neo4j 5.26+.
+Snapshots contain a Neo4j dump, a consistent SQLite backup, any vault payload
+not supplied by Git, `manifest.json`, and `checksums.sha256`. Restore validates
+all payloads and record counts before mutation and refuses occupied destinations
+unless `--replace` is supplied deliberately. Neo4j credentials are local and are
+not part of the dump.
 
-## 4. Run the desktop app
+## Real integration tests
 
 ```bash
-pnpm launch
+pnpm test:graph:integration
+pnpm test:handoff:integration
 ```
 
-On startup the app connects to Neo4j over bolt via `neo4rs`, runs the idempotent schema setup (constraints + indexes), and reads layout from local SQLite.
+Both commands use real disposable Neo4j services. The handoff test also uses a
+real migrated SQLite schema, performs a complete dump/archive/restore cycle,
+uses a different recipient password, and verifies selected graph, document,
+canvas, and timeline records. With a graphical session, run
+`pnpm test:handoff:desktop` to include the desktop launch smoke test.
 
-## 5. Wire the research agent (terminal + MCP)
+The optional Graphiti research-agent setup remains documented in
+[setup/graphiti-mcp.md](setup/graphiti-mcp.md). It is not required for the
+partner to start the desktop authoring application.
 
-Theory authoring is done by a terminal coding agent (Claude Code / Codex) running on your existing subscription, through two MCP servers:
-
-- **Graphiti MCP** (Python, external) is the agent's theory-write path. It runs Graphiti's ingestion pipeline (Gemini LLM + embeddings) and writes nodes/episodes/relationships with provenance into the same Neo4j database. Configure it with the `NEO4J_*`, `GOOGLE_API_KEY`, and `GRAPHITI_*` env vars above.
-- **research-canvas MCP** (this repo, `.claude/mcp-servers/research-canvas`) is slimmed to a place-on-canvas / layout role. It does not author theory; it places existing graph nodes (by `graphNodeId`) onto the canvas/timeline and reads/updates their layout. Its HTTP API listens on `http://127.0.0.1:9876`.
-
-The agent loop: research with Graphiti MCP (which writes substance), then place new nodes on the canvas/timeline with the research-canvas MCP, then review and refine in the desktop UI.
-
-## 6. Verify
-
-```bash
-pnpm exec tsc -b
-pnpm vitest run
-cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml -- --test-threads=1
-```
-
-See `docs/architecture.md` for how the pieces fit together and `docs/data-model.md` for the graph ontology.
+For that optional integration, `.env.example` also documents `NEO4J_URI`,
+`GOOGLE_API_KEY`, and `GRAPHITI_LLM_MODEL` (default `gemini-2.5-flash`).
+Graphiti MCP uses the same local service defined in `docker-compose.yml`; it
+does not turn Neo4j into a public or hosted endpoint.

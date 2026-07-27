@@ -3,7 +3,7 @@ import { useTerminal } from "./useTerminal";
 
 export function TerminalPane() {
   const workspace = useCanvasWorkspace();
-  const { error, terminalContainerRef } = useTerminal(workspace.workingRoot ?? undefined);
+  const { error, terminalContainerRef } = useTerminal(workspace.repoRoot ?? undefined);
 
   return (
     <section className="terminal-pane">

@@ -270,7 +270,7 @@ pub fn index_constellation_root(root: impl AsRef<Path>) -> std::io::Result<Vec<I
 pub fn bootstrap_workspace_command(
     api_state: tauri::State<SharedApiState>,
 ) -> Result<WorkspaceBootstrap, String> {
-    let database_path = default_database_path(None);
+    let database_path = default_database_path(None)?;
     let result = bootstrap_workspace_at(&database_path)?;
     {
         let mut api = api_state.lock().unwrap();
@@ -453,9 +453,8 @@ fn workspace_root() -> PathBuf {
         .expect("workspace root")
 }
 
-pub fn default_database_path(session_id: Option<&str>) -> PathBuf {
-    let _ = session_id;
-    env::temp_dir().join("research-canvas-authoring.sqlite")
+pub fn default_database_path(session_id: Option<&str>) -> Result<PathBuf, String> {
+    crate::workspace::prepare_database_path(session_id).map_err(|error| error.to_string())
 }
 
 fn ensure_workspace_constellations(connection: &Connection, root: &Path) -> Result<(), String> {

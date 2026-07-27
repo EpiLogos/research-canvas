@@ -1,0 +1,516 @@
+#!/bin/bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+default_repo_root="$(cd "$script_dir/.." && pwd)"
+repo_root="${RESEARCH_CANVAS_REPO_ROOT:-$default_repo_root}"
+env_file="${RESEARCH_CANVAS_ENV_FILE:-$repo_root/.env}"
+compose_file="$repo_root/docker-compose.yml"
+compose_project="${RESEARCH_CANVAS_COMPOSE_PROJECT:-antichristproject}"
+manifest_tool="$default_repo_root/scripts/workspace-manifest.mjs"
+sqlite_manifest="$default_repo_root/apps/desktop/src-tauri/Cargo.toml"
+neo4j_image="neo4j:5.26-community"
+snapshot_root_name="research-canvas-workspace-v1"
+temporary_cleanup_directory=""
+
+usage() {
+  cat <<'EOF'
+Research Canvas local workspace
+
+Usage:
+  ./scripts/research-canvas start
+  ./scripts/research-canvas stop
+  ./scripts/research-canvas backup <output-directory>
+  ./scripts/research-canvas restore <snapshot-archive> [--replace]
+  ./scripts/research-canvas verify
+  ./scripts/research-canvas help
+
+start verifies prerequisites, starts and queries Neo4j, then launches the
+desktop application. stop preserves the SQLite file and Docker data volumes.
+EOF
+}
+
+fail() {
+  printf 'research-canvas: %s\n' "$*" >&2
+  exit 1
+}
+
+cleanup_temporary_directory() {
+  if [[ -n "$temporary_cleanup_directory" ]]; then
+    rm -rf "$temporary_cleanup_directory"
+  fi
+}
+
+need_command() {
+  local command_name="$1"
+  local guidance="$2"
+  command -v "$command_name" >/dev/null 2>&1 || fail "$guidance"
+}
+
+load_environment() {
+  if [[ ! -f "$env_file" ]]; then
+    [[ -f "$repo_root/.env.example" ]] || fail "missing $repo_root/.env.example"
+    cp "$repo_root/.env.example" "$env_file"
+    fail "created $env_file; set NEO4J_PASSWORD in that file, then run the command again"
+  fi
+  set -a
+  # shellcheck disable=SC1090
+  source "$env_file"
+  set +a
+  [[ -n "${NEO4J_PASSWORD:-}" ]] || fail "set NEO4J_PASSWORD in $env_file"
+  [[ "${NEO4J_DATABASE:-neo4j}" == "neo4j" ]] ||
+    fail "workspace snapshots currently require NEO4J_DATABASE=neo4j"
+}
+
+check_service_prerequisites() {
+  need_command docker "Docker is required; install Docker Desktop or Docker Engine with Compose"
+  docker compose version >/dev/null 2>&1 ||
+    fail "Docker Compose v2 is required (the 'docker compose' command)"
+  need_command node "Node.js 20 or newer is required"
+  need_command cargo "Rust and Cargo are required; install the stable toolchain with rustup"
+  need_command rustc "Rust and Cargo are required; install the stable toolchain with rustup"
+  need_command tar "tar is required to create and restore workspace snapshots"
+}
+
+check_start_prerequisites() {
+  check_service_prerequisites
+  need_command pnpm "pnpm 10 is required; enable Corepack and activate pnpm 10.25.0"
+  local node_major
+  node_major="$(node -p 'Number(process.versions.node.split(".")[0])')"
+  [[ "$node_major" -ge 20 ]] || fail "Node.js 20 or newer is required (found $(node --version))"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    xcode-select -p >/dev/null 2>&1 ||
+      fail "Tauri on macOS requires Xcode Command Line Tools (run: xcode-select --install)"
+  elif [[ "$(uname -s)" == "Linux" ]]; then
+    need_command pkg-config "Tauri on Linux requires pkg-config and WebKitGTK development packages"
+    pkg-config --exists webkit2gtk-4.1 ||
+      fail "Tauri on Linux requires the WebKitGTK 4.1 development package"
+  fi
+}
+
+compose() {
+  docker compose \
+    --project-name "$compose_project" \
+    --env-file "$env_file" \
+    --file "$compose_file" \
+    "$@"
+}
+
+neo4j_container() {
+  compose ps --quiet neo4j
+}
+
+cypher() {
+  local query="$1"
+  local container
+  container="$(neo4j_container)"
+  [[ -n "$container" ]] || fail "Neo4j container is not running"
+  docker exec "$container" cypher-shell \
+    -a bolt://127.0.0.1:7687 \
+    -d "${NEO4J_DATABASE:-neo4j}" \
+    -u "${NEO4J_USER:-neo4j}" \
+    -p "$NEO4J_PASSWORD" \
+    --format plain \
+    "$query"
+}
+
+cypher_value() {
+  local query="$1"
+  cypher "$query" | tail -n 1 | tr -d '"[:space:]'
+}
+
+wait_for_neo4j() {
+  local attempt
+  for attempt in $(seq 1 90); do
+    if cypher "RETURN 1 AS ready;" >/dev/null 2>&1; then
+      printf 'Neo4j accepted an authenticated query.\n'
+      return 0
+    fi
+    sleep 2
+  done
+  compose logs --no-color --tail 120 neo4j >&2 || true
+  fail "Neo4j did not accept an authenticated query within 180 seconds"
+}
+
+start_neo4j() {
+  compose up --detach neo4j
+  wait_for_neo4j
+}
+
+sqlite_tool() {
+  cargo run --quiet --locked \
+    --manifest-path "$sqlite_manifest" \
+    --bin workspace_sqlite \
+    -- "$@"
+}
+
+install_dependencies_if_needed() {
+  local state_dir="$repo_root/.research-canvas"
+  local marker="$state_dir/pnpm-lock.sha256"
+  local lock_hash
+  lock_hash="$(node -e '
+    const { createHash } = require("node:crypto");
+    const { readFileSync } = require("node:fs");
+    process.stdout.write(createHash("sha256").update(readFileSync(process.argv[1])).digest("hex"));
+  ' "$repo_root/pnpm-lock.yaml")"
+  if [[ ! -d "$repo_root/node_modules" ]] ||
+    [[ ! -f "$marker" ]] ||
+    [[ "$(cat "$marker")" != "$lock_hash" ]]; then
+    mkdir -p "$state_dir"
+    (
+      cd "$repo_root"
+      pnpm install --frozen-lockfile
+    )
+    printf '%s\n' "$lock_hash" >"$marker"
+  fi
+}
+
+command_start() {
+  load_environment
+  check_start_prerequisites
+  start_neo4j
+  sqlite_tool path --prepare >/dev/null
+  install_dependencies_if_needed
+  printf 'Launching Research Canvas. Local data remains on this machine only.\n'
+  cd "$repo_root"
+  exec pnpm launch
+}
+
+command_stop() {
+  load_environment
+  check_service_prerequisites
+  compose stop
+  printf 'Research Canvas services stopped; local data volumes were preserved.\n'
+}
+
+collect_vault_files() {
+  local destination_list="$1"
+  : >"$destination_list"
+  if [[ ! -d "$repo_root/antichrist-vault" ]]; then
+    return
+  fi
+  (
+    cd "$repo_root"
+    {
+      git diff --name-only --diff-filter=ACMRTUXB -- antichrist-vault
+      git ls-files --others --exclude-standard -- antichrist-vault
+    } | LC_ALL=C sort -u
+  ) >"$destination_list"
+}
+
+copy_vault_files() {
+  local list="$1"
+  local snapshot_root="$2"
+  local relative_path
+  while IFS= read -r relative_path; do
+    [[ -n "$relative_path" ]] || continue
+    [[ "$relative_path" == antichrist-vault/* ]] ||
+      fail "unsafe vault path discovered: $relative_path"
+    [[ -f "$repo_root/$relative_path" ]] ||
+      fail "vault file required by the snapshot is missing: $relative_path"
+    mkdir -p "$snapshot_root/vault/repository/$(dirname "$relative_path")"
+    cp -p "$repo_root/$relative_path" "$snapshot_root/vault/repository/$relative_path"
+  done <"$list"
+}
+
+dump_neo4j() {
+  local snapshot_root="$1"
+  local dump_status=0
+  compose stop neo4j
+  if compose run --rm --no-deps \
+    --entrypoint neo4j-admin \
+    --volume "$snapshot_root/neo4j:/backups" \
+    neo4j \
+    database dump "${NEO4J_DATABASE:-neo4j}" \
+    --to-path=/backups \
+    --overwrite-destination=true; then
+    :
+  else
+    dump_status=$?
+  fi
+  compose up --detach neo4j >/dev/null
+  wait_for_neo4j
+  [[ "$dump_status" -eq 0 ]] || fail "Neo4j dump failed"
+  [[ -s "$snapshot_root/neo4j/neo4j.dump" ]] ||
+    fail "Neo4j dump was not created"
+}
+
+command_backup() {
+  [[ "$#" -eq 1 ]] || fail "usage: ./scripts/research-canvas backup <output-directory>"
+  load_environment
+  check_service_prerequisites
+  need_command git "Git is required to identify vault content not present in the repository"
+  start_neo4j
+  local output_dir="$1"
+  mkdir -p "$output_dir"
+  output_dir="$(cd "$output_dir" && pwd)"
+  local workspace_database
+  workspace_database="$(sqlite_tool path --prepare)"
+  [[ -f "$workspace_database" ]] ||
+    fail "SQLite workspace does not exist yet: $workspace_database"
+
+  local working_directory
+  working_directory="$(mktemp -d "${TMPDIR:-/tmp}/research-canvas-backup.XXXXXX")"
+  temporary_cleanup_directory="$working_directory"
+  trap cleanup_temporary_directory EXIT INT TERM
+  local snapshot_root="$working_directory/$snapshot_root_name"
+  mkdir -p "$snapshot_root/neo4j" "$snapshot_root/sqlite" "$snapshot_root/vault/repository"
+
+  sqlite_tool backup \
+    "$workspace_database" \
+    "$snapshot_root/sqlite/research-canvas-authoring.sqlite" >/dev/null
+  sqlite_tool counts \
+    "$snapshot_root/sqlite/research-canvas-authoring.sqlite" \
+    >"$working_directory/sqlite-summary.json"
+  sqlite_tool roots \
+    "$snapshot_root/sqlite/research-canvas-authoring.sqlite" \
+    >"$working_directory/roots.json"
+
+  local node_count relationship_count neo4j_version neo4j_image_id
+  node_count="$(cypher_value "MATCH (n) RETURN count(n) AS value;")"
+  relationship_count="$(cypher_value "MATCH ()-[r]->() RETURN count(r) AS value;")"
+  neo4j_version="$(
+    cypher_value "CALL dbms.components() YIELD versions RETURN versions[0] AS value;"
+  )"
+  neo4j_image_id="$(docker inspect --format '{{.Image}}' "$(neo4j_container)")"
+  [[ "$node_count" =~ ^[0-9]+$ ]] || fail "could not read Neo4j node count"
+  [[ "$relationship_count" =~ ^[0-9]+$ ]] ||
+    fail "could not read Neo4j relationship count"
+  dump_neo4j "$snapshot_root"
+
+  collect_vault_files "$working_directory/vault-files.txt"
+  copy_vault_files "$working_directory/vault-files.txt" "$snapshot_root"
+  node "$manifest_tool" create \
+    --output "$snapshot_root/manifest.json" \
+    --sqlite-summary "$working_directory/sqlite-summary.json" \
+    --roots "$working_directory/roots.json" \
+    --repository-root "$repo_root" \
+    --vault-files "$working_directory/vault-files.txt" \
+    --neo4j-image "$neo4j_image" \
+    --neo4j-image-id "$neo4j_image_id" \
+    --neo4j-version "$neo4j_version" \
+    --neo4j-database "${NEO4J_DATABASE:-neo4j}" \
+    --neo4j-nodes "$node_count" \
+    --neo4j-relationships "$relationship_count"
+  node "$manifest_tool" checksums "$snapshot_root"
+  node "$manifest_tool" verify-checksums "$snapshot_root" >/dev/null
+  node "$manifest_tool" verify-data \
+    --manifest "$snapshot_root/manifest.json" \
+    --sqlite-summary "$working_directory/sqlite-summary.json" \
+    --neo4j-nodes "$node_count" \
+    --neo4j-relationships "$relationship_count" >/dev/null
+
+  local timestamp archive base_name
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  base_name="research-canvas-workspace-v1-$timestamp"
+  archive="$output_dir/$base_name.tar.gz"
+  tar -czf "$archive" -C "$working_directory" "$snapshot_root_name"
+  node -e '
+    const { createHash } = require("node:crypto");
+    const { readFileSync, writeFileSync } = require("node:fs");
+    const archive = process.argv[1];
+    const hash = createHash("sha256").update(readFileSync(archive)).digest("hex");
+    writeFileSync(`${archive}.sha256`, `${hash}  ${archive.split("/").pop()}\n`);
+  ' "$archive"
+  cp "$snapshot_root/manifest.json" "$output_dir/$base_name.manifest.json"
+
+  printf 'Workspace snapshot validated and created:\n%s\n' "$archive"
+  printf 'SNAPSHOT_ARCHIVE=%s\n' "$archive"
+  trap - EXIT INT TERM
+  cleanup_temporary_directory
+  temporary_cleanup_directory=""
+}
+
+validate_archive_listing() {
+  local archive="$1"
+  local listing="$2"
+  tar -tzf "$archive" >"$listing"
+  local entry
+  while IFS= read -r entry; do
+    [[ -n "$entry" ]] || continue
+    [[ "$entry" != /* ]] || fail "snapshot contains an absolute path: $entry"
+    [[ "$entry" != *"/../"* && "$entry" != "../"* && "$entry" != *"/.." ]] ||
+      fail "snapshot contains path traversal: $entry"
+    [[ "$entry" == "$snapshot_root_name" || "$entry" == "$snapshot_root_name/"* ]] ||
+      fail "snapshot contains an unexpected top-level path: $entry"
+  done <"$listing"
+}
+
+restore_neo4j_dump() {
+  local snapshot_root="$1"
+  compose stop neo4j
+  compose run --rm --no-deps \
+    --entrypoint neo4j-admin \
+    --volume "$snapshot_root/neo4j:/backups:ro" \
+    neo4j \
+    database load "${NEO4J_DATABASE:-neo4j}" \
+    --from-path=/backups \
+    --overwrite-destination=true
+  compose up --detach neo4j
+  wait_for_neo4j
+}
+
+restore_vault_files() {
+  local snapshot_root="$1"
+  local replace="$2"
+  local relative_path target source
+  node "$manifest_tool" get "$snapshot_root/manifest.json" vault.files |
+    node -e '
+      let input = "";
+      process.stdin.on("data", chunk => input += chunk);
+      process.stdin.on("end", () => {
+        for (const path of JSON.parse(input)) process.stdout.write(`${path}\n`);
+      });
+    ' >"$snapshot_root/.vault-files"
+  while IFS= read -r relative_path; do
+    [[ -n "$relative_path" ]] || continue
+    [[ "$relative_path" == antichrist-vault/* ]] ||
+      fail "unsafe vault restore path: $relative_path"
+    source="$snapshot_root/vault/repository/$relative_path"
+    target="$repo_root/$relative_path"
+    [[ -f "$source" ]] || fail "snapshot vault payload is missing: $relative_path"
+    if [[ -e "$target" ]] && cmp -s "$source" "$target"; then
+      continue
+    fi
+    if [[ -e "$target" && "$replace" -ne 1 ]]; then
+      fail "vault restore target already exists: $target; rerun with --replace"
+    fi
+  done <"$snapshot_root/.vault-files"
+  while IFS= read -r relative_path; do
+    [[ -n "$relative_path" ]] || continue
+    source="$snapshot_root/vault/repository/$relative_path"
+    target="$repo_root/$relative_path"
+    if [[ -e "$target" ]] && cmp -s "$source" "$target"; then
+      continue
+    fi
+    mkdir -p "$(dirname "$target")"
+    cp -p "$source" "$target"
+  done <"$snapshot_root/.vault-files"
+  rm -f "$snapshot_root/.vault-files"
+}
+
+command_restore() {
+  [[ "$#" -ge 1 && "$#" -le 2 ]] ||
+    fail "usage: ./scripts/research-canvas restore <snapshot-archive> [--replace]"
+  local archive="$1"
+  local replace=0
+  if [[ "${2:-}" == "--replace" ]]; then
+    replace=1
+  elif [[ -n "${2:-}" ]]; then
+    fail "unknown restore option: ${2:-}"
+  fi
+  [[ -f "$archive" ]] || fail "snapshot archive does not exist: $archive"
+  archive="$(cd "$(dirname "$archive")" && pwd)/$(basename "$archive")"
+  load_environment
+  check_service_prerequisites
+
+  local working_directory
+  working_directory="$(mktemp -d "${TMPDIR:-/tmp}/research-canvas-restore.XXXXXX")"
+  temporary_cleanup_directory="$working_directory"
+  trap cleanup_temporary_directory EXIT INT TERM
+  validate_archive_listing "$archive" "$working_directory/archive-list.txt"
+  tar -xzf "$archive" -C "$working_directory"
+  local snapshot_root="$working_directory/$snapshot_root_name"
+  [[ -f "$snapshot_root/manifest.json" ]] || fail "snapshot is missing manifest.json"
+  [[ -s "$snapshot_root/neo4j/neo4j.dump" ]] || fail "snapshot is missing neo4j.dump"
+  [[ -s "$snapshot_root/sqlite/research-canvas-authoring.sqlite" ]] ||
+    fail "snapshot is missing the SQLite database"
+  node "$manifest_tool" verify-checksums "$snapshot_root"
+  local image database
+  image="$(node "$manifest_tool" get "$snapshot_root/manifest.json" neo4j.image)"
+  database="$(node "$manifest_tool" get "$snapshot_root/manifest.json" neo4j.database)"
+  [[ "$image" == "$neo4j_image" ]] ||
+    fail "snapshot requires $image but this application uses $neo4j_image"
+  [[ "$database" == "${NEO4J_DATABASE:-neo4j}" ]] ||
+    fail "snapshot database $database does not match local NEO4J_DATABASE"
+
+  sqlite_tool counts \
+    "$snapshot_root/sqlite/research-canvas-authoring.sqlite" \
+    >"$working_directory/snapshot-sqlite-summary.json"
+  local manifest_nodes manifest_relationships
+  manifest_nodes="$(node "$manifest_tool" get "$snapshot_root/manifest.json" neo4j.nodeCount)"
+  manifest_relationships="$(node "$manifest_tool" get "$snapshot_root/manifest.json" neo4j.relationshipCount)"
+  node "$manifest_tool" verify-data \
+    --manifest "$snapshot_root/manifest.json" \
+    --sqlite-summary "$working_directory/snapshot-sqlite-summary.json" \
+    --neo4j-nodes "$manifest_nodes" \
+    --neo4j-relationships "$manifest_relationships"
+
+  local destination_database
+  destination_database="$(sqlite_tool path)"
+  if [[ -e "$destination_database" && "$replace" -ne 1 ]]; then
+    fail "SQLite workspace already exists: $destination_database; rerun with --replace"
+  fi
+
+  start_neo4j
+  local existing_nodes existing_relationships
+  existing_nodes="$(cypher_value "MATCH (n) RETURN count(n) AS value;")"
+  existing_relationships="$(cypher_value "MATCH ()-[r]->() RETURN count(r) AS value;")"
+  if [[ "$replace" -ne 1 ]] &&
+    [[ "$existing_nodes" -ne 0 || "$existing_relationships" -ne 0 ]]; then
+    fail "Neo4j workspace is populated ($existing_nodes nodes, $existing_relationships relationships); rerun with --replace"
+  fi
+
+  restore_vault_files "$snapshot_root" "$replace"
+  restore_neo4j_dump "$snapshot_root"
+  local restore_arguments=(
+    restore
+    "$snapshot_root/sqlite/research-canvas-authoring.sqlite"
+    "$destination_database"
+    --old-repository-root
+    "$(node "$manifest_tool" get "$snapshot_root/manifest.json" repository.sourceRoot)"
+    --new-repository-root
+    "$repo_root"
+  )
+  if [[ "$replace" -eq 1 ]]; then
+    restore_arguments+=(--replace)
+  fi
+  sqlite_tool "${restore_arguments[@]}" >/dev/null
+
+  sqlite_tool counts "$destination_database" >"$working_directory/restored-sqlite-summary.json"
+  local restored_nodes restored_relationships
+  restored_nodes="$(cypher_value "MATCH (n) RETURN count(n) AS value;")"
+  restored_relationships="$(cypher_value "MATCH ()-[r]->() RETURN count(r) AS value;")"
+  node "$manifest_tool" verify-data \
+    --manifest "$snapshot_root/manifest.json" \
+    --sqlite-summary "$working_directory/restored-sqlite-summary.json" \
+    --neo4j-nodes "$restored_nodes" \
+    --neo4j-relationships "$restored_relationships"
+  printf 'Workspace restored successfully to:\n%s\n' "$destination_database"
+  trap - EXIT INT TERM
+  cleanup_temporary_directory
+  temporary_cleanup_directory=""
+}
+
+command_verify() {
+  load_environment
+  check_service_prerequisites
+  start_neo4j
+  local database_path
+  database_path="$(sqlite_tool path --prepare)"
+  local nodes relationships
+  nodes="$(cypher_value "MATCH (n) RETURN count(n) AS value;")"
+  relationships="$(cypher_value "MATCH ()-[r]->() RETURN count(r) AS value;")"
+  printf 'Neo4j: ready (%s nodes, %s relationships)\n' "$nodes" "$relationships"
+  if [[ -f "$database_path" ]]; then
+    sqlite_tool counts "$database_path"
+  else
+    printf 'SQLite: no workspace has been created yet (%s)\n' "$database_path"
+  fi
+}
+
+main() {
+  local command="${1:-help}"
+  shift || true
+  case "$command" in
+    start) command_start "$@" ;;
+    stop) command_stop "$@" ;;
+    backup) command_backup "$@" ;;
+    restore) command_restore "$@" ;;
+    verify) command_verify "$@" ;;
+    help | --help | -h) usage ;;
+    *) fail "unknown command '$command'; run ./scripts/research-canvas help" ;;
+  esac
+}
+
+main "$@"

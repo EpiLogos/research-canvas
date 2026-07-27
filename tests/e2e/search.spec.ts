@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { waitForWorkspace } from "./support/canvas";
 
 test("opens the command palette and finds files, nodes, sequences, and commands", async ({
   page,
@@ -7,11 +8,9 @@ test("opens the command palette and finds files, nodes, sequences, and commands"
   test.skip(browserName !== "chromium", "desktop shortcut coverage runs in chromium");
 
   await page.goto("/");
+  await waitForWorkspace(page);
 
-  await page.getByRole("button", { name: "Add note node" }).click();
-  await page.getByRole("button", { name: "Create sequence" }).click();
-
-  await page.keyboard.press("Meta+K");
+  await page.getByRole("button", { name: "Do anything" }).click();
 
   const palette = page.getByRole("dialog", { name: "Command palette" });
   await expect(palette).toBeVisible();
@@ -23,15 +22,13 @@ test("opens the command palette and finds files, nodes, sequences, and commands"
     palette.getByRole("button", { name: /episode-1-2-archetypal-resonance\.md file/i })
   ).toBeVisible();
 
-  await searchbox.fill("opening");
+  await searchbox.fill("Christ Sixfold");
   await expect(
-    palette.getByRole("button", { name: /Opening note node/i })
+    palette.getByRole("button", { name: /Christ Sixfold Spectral Lineage node/i })
   ).toBeVisible();
 
-  await searchbox.fill("episode flow");
-  await expect(
-    palette.getByRole("button", { name: /Episode flow sequence/i })
-  ).toBeVisible();
+  await searchbox.fill("create note");
+  await expect(palette.getByRole("button", { name: /Create note command/i })).toBeVisible();
 
   await searchbox.fill("timeline");
   await expect(

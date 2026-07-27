@@ -258,6 +258,10 @@ fn root_archetypal_field_seed_writes_real_graph_constellation_layout_and_timelin
     assert!(constellation
         .source_coordinates
         .iter()
+        .any(|coord| coord.contains("unit-spectral-devils-chain.md")));
+    assert!(constellation
+        .ql_source_coordinates
+        .iter()
         .any(|coord| coord == "#0"));
 
     let constellation_members: (i64, i64) = support::block_on(async {
