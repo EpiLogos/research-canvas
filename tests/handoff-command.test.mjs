@@ -85,3 +85,21 @@ test("compose publishes Neo4j only on loopback", () => {
   assert.match(config, /host_ip: 127\.0\.0\.1/);
   assert.doesNotMatch(config, /host_ip: 0\.0\.0\.0/);
 });
+
+test("desktop dev launcher resolves the terminal bridge inside the active clone", () => {
+  const launcher = readFileSync(
+    join(repositoryRoot, "apps", "desktop", "scripts", "dev.mjs"),
+    "utf8",
+  );
+
+  assert.doesNotMatch(
+    launcher,
+    /["']\/Users\/[^"']+\/apps\/desktop\/src-tauri\/Cargo\.toml["']/,
+    "the launcher must not contain an author-machine Cargo manifest path",
+  );
+  assert.match(launcher, /fileURLToPath\(import\.meta\.url\)/);
+  assert.match(
+    launcher,
+    /join\(\s*scriptDirectory,\s*"\.\.",\s*"src-tauri",\s*"Cargo\.toml"\s*\)/,
+  );
+});

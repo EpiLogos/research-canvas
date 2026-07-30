@@ -1,8 +1,16 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const viteArgs = process.argv.slice(2);
+const scriptDirectory = dirname(fileURLToPath(import.meta.url));
+const terminalBridgeManifest = join(
+  scriptDirectory,
+  "..",
+  "src-tauri",
+  "Cargo.toml"
+);
 const TERMINAL_BRIDGE_HOST = "127.0.0.1";
 const DEFAULT_TERMINAL_BRIDGE_PORT = 4789;
 const TERMINAL_BRIDGE_PORT = resolveTerminalBridgePort(process.env);
@@ -23,7 +31,7 @@ const bridge = (await hasRunningTerminalBridge(TERMINAL_BRIDGE_BASE_URL))
       [
         "run",
         "--manifest-path",
-        "/Users/admin/Documents/Antichrist Project/apps/desktop/src-tauri/Cargo.toml",
+        terminalBridgeManifest,
         "--bin",
         "terminal_bridge"
       ],
