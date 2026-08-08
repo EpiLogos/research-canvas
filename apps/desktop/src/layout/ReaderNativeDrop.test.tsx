@@ -59,6 +59,7 @@ const remoteGraph: GraphNode = {
   temporalRole: null,
   sourceKind: null,
   placeCoverage: null,
+  place: null,
   qlForm: null,
   qlUnitId: null,
   qlArc: null,

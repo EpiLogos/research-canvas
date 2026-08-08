@@ -124,6 +124,75 @@ describe("timelineStore", () => {
     expect(store.getState().tier()).toBe("event");
   });
 
+  test("setFrameForNode opens a window-bounded sub-timeline with hovering trans-temporal nodes", () => {
+    const store = createTimelineStore();
+    store.getState().hydrate({
+      workspaceId: "sqlite:/test",
+      nodes: [
+        record({ graphNodeId: "florence", entityType: "Place", title: "Florence", validFrom: "1400-01-01", validTo: "1500-12-31" }),
+        record({ graphNodeId: "council", title: "Council of Florence", validFrom: "1438-04-09", validTo: "1445-08-07" }),
+        record({ graphNodeId: "balfour", title: "Balfour Declaration", validFrom: "1917-01-01" }),
+        record({ graphNodeId: "monopoly", entityType: "Archetype", title: "Monopoly mechanism", isTemporal: false, validFrom: null }),
+      ],
+      relationships: [
+        { id: "r1", relType: "LOCATED_AT", sourceGraphNodeId: "council", targetGraphNodeId: "florence", properties: {} },
+        { id: "r2", relType: "INSTANTIATES", sourceGraphNodeId: "council", targetGraphNodeId: "monopoly", properties: {} },
+      ],
+      lanes: [{ id: "events" }],
+      diagnostics: [],
+    });
+
+    store.getState().setFrameForNode("council");
+    expect(store.getState().frame?.title).toBe("Council of Florence");
+    expect(store.getState().items.map((item) => item.graphNodeId)).toEqual([
+      "florence",
+      "council",
+    ]);
+    expect(store.getState().hovering.map((hover) => hover.graphNodeId)).toEqual([
+      "monopoly",
+    ]);
+
+    store.getState().setFrameForNode(null);
+    expect(store.getState().frame).toBeNull();
+    expect(store.getState().items.map((item) => item.graphNodeId).sort()).toEqual([
+      "balfour",
+      "council",
+      "florence",
+    ]);
+    expect(store.getState().hovering).toEqual([]);
+  });
+
+  test("hydrate preserves an active frame and refreshes its window", () => {
+    const store = createTimelineStore();
+    store.getState().hydrate({
+      workspaceId: "sqlite:/test",
+      nodes: [record({ graphNodeId: "florence", entityType: "Place", title: "Florence", validFrom: "1400-01-01", validTo: "1500-12-31" })],
+      relationships: [],
+      lanes: [{ id: "events" }],
+      diagnostics: [],
+    });
+    store.getState().setFrameForNode("florence");
+
+    store.getState().hydrate({
+      workspaceId: "sqlite:/test",
+      nodes: [
+        record({ graphNodeId: "florence", entityType: "Place", title: "Florence", validFrom: "1400-01-01", validTo: "1500-12-31" }),
+        record({ graphNodeId: "council", title: "Council of Florence", validFrom: "1438-04-09", validTo: "1445-08-07" }),
+      ],
+      relationships: [
+        { id: "r1", relType: "LOCATED_AT", sourceGraphNodeId: "council", targetGraphNodeId: "florence", properties: {} },
+      ],
+      lanes: [{ id: "events" }],
+      diagnostics: [],
+    });
+
+    expect(store.getState().frame?.frameNodeId).toBe("florence");
+    expect(store.getState().items.map((item) => item.graphNodeId)).toEqual([
+      "florence",
+      "council",
+    ]);
+  });
+
   test("pan shifts centerYear, zoom changes pixelsPerYear", () => {
     const store = createTimelineStore({ initialCenterYear: 1600, initialPixelsPerYear: 2 });
     store.getState().setWidth(1000);

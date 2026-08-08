@@ -240,6 +240,10 @@ export function TimelineLens({
   const activeCategories = TIMELINE_CATEGORIES.filter((category) =>
     state.items.some((item) => deriveTimelineCategory(item.node) === category.id),
   );
+  const selectedNode = state.selectedNodeId
+    ? state.nodes.find(({ node }) => node.graphNodeId === state.selectedNodeId)?.node
+    : null;
+  const frameableNode = selectedNode?.isTemporal ? selectedNode : null;
   const displayRelationField = relationField ?? (
     dataSource.relationFieldForEvent === undefined
       && state.selectedNodeId !== null
@@ -524,6 +528,30 @@ export function TimelineLens({
     <div className="timeline-lens" data-testid="timeline-lens">
       <div className="timeline-toolbar" data-testid="timeline-toolbar">
         <span className="timeline-tier" data-testid="timeline-tier">{tier}</span>
+        {state.frame && (
+          <div className="timeline-frame" data-testid="timeline-frame" aria-label="Timeline frame">
+            <span className="timeline-frame-crumb" data-testid="timeline-frame-crumb">
+              Earth / {state.frame.title}
+            </span>
+            <button
+              type="button"
+              data-testid="timeline-back-to-earth"
+              onClick={() => store.getState().setFrameForNode(null)}
+            >
+              Back to Earth
+            </button>
+          </div>
+        )}
+        {!state.frame && frameableNode && (
+          <button
+            type="button"
+            className="timeline-frame-action"
+            data-testid="timeline-open-subtimeline"
+            onClick={() => store.getState().setFrameForNode(frameableNode.graphNodeId)}
+          >
+            Open sub-timeline
+          </button>
+        )}
         {activeCategories.length > 0 && (
           <div className="timeline-filters" aria-label="Timeline card filters">
             {activeCategories.map((category) => {
@@ -695,6 +723,24 @@ export function TimelineLens({
               ))}
             </ul>
           </aside>
+        )}
+        {state.hovering.length > 0 && (
+          <div
+            className="timeline-hover-lane"
+            data-testid="timeline-hover-lane"
+            aria-label="Trans-temporal nodes hovering above this timeline"
+          >
+            {state.hovering.map((hover) => (
+              <button
+                key={hover.graphNodeId}
+                type="button"
+                className="timeline-hover-chip"
+                onClick={() => onOpenNode(hover.graphNodeId, hover.node)}
+              >
+                {hover.node.title}
+              </button>
+            ))}
+          </div>
         )}
         {showEmptyState && (
           <div className="timeline-load-state" data-testid="timeline-empty-state">

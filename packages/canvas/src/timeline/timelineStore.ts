@@ -1,8 +1,15 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 
-import type { ArchetypalLighting, GraphRelationship, TimelineDiagnostic, TimelineLane, TimelineLayoutOverride, TimelineView } from "./contracts";
+import type { ArchetypalLighting, GraphRelationship, TimelineDiagnostic, TimelineLane, TimelineLayoutOverride, TimelineView, TimelineViewNode } from "./contracts";
 import { tierForPixelsPerYear, type ScaleTier } from "./scale";
 import { projectNodes, type TimelineItem, type TimelinePresentation } from "./projection";
+import {
+  frameStateForNode,
+  projectSubTimeline,
+  transTemporalHover,
+  type TimelineFrameState,
+  type TimelineHoverNode,
+} from "./frames";
 import { buildLitMap, type LitMap } from "./lighting";
 import {
   clampPixelsPerYear,
@@ -24,6 +31,12 @@ export interface TimelineStoreState {
   pixelsPerYear: number;
   widthPx: number;
   items: TimelineItem[];
+  /** Raw view records retained so a node can be reframed without a reload. */
+  nodes: TimelineViewNode[];
+  /** The active sub-timeline frame; null means the Earth zero-case. */
+  frame: TimelineFrameState | null;
+  /** Trans-temporal nodes hovering above the current frame. */
+  hovering: TimelineHoverNode[];
   relationships: GraphRelationship[];
   lanes: TimelineLane[];
   diagnostics: TimelineDiagnostic[];
@@ -47,6 +60,7 @@ export interface TimelineStoreState {
   setLighting: (lighting: ArchetypalLighting) => void;
   clearLighting: () => void;
   setSelected: (nodeId: string | null) => void;
+  setFrameForNode: (nodeId: string | null) => void;
   updateCardSize: (nodeId: string, size: TimelineCardGeometryUpdate) => void;
   updateCardStyle: (nodeId: string, style: Partial<TimelinePresentation["style"]>) => void;
   applyPersistedLayout: (nodeId: string, layout: TimelineLayoutOverride) => void;
@@ -74,6 +88,9 @@ export function createTimelineStore(
     pixelsPerYear: clampPixelsPerYear(options.initialPixelsPerYear ?? 2),
     widthPx: 1000,
     items: [],
+    nodes: [],
+    frame: null,
+    hovering: [],
     relationships: [],
     lanes: [],
     diagnostics: [],
@@ -102,7 +119,24 @@ export function createTimelineStore(
       }
     },
     hydrate: (view, preserveViewport = false) => {
-      const items = projectNodes(view.nodes);
+      const nodes = view.nodes;
+      const allItems = projectNodes(nodes);
+      const relationships = view.relationships ?? [];
+      let items = allItems;
+      let hovering: TimelineHoverNode[] = [];
+      let frame = get().frame;
+      if (frame) {
+        const current = frameStateForNode(nodes, frame.frameNodeId);
+        if (current) {
+          items = projectSubTimeline(allItems, relationships, current);
+          hovering = transTemporalHover(nodes, relationships, current.frameNodeId);
+          frame = current;
+        } else {
+          // The frame node no longer exists in the loaded view; fall back to
+          // the Earth zero-case rather than showing a phantom sub-timeline.
+          frame = null;
+        }
+      }
       // A workspace can survive a graph replacement while the shell still
       // remembers its last camera. Keep a deliberate focus inside this
       // timeline's historical domain, but do not reopen a populated timeline
@@ -110,10 +144,13 @@ export function createTimelineStore(
       const keepCamera = preserveViewport || (get().manualViewport && isCameraNearTimeline(items, get().centerYear));
       set({
         items,
+        nodes,
+        frame,
+        hovering,
         // Older local terminal bridges may return a timeline payload from
         // before temporal relationships were added. Treat that as a readable
         // no-link timeline rather than blanking the whole lens.
-        relationships: view.relationships ?? [],
+        relationships,
         lanes: view.lanes,
         diagnostics: view.diagnostics,
         manualViewport: keepCamera,
@@ -146,6 +183,33 @@ export function createTimelineStore(
       }),
     clearLighting: () => set({ litMap: new Map(), lightingOperatorId: null }),
     setSelected: (nodeId) => set({ selectedNodeId: nodeId }),
+    setFrameForNode: (nodeId) => {
+      const s = get();
+      const allItems = projectNodes(s.nodes);
+      if (nodeId === null) {
+        set({ frame: null, items: allItems, hovering: [] });
+        return;
+      }
+      const frame = frameStateForNode(s.nodes, nodeId);
+      if (!frame) {
+        return;
+      }
+      const items = projectSubTimeline(allItems, s.relationships, frame);
+      const hovering = transTemporalHover(s.nodes, s.relationships, nodeId);
+      set({
+        frame,
+        items,
+        hovering,
+        manualViewport: false,
+        ...(frame.window
+          ? {
+              centerYear: Math.round(
+                (frame.window.startYear + frame.window.endYear) / 2,
+              ),
+            }
+          : {}),
+      });
+    },
     updateCardSize: (nodeId, size) =>
       set((state) => ({
         items: state.items.map((item) =>

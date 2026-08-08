@@ -481,3 +481,49 @@
   color: #6f6f7d;
   text-transform: uppercase;
 }
+
+.timeline-frame {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid #3b3b46;
+  border-radius: 6px;
+  background: #1b1b22;
+}
+
+.timeline-frame-crumb {
+  font-size: 11px;
+  color: #c8c8d2;
+  text-transform: none;
+}
+
+.timeline-frame-action,
+.timeline-frame button {
+  font-size: 11px;
+  color: #9cc4ff;
+  background: transparent;
+  border: 1px solid #3b3b46;
+  border-radius: 5px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.timeline-hover-lane {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 12px;
+  border-bottom: 1px dashed #3b3b46;
+  background: #17171d;
+}
+
+.timeline-hover-chip {
+  font-size: 11px;
+  color: #d8a8ff;
+  background: #241b2e;
+  border: 1px solid #4a3560;
+  border-radius: 999px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
