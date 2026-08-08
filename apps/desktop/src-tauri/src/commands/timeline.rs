@@ -311,6 +311,13 @@ fn graph_node_from_local_projection(
         evidence_status: metadata.evidence_status,
         temporal_role: metadata.temporal_role,
         place_coverage: metadata.place_coverage,
+        // The `place_json` column carries a json_valid CHECK, so this parse
+        // can only fail on storage corruption; a corrupt projection is
+        // surfaced as absent rather than silently fabricating place data.
+        place: metadata
+            .place
+            .as_deref()
+            .and_then(|raw| serde_json::from_str(raw).ok()),
         ql_form: metadata.ql_form,
         ql_unit_id: metadata.ql_unit_id.clone(),
         ql_arc: metadata.ql_arc,
@@ -1020,6 +1027,7 @@ mod local_relationship_projection_tests {
             evidence_status: Some(EvidenceStatus::Documented),
             temporal_role: is_temporal.then_some(TemporalRole::OccurredAt),
             place_coverage: Some(PlaceCoverage::Resolved),
+            place: None,
             ql_form: None,
             ql_unit_id: None,
             ql_arc: None,

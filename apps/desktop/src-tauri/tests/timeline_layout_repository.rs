@@ -29,6 +29,7 @@ fn metadata() -> GraphNodeMetadataRecord {
         evidence_status: None,
         temporal_role: None,
         place_coverage: None,
+        place: None,
         ql_form: None,
         ql_unit_id: None,
         ql_arc: None,

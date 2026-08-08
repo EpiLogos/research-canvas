@@ -31,6 +31,7 @@ fn record(revision: i64, origin: ContentOrigin) -> GraphNodeMetadataRecord {
         evidence_status: Some(EvidenceStatus::Documented),
         temporal_role: Some(TemporalRole::OccurredAt),
         place_coverage: Some(PlaceCoverage::Resolved),
+        place: None,
         ql_form: Some(QlForm::PartialPositionalMap),
         ql_unit_id: Some("ql-council".into()),
         ql_arc: Some(QlArc::Day),
@@ -46,6 +47,52 @@ fn record(revision: i64, origin: ContentOrigin) -> GraphNodeMetadataRecord {
         sync_state: SyncState::Pending,
         remote_revision: None,
     }
+}
+
+#[test]
+fn place_projection_round_trips_through_the_local_metadata_store() {
+    let dir = tempdir().unwrap();
+    let database = Database::open(dir.path().join("place.sqlite")).unwrap();
+    let mut incoming = record(7, ContentOrigin::CorpusCompiled);
+    incoming.place = Some(
+        serde_json::json!({
+            "graphNodeId": "place-constantinople",
+            "names": [
+                { "language": "el", "name": "Κωνσταντινούπολις", "validFrom": "0330-05-11", "validTo": "1453-05-29" },
+                { "language": "tr", "name": "İstanbul", "validFrom": "1453", "validTo": null }
+            ],
+            "coordinate": { "precision": "exact", "latitude": 41.0082, "longitude": 28.9784 },
+            "hierarchy": [{ "parentPlaceId": "place-region", "relationValidFrom": "0330", "relationValidTo": null }],
+            "identityValidFrom": "0330",
+            "identityValidTo": null,
+            "externalRefs": [{ "gazetteer": "pleiades", "id": "520998" }],
+            "provenance": {
+                "sourceRefs": [
+                    { "artifactId": "transcript-001", "unit": { "kind": "text_span", "startOffset": 12, "endOffset": 34 } }
+                ]
+            }
+        })
+        .to_string(),
+    );
+
+    let repository = GraphNodeMetadataRepository::new(database.connection());
+    assert_eq!(
+        repository.save(&incoming, None).expect("save"),
+        GraphMetadataMutation::Created
+    );
+    let persisted = repository
+        .get("event-1")
+        .expect("get")
+        .expect("record exists");
+    assert_eq!(persisted, incoming);
+
+    // The column carries a json_valid CHECK, so corrupt projections cannot be
+    // persisted even through raw SQL — the store fails closed by constraint.
+    let invalid_write = database.connection().execute(
+        "UPDATE graph_node_metadata SET place_json = 'not json' WHERE graph_node_id = 'event-1'",
+        [],
+    );
+    assert!(invalid_write.is_err(), "json_valid CHECK must reject the write");
 }
 
 #[test]

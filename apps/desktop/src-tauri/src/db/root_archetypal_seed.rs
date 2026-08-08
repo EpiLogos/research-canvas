@@ -406,6 +406,7 @@ fn metadata_record(seed: &SeedGraphNode) -> Result<GraphNodeMetadataRecord, Stri
         evidence_status: seed.evidence_status,
         temporal_role: seed.temporal_role,
         place_coverage: seed.place_coverage,
+        place: seed.place.as_ref().map(serde_json::Value::to_string),
         ql_form: seed.ql_form,
         ql_unit_id: seed.ql_unit_id.clone(),
         ql_arc: seed.ql_arc,
@@ -553,6 +554,7 @@ impl NodeSeed {
             } else {
                 crate::db::repositories::graph::PlaceCoverage::NotApplicable
             }),
+            place: None,
             ql_form: ql_metadata.map(|metadata| metadata.form),
             ql_unit_id: ql_metadata.map(|_| self.slug.to_string()),
             ql_arc: ql_metadata.map(|metadata| metadata.arc),

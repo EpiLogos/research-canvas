@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { viewportSchema } from "./canvas";
+import { temporalPlaceSchema } from "./place";
 
 const nullToUndefined = <T extends z.ZodTypeAny>(schema: T) =>
   z.preprocess((value) => (value === null ? undefined : value), schema);
@@ -135,7 +136,7 @@ export const EMPTY_GRAPH_NODE_METADATA = {
   evidenceTags: [] as string[], sourceKind: null, contentOrigin: null,
   contentRevision: null, seedSchemaVersion: null, bodySourceCoordinates: [] as string[],
   historicity: null, claimKind: null, evidenceStatus: null, temporalRole: null,
-  placeCoverage: null, qlForm: null, qlUnitId: null, qlArc: null,
+  placeCoverage: null, place: null, qlForm: null, qlUnitId: null, qlArc: null,
   qlTopology: null, qlSchemaVersion: null, qlSourceCoordinates: [] as string[],
   qlCompletenessStatus: null,
 } as const;
@@ -167,6 +168,9 @@ export const graphNodeSchema = z.strictObject({
   evidenceStatus: evidenceStatusSchema.nullable(),
   temporalRole: temporalRoleSchema.nullable(),
   placeCoverage: placeCoverageSchema.nullable(),
+  /** The Temporal Place projection (locked by ticket #9). Present only on
+   * Place nodes; null everywhere else. Precision never exceeds the source's. */
+  place: temporalPlaceSchema.nullable().default(null),
   qlForm: qlFormSchema.nullable(),
   qlUnitId: z.string().nullable(),
   qlArc: qlArcSchema.nullable(),
@@ -189,7 +193,7 @@ export const legacyGraphNodeInputSchema = graphNodeSchema
     evidenceTags: true, sourceKind: true, contentOrigin: true, contentRevision: true,
     seedSchemaVersion: true, bodySourceCoordinates: true, historicity: true,
     claimKind: true, evidenceStatus: true, temporalRole: true, placeCoverage: true,
-    qlForm: true, qlUnitId: true, qlArc: true, qlTopology: true,
+    place: true, qlForm: true, qlUnitId: true, qlArc: true, qlTopology: true,
     qlSchemaVersion: true, qlSourceCoordinates: true, qlCompletenessStatus: true,
   })
   .transform((input) => graphNodeSchema.parse({ ...EMPTY_GRAPH_NODE_METADATA, ...input }));

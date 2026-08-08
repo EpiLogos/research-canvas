@@ -20,7 +20,7 @@ import {
 
 const now = "2026-03-30T20:00:00.000Z";
 
-describe("schema package", () => {
+  describe("schema package", () => {
   it("matches every controlled value in the shared vocabulary manifest", () => {
     expect({
       entityType: ENTITY_TYPES, temporalPrecision: TEMPORAL_PRECISIONS,

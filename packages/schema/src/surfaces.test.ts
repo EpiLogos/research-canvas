@@ -13,6 +13,8 @@ import {
   sceneTimeWindowSchema,
   subTimelineSchema,
   temporalPlaceSchema,
+  graphNodeSchema,
+  normalizeLegacyGraphNode,
 } from "./index";
 
 const now = "2026-08-08T10:00:00.000Z";
@@ -429,6 +431,46 @@ describe("passageRefSchema cross-check", () => {
         parentPlaceId: "place-region",
         relationValidFrom: "2026-02-01",
         relationValidTo: "2026-01-01",
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("graph node place projection", () => {
+  const canonical = normalizeLegacyGraphNode({
+    graphNodeId: "place-projection",
+    entityType: "Place",
+    title: "Constantinople",
+    body: "[]",
+    summary: "",
+    archetypalResonance: null,
+    coordinate: null,
+    sourceCoordinates: [],
+    isTemporal: true,
+    validFrom: "0330",
+    validTo: null,
+    temporalPrecision: "year",
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  it("defaults legacy nodes to a null place projection", () => {
+    expect(canonical.place).toBeNull();
+  });
+
+  it("round-trips a Temporal Place on a Place node", () => {
+    const parsed = graphNodeSchema.parse({ ...canonical, place: validPlace });
+    expect(parsed.place).toEqual(validPlace);
+  });
+
+  it("rejects an invalid Temporal Place on the canonical contract", () => {
+    expect(
+      graphNodeSchema.safeParse({
+        ...canonical,
+        place: {
+          ...validPlace,
+          coordinate: { precision: "exact", latitude: 91, longitude: 0 },
+        },
       }).success,
     ).toBe(false);
   });

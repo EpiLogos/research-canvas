@@ -12,6 +12,7 @@ pub mod node_relationship;
 pub mod relationship_vocabulary;
 pub mod resource_roots;
 pub mod saved_sequences;
+pub mod scene_repository;
 pub mod search;
 pub mod timeline_layout;
 
@@ -43,5 +44,9 @@ pub use node_relationship::{
 };
 pub use resource_roots::{ResourceRootRecord, ResourceRootRepository};
 pub use saved_sequences::{SavedSequenceRecord, SavedSequenceRepository};
+pub use scene_repository::{
+    SceneAssembler, ScenePlaceFrame, SceneRecord, SceneRepository, SceneSequenceRecord,
+    SceneTimeWindow,
+};
 pub use search::{SearchHit, SearchIndexSummary, SearchRepository};
 pub use timeline_layout::{TimelineLayoutMutation, TimelineLayoutRecord, TimelineLayoutRepository};

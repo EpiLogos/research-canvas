@@ -93,6 +93,8 @@ pub struct CreateGraphNodeRequest {
     #[serde(default)]
     pub place_coverage: Option<PlaceCoverage>,
     #[serde(default)]
+    pub place: Option<serde_json::Value>,
+    #[serde(default)]
     pub ql_form: Option<QlForm>,
     #[serde(default)]
     pub ql_unit_id: Option<String>,
@@ -581,6 +583,7 @@ pub async fn create_graph_node_command(
                 evidence_status: request.evidence_status,
                 temporal_role: request.temporal_role,
                 place_coverage: request.place_coverage,
+                place: request.place,
                 ql_form: request.ql_form,
                 ql_unit_id: request.ql_unit_id,
                 ql_arc: request.ql_arc,

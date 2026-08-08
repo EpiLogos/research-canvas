@@ -142,6 +142,8 @@ pub struct GraphNode {
     pub evidence_status: Option<EvidenceStatus>,
     pub temporal_role: Option<TemporalRole>,
     pub place_coverage: Option<PlaceCoverage>,
+    #[serde(default)]
+    pub place: Option<serde_json::Value>,
     pub ql_form: Option<QlForm>,
     pub ql_unit_id: Option<String>,
     pub ql_arc: Option<QlArc>,
@@ -247,6 +249,8 @@ pub struct NewGraphNodeMetadata {
     #[serde(default)]
     pub place_coverage: Option<PlaceCoverage>,
     #[serde(default)]
+    pub place: Option<serde_json::Value>,
+    #[serde(default)]
     pub ql_form: Option<QlForm>,
     #[serde(default)]
     pub ql_unit_id: Option<String>,
@@ -295,6 +299,8 @@ pub struct GraphNodePatch {
     pub temporal_role: Option<Option<TemporalRole>>,
     #[serde(default, deserialize_with = "deserialize_present_nullable")]
     pub place_coverage: Option<Option<PlaceCoverage>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub place: Option<Option<serde_json::Value>>,
     #[serde(default, deserialize_with = "deserialize_present_nullable")]
     pub ql_form: Option<Option<QlForm>>,
     #[serde(default, deserialize_with = "deserialize_present_nullable")]
@@ -374,6 +380,7 @@ pub struct SeedGraphNode {
     pub evidence_status: Option<EvidenceStatus>,
     pub temporal_role: Option<TemporalRole>,
     pub place_coverage: Option<PlaceCoverage>,
+    pub place: Option<serde_json::Value>,
     pub ql_form: Option<QlForm>,
     pub ql_unit_id: Option<String>,
     pub ql_arc: Option<QlArc>,
@@ -459,6 +466,21 @@ fn optional_string_from_neo(node: &neo4rs::Node, property: &str) -> Result<Optio
     node.get::<String>(property)
         .map(Some)
         .map_err(|error| format!("Neo4j property `{property}` has wrong type: {error}"))
+}
+
+fn optional_json_from_neo(
+    node: &neo4rs::Node,
+    property: &str,
+) -> Result<Option<serde_json::Value>, String> {
+    if !has_neo_property(node, property) {
+        return Ok(None);
+    }
+    let raw = node
+        .get::<String>(property)
+        .map_err(|error| format!("Neo4j property `{property}` has wrong type: {error}"))?;
+    serde_json::from_str(&raw)
+        .map(Some)
+        .map_err(|error| format!("Neo4j property `{property}` is not valid JSON: {error}"))
 }
 
 fn string_from_neo(
@@ -586,6 +608,7 @@ fn node_from_neo(node: neo4rs::Node) -> Result<GraphNode, String> {
         evidence_status: controlled_from_neo(&node, "evidence_status")?,
         temporal_role: controlled_from_neo(&node, "temporal_role")?,
         place_coverage: controlled_from_neo(&node, "place_coverage")?,
+        place: optional_json_from_neo(&node, "place")?,
         ql_form: controlled_from_neo(&node, "ql_form")?,
         ql_unit_id: optional_string_from_neo(&node, "ql_unit_id")?,
         ql_arc: controlled_from_neo(&node, "ql_arc")?,
@@ -682,7 +705,7 @@ impl GraphRepository {
                 body_source_coordinates: $body_source_coordinates,
                 historicity: $historicity, claim_kind: $claim_kind,
                 evidence_status: $evidence_status, temporal_role: $temporal_role,
-                place_coverage: $place_coverage, ql_form: $ql_form,
+                place_coverage: $place_coverage, place: $place, ql_form: $ql_form,
                 ql_unit_id: $ql_unit_id, ql_arc: $ql_arc, ql_topology: $ql_topology,
                 ql_schema_version: $ql_schema_version,
                 ql_source_coordinates: $ql_source_coordinates,
@@ -741,6 +764,10 @@ impl GraphRepository {
                 metadata
                     .place_coverage
                     .map(|value| value.as_str().to_string()),
+            )
+            .param(
+                "place",
+                metadata.place.clone().map(|value| value.to_string()),
             )
             .param(
                 "ql_form",
@@ -852,6 +879,9 @@ impl GraphRepository {
         if patch.place_coverage.is_some() {
             sets.push("n.place_coverage = $place_coverage".into());
         }
+        if patch.place.is_some() {
+            sets.push("n.place = $place".into());
+        }
         if patch.ql_form.is_some() {
             sets.push("n.ql_form = $ql_form".into());
         }
@@ -936,6 +966,9 @@ impl GraphRepository {
         }
         if let Some(v) = patch.place_coverage {
             q = q.param("place_coverage", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.place {
+            q = q.param("place", v.map(|value| value.to_string()));
         }
         if let Some(v) = patch.ql_form {
             q = q.param("ql_form", v.map(|value| value.as_str().to_string()));
@@ -1167,6 +1200,7 @@ impl GraphRepository {
                  n.evidence_status = $evidence_status, \
                  n.temporal_role = $temporal_role, \
                  n.place_coverage = $place_coverage, \
+                 n.place = $place, \
                  n.ql_form = $ql_form, n.ql_unit_id = $ql_unit_id, \
                  n.ql_arc = $ql_arc, n.ql_topology = $ql_topology, \
                  n.ql_schema_version = $ql_schema_version, \
@@ -1191,6 +1225,7 @@ impl GraphRepository {
                  n.evidence_status = CASE WHEN newer_seed THEN $evidence_status ELSE n.evidence_status END, \
                  n.temporal_role = CASE WHEN newer_seed THEN $temporal_role ELSE n.temporal_role END, \
                  n.place_coverage = CASE WHEN newer_seed THEN $place_coverage ELSE n.place_coverage END, \
+                 n.place = CASE WHEN newer_seed THEN $place ELSE n.place END, \
                  n.ql_form = CASE WHEN newer_seed THEN $ql_form ELSE n.ql_form END, n.ql_unit_id = CASE WHEN newer_seed THEN $ql_unit_id ELSE n.ql_unit_id END, \
                  n.ql_arc = CASE WHEN newer_seed THEN $ql_arc ELSE n.ql_arc END, n.ql_topology = CASE WHEN newer_seed THEN $ql_topology ELSE n.ql_topology END, \
                  n.ql_schema_version = CASE WHEN newer_seed THEN $ql_schema_version ELSE n.ql_schema_version END, \
@@ -1228,6 +1263,7 @@ impl GraphRepository {
             .param("evidence_status", input.evidence_status.map(|v| v.as_str()))
             .param("temporal_role", input.temporal_role.map(|v| v.as_str()))
             .param("place_coverage", input.place_coverage.map(|v| v.as_str()))
+            .param("place", input.place.clone().map(|value| value.to_string()))
             .param("ql_form", input.ql_form.map(|v| v.as_str()))
             .param("ql_unit_id", input.ql_unit_id.clone())
             .param("ql_arc", input.ql_arc.map(|v| v.as_str()))
