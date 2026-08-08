@@ -10,5 +10,11 @@
   "qlForm": ["complete_sixfold", "partial_positional_map", "quaternity", "position_wheel", "double_helix", "other_explicit"],
   "qlArc": ["day", "night", "braided", "not_applicable"],
   "qlTopology": ["torus", "klein", "lemniscatic", "composite", "unspecified"],
-  "qlCompletenessStatus": ["complete", "partial", "incomplete", "not_applicable"]
+  "qlCompletenessStatus": ["complete", "partial", "incomplete", "not_applicable"],
+  "placeCoordinatePrecision": ["exact", "approximate", "region", "unlocated"],
+  "gazetteerKinds": ["pleiades", "wikidata", "geonames", "whg", "openhistoricalmap"],
+  "passageNativeUnitKinds": ["text_span", "timestamp_range", "image_region"],
+  "sceneAssemblers": ["agent", "human"],
+  "curationEventTypes": ["pin", "exclude", "reorder", "split", "merge", "edit_as_derived"],
+  "subTimelineSpatialFrames": ["earth", "place", "none"]
 }

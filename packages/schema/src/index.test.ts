@@ -14,6 +14,8 @@ import {
   ENTITY_TYPES, TEMPORAL_PRECISIONS, CONTENT_ORIGINS, HISTORICITIES, CLAIM_KINDS,
   EVIDENCE_STATUSES, TEMPORAL_ROLES, PLACE_COVERAGES, QL_FORMS, QL_ARCS,
   QL_TOPOLOGIES, QL_COMPLETENESS_STATUSES,
+  PLACE_COORDINATE_PRECISIONS, GAZETTEER_KINDS, PASSAGE_NATIVE_UNIT_KINDS,
+  SCENE_ASSEMBLERS, CURATION_EVENT_TYPES, SUB_TIMELINE_SPATIAL_FRAMES,
 } from "./index";
 
 const now = "2026-03-30T20:00:00.000Z";
@@ -27,6 +29,12 @@ describe("schema package", () => {
       temporalRole: TEMPORAL_ROLES, placeCoverage: PLACE_COVERAGES,
       qlForm: QL_FORMS, qlArc: QL_ARCS, qlTopology: QL_TOPOLOGIES,
       qlCompletenessStatus: QL_COMPLETENESS_STATUSES,
+      placeCoordinatePrecision: PLACE_COORDINATE_PRECISIONS,
+      gazetteerKinds: GAZETTEER_KINDS,
+      passageNativeUnitKinds: PASSAGE_NATIVE_UNIT_KINDS,
+      sceneAssemblers: SCENE_ASSEMBLERS,
+      curationEventTypes: CURATION_EVENT_TYPES,
+      subTimelineSpatialFrames: SUB_TIMELINE_SPATIAL_FRAMES,
     }).toEqual(vocabularyManifest);
   });
 

@@ -3,4 +3,8 @@ export * from "./canvas";
 export * from "./export";
 export * from "./edge";
 export * from "./node";
+export * from "./passage";
+export * from "./place";
+export * from "./scene";
 export * from "./project";
+export * from "./time";
