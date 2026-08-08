@@ -4,6 +4,18 @@
 **Status:** execution phase after the wayfinder run closed #2–#11; destination is the locked
 vision spec `docs/superpowers/specs/2026-08-08-research-canvas-surfaces-vision.md`.
 
+## Live issues (2026-08-09)
+
+- Map: [Research Canvas — build execution map (all slices)](https://github.com/EpiLogos/research-canvas/issues/12) (`#12`, `wayfinder:map`)
+- [Slice 1 — Spine: Temporal Place, Scene, nested sub-timelines](https://github.com/EpiLogos/research-canvas/issues/13) (`#13`, assigned, in progress)
+- [Slice 2 — Psychogeographic surface](https://github.com/EpiLogos/research-canvas/issues/14) (`#14`, blocked by #13)
+- [Slice 3 — Migration profile](https://github.com/EpiLogos/research-canvas/issues/15) (`#15`, blocked by #14)
+- [Slice 4 — Mind palace](https://github.com/EpiLogos/research-canvas/issues/16) (`#16`, blocked by #15)
+
+Dependencies are native GitHub issue dependencies (14→13, 15→14, 16→15).
+
+---
+
 This is the canonical task list for the build. Each slice is one GitHub issue (labelled
 `wayfinder:task`) with a checklist; the map issue (`wayfinder:map`) carries this body. Order
 and dependencies come from build-order ticket #3:
