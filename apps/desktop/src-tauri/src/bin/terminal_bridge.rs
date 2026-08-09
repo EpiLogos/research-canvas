@@ -19,7 +19,8 @@ use research_canvas_desktop_lib::{
         street_view::{
             add_manual_street_view_region_at, apply_street_view_redaction_at,
             list_street_view_images_at, mark_street_view_redaction_none_needed_at,
-            register_street_view_image_at,
+            register_street_view_image_at, stage_street_view_image_at,
+            StageStreetViewImageRequest,
         },
         keepsake::write_keepsake_bundle_at,
         palace::{load_palace_curation_at, save_palace_curation_at},
@@ -301,6 +302,23 @@ fn handle_request(
         )
         .map_err(|error| error.to_string())?;
         let payload = register_street_view_image_at(&database_path, media_root, image)?;
+        return respond_json(request, StatusCode(201), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/street-view/stage" {
+        let file_name = query_param(&url, "fileName")
+            .ok_or_else(|| "missing fileName query parameter".to_string())?;
+        let profile_scope = query_param(&url, "profileScope")
+            .ok_or_else(|| "missing profileScope query parameter".to_string())?;
+        let media_root = query_param(&url, "mediaRoot")
+            .ok_or_else(|| "missing mediaRoot query parameter".to_string())?;
+        let bytes = read_body_bytes(&mut request)?;
+        let payload = stage_street_view_image_at(StageStreetViewImageRequest {
+            media_root,
+            profile_scope,
+            file_name,
+            bytes,
+        })?;
         return respond_json(request, StatusCode(201), payload);
     }
 
@@ -718,6 +736,15 @@ fn read_body(request: &mut tiny_http::Request) -> Result<String, String> {
     request
         .as_reader()
         .read_to_string(&mut body)
+        .map_err(|error| error.to_string())?;
+    Ok(body)
+}
+
+fn read_body_bytes(request: &mut tiny_http::Request) -> Result<Vec<u8>, String> {
+    let mut body = Vec::new();
+    request
+        .as_reader()
+        .read_to_end(&mut body)
         .map_err(|error| error.to_string())?;
     Ok(body)
 }

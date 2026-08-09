@@ -562,17 +562,60 @@ pub fn load_timeline_view_at_path(
     // The snapshot carries only the bounded relationship neighbourhood of the
     // temporal rows just read. It never scans the global graph, and it keeps
     // atemporal endpoints as relation data rather than assigning them dates.
-    let relationships = NodeRelationshipRepository::new(database.connection())
+    let relationship_repository = NodeRelationshipRepository::new(database.connection());
+    let candidate_relationships = relationship_repository
         .list_involving(&temporal_ids)
         .map_err(|error| error.to_string())?
         .into_iter()
         .filter(|relationship| !relationship.is_tombstone)
         .filter(|relationship| {
-            temporal_ids.contains(&relationship.source_graph_node_id)
-                && temporal_ids.contains(&relationship.target_graph_node_id)
-        })
-        .filter(|relationship| {
             matches_string_value(&relationship.rel_type, &request.filters.relation_types)
+        })
+        .collect::<Vec<_>>();
+    // LOCATED_AT links a temporal event to an atemporal gazetted place. The
+    // place is included as relation data (invalid anchor, companion flag) so
+    // consumers such as the psychogeographic assembler can resolve the walk
+    // without fabricating a temporal anchor for the place itself.
+    let located_place_ids = candidate_relationships
+        .iter()
+        .filter(|relationship| relationship.rel_type == "LOCATED_AT")
+        .flat_map(|relationship| {
+            [
+                relationship.source_graph_node_id.as_str(),
+                relationship.target_graph_node_id.as_str(),
+            ]
+        })
+        .filter(|endpoint_id| !temporal_ids.contains(*endpoint_id))
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
+    for endpoint_id in &located_place_ids {
+        let Some(row) = metadata_repository
+            .get_with_timestamps(endpoint_id)
+            .map_err(|error| error.to_string())?
+        else {
+            continue;
+        };
+        nodes.push(TimelineNode {
+            node: graph_node_from_local_projection(&row, None),
+            anchor: TimelineAnchor {
+                valid_from: "invalid".into(),
+                valid_to: None,
+                precision: TemporalPrecision::Year,
+            },
+            layout_override: None,
+            relation_companion: true,
+        });
+    }
+    let view_endpoint_ids = temporal_ids
+        .iter()
+        .chain(located_place_ids.iter())
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let relationships = candidate_relationships
+        .into_iter()
+        .filter(|relationship| {
+            view_endpoint_ids.contains(&relationship.source_graph_node_id)
+                && view_endpoint_ids.contains(&relationship.target_graph_node_id)
         })
         .map(|relationship| relationship.as_graph_relationship())
         .collect();
@@ -1111,6 +1154,140 @@ mod local_relationship_projection_tests {
             layout_override: None,
             relation_companion: false,
         }
+    }
+
+    #[test]
+    fn located_at_places_flow_through_the_snapshot_as_relation_companions() {
+        let directory = tempfile::tempdir().expect("temporary SQLite directory");
+        let path = directory.path().join("located-at.sqlite");
+
+        {
+            let database = Database::open(&path).expect("migrated SQLite database");
+            let metadata_repository = GraphNodeMetadataRepository::new(database.connection());
+            for (graph_node_id, entity_type, is_temporal) in [
+                ("event-1888", EntityType::Event, true),
+                ("place-gazette", EntityType::Place, false),
+            ] {
+                assert_eq!(
+                    metadata_repository
+                        .save(&metadata(graph_node_id, entity_type, is_temporal), None)
+                        .expect("persist graph metadata"),
+                    GraphMetadataMutation::Created
+                );
+            }
+            assert_eq!(
+                NodeRelationshipRepository::new(database.connection())
+                    .merge(
+                        &relationship(
+                            "event-1888-located-at-place-gazette",
+                            "event-1888",
+                            "place-gazette",
+                            "LOCATED_AT",
+                        ),
+                        None,
+                    )
+                    .expect("persist located-at relationship"),
+                RelationshipMutation::Created
+            );
+        }
+
+        let workspace_id = timeline_workspace_identity(&path).expect("workspace identity");
+        let timeline = load_timeline_view_at_path(
+            &path,
+            LoadTimelineViewRequest {
+                workspace_id,
+                filters: TimelineFilters::default(),
+                range: None,
+            },
+        )
+        .expect("load offline timeline");
+
+        assert_eq!(timeline.nodes.len(), 2, "temporal event plus place companion");
+        assert_eq!(timeline.relationships.len(), 1);
+        assert_eq!(timeline.relationships[0].rel_type, "LOCATED_AT");
+        assert_eq!(
+            timeline.relationships[0].source_graph_node_id,
+            "event-1888"
+        );
+        assert_eq!(
+            timeline.relationships[0].target_graph_node_id,
+            "place-gazette"
+        );
+
+        let place_companion = timeline
+            .nodes
+            .iter()
+            .find(|node| node.node.graph_node_id == "place-gazette")
+            .expect("place endpoint present in snapshot");
+        assert!(place_companion.relation_companion);
+        assert_eq!(place_companion.node.entity_type, EntityType::Place);
+        assert_eq!(place_companion.anchor.valid_from, "invalid");
+        assert!(place_companion.layout_override.is_none());
+
+        let temporal_event = timeline
+            .nodes
+            .iter()
+            .find(|node| node.node.graph_node_id == "event-1888")
+            .expect("temporal event still present");
+        assert!(!temporal_event.relation_companion);
+        assert_eq!(temporal_event.anchor.valid_from, "1888");
+    }
+
+    #[test]
+    fn relation_type_filter_excludes_located_at_places() {
+        let directory = tempfile::tempdir().expect("temporary SQLite directory");
+        let path = directory.path().join("located-at-filtered.sqlite");
+
+        {
+            let database = Database::open(&path).expect("migrated SQLite database");
+            let metadata_repository = GraphNodeMetadataRepository::new(database.connection());
+            for (graph_node_id, entity_type, is_temporal) in [
+                ("event-1888", EntityType::Event, true),
+                ("place-gazette", EntityType::Place, false),
+            ] {
+                assert_eq!(
+                    metadata_repository
+                        .save(&metadata(graph_node_id, entity_type, is_temporal), None)
+                        .expect("persist graph metadata"),
+                    GraphMetadataMutation::Created
+                );
+            }
+            assert_eq!(
+                NodeRelationshipRepository::new(database.connection())
+                    .merge(
+                        &relationship(
+                            "event-1888-located-at-place-gazette",
+                            "event-1888",
+                            "place-gazette",
+                            "LOCATED_AT",
+                        ),
+                        None,
+                    )
+                    .expect("persist located-at relationship"),
+                RelationshipMutation::Created
+            );
+        }
+
+        let workspace_id = timeline_workspace_identity(&path).expect("workspace identity");
+        let timeline = load_timeline_view_at_path(
+            &path,
+            LoadTimelineViewRequest {
+                workspace_id,
+                filters: TimelineFilters {
+                    relation_types: TimelineValueFilter {
+                        include: vec!["INSTANTIATES".into()],
+                        exclude: vec![],
+                    },
+                    ..TimelineFilters::default()
+                },
+                range: None,
+            },
+        )
+        .expect("load filtered timeline");
+
+        assert_eq!(timeline.nodes.len(), 1, "place companion is gated by the relation filter");
+        assert!(timeline.relationships.is_empty());
+        assert_eq!(timeline.nodes[0].node.graph_node_id, "event-1888");
     }
 
     #[test]

@@ -5,7 +5,7 @@ import type { ExportBundle } from "@research-canvas/schema";
 import { buildExportManifest } from "@research-canvas/exporter";
 
 import { MobileFallback } from "./routes/MobileFallback";
-import { MapView } from "./routes/MapView";
+import { IndexView } from "./routes/IndexView";
 import { NodePage } from "./routes/NodePage";
 import { SequenceView } from "./routes/SequenceView";
 import { StoryView } from "./routes/StoryView";
@@ -45,7 +45,7 @@ export function App({ bundle: bundleProp = null }: AppProps) {
     return <MobileFallback bundle={bundle} />;
   }
 
-  return <MapView bundle={bundle} manifest={manifest} />;
+  return <IndexView bundle={bundle} manifest={manifest} />;
 }
 
 function useViewerBundle(bundle: ExportBundle | null) {

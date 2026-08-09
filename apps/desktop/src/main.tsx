@@ -6,6 +6,7 @@ import "@xterm/xterm/css/xterm.css";
 import "./styles.css";
 import "./layout/observatory.css";
 import "./layout/timeline.css";
+import "./layout/lenses.css";
 
 const container = document.getElementById("root");
 

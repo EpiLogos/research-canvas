@@ -29,6 +29,7 @@ export interface StorySurfaceSceneData {
   sceneId: string;
   title: string;
   placeId: string;
+  narration?: string;
   language: string;
   availableLanguages: string[];
   passages: StoryPassageView[];
@@ -135,9 +136,13 @@ export function StorySurface({
       </header>
 
       {scenes.length === 0 ? (
-        <p className="story-surface__empty" data-testid="story-surface-empty">
-          No published scenes for this story yet.
-        </p>
+        <div className="story-surface__empty" data-testid="story-surface-empty">
+          <p>No published scenes for this story yet.</p>
+          <p className="story-surface__empty-hint">
+            Scenes assemble automatically from located corpus events the next
+            time the profile store is opened.
+          </p>
+        </div>
       ) : activeScene ? (
         <div className="story-surface__layout">
           <nav className="story-surface__nav" data-testid="story-scene-nav">
@@ -202,6 +207,12 @@ export function StorySurface({
                 ? ` · ${redactedCount} redacted gap${redactedCount === 1 ? "" : "s"}`
                 : ""}
             </p>
+
+            {activeScene.narration && (
+              <p className="story-surface__narration" data-testid="story-narration">
+                {activeScene.narration}
+              </p>
+            )}
 
             {activeMedia && (
               <div className="story-surface__media" data-testid="story-media">

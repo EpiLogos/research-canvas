@@ -62,5 +62,20 @@ export type PassageRef = z.infer<typeof passageRefSchema>;
 /** Stable identity for a passage ref, used for cross-referencing within a
  * scene (e.g. a language variant must anchor to a passage the scene holds). */
 export function passageRefKey(ref: PassageRef): string {
-  return `${ref.artifactId}#${JSON.stringify(ref.unit)}`;
+  return `${ref.artifactId}#${passageUnitKey(ref.unit)}`;
+}
+
+/** Order-independent identity for a native passage unit. Key order must not
+ * leak into identity: units arrive from Rust in serde field order and from
+ * zod-parsed scenes in schema order, and JSON.stringify would treat those as
+ * different passages. */
+export function passageUnitKey(unit: PassageRef["unit"]): string {
+  switch (unit.kind) {
+    case "text_span":
+      return `text_span:${unit.startOffset}:${unit.endOffset}`;
+    case "timestamp_range":
+      return `timestamp_range:${unit.startMs}:${unit.endMs}`;
+    case "image_region":
+      return `image_region:${unit.x}:${unit.y}:${unit.width}:${unit.height}`;
+  }
 }

@@ -99,6 +99,21 @@ function makeTransport(
     async listScenes() {
       return scenes;
     },
+    async loadTimelineView() {
+      return {
+        workspaceId: "sqlite:/tmp/ws",
+        nodes: [],
+        relationships: [],
+        lanes: [],
+        diagnostics: [],
+      };
+    },
+    async upsertScene() {
+      throw new Error("unexpected seed write");
+    },
+    async upsertSceneSequence() {
+      throw new Error("unexpected seed write");
+    },
     writeKeepsakeBundle: writeKeepsake,
   } as unknown as WorkspaceTransport;
 }
@@ -109,6 +124,8 @@ describe("StoryLens", () => {
       <StoryLens
         transport={makeTransport([scene()], vi.fn())}
         databasePath="/tmp/ws.sqlite"
+        workspaceId="sqlite:/tmp/ws"
+        repoRoot="/tmp/repo"
         profileScope="migration"
         workingRoot="/tmp/ws"
       />,
@@ -134,6 +151,8 @@ describe("StoryLens", () => {
       <StoryLens
         transport={makeTransport([scene()], writeKeepsake)}
         databasePath="/tmp/ws.sqlite"
+        workspaceId="sqlite:/tmp/ws"
+        repoRoot="/tmp/repo"
         profileScope="migration"
         workingRoot="/tmp/ws"
       />,
@@ -165,6 +184,8 @@ describe("StoryLens", () => {
       <StoryLens
         transport={makeTransport([], vi.fn())}
         databasePath="/tmp/ws.sqlite"
+        workspaceId="sqlite:/tmp/ws"
+        repoRoot="/tmp/repo"
         profileScope="migration"
         workingRoot="/tmp/ws"
       />,

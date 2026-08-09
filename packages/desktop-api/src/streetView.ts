@@ -45,6 +45,14 @@ export interface RegisterStreetViewImageRequest {
   image: StreetViewImageRecord;
 }
 
+export interface StageStreetViewImageInput {
+  mediaRoot: string;
+  profileScope: string;
+  fileName: string;
+  /** Raw PNG/JPEG bytes; staged verbatim under the media root. */
+  bytes: Uint8Array;
+}
+
 export interface AddStreetViewRegionRequest {
   databasePath: string;
   id: string;

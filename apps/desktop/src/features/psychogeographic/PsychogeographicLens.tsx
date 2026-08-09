@@ -20,6 +20,7 @@ import {
   assembleProfileWalk,
   loadProfileWalks,
 } from "./assembleWalk";
+import { StreetViewImportDialog } from "./StreetViewImportDialog";
 
 /**
  * The psychogeographic lens (slice 2): an offline-first map over the spine's
@@ -33,6 +34,7 @@ export interface PsychogeographicLensProps {
   databasePath: string;
   workspaceId: string;
   profileScope: string;
+  mediaRoot?: string;
   renderer?: MapSurfaceRenderer;
   resolveAsset?: (artifactPath: string) => string;
 }
@@ -56,6 +58,7 @@ export function PsychogeographicLens({
   databasePath,
   workspaceId,
   profileScope,
+  mediaRoot = "",
   renderer,
   resolveAsset,
 }: PsychogeographicLensProps): JSX.Element {
@@ -67,6 +70,7 @@ export function PsychogeographicLens({
   const [assembling, setAssembling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const [importOpen, setImportOpen] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -178,16 +182,33 @@ export function PsychogeographicLens({
           renderer={renderer}
         />
       ) : (
-        <p className="psychogeographic-empty" data-testid="psychogeographic-empty">
-          No temporal events located at gazetted places were found to assemble a
-          walk for this profile.
-        </p>
+        <div className="psychogeographic-empty" data-testid="psychogeographic-empty">
+          <p>
+            No temporal events located at gazetted places were found to assemble a
+            walk for this profile.
+          </p>
+          <p className="psychogeographic-empty__hint">
+            Add LOCATED_AT links from dated events to gazetted places, then
+            refresh this surface.
+          </p>
+        </div>
       )}
       <StreetViewSurface
         images={streetImages}
         policy={policy}
         resolveAsset={assetResolver}
+        onImport={mediaRoot ? () => setImportOpen(true) : undefined}
       />
+      {importOpen && mediaRoot && (
+        <StreetViewImportDialog
+          transport={transport}
+          databasePath={databasePath}
+          mediaRoot={mediaRoot}
+          profileScope={profileScope}
+          onClose={() => setImportOpen(false)}
+          onImported={() => void reload()}
+        />
+      )}
     </section>
   );
 }

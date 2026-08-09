@@ -30,6 +30,9 @@ export interface StorySceneView {
   sceneId: string;
   title: string;
   placeId: string;
+  /** Real prose attached to the scene (schema-level narration), rendered as
+   * the scene's lead passage. */
+  narration?: string;
   language: string;
   availableLanguages: string[];
   /** Consent-filtered passages; redacted passages carry their gaps. */
@@ -74,6 +77,7 @@ export function presentStoryScene(
     sceneId: scene.id,
     title: scene.title ?? scene.placeFrame.placeId,
     placeId: scene.placeFrame.placeId,
+    narration: scene.narration,
     language: presentation.language,
     availableLanguages: presentation.availableLanguages,
     passages: published.map(({ passage, gaps }) => ({

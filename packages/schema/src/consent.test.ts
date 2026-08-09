@@ -103,4 +103,43 @@ describe("consentedPassages", () => {
   test("no recorded consent means no publication", () => {
     expect(consentedPassages([passageA, passageB], [], [])).toEqual([]);
   });
+
+  test("passage identity is order-independent across serde and zod key orderings", () => {
+    // Rust's serde serialises the text_span unit in field order
+    // endOffset/kind/startOffset; zod-parsed scenes produce schema order
+    // kind/startOffset/endOffset. Consent records written by Rust must still
+    // match the parsed scene passages they were captured against.
+    const rustUnit = {
+      endOffset: 6684,
+      kind: "text_span",
+      startOffset: 6079,
+    } as const;
+    const parsedUnit = {
+      kind: "text_span",
+      startOffset: 6079,
+      endOffset: 6684,
+    } as const;
+    const rustConsent = consent({
+      artifactId: "Report8.md",
+      unit: rustUnit,
+    });
+    const redaction = redactedSpanSchema.parse({
+      passageRef: {
+        artifactId: "Report8.md",
+        unit: rustUnit,
+      },
+      startOffset: 6321,
+      endOffset: 6454,
+    });
+
+    const published = consentedPassages(
+      [{ artifactId: "Report8.md", unit: parsedUnit }],
+      [rustConsent],
+      [redaction],
+    );
+    expect(published).toHaveLength(1);
+    expect(published[0].gaps).toEqual([
+      { startOffset: 6321, endOffset: 6454 },
+    ]);
+  });
 });

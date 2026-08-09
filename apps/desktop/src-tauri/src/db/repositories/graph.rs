@@ -323,16 +323,6 @@ pub struct GraphNodePatch {
     pub temporal_precision: Option<Option<TemporalPrecision>>,
 }
 
-fn deserialize_explicit_nullable_string<'de, D>(
-    deserializer: D,
-) -> Result<Option<Option<String>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = Option::<String>::deserialize(deserializer)?;
-    Ok(Some(value))
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchetypalLightingResult {

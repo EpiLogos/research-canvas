@@ -4,12 +4,12 @@ import { NoteViewer } from "@research-canvas/viewers";
 
 import type { ExportManifest } from "@research-canvas/exporter";
 
-interface MapViewProps {
+interface IndexViewProps {
   bundle: ExportBundle;
   manifest: ExportManifest;
 }
 
-export function MapView({ bundle, manifest }: MapViewProps) {
+export function IndexView({ bundle, manifest }: IndexViewProps) {
   const firstNote = bundle.nodes.find((node) => node.type === "note");
 
   return (

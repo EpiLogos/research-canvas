@@ -145,6 +145,7 @@ pub fn run() {
             commands::scenes::delete_scene_sequence_command,
             commands::street_view::list_street_view_images_command,
             commands::street_view::register_street_view_image_command,
+            commands::street_view::stage_street_view_image_command,
             commands::street_view::add_manual_street_view_region_command,
             commands::street_view::apply_street_view_redaction_command,
             commands::street_view::mark_street_view_redaction_none_needed_command,

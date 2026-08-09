@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import { passageRefSchema, type PassageRef } from "./passage";
+import {
+  passageRefKey,
+  passageRefSchema,
+  passageUnitKey,
+  type PassageRef,
+} from "./passage";
 
 /**
  * Consent and redaction are passage-level derived artifacts (vision §3.13,
@@ -60,8 +65,7 @@ export function consentedPassages(
   redactions: RedactedSpan[],
   scope = "publication",
 ): PublicationPassage[] {
-  const key = (passage: PassageRef): string =>
-    `${passage.artifactId}#${JSON.stringify(passage.unit)}`;
+  const key = passageRefKey;
   const consented = new Map<string, PassageConsent>();
   for (const consent of consents) {
     if (consent.scope !== scope) continue;
@@ -86,7 +90,7 @@ export function consentedPassages(
       .filter(
         (span) =>
           span.passageRef.artifactId === passage.artifactId &&
-          JSON.stringify(span.passageRef.unit) === JSON.stringify(passage.unit),
+          passageUnitKey(span.passageRef.unit) === passageUnitKey(passage.unit),
       )
       .map((span) => ({
         startOffset: span.startOffset,

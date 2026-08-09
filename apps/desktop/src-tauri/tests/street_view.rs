@@ -3,6 +3,7 @@ use research_canvas_desktop_lib::{
     commands::street_view::{
         add_manual_street_view_region_at, apply_street_view_redaction_at,
         list_street_view_images_at, register_street_view_image_at,
+        stage_street_view_image_at, StageStreetViewImageRequest,
     },
     db::repositories::{
         REDACTION_STATUS_PENDING, REDACTION_STATUS_REDACTED, StreetViewImageRecord,
@@ -71,6 +72,28 @@ fn write_test_jpeg(media_root: &std::path::Path, name: &str) {
         .expect("write fixture jpeg");
 }
 
+fn png_bytes() -> Vec<u8> {
+    let mut image = RgbImage::from_pixel(32, 32, Rgb([70, 110, 160]));
+    for y in 0..8 {
+        for x in 0..8 {
+            image.put_pixel(
+                x,
+                y,
+                if (x + y) % 2 == 0 {
+                    Rgb([210, 60, 50])
+                } else {
+                    Rgb([240, 230, 210])
+                },
+            );
+        }
+    }
+    let mut buffer = std::io::Cursor::new(Vec::new());
+    image
+        .write_to(&mut buffer, image::ImageFormat::Png)
+        .expect("encode fixture png");
+    buffer.into_inner()
+}
+
 fn pixel(image: &RgbImage, x: u32, y: u32) -> Rgb<u8> {
     *image.get_pixel(x, y)
 }
@@ -135,6 +158,78 @@ fn street_view_redaction_pipeline_blurs_only_the_region() {
         .expect("decode original png")
         .to_rgb8();
     assert_eq!(pixel(&original, 8, 8), Rgb([200, 30, 30]));
+}
+
+#[test]
+fn staged_import_bytes_register_as_real_artifacts() {
+    let dir = tempdir().unwrap();
+    let media_root = dir.path().join("media");
+    std::fs::create_dir_all(&media_root).unwrap();
+    let database_path = dir.path().join("street-view.sqlite");
+    let database_path = database_path.to_string_lossy().to_string();
+
+    let staged = stage_street_view_image_at(StageStreetViewImageRequest {
+        media_root: media_root.to_string_lossy().to_string(),
+        profile_scope: "migration".into(),
+        file_name: "prague-crossing.png".into(),
+        bytes: png_bytes(),
+    })
+    .expect("stage imported bytes");
+    assert_eq!(staged.artifact_path, "street-view/migration/prague-crossing.png");
+    let staged_file = media_root.join(&staged.artifact_path);
+    assert!(staged_file.is_file(), "staged artifact exists at media root");
+
+    let registered = register_street_view_image_at(
+        &database_path,
+        media_root.to_string_lossy().as_ref(),
+        image_record("img-staged", &staged.artifact_path),
+    )
+    .expect("register staged artifact");
+    assert_eq!(registered.artifact_path, staged.artifact_path);
+    assert_eq!(registered.redaction_status, "pending");
+
+    let listed = list_street_view_images_at(&database_path, "migration").expect("list");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, "img-staged");
+}
+
+#[test]
+fn staged_import_rejects_non_images_and_traversal_names() {
+    let dir = tempdir().unwrap();
+    let media_root = dir.path().join("media");
+    std::fs::create_dir_all(&media_root).unwrap();
+
+    let not_an_image = stage_street_view_image_at(StageStreetViewImageRequest {
+        media_root: media_root.to_string_lossy().to_string(),
+        profile_scope: "migration".into(),
+        file_name: "notes.txt".into(),
+        bytes: b"not an image at all".to_vec(),
+    });
+    assert!(not_an_image.is_err(), "text bytes are rejected");
+
+    let wrong_magic = stage_street_view_image_at(StageStreetViewImageRequest {
+        media_root: media_root.to_string_lossy().to_string(),
+        profile_scope: "migration".into(),
+        file_name: "fake.png".into(),
+        bytes: b"PNG but actually text".to_vec(),
+    });
+    assert!(wrong_magic.is_err(), "mismatched magic bytes are rejected");
+
+    let traversal = stage_street_view_image_at(StageStreetViewImageRequest {
+        media_root: media_root.to_string_lossy().to_string(),
+        profile_scope: "migration".into(),
+        file_name: "../../outside.png".into(),
+        bytes: png_bytes(),
+    });
+    assert!(traversal.is_err(), "path traversal names are rejected");
+
+    let empty = stage_street_view_image_at(StageStreetViewImageRequest {
+        media_root: media_root.to_string_lossy().to_string(),
+        profile_scope: "migration".into(),
+        file_name: "empty.png".into(),
+        bytes: vec![],
+    });
+    assert!(empty.is_err(), "empty payloads are rejected");
 }
 
 #[test]

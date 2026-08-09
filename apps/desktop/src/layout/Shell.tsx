@@ -355,15 +355,18 @@ export function Shell() {
                 databasePath={workspace.databasePath}
                 workspaceId={workspace.workspaceId}
                 profileScope="bootstrapping"
+                mediaRoot={workspace.workingRoot ?? ""}
               />
             </section>
           )}
 
-          {lens === "story" && workspace.transport && workspace.databasePath && (
+          {lens === "story" && workspace.transport && workspace.databasePath && workspace.workspaceId && (
             <section className="canvas-pane" data-testid="story-pane" style={{ position: "absolute", inset: 0 }}>
               <StoryLens
                 transport={workspace.transport}
                 databasePath={workspace.databasePath}
+                workspaceId={workspace.workspaceId}
+                repoRoot={workspace.repoRoot ?? ""}
                 profileScope="migration"
                 workingRoot={workspace.workingRoot ?? ""}
               />

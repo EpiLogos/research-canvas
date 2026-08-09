@@ -52,6 +52,7 @@ export type {
   ApplyStreetViewRedactionRequest,
   ListStreetViewImagesRequest,
   RegisterStreetViewImageRequest,
+  StageStreetViewImageInput,
   StreetViewIdRequest,
   StreetViewImageRecord,
   StreetViewRedactionReason,
@@ -78,6 +79,7 @@ import type {
   ApplyStreetViewRedactionRequest,
   ListStreetViewImagesRequest,
   RegisterStreetViewImageRequest,
+  StageStreetViewImageInput,
   StreetViewIdRequest,
   StreetViewImageRecord,
 } from "./streetView";
@@ -628,6 +630,7 @@ export interface WorkspaceTransport {
   // ---- Street-view imagery (SQLite + local redaction pipeline) ----
   listStreetViewImages(input: ListStreetViewImagesRequest): Promise<StreetViewImageRecord[]>;
   registerStreetViewImage(input: RegisterStreetViewImageRequest): Promise<StreetViewImageRecord>;
+  stageStreetViewImage(input: StageStreetViewImageInput): Promise<{ artifactPath: string }>;
   addManualStreetViewRegion(input: AddStreetViewRegionRequest): Promise<StreetViewImageRecord>;
   applyStreetViewRedaction(input: ApplyStreetViewRedactionRequest): Promise<StreetViewImageRecord>;
   markStreetViewRedactionNoneNeeded(input: StreetViewIdRequest): Promise<StreetViewImageRecord>;
@@ -899,6 +902,16 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async registerStreetViewImage({ databasePath, mediaRoot, image }) {
       return invokeTauri<StreetViewImageRecord>("register_street_view_image_command", {
         request: { databasePath, mediaRoot, image },
+      });
+    },
+    async stageStreetViewImage({ mediaRoot, profileScope, fileName, bytes }) {
+      return invokeTauri<{ artifactPath: string }>("stage_street_view_image_command", {
+        request: {
+          mediaRoot,
+          profileScope,
+          fileName,
+          bytes: Array.from(bytes),
+        },
       });
     },
     async addManualStreetViewRegion({ databasePath, id, region }) {
@@ -1217,6 +1230,27 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
         method: "POST",
         body: { mediaRoot, image },
       });
+    },
+    async stageStreetViewImage({ mediaRoot, profileScope, fileName, bytes }) {
+      const params = new URLSearchParams({ mediaRoot, profileScope, fileName });
+      const response = await fetch(
+        `${BRIDGE_BASE_URL}/workspace/street-view/stage?${params.toString()}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/octet-stream" },
+          body: bytes.buffer.slice(
+            bytes.byteOffset,
+            bytes.byteOffset + bytes.byteLength,
+          ) as ArrayBuffer,
+        },
+      );
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        throw new Error(
+          `stage street view image failed (${response.status}): ${detail.slice(0, 240)}`,
+        );
+      }
+      return response.json() as Promise<{ artifactPath: string }>;
     },
     async addManualStreetViewRegion({ databasePath: _, id, region }) {
       return requestJsonWithRetry<StreetViewImageRecord>(
@@ -1665,6 +1699,7 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
     deleteSceneSequence: readOnlyReject,
     listStreetViewImages: readOnlyReject,
     registerStreetViewImage: readOnlyReject,
+    stageStreetViewImage: readOnlyReject,
     addManualStreetViewRegion: readOnlyReject,
     applyStreetViewRedaction: readOnlyReject,
     markStreetViewRedactionNoneNeeded: readOnlyReject,

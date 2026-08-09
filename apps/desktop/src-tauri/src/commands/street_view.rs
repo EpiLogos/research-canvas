@@ -32,6 +32,21 @@ pub struct RegisterStreetViewImageRequest {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct StageStreetViewImageRequest {
+    pub media_root: String,
+    pub profile_scope: String,
+    pub file_name: String,
+    pub bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StagedStreetViewImage {
+    pub artifact_path: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StreetViewIdRequest {
     pub database_path: String,
     pub id: String,
@@ -65,6 +80,13 @@ pub fn register_street_view_image_command(
     request: RegisterStreetViewImageRequest,
 ) -> Result<StreetViewImageRecord, String> {
     register_street_view_image_at(&request.database_path, &request.media_root, request.image)
+}
+
+#[tauri::command]
+pub fn stage_street_view_image_command(
+    request: StageStreetViewImageRequest,
+) -> Result<StagedStreetViewImage, String> {
+    stage_street_view_image_at(request)
 }
 
 #[tauri::command]
@@ -118,6 +140,91 @@ pub fn register_street_view_image_at(
     let db = open_database(database_path)?;
     let repo = StreetViewRepository::new(db.connection());
     repo.register(image).map_err(|error| error.to_string())
+}
+
+/// Stages imported fieldwork imagery into the workspace media root so the
+/// register command can resolve it. The bytes are written verbatim and the
+/// portable artifact path is returned; raw source bytes are never stored in
+/// the database, and the source file is never modified.
+pub fn stage_street_view_image_at(
+    request: StageStreetViewImageRequest,
+) -> Result<StagedStreetViewImage, String> {
+    if request.profile_scope.trim().is_empty() {
+        return Err("street view profileScope must not be blank".into());
+    }
+    if request.media_root.trim().is_empty() {
+        return Err("street view mediaRoot must not be blank".into());
+    }
+    let file_name = sanitize_street_view_file_name(&request.file_name)?;
+    let extension = file_extension(&file_name).ok_or_else(|| {
+        format!("street view file must be PNG or JPEG: {}", request.file_name)
+    })?;
+    if !matches!(extension.as_str(), "png" | "jpg" | "jpeg") {
+        return Err(format!(
+            "street view file must be PNG or JPEG: {}",
+            request.file_name
+        ));
+    }
+    if request.bytes.is_empty() {
+        return Err("street view file bytes must not be empty".into());
+    }
+    if !sniffs_like_image(&request.bytes) {
+        return Err("street view bytes do not look like a PNG or JPEG image".into());
+    }
+
+    let media_root = PathBuf::from(&request.media_root);
+    let destination_dir = media_root
+        .join("street-view")
+        .join(&request.profile_scope);
+    std::fs::create_dir_all(&destination_dir).map_err(|error| error.to_string())?;
+    let destination = destination_dir.join(&file_name);
+    std::fs::write(&destination, &request.bytes).map_err(|error| error.to_string())?;
+
+    Ok(StagedStreetViewImage {
+        artifact_path: format!(
+            "street-view/{}/{}",
+            request.profile_scope, file_name
+        ),
+    })
+}
+
+fn sanitize_street_view_file_name(file_name: &str) -> Result<String, String> {
+    if file_name.contains("..") {
+        return Err(format!("invalid street view file name: {file_name}"));
+    }
+    let base = file_name
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(file_name);
+    if base.is_empty() || base == "." || base == ".." {
+        return Err(format!("invalid street view file name: {file_name}"));
+    }
+    let sanitized: String = base
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_') {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    if sanitized.is_empty() {
+        return Err(format!("invalid street view file name: {file_name}"));
+    }
+    Ok(sanitized)
+}
+
+fn file_extension(file_name: &str) -> Option<String> {
+    file_name
+        .rsplit_once('.')
+        .map(|(_, extension)| extension.to_ascii_lowercase())
+}
+
+fn sniffs_like_image(bytes: &[u8]) -> bool {
+    let png = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+    let jpeg = [0xFF, 0xD8, 0xFF];
+    bytes.starts_with(&png) || bytes.starts_with(&jpeg)
 }
 
 pub fn add_manual_street_view_region_at(

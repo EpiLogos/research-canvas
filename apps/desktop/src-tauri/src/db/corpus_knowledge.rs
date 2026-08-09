@@ -55,6 +55,7 @@ pub(crate) fn source_coordinates_for_slug(slug: &str) -> Option<Vec<String>> {
 /// The seed surface consumes every checked-in reader document. Keeping the
 /// slugs queryable lets reconciliation tests detect a compiler artifact that
 /// has gained prose but no corresponding typed card/node.
+#[cfg(test)]
 pub(crate) fn document_slugs() -> Vec<String> {
     corpus()
         .documents

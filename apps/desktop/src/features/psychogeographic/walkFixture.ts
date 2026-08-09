@@ -84,6 +84,11 @@ export function timelineView(): TimelineView {
         node: graphNode("event-rudolf-prague", "Rudolf II's Prague", "Event", {
           validFrom: "1576-01-01",
           validTo: "1612-12-31",
+          summary:
+            "The documented 1576–1612 court culture of alchemy, astronomy, and Kunstkammer practice; its reader distinguishes record from later symbolic resonance.",
+          sourceCoordinates: [
+            "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md#rudolf-ii-s-prague-where-alchemy-met-astronomy",
+          ],
         }),
         anchor: { validFrom: "1576-01-01", validTo: "1612-12-31", precision: "year" },
         layoutOverride: {
@@ -116,6 +121,11 @@ export function timelineView(): TimelineView {
         node: graphNode("institution-voc", "VOC", "Institution", {
           validFrom: "1602-01-01",
           validTo: null,
+          summary:
+            "Documented chartered corporation with sovereign powers, maintained as an institution with a historical span rather than an archetypal label.",
+          sourceCoordinates: [
+            "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md#the-voc-first-corporate-sovereign",
+          ],
         }),
         anchor: { validFrom: "1602-01-01", validTo: null, precision: "year" },
         layoutOverride: {
@@ -148,6 +158,11 @@ export function timelineView(): TimelineView {
         node: graphNode("event-cult-of-reason", "Cult of Reason", "Event", {
           validFrom: "1793-01-01",
           validTo: "1793-12-31",
+          summary:
+            "The documented 1793 Festival of Reason, retained separately from broader interpretations of manufactured religion and symbolic politics.",
+          sourceCoordinates: [
+            "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md#the-revolution-s-failed-experiments-with-manufactured-religion",
+          ],
         }),
         anchor: { validFrom: "1793-01-01", validTo: "1793-12-31", precision: "year" },
         layoutOverride: {
@@ -180,6 +195,11 @@ export function timelineView(): TimelineView {
         node: graphNode("event-banda-genocide", "Banda genocide", "Event", {
           validFrom: "1621-01-01",
           validTo: "1621-12-31",
+          summary:
+            "The documented 1621 violent enclosure of the Banda Islands nutmeg economy by the Dutch East India Company.",
+          sourceCoordinates: [
+            "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md#the-banda-genocide",
+          ],
         }),
         anchor: { validFrom: "1621-01-01", validTo: "1621-12-31", precision: "year" },
         layoutOverride: {

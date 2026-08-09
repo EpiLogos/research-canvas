@@ -19,6 +19,8 @@ export interface StreetViewSurfaceProps {
   policy: LiveServicePolicy;
   /** Resolves a portable artifact path against the media root. */
   resolveAsset: (artifactPath: string) => string;
+  /** Opens the import flow (file picker → regions → redaction). */
+  onImport?: () => void;
 }
 
 const REASON_LABELS: Record<StreetViewRegion["reason"], string> = {
@@ -31,6 +33,7 @@ export function StreetViewSurface({
   images,
   policy,
   resolveAsset,
+  onImport,
 }: StreetViewSurfaceProps): JSX.Element {
   const [openImageId, setOpenImageId] = useState<string | null>(
     images[0]?.id ?? null,
@@ -71,6 +74,19 @@ export function StreetViewSurface({
 
   return (
     <section className="street-view-surface" data-testid="street-view-surface">
+      <div className="street-view-toolbar">
+        <span className="street-view-toolbar__title">Street view</span>
+        {onImport && (
+          <button
+            type="button"
+            className="street-view-import-action"
+            data-testid="street-view-import-action"
+            onClick={onImport}
+          >
+            Import imagery
+          </button>
+        )}
+      </div>
       <div
         className="street-view-connection"
         data-testid="street-view-connection"
@@ -83,10 +99,21 @@ export function StreetViewSurface({
       </div>
 
       {images.length === 0 ? (
-        <p className="street-view-empty" data-testid="street-view-empty">
-          No captured imagery for this journey yet. Import fieldwork photos to
-          build the street view.
-        </p>
+        <div className="street-view-empty" data-testid="street-view-empty">
+          <p>
+            No captured imagery for this journey yet. Import fieldwork photos to
+            build the street view, then mark redaction regions before publishing.
+          </p>
+          {onImport && (
+            <button
+              type="button"
+              data-testid="street-view-empty-import"
+              onClick={onImport}
+            >
+              Import imagery
+            </button>
+          )}
+        </div>
       ) : (
         <div className="street-view-layout">
           <ul className="street-view-list" data-testid="street-view-list">

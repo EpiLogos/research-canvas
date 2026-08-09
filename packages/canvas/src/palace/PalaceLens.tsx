@@ -189,9 +189,13 @@ export function PalaceLens({
       )}
 
       {walkable.length === 0 ? (
-        <p className="palace-lens__empty" data-testid="palace-empty">
-          The graph produced no walkable chambers for this profile.
-        </p>
+        <div className="palace-lens__empty" data-testid="palace-empty">
+          <p>The graph produced no walkable chambers for this profile.</p>
+          <p className="palace-lens__empty-hint">
+            Chambers form from related graph nodes; add relationships or
+            curation to generate a navigable space.
+          </p>
+        </div>
       ) : (
         <ol className="palace-lens__chambers" data-testid="palace-chambers">
           {revealedChambers.map((chamber, index) => {

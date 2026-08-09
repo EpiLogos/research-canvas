@@ -5312,14 +5312,33 @@ mod tests {
         let temporal_ids = timeline
             .nodes
             .iter()
+            .filter(|node| !node.relation_companion)
+            .map(|node| node.node.graph_node_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        let view_ids = timeline
+            .nodes
+            .iter()
             .map(|node| node.node.graph_node_id.as_str())
             .collect::<std::collections::BTreeSet<_>>();
         assert!(timeline.relationships.iter().all(|relationship| {
-            temporal_ids.contains(relationship.source_graph_node_id.as_str())
-                && temporal_ids.contains(relationship.target_graph_node_id.as_str())
+            view_ids.contains(relationship.source_graph_node_id.as_str())
+                && view_ids.contains(relationship.target_graph_node_id.as_str())
                 && relationship.target_graph_node_id != "root-test:lamb-sheep"
         }));
-        assert!(timeline.nodes.iter().all(|node| !node.relation_companion));
+        // Temporal rows are never companions; atemporal LOCATED_AT places
+        // appear only as relation data with an invalid anchor.
+        assert!(timeline.nodes.iter().all(|node| {
+            if node.relation_companion {
+                !node.node.is_temporal
+                    && node.anchor.valid_from == "invalid"
+                    && node.node.entity_type == crate::db::repositories::graph::EntityType::Place
+            } else {
+                temporal_ids.contains(node.node.graph_node_id.as_str())
+            }
+        }));
+        assert!(timeline.relationships.iter().any(|relationship| {
+            relationship.rel_type == "LOCATED_AT"
+        }));
         let relation_field = crate::commands::timeline::load_timeline_relation_field_at_path(
             &path,
             &workspace_id,

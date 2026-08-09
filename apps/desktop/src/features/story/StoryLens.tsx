@@ -11,6 +11,8 @@ import { buildKeepsakeManifest } from "@research-canvas/exporter";
 import { loadBundledGeographyPack } from "@research-canvas/canvas";
 import type { Scene, SceneSequence } from "@research-canvas/schema";
 
+import { ensureMigrationStorySeed } from "./seedMigrationStory";
+
 /**
  * The story lens (slice 3): the migration profile's journey as a scene
  * sequence — multilingual presentation over derived variants, passage-level
@@ -21,6 +23,8 @@ import type { Scene, SceneSequence } from "@research-canvas/schema";
 export interface StoryLensProps {
   transport: WorkspaceTransport;
   databasePath: string;
+  workspaceId: string;
+  repoRoot: string;
   profileScope: string;
   workingRoot: string;
 }
@@ -28,6 +32,8 @@ export interface StoryLensProps {
 export function StoryLens({
   transport,
   databasePath,
+  workspaceId,
+  repoRoot,
   profileScope,
   workingRoot,
 }: StoryLensProps): JSX.Element {
@@ -40,6 +46,7 @@ export function StoryLens({
     "idle" | "exporting" | "done" | "failed"
   >("idle");
   const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [seedError, setSeedError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -61,6 +68,45 @@ export function StoryLens({
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // On a fresh workspace the migration profile has no scenes yet; seed the
+  // journey from the corpus so the lens and the keepsake export have real
+  // content. Seeding is idempotent and never touches the raw graph.
+  const [seeding, setSeeding] = useState(false);
+  useEffect(() => {
+    if (!loading || sequences.length > 0 || scenes.length > 0 || seeding) return;
+    setSeeding(true);
+    setSeedError(null);
+    void (async () => {
+      try {
+        await ensureMigrationStorySeed({
+          transport,
+          databasePath,
+          workspaceId,
+          corpusRoot: repoRoot,
+          gazetteer: loadBundledGeographyPack().gazetteer,
+        });
+        await reload();
+      } catch (cause) {
+        // The lens stays usable without a seeded story; the empty state
+        // explains why assembly did not run.
+        setSeedError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        setSeeding(false);
+      }
+    })();
+  }, [
+    databasePath,
+    loading,
+    reload,
+    scenes.length,
+    seeding,
+    sequences.length,
+    transport,
+    repoRoot,
+    workingRoot,
+    workspaceId,
+  ]);
 
   const storyScenes: StorySurfaceSceneData[] = useMemo(
     () =>
@@ -139,6 +185,11 @@ export function StoryLens({
           setLanguages((current) => ({ ...current, [sceneId]: language }))
         }
       />
+      {sequences.length === 0 && seedError && (
+        <p className="story-lens__seed-error" data-testid="story-seed-error">
+          Story assembly unavailable: {seedError}
+        </p>
+      )}
       {sequences[0] && (
         <div className="story-lens__export">
           <button
