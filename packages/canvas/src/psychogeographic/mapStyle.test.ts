@@ -75,7 +75,7 @@ describe("createOfflineMapStyle", () => {
     expect(style.layers.some((layer) => layer.id === "graticule-lines")).toBe(true);
   });
 
-  test("the flat projection omits the graticule and globe projection key", () => {
+  test("the flat projection omits the graticule, dark ocean, and globe projection key", () => {
     const style = createOfflineMapStyle(
       {
         kind: "geojson",
@@ -87,6 +87,8 @@ describe("createOfflineMapStyle", () => {
     expect(style.projection).toBeUndefined();
     expect(style.sources.graticule).toBeUndefined();
     expect(style.layers.some((layer) => layer.id === "graticule-lines")).toBe(false);
+    // The dark ocean background is globe-only; the flat detail view is clean.
+    expect(style.layers.some((layer) => layer.id === "ocean-background")).toBe(false);
   });
 });
 

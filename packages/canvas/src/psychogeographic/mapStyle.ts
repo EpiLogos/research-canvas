@@ -43,7 +43,9 @@ export interface WalkPathFeature {
   properties: { walkId: string };
 }
 
-const GLOBE = {
+/** Single source of truth for the Places palette. Consumed by both the style
+ * builder and the MapLibre renderer so the two never drift. */
+export const GLOBE = {
   /** Dark ocean — the background layer colours the sphere surface. */
   ocean: "#0a1322",
   /** Space around the globe. */
@@ -111,6 +113,11 @@ export function createOfflineMapStyle(
     projection === "globe"
       ? [
           {
+            id: "ocean-background",
+            type: "background",
+            paint: { "background-color": GLOBE.ocean },
+          },
+          {
             id: "graticule-lines",
             type: "line",
             source: "graticule",
@@ -130,15 +137,7 @@ export function createOfflineMapStyle(
     version: 8,
     name: "psychogeographic-offline",
     sources,
-    layers: [
-      {
-        id: "ocean-background",
-        type: "background",
-        paint: { "background-color": GLOBE.ocean },
-      },
-      ...globeLayers,
-      baseLayer,
-    ],
+    layers: [...globeLayers, baseLayer],
   };
 
   if (projection === "globe") {
@@ -194,6 +193,14 @@ export function buildWalkPathSource(
       stop.coordinate !== null,
   );
   const coordinates: LonLat[] = [];
+  if (located.length === 1) {
+    // A single located stop is a degenerate LineString — keep the stable
+    // pre-globe data shape rather than emitting an empty coordinates array.
+    coordinates.push([
+      located[0].coordinate.longitude,
+      located[0].coordinate.latitude,
+    ]);
+  }
   for (let i = 0; i < located.length - 1; i += 1) {
     const from = located[i];
     const to = located[i + 1];

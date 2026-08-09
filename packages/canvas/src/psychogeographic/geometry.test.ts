@@ -29,6 +29,23 @@ describe("vector conversion", () => {
     expect(slerp(a, b, 0)).toEqual(a);
     expect(slerp(a, b, 1)).toEqual(b);
   });
+
+  test("antipodal slerp falls back to a finite arc instead of collapsing to the origin", () => {
+    // North and south poles are exactly antipodal.
+    const north = toVector({ latitude: 90, longitude: 0 });
+    const south = toVector({ latitude: -90, longitude: 0 });
+    for (const t of [0.25, 0.5, 0.75]) {
+      const mid = slerp(north, south, t);
+      const length = Math.hypot(mid[0], mid[1], mid[2]);
+      // Every interpolated point stays on the unit sphere (finite, non-zero).
+      expect(length).toBeCloseTo(1, 6);
+      const { latitude } = toLatLng(mid);
+      expect(latitude).toBeGreaterThan(-90);
+      expect(latitude).toBeLessThan(90);
+    }
+    expect(slerp(north, south, 0)).toEqual(north);
+    expect(slerp(north, south, 1)).toEqual(south);
+  });
 });
 
 describe("greatCircleArc", () => {
@@ -86,6 +103,22 @@ describe("buildGraticule", () => {
     for (const feature of [...parallels, ...meridians]) {
       expect(feature.geometry.type).toBe("LineString");
       expect(feature.geometry.coordinates.length).toBeGreaterThan(2);
+    }
+  });
+
+  test("each feature terminates exactly once at its bound (no duplicate consecutive point)", () => {
+    const graticule = buildGraticule(30, 10);
+    for (const feature of graticule.features) {
+      const coordinates = feature.geometry.coordinates;
+      for (let i = 1; i < coordinates.length; i += 1) {
+        expect(coordinates[i]).not.toEqual(coordinates[i - 1]);
+      }
+      const last = coordinates[coordinates.length - 1];
+      if (feature.properties.kind === "parallel") {
+        expect(last[0]).toBe(180);
+      } else {
+        expect(last[1]).toBe(90);
+      }
     }
   });
 });

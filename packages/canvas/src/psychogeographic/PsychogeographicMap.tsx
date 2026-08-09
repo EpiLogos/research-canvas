@@ -76,8 +76,12 @@ export function PsychogeographicMap({
   const selectStop = useCallback(
     (sceneId: string) => {
       const stop = stops.find((candidate) => candidate.sceneId === sceneId);
-      if (!stop?.coordinate) return;
+      if (!stop) return;
       setSelectedStopId(sceneId);
+      // The open-stop contract fires for every stop, located or not — an
+      // unlocated stop's detail must remain reachable.
+      onOpenStop?.(stop);
+      if (!stop.coordinate) return;
       setView("flat");
       void mountedRenderer.current?.setProjection?.("flat");
       void mountedRenderer.current?.flyTo?.(
@@ -85,7 +89,6 @@ export function PsychogeographicMap({
         stop.coordinate.longitude,
         4,
       );
-      onOpenStop?.(stop);
     },
     [onOpenStop, stops],
   );

@@ -46,13 +46,55 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-/** Spherical linear interpolation between two unit vectors at fraction t. */
+function cross(u: Vec3, v: Vec3): Vec3 {
+  return [
+    u[1] * v[2] - u[2] * v[1],
+    u[2] * v[0] - u[0] * v[2],
+    u[0] * v[1] - u[1] * v[0],
+  ];
+}
+
+function normalize(v: Vec3): Vec3 {
+  const length = Math.hypot(v[0], v[1], v[2]) || 1;
+  return [v[0] / length, v[1] / length, v[2] / length];
+}
+
+/** Rodrigues' rotation of `v` by `angle` around unit axis `k`. */
+function rotateAroundAxis(v: Vec3, k: Vec3, angle: number): Vec3 {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const kd = k[0] * v[0] + k[1] * v[1] + k[2] * v[2];
+  const crossV = cross(k, v);
+  return [
+    v[0] * cos + crossV[0] * sin + k[0] * kd * (1 - cos),
+    v[1] * cos + crossV[1] * sin + k[1] * kd * (1 - cos),
+    v[2] * cos + crossV[2] * sin + k[2] * kd * (1 - cos),
+  ];
+}
+
+/**
+ * Spherical linear interpolation between two unit vectors at fraction t.
+ * Exactly antipodal inputs (dot ≈ -1) have an undefined great circle
+ * (`sinOmega` → 0 collapses the interpolation to the origin); we fall back to
+ * a well-defined arc around an arbitrary pole perpendicular to `a`, so the
+ * function never degrades to garbage for valid inputs.
+ */
 export function slerp(a: Vec3, b: Vec3, t: number): Vec3 {
+  // Exact endpoints regardless of path (matters for the antipodal fallback,
+  // where a rotation never lands bit-for-bit on the target).
+  if (t <= 0) return a;
+  if (t >= 1) return b;
   const dot = clamp(a[0] * b[0] + a[1] * b[1] + a[2] * b[2], -1, 1);
   const omega = Math.acos(dot);
   // Nearly identical vectors (or zero-length): no arc to interpolate.
   if (Math.abs(omega) < 1e-9) {
     return a;
+  }
+  // Antipodal: pick a pole not parallel to `a` and rotate `a` by t·π around it.
+  if (dot < -1 + 1e-9) {
+    const pole: Vec3 = Math.abs(a[2]) < 0.9 ? [0, 0, 1] : [0, 1, 0];
+    const axis = normalize(cross(a, pole));
+    return rotateAroundAxis(a, axis, t * Math.PI);
   }
   const sinOmega = Math.sin(omega);
   const aScale = Math.sin((1 - t) * omega) / sinOmega;
@@ -118,7 +160,10 @@ export function buildGraticule(
   const features: GraticuleFeature[] = [];
   for (let latitude = -60; latitude <= 60; latitude += stepDegrees) {
     const coordinates: LonLat[] = [];
-    for (let longitude = -180; longitude <= 180; longitude += sampleDegrees) {
+    // Sample up to (but excluding) the terminal meridian, then close each
+    // feature exactly at 180° — integer steps are exact in float, so the old
+    // inclusive loop emitted a duplicate trailing point.
+    for (let longitude = -180; longitude < 180; longitude += sampleDegrees) {
       coordinates.push([longitude, latitude]);
     }
     coordinates.push([180, latitude]);
@@ -130,7 +175,7 @@ export function buildGraticule(
   }
   for (let longitude = -180; longitude <= 180; longitude += stepDegrees) {
     const coordinates: LonLat[] = [];
-    for (let latitude = -90; latitude <= 90; latitude += sampleDegrees) {
+    for (let latitude = -90; latitude < 90; latitude += sampleDegrees) {
       coordinates.push([longitude, latitude]);
     }
     coordinates.push([longitude, 90]);

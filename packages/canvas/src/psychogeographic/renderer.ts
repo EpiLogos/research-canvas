@@ -11,6 +11,7 @@ import {
   buildPlaceMarkers,
   buildWalkPathSource,
   createOfflineMapStyle,
+  GLOBE,
   type MapSurfaceOptions,
   type MapSurfaceProjection,
   type MapTileSource,
@@ -78,9 +79,6 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
         }) as StyleSpecification,
         attributionControl: { compact: false },
       });
-      if (projection === "globe") {
-        map.setSky({ "sky-color": "#05070f", "sky-horizon-blend": 0.4 });
-      }
       map.on("moveend", emitViewChange);
       map.on("click", "psychogeographic-marker-layer", (event) => {
         const feature = event.features?.[0];
@@ -88,6 +86,11 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
         if (sceneId && stopClickHandler) stopClickHandler(sceneId);
       });
       await waitForStyleLoad(map);
+      // setSky throws "Style is not done loading" if called before the style
+      // reaches load, so it must happen after waitForStyleLoad.
+      if (projection === "globe") {
+        map.setSky({ "sky-color": GLOBE.space, "sky-horizon-blend": 0.4 });
+      }
       emitViewChange();
     },
     async drawWalk(walkId, stops) {
@@ -104,7 +107,7 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
         type: "line",
         source: "psychogeographic-walk",
         layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#8a6bbf", "line-width": 3 },
+        paint: { "line-color": GLOBE.arc, "line-width": 3 },
       });
       ensureLayer(map, {
         id: "psychogeographic-marker-layer",
@@ -112,7 +115,7 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
         source: "psychogeographic-markers",
         paint: {
           "circle-radius": 7,
-          "circle-color": "#d0a24a",
+          "circle-color": GLOBE.marker,
           "circle-stroke-color": "#17171d",
           "circle-stroke-width": 2,
         },
@@ -144,7 +147,27 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
         type: projection === "globe" ? "globe" : "mercator",
       });
       if (projection === "globe") {
-        map.setSky({ "sky-color": "#05070f", "sky-horizon-blend": 0.4 });
+        map.setSky({ "sky-color": GLOBE.space, "sky-horizon-blend": 0.4 });
+      }
+      // MapLibre ignores the sky in mercator, so leaving it set is harmless in
+      // the flat detail view.
+      // The flat detail view is clean: graticule + dark ocean are globe-only.
+      // This keeps the runtime flat path consistent with a flat-created style
+      // (which omits both layers).
+      const globeOnly = projection === "globe";
+      if (map.getLayer("graticule-lines")) {
+        map.setLayoutProperty(
+          "graticule-lines",
+          "visibility",
+          globeOnly ? "visible" : "none",
+        );
+      }
+      if (map.getLayer("ocean-background")) {
+        map.setLayoutProperty(
+          "ocean-background",
+          "visibility",
+          globeOnly ? "visible" : "none",
+        );
       }
     },
     setStopClickHandler(handler) {
@@ -205,7 +228,19 @@ function waitForStyleLoad(
   map: InstanceType<typeof import("maplibre-gl").Map>,
 ): Promise<void> {
   if (map.isStyleLoaded()) return Promise.resolve();
-  return new Promise((resolve) => {
-    map.once("load", () => resolve());
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            "map style load timed out (is the maplibre-gl worker being served?)",
+          ),
+        ),
+      15_000,
+    );
+    map.once("load", () => {
+      clearTimeout(timer);
+      resolve();
+    });
   });
 }
