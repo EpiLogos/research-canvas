@@ -38,6 +38,49 @@ export type {
   TimelineNodeRecord,
   TemporalPrecision,
 } from "./graph";
+export type {
+  ListSceneSequencesRequest,
+  ListScenesRequest,
+  Scene,
+  SceneIdRequest,
+  SceneSequence,
+  UpsertSceneRequest,
+  UpsertSceneSequenceRequest,
+} from "./scenes";
+export type {
+  AddStreetViewRegionRequest,
+  ApplyStreetViewRedactionRequest,
+  ListStreetViewImagesRequest,
+  RegisterStreetViewImageRequest,
+  StreetViewIdRequest,
+  StreetViewImageRecord,
+  StreetViewRedactionReason,
+  StreetViewRedactionStatus,
+  StreetViewRegion,
+} from "./streetView";
+import {
+  sceneFromWire,
+  sceneSequenceFromWire,
+  sceneSequenceToWire,
+  sceneToWire,
+  type ListSceneSequencesRequest,
+  type ListScenesRequest,
+  type Scene,
+  type SceneIdRequest,
+  type SceneSequence,
+  type SceneSequenceWire,
+  type SceneWire,
+  type UpsertSceneRequest,
+  type UpsertSceneSequenceRequest,
+} from "./scenes";
+import type {
+  AddStreetViewRegionRequest,
+  ApplyStreetViewRedactionRequest,
+  ListStreetViewImagesRequest,
+  RegisterStreetViewImageRequest,
+  StreetViewIdRequest,
+  StreetViewImageRecord,
+} from "./streetView";
 
 export type NodeDocumentMutation =
   | { kind: "created" }
@@ -573,6 +616,40 @@ export interface WorkspaceTransport {
   updateSavedSequence(input: { databasePath: string; id: string; name: string; rootNodeId: string | null; edgeIds: string[] }): Promise<SavedSequence>;
   deleteSavedSequence(input: { databasePath: string; id: string }): Promise<void>;
 
+  // ---- Profile scenes and scene sequences (SQLite; vision §3.7/§3.15) ----
+  listScenes(input: ListScenesRequest): Promise<Scene[]>;
+  listSceneSequences(input: ListSceneSequencesRequest): Promise<SceneSequence[]>;
+  getScene(input: SceneIdRequest): Promise<Scene | null>;
+  upsertScene(input: UpsertSceneRequest): Promise<Scene>;
+  upsertSceneSequence(input: UpsertSceneSequenceRequest): Promise<SceneSequence>;
+  deleteScene(input: SceneIdRequest): Promise<void>;
+  deleteSceneSequence(input: SceneIdRequest): Promise<void>;
+
+  // ---- Street-view imagery (SQLite + local redaction pipeline) ----
+  listStreetViewImages(input: ListStreetViewImagesRequest): Promise<StreetViewImageRecord[]>;
+  registerStreetViewImage(input: RegisterStreetViewImageRequest): Promise<StreetViewImageRecord>;
+  addManualStreetViewRegion(input: AddStreetViewRegionRequest): Promise<StreetViewImageRecord>;
+  applyStreetViewRedaction(input: ApplyStreetViewRedactionRequest): Promise<StreetViewImageRecord>;
+  markStreetViewRedactionNoneNeeded(input: StreetViewIdRequest): Promise<StreetViewImageRecord>;
+
+  // ---- Keepsake export (self-contained static bundle) ----
+  writeKeepsakeBundle(input: {
+    outputDir: string;
+    mediaRoot: string;
+    manifestJson: string;
+  }): Promise<{ mediaCopied: number; manifestPath: string }>;
+
+  // ---- Mind-palace curation (SQLite; vision §3.12) ----
+  loadPalaceCuration(input: {
+    databasePath: string;
+    profileScope: string;
+  }): Promise<{ profileScope: string; curation: unknown }>;
+  savePalaceCuration(input: {
+    databasePath: string;
+    profileScope: string;
+    curation: unknown;
+  }): Promise<{ profileScope: string; curation: unknown }>;
+
   // ---- Substance (Neo4j) ----
   readGraphNode(input: { graphNodeId: string }): Promise<GraphNode>;
   findGraphNode(input: { graphNodeId: string }): Promise<GraphNode | null>;
@@ -773,6 +850,90 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     },
     async deleteSavedSequence(request) {
       await invokeTauri<void>("delete_saved_sequence_command", { request });
+    },
+    async listScenes({ databasePath, profileScope }) {
+      const wires = await invokeTauri<SceneWire[]>("list_scenes_command", {
+        request: { databasePath, profileScope },
+      });
+      return wires.map(sceneFromWire);
+    },
+    async listSceneSequences({ databasePath, profileScope }) {
+      const wires = await invokeTauri<SceneSequenceWire[]>("list_scene_sequences_command", {
+        request: { databasePath, profileScope },
+      });
+      return wires.map(sceneSequenceFromWire);
+    },
+    async getScene({ databasePath, id }) {
+      const wire = await invokeTauri<SceneWire | null>("get_scene_command", {
+        request: { databasePath, id },
+      });
+      return wire ? sceneFromWire(wire) : null;
+    },
+    async upsertScene({ databasePath, scene }) {
+      const saved = await invokeTauri<SceneWire>("upsert_scene_command", {
+        request: { databasePath, scene: sceneToWire(scene) },
+      });
+      return sceneFromWire(saved);
+    },
+    async upsertSceneSequence({ databasePath, sequence }) {
+      const saved = await invokeTauri<SceneSequenceWire>("upsert_scene_sequence_command", {
+        request: { databasePath, sequence: sceneSequenceToWire(sequence) },
+      });
+      return sceneSequenceFromWire(saved);
+    },
+    async deleteScene({ databasePath, id }) {
+      await invokeTauri<void>("delete_scene_command", {
+        request: { databasePath, id },
+      });
+    },
+    async deleteSceneSequence({ databasePath, id }) {
+      await invokeTauri<void>("delete_scene_sequence_command", {
+        request: { databasePath, id },
+      });
+    },
+    async listStreetViewImages({ databasePath, profileScope }) {
+      return invokeTauri<StreetViewImageRecord[]>("list_street_view_images_command", {
+        request: { databasePath, profileScope },
+      });
+    },
+    async registerStreetViewImage({ databasePath, mediaRoot, image }) {
+      return invokeTauri<StreetViewImageRecord>("register_street_view_image_command", {
+        request: { databasePath, mediaRoot, image },
+      });
+    },
+    async addManualStreetViewRegion({ databasePath, id, region }) {
+      return invokeTauri<StreetViewImageRecord>("add_manual_street_view_region_command", {
+        request: { databasePath, id, region },
+      });
+    },
+    async applyStreetViewRedaction({ databasePath, mediaRoot, id }) {
+      return invokeTauri<StreetViewImageRecord>("apply_street_view_redaction_command", {
+        request: { databasePath, mediaRoot, id },
+      });
+    },
+    async markStreetViewRedactionNoneNeeded({ databasePath, id }) {
+      return invokeTauri<StreetViewImageRecord>(
+        "mark_street_view_redaction_none_needed_command",
+        { request: { databasePath, id } },
+      );
+    },
+    async writeKeepsakeBundle(input) {
+      return invokeTauri<{ mediaCopied: number; manifestPath: string }>(
+        "write_keepsake_bundle_command",
+        { request: input },
+      );
+    },
+    async loadPalaceCuration(input) {
+      return invokeTauri<{ profileScope: string; curation: unknown }>(
+        "load_palace_curation_command",
+        { request: input },
+      );
+    },
+    async savePalaceCuration(input) {
+      return invokeTauri<{ profileScope: string; curation: unknown }>(
+        "save_palace_curation_command",
+        { request: input },
+      );
     },
     async readGraphNode(input) {
       return invokeTauri<GraphNode>("read_graph_node_command", { request: input });
@@ -998,6 +1159,99 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       await requestJsonWithRetry<void>(
         `/workspace/constellation/sequences/${id}`,
         { method: "DELETE" }
+      );
+    },
+    async listScenes({ databasePath: _, profileScope }) {
+      const params = new URLSearchParams({ profileScope });
+      const wires = await requestJsonWithRetry<SceneWire[]>(
+        `/workspace/scenes?${params.toString()}`,
+      );
+      return wires.map(sceneFromWire);
+    },
+    async listSceneSequences({ databasePath: _, profileScope }) {
+      const params = new URLSearchParams({ profileScope });
+      const wires = await requestJsonWithRetry<SceneSequenceWire[]>(
+        `/workspace/scene-sequences?${params.toString()}`,
+      );
+      return wires.map(sceneSequenceFromWire);
+    },
+    async getScene({ databasePath: _, id }) {
+      const wire = await requestJsonWithRetry<SceneWire | null>(
+        `/workspace/scenes/${encodeURIComponent(id)}`,
+      );
+      return wire ? sceneFromWire(wire) : null;
+    },
+    async upsertScene({ databasePath: _, scene }) {
+      const saved = await requestJsonWithRetry<SceneWire>("/workspace/scenes", {
+        method: "POST",
+        body: sceneToWire(scene),
+      });
+      return sceneFromWire(saved);
+    },
+    async upsertSceneSequence({ databasePath: _, sequence }) {
+      const saved = await requestJsonWithRetry<SceneSequenceWire>("/workspace/scene-sequences", {
+        method: "POST",
+        body: sceneSequenceToWire(sequence),
+      });
+      return sceneSequenceFromWire(saved);
+    },
+    async deleteScene({ databasePath: _, id }) {
+      await requestJsonWithRetry<void>(`/workspace/scenes/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+    },
+    async deleteSceneSequence({ databasePath: _, id }) {
+      await requestJsonWithRetry<void>(
+        `/workspace/scene-sequences/${encodeURIComponent(id)}`,
+        { method: "DELETE" },
+      );
+    },
+    async listStreetViewImages({ databasePath: _, profileScope }) {
+      const params = new URLSearchParams({ profileScope });
+      return requestJsonWithRetry<StreetViewImageRecord[]>(
+        `/workspace/street-view?${params.toString()}`,
+      );
+    },
+    async registerStreetViewImage({ databasePath: _, mediaRoot, image }) {
+      return requestJsonWithRetry<StreetViewImageRecord>("/workspace/street-view", {
+        method: "POST",
+        body: { mediaRoot, image },
+      });
+    },
+    async addManualStreetViewRegion({ databasePath: _, id, region }) {
+      return requestJsonWithRetry<StreetViewImageRecord>(
+        `/workspace/street-view/${encodeURIComponent(id)}/regions`,
+        { method: "POST", body: { region } },
+      );
+    },
+    async applyStreetViewRedaction({ databasePath: _, mediaRoot, id }) {
+      return requestJsonWithRetry<StreetViewImageRecord>(
+        `/workspace/street-view/${encodeURIComponent(id)}/redact`,
+        { method: "POST", body: { mediaRoot } },
+      );
+    },
+    async markStreetViewRedactionNoneNeeded({ databasePath: _, id }) {
+      return requestJsonWithRetry<StreetViewImageRecord>(
+        `/workspace/street-view/${encodeURIComponent(id)}/none-needed`,
+        { method: "POST" },
+      );
+    },
+    async writeKeepsakeBundle(input) {
+      return requestJsonWithRetry<{ mediaCopied: number; manifestPath: string }>(
+        "/workspace/keepsake",
+        { method: "POST", body: input },
+      );
+    },
+    async loadPalaceCuration({ databasePath: _, profileScope }) {
+      const params = new URLSearchParams({ profileScope });
+      return requestJsonWithRetry<{ profileScope: string; curation: unknown }>(
+        `/workspace/palace-curation?${params.toString()}`,
+      );
+    },
+    async savePalaceCuration({ databasePath: _, profileScope, curation }) {
+      return requestJsonWithRetry<{ profileScope: string; curation: unknown }>(
+        "/workspace/palace-curation",
+        { method: "POST", body: { profileScope, curation } },
       );
     },
     async readGraphNode(input) {
@@ -1402,6 +1656,21 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
     createSavedSequence: readOnlyReject,
     updateSavedSequence: readOnlyReject,
     deleteSavedSequence: readOnlyReject,
+    listScenes: readOnlyReject,
+    listSceneSequences: readOnlyReject,
+    getScene: readOnlyReject,
+    upsertScene: readOnlyReject,
+    upsertSceneSequence: readOnlyReject,
+    deleteScene: readOnlyReject,
+    deleteSceneSequence: readOnlyReject,
+    listStreetViewImages: readOnlyReject,
+    registerStreetViewImage: readOnlyReject,
+    addManualStreetViewRegion: readOnlyReject,
+    applyStreetViewRedaction: readOnlyReject,
+    markStreetViewRedactionNoneNeeded: readOnlyReject,
+    writeKeepsakeBundle: readOnlyReject,
+    loadPalaceCuration: readOnlyReject,
+    savePalaceCuration: readOnlyReject,
 
     // ---- substance reads ----
     async readGraphNode({ graphNodeId }) {

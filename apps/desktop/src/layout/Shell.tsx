@@ -19,6 +19,9 @@ import { CommandPalette } from "../features/search/CommandPalette";
 import { TimelineLens } from "@research-canvas/canvas";
 import { createWorkspaceTransport, type GraphNode, type TimelineRelationField } from "@research-canvas/desktop-api";
 import { createTimelineDataSource } from "../features/timeline/createTimelineDataSource";
+import { PsychogeographicLens } from "../features/psychogeographic/PsychogeographicLens";
+import { StoryLens } from "../features/story/StoryLens";
+import { PalaceLensHost } from "../features/palace/PalaceLensHost";
 import {
   readerRecordFromCanvasNode,
   readerRecordFromGraphNode,
@@ -103,7 +106,7 @@ export function Shell() {
   );
 
   const setShellLens = useCallback(
-    (mode: "canvas" | "timeline" | "reading") => {
+    (mode: "canvas" | "timeline" | "psychogeographic" | "story" | "palace" | "reading") => {
       if (mode === "reading") {
         setReadingOverlayOpen(true);
         return;
@@ -343,6 +346,39 @@ export function Shell() {
           )}
           {lens === "timeline" && !timelineDataSource && (
             <section className="canvas-pane" data-testid="timeline-workspace-loading">Loading timeline workspace…</section>
+          )}
+
+          {lens === "psychogeographic" && workspace.transport && workspace.databasePath && workspace.workspaceId && (
+            <section className="canvas-pane" data-testid="psychogeographic-pane" style={{ position: "absolute", inset: 0 }}>
+              <PsychogeographicLens
+                transport={workspace.transport}
+                databasePath={workspace.databasePath}
+                workspaceId={workspace.workspaceId}
+                profileScope="bootstrapping"
+              />
+            </section>
+          )}
+
+          {lens === "story" && workspace.transport && workspace.databasePath && (
+            <section className="canvas-pane" data-testid="story-pane" style={{ position: "absolute", inset: 0 }}>
+              <StoryLens
+                transport={workspace.transport}
+                databasePath={workspace.databasePath}
+                profileScope="migration"
+                workingRoot={workspace.workingRoot ?? ""}
+              />
+            </section>
+          )}
+
+          {lens === "palace" && workspace.transport && workspace.databasePath && workspace.workspaceId && (
+            <section className="canvas-pane" data-testid="palace-pane" style={{ position: "absolute", inset: 0 }}>
+              <PalaceLensHost
+                transport={workspace.transport}
+                databasePath={workspace.databasePath}
+                workspaceId={workspace.workspaceId}
+                profileScope="bootstrapping"
+              />
+            </section>
           )}
 
           {lens === "reading" && (

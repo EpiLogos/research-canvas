@@ -188,6 +188,7 @@ describe("updateNodeTitle", () => {
       evidenceStatus: "documented",
       temporalRole: "occurred_at",
       placeCoverage: "resolved",
+      place: null,
       qlForm: null,
       qlUnitId: null,
       qlArc: null,

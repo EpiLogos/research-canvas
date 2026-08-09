@@ -79,6 +79,11 @@ export class GazetteerIndex {
     return this.byId.size;
   }
 
+  /** Stable iteration over every entry id in the index. */
+  entryIds(): IterableIterator<string> {
+    return this.byId.keys();
+  }
+
   resolveById(id: string): GazetteerEntry | undefined {
     return this.byId.get(id);
   }

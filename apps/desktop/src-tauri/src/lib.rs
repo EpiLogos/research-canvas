@@ -7,9 +7,13 @@ pub mod commands {
     pub mod export;
     pub mod export_graph_bundle;
     pub mod graph;
+    pub mod keepsake;
     pub mod layout;
     pub mod node_document;
+    pub mod palace;
+    pub mod scenes;
     pub mod search;
+    pub mod street_view;
     pub mod terminal;
     pub mod timeline;
 }
@@ -132,6 +136,21 @@ pub fn run() {
             commands::timeline::load_timeline_view_command,
             commands::timeline::load_timeline_relation_field_command,
             commands::timeline::upsert_timeline_layout_command,
+            commands::scenes::list_scenes_command,
+            commands::scenes::list_scene_sequences_command,
+            commands::scenes::get_scene_command,
+            commands::scenes::upsert_scene_command,
+            commands::scenes::upsert_scene_sequence_command,
+            commands::scenes::delete_scene_command,
+            commands::scenes::delete_scene_sequence_command,
+            commands::street_view::list_street_view_images_command,
+            commands::street_view::register_street_view_image_command,
+            commands::street_view::add_manual_street_view_region_command,
+            commands::street_view::apply_street_view_redaction_command,
+            commands::street_view::mark_street_view_redaction_none_needed_command,
+            commands::keepsake::write_keepsake_bundle_command,
+            commands::palace::load_palace_curation_command,
+            commands::palace::save_palace_curation_command,
             commands::graph::upsert_node_layout_command,
             commands::graph::upsert_node_layouts_command,
             commands::graph::upsert_edge_layout_command,

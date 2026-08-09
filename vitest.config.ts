@@ -11,6 +11,9 @@ export default defineConfig({
       "@research-canvas/exporter": fileURLToPath(
         new URL("./packages/exporter/src/index.ts", import.meta.url),
       ),
+      "@research-canvas/geography": fileURLToPath(
+        new URL("./packages/geography/src/index.ts", import.meta.url),
+      ),
       "@research-canvas/desktop-api": fileURLToPath(
         new URL("./packages/desktop-api/src/index.ts", import.meta.url),
       ),

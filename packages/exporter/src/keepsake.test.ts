@@ -10,7 +10,7 @@ import { buildKeepsakeManifest, type KeepsakeInput } from "./keepsake";
 
 const passage = {
   artifactId: "recording-001",
-  unit: { kind: "timestamp_range", startMs: 12_000, endMs: 45_000 },
+  unit: { kind: "timestamp_range", startMs: 12_000, endMs: 45_000 } as const,
 };
 
 function scene(over: Partial<Scene> = {}): Scene {

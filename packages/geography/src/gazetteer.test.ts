@@ -13,12 +13,18 @@ const index = GazetteerIndex.loadNdjson(
 
 describe("GazetteerIndex", () => {
   test("loads the bundled offline subset and resolves by id", () => {
-    expect(index.size).toBe(9);
+    expect(index.size).toBe(12);
     const constantinople = index.resolveById("pleiades:520998");
     expect(constantinople?.names.map((name) => name.name)).toContain(
       "Constantinople",
     );
     expect(index.resolveById("missing")).toBeUndefined();
+  });
+
+  test("resolves the corpus journey cities added to the subset", () => {
+    expect(index.resolveById("wikidata:Q727")?.names[0].name).toBe("Amsterdam");
+    expect(index.resolveById("wikidata:Q90")?.names[0].name).toBe("Paris");
+    expect(index.resolveById("wikidata:Q1085")?.names[0].name).toBe("Praha");
   });
 
   test("searches by name with language preference", () => {

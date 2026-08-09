@@ -1,0 +1,253 @@
+import { describe, expect, test, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+
+import type {
+  GraphNode,
+  TimelineView,
+  WorkspaceTransport,
+} from "@research-canvas/desktop-api";
+import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
+import type { Scene, SceneSequence } from "@research-canvas/schema";
+
+import { PalaceLensHost } from "./PalaceLensHost";
+
+function graphNode(
+  id: string,
+  title: string,
+  entityType: string,
+  over: Partial<GraphNode> = {},
+): GraphNode {
+  return {
+    graphNodeId: id,
+    entityType: entityType as GraphNode["entityType"],
+    title,
+    body: "[]",
+    summary: "",
+    archetypalResonance: null,
+    coordinate: null,
+    sourceCoordinates: [],
+    ...EMPTY_GRAPH_NODE_METADATA,
+    isTemporal: over.isTemporal ?? true,
+    validFrom: over.validFrom ?? "1600-01-01",
+    validTo: over.validTo ?? null,
+    temporalPrecision: over.temporalPrecision ?? "year",
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+    ...over,
+  };
+}
+
+function palaceTimelineView(): TimelineView {
+  return {
+    workspaceId: "sqlite:/tmp/ws",
+    lanes: [{ id: "events" }],
+    diagnostics: [],
+    relationships: [
+      {
+        id: "r1",
+        relType: "LOCATED_AT",
+        sourceGraphNodeId: "council",
+        targetGraphNodeId: "florence",
+        properties: {},
+      },
+      {
+        id: "r2",
+        relType: "INSTANTIATES",
+        sourceGraphNodeId: "council",
+        targetGraphNodeId: "monopoly",
+        properties: {},
+      },
+    ],
+    nodes: [
+      {
+        node: graphNode("council", "Council of Florence", "Event", {
+          validFrom: "1438-01-01",
+          validTo: "1445-12-31",
+        }),
+        anchor: { validFrom: "1438-01-01", validTo: "1445-12-31", precision: "year" },
+        layoutOverride: {
+          lane: "events",
+          offsetY: 0,
+          width: 240,
+          height: 72,
+          style: {},
+          layoutRevision: 1,
+        },
+      },
+      {
+        node: graphNode("florence", "Florence", "Place", {
+          isTemporal: false,
+          validFrom: null,
+          validTo: null,
+          temporalPrecision: null,
+        }),
+        anchor: { validFrom: "invalid", validTo: null, precision: "year" },
+        layoutOverride: {
+          lane: "events",
+          offsetY: 0,
+          width: 240,
+          height: 72,
+          style: {},
+          layoutRevision: 1,
+        },
+      },
+      {
+        node: graphNode("monopoly", "Monopoly mechanism", "Archetype", {
+          isTemporal: false,
+          validFrom: null,
+          validTo: null,
+          temporalPrecision: null,
+        }),
+        anchor: { validFrom: "invalid", validTo: null, precision: "year" },
+        layoutOverride: {
+          lane: "events",
+          offsetY: 0,
+          width: 240,
+          height: 72,
+          style: {},
+          layoutRevision: 1,
+        },
+      },
+      {
+        node: graphNode("banda", "Banda genocide", "Event", {
+          validFrom: "1621-01-01",
+          validTo: "1621-12-31",
+        }),
+        anchor: { validFrom: "1621-01-01", validTo: "1621-12-31", precision: "year" },
+        layoutOverride: {
+          lane: "events",
+          offsetY: 0,
+          width: 240,
+          height: 72,
+          style: {},
+          layoutRevision: 1,
+        },
+      },
+    ],
+  };
+}
+
+function makeTransport(): {
+  transport: WorkspaceTransport;
+  store: { curation: unknown };
+  savedScenes: Scene[];
+  savedSequences: SceneSequence[];
+} {
+  const store: { curation: unknown } = { curation: null };
+  const savedScenes: Scene[] = [];
+  const savedSequences: SceneSequence[] = [];
+  const transport = {
+    async loadTimelineView() {
+      return palaceTimelineView();
+    },
+    async loadPalaceCuration() {
+      return { profileScope: "bootstrapping", curation: store.curation };
+    },
+    async savePalaceCuration({ curation }: { curation: unknown }) {
+      store.curation = curation;
+      return { profileScope: "bootstrapping", curation };
+    },
+    async upsertScene({ scene }: { scene: Scene }) {
+      savedScenes.push(scene);
+      return scene;
+    },
+    async upsertSceneSequence({ sequence }: { sequence: SceneSequence }) {
+      savedSequences.push(sequence);
+      return sequence;
+    },
+  } as unknown as WorkspaceTransport;
+  return { transport, store, savedScenes, savedSequences };
+}
+
+describe("PalaceLensHost", () => {
+  test("generates the palace from the real graph and persists curation", async () => {
+    const { transport } = makeTransport();
+    const saveSpy = vi.fn<
+      (input: {
+        databasePath: string;
+        profileScope: string;
+        curation: unknown;
+      }) => Promise<{ profileScope: string; curation: unknown }>
+    >(async () => ({ profileScope: "bootstrapping", curation: null }));
+    const hostTransport = {
+      ...transport,
+      loadTimelineView: async () => palaceTimelineView(),
+      savePalaceCuration: saveSpy,
+    } as unknown as WorkspaceTransport;
+
+    render(
+      <PalaceLensHost
+        transport={hostTransport}
+        databasePath="/tmp/ws.sqlite"
+        workspaceId="sqlite:/tmp/ws"
+        profileScope="bootstrapping"
+      />,
+    );
+
+    await screen.findByTestId("palace-lens");
+    expect(screen.getAllByTestId(/palace-chamber-/).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getAllByTestId(/palace-pin-/)[0]);
+    await waitFor(() => expect(saveSpy).toHaveBeenCalled());
+    const saved = saveSpy.mock.calls[0]?.[0] as {
+      curation: { chambers: Array<{ pinned: boolean }> };
+    } | undefined;
+    expect(saved).toBeTruthy();
+    if (!saved) return;
+    expect(saved.curation.chambers.some((chamber) => chamber.pinned)).toBe(true);
+  });
+
+  test("persisting the walk writes scenes and the sequence to the profile store", async () => {
+    const { transport, savedScenes, savedSequences } = makeTransport();
+    const viewTransport = {
+      ...transport,
+      loadTimelineView: async () => palaceTimelineView(),
+    } as unknown as WorkspaceTransport;
+    render(
+      <PalaceLensHost
+        transport={viewTransport}
+        databasePath="/tmp/ws.sqlite"
+        workspaceId="sqlite:/tmp/ws"
+        profileScope="bootstrapping"
+      />,
+    );
+
+    await screen.findByTestId("palace-lens");
+    fireEvent.click(screen.getByTestId("palace-persist-walk"));
+
+    await waitFor(() => {
+      expect(savedSequences).toHaveLength(1);
+    });
+    expect(savedScenes.length).toBeGreaterThan(0);
+    expect(savedSequences[0].sceneIds).toEqual(
+      savedScenes.map((scene) => scene.id),
+    );
+  });
+
+  test("empty graphs show the empty state instead of failing", async () => {
+    const emptyView: TimelineView = {
+      workspaceId: "sqlite:/tmp/ws",
+      lanes: [],
+      diagnostics: [],
+      relationships: [],
+      nodes: [],
+    };
+    const transport = {
+      async loadTimelineView() {
+        return emptyView;
+      },
+      async loadPalaceCuration() {
+        return { profileScope: "bootstrapping", curation: null };
+      },
+    } as unknown as WorkspaceTransport;
+    render(
+      <PalaceLensHost
+        transport={transport}
+        databasePath="/tmp/ws.sqlite"
+        workspaceId="sqlite:/tmp/ws"
+        profileScope="bootstrapping"
+      />,
+    );
+    expect(await screen.findByTestId("palace-host-empty")).toBeInTheDocument();
+  });
+});

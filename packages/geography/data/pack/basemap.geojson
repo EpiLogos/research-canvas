@@ -1,0 +1,181 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.12574,
+          51.50853
+        ]
+      },
+      "properties": {
+        "id": "geonames:2643743",
+        "title": "London",
+        "source": "geonames",
+        "precision": "exact"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          11.254,
+          43.7714
+        ]
+      },
+      "properties": {
+        "id": "pleiades:422665",
+        "title": "Florentia",
+        "source": "pleiades",
+        "precision": "approximate"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          28.9784,
+          41.0082
+        ]
+      },
+      "properties": {
+        "id": "pleiades:520998",
+        "title": "Κωνσταντινούπολις",
+        "source": "pleiades",
+        "precision": "exact"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.2913,
+          33.5102
+        ]
+      },
+      "properties": {
+        "id": "pleiades:678106",
+        "title": "دمشق",
+        "source": "pleiades",
+        "precision": "approximate"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.091,
+          51.512
+        ]
+      },
+      "properties": {
+        "id": "pleiades:79577",
+        "title": "Londinium",
+        "source": "pleiades",
+        "precision": "approximate"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          44.4207,
+          32.5364
+        ]
+      },
+      "properties": {
+        "id": "pleiades:893951",
+        "title": "Bābilim",
+        "source": "pleiades",
+        "precision": "approximate"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          14.4214,
+          50.0875
+        ]
+      },
+      "properties": {
+        "id": "wikidata:Q1085",
+        "title": "Praha",
+        "source": "wikidata",
+        "precision": "approximate"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          4.8936,
+          52.3728
+        ]
+      },
+      "properties": {
+        "id": "wikidata:Q727",
+        "title": "Amsterdam",
+        "source": "wikidata",
+        "precision": "approximate"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.1278,
+          51.5074
+        ]
+      },
+      "properties": {
+        "id": "wikidata:Q84",
+        "title": "London",
+        "source": "wikidata",
+        "precision": "exact"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          2.3514,
+          48.8569
+        ]
+      },
+      "properties": {
+        "id": "wikidata:Q90",
+        "title": "Paris",
+        "source": "wikidata",
+        "precision": "approximate"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          28.9784,
+          41.0082
+        ]
+      },
+      "properties": {
+        "id": "wikidata:Q913",
+        "title": "İstanbul",
+        "source": "wikidata",
+        "precision": "approximate"
+      }
+    }
+  ]
+}

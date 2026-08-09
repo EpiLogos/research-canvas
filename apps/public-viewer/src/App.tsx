@@ -8,6 +8,7 @@ import { MobileFallback } from "./routes/MobileFallback";
 import { MapView } from "./routes/MapView";
 import { NodePage } from "./routes/NodePage";
 import { SequenceView } from "./routes/SequenceView";
+import { StoryView } from "./routes/StoryView";
 import { readBootstrappedBundle } from "./OfflineBootstrap";
 
 interface AppProps {
@@ -34,6 +35,10 @@ export function App({ bundle: bundleProp = null }: AppProps) {
 
   if (route.type === "sequence") {
     return <SequenceView bundle={bundle} />;
+  }
+
+  if (route.type === "story") {
+    return <StoryView />;
   }
 
   if (isMobile) {
@@ -123,6 +128,10 @@ function getViewerRoute() {
   const sequenceMatch = path.match(/\/sequences\/([^/]+)$/);
   if (sequenceMatch) {
     return { id: decodeURIComponent(sequenceMatch[1]), type: "sequence" as const };
+  }
+
+  if (path.startsWith("/stories") || path.startsWith("/story")) {
+    return { type: "story" as const };
   }
 
   return { type: "map" as const };

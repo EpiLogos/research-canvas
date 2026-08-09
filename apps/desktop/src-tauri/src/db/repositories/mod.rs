@@ -9,11 +9,13 @@ pub mod layout;
 pub mod node_attachment;
 pub mod node_document;
 pub mod node_relationship;
+pub mod palace;
 pub mod relationship_vocabulary;
 pub mod resource_roots;
 pub mod saved_sequences;
 pub mod scene_repository;
 pub mod search;
+pub mod street_view;
 pub mod timeline_layout;
 
 pub use agent_activity::{AgentActivityRecord, AgentActivityRepository, NewAgentActivity};
@@ -42,11 +44,17 @@ pub use node_document::{
 pub use node_relationship::{
     NodeRelationshipRecord, NodeRelationshipRepository, RelationshipMutation,
 };
+pub use palace::PalaceRepository;
 pub use resource_roots::{ResourceRootRecord, ResourceRootRepository};
 pub use saved_sequences::{SavedSequenceRecord, SavedSequenceRepository};
 pub use scene_repository::{
     SceneAssembler, ScenePlaceFrame, SceneRecord, SceneRepository, SceneSequenceRecord,
     SceneTimeWindow,
+};
+pub use street_view::{
+    apply_region_redaction, assert_portable_path as assert_portable_street_view_path,
+    REDACTION_STATUS_NONE_NEEDED, REDACTION_STATUS_PENDING, REDACTION_STATUS_REDACTED,
+    StreetViewImageRecord, StreetViewRegion, StreetViewRepository,
 };
 pub use search::{SearchHit, SearchIndexSummary, SearchRepository};
 pub use timeline_layout::{TimelineLayoutMutation, TimelineLayoutRecord, TimelineLayoutRepository};

@@ -34,6 +34,7 @@ tauri-plugin-fs = "2"
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
 sha2 = "0.10"
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }

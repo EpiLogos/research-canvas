@@ -1,0 +1,49 @@
+{
+  "formatVersion": 1,
+  "generatedAt": "2026-08-09T04:54:58.524Z",
+  "name": "research-canvas-offline",
+  "offline": true,
+  "tileSource": {
+    "kind": "geojson",
+    "url": "basemap.geojson",
+    "attribution": "Pleiades CC BY 4.0 · Wikidata CC0 · GeoNames CC BY 4.0"
+  },
+  "sources": [
+    {
+      "id": "pleiades",
+      "name": "Pleiades",
+      "license": "CC BY 4.0",
+      "url": "https://pleiades.stoa.org/",
+      "recordCount": 6
+    },
+    {
+      "id": "wikidata",
+      "name": "Wikidata",
+      "license": "CC0",
+      "url": "https://www.wikidata.org/",
+      "recordCount": 5
+    },
+    {
+      "id": "geonames",
+      "name": "GeoNames",
+      "license": "CC BY 4.0",
+      "url": "https://www.geonames.org/",
+      "recordCount": 1
+    }
+  ],
+  "recordCount": 12,
+  "entryIds": [
+    "geonames:2643743",
+    "pleiades:422665",
+    "pleiades:520998",
+    "pleiades:540705",
+    "pleiades:678106",
+    "pleiades:79577",
+    "pleiades:893951",
+    "wikidata:Q1085",
+    "wikidata:Q727",
+    "wikidata:Q84",
+    "wikidata:Q90",
+    "wikidata:Q913"
+  ]
+}

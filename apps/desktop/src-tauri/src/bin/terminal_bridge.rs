@@ -12,6 +12,17 @@ use research_canvas_desktop_lib::{
             PersistConstellationDocumentRequest, ResourceRootLookupRequest,
             ResourceRootMutationRequest, UpdateSavedSequenceRequest,
         },
+        scenes::{
+            delete_scene_at, delete_scene_sequence_at, list_scene_sequences_at, list_scenes_at,
+            upsert_scene_at, upsert_scene_sequence_at,
+        },
+        street_view::{
+            add_manual_street_view_region_at, apply_street_view_redaction_at,
+            list_street_view_images_at, mark_street_view_redaction_none_needed_at,
+            register_street_view_image_at,
+        },
+        keepsake::write_keepsake_bundle_at,
+        palace::{load_palace_curation_at, save_palace_curation_at},
         layout::{flush_canvas_layout_at, FlushCanvasLayoutRequest},
         search::{
             rebuild_constellation_search_index_command, search_constellation_command,
@@ -22,7 +33,10 @@ use research_canvas_desktop_lib::{
     db::{
         canvas_service::CanvasService,
         neo4j::{self, config::Neo4jConfig},
-        repositories::graph::GraphRepository,
+        repositories::{
+            graph::GraphRepository, SceneRecord, SceneSequenceRecord, StreetViewImageRecord,
+            StreetViewRegion,
+        },
     },
     pty::TerminalManager,
 };
@@ -182,6 +196,189 @@ fn handle_request(
             .to_string_lossy()
             .to_string();
         let payload = flush_canvas_layout_at(input)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    // Profile-level scene and scene-sequence routes (vision §3.7/§3.15):
+    // the same wire records the Tauri commands use, served over the dev
+    // bridge so the browser build can author and read scenes.
+    if method == Method::Get && path == "/workspace/scenes" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let profile_scope = query_param(&url, "profileScope")
+            .ok_or_else(|| "missing profileScope query parameter".to_string())?;
+        let payload = list_scenes_at(&database_path, &profile_scope)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/scenes" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let body = read_body(&mut request)?;
+        let scene: SceneRecord =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let payload = upsert_scene_at(&database_path, scene)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if let Some(scene_id) = path.strip_prefix("/workspace/scenes/") {
+        if method == Method::Get {
+            let database_path = session_database_path(&request)?
+                .to_string_lossy()
+                .to_string();
+            let payload = research_canvas_desktop_lib::commands::scenes::get_scene_at(
+                &database_path,
+                scene_id,
+            )?;
+            return respond_json(request, StatusCode(200), payload);
+        }
+        if method == Method::Delete {
+            let database_path = session_database_path(&request)?
+                .to_string_lossy()
+                .to_string();
+            delete_scene_at(&database_path, scene_id)?;
+            return respond_json(request, StatusCode(200), json!({ "ok": true }));
+        }
+    }
+
+    if method == Method::Get && path == "/workspace/scene-sequences" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let profile_scope = query_param(&url, "profileScope")
+            .ok_or_else(|| "missing profileScope query parameter".to_string())?;
+        let payload = list_scene_sequences_at(&database_path, &profile_scope)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/scene-sequences" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let body = read_body(&mut request)?;
+        let sequence: SceneSequenceRecord =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let payload = upsert_scene_sequence_at(&database_path, sequence)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if let Some(sequence_id) = path.strip_prefix("/workspace/scene-sequences/") {
+        if method == Method::Delete {
+            let database_path = session_database_path(&request)?
+                .to_string_lossy()
+                .to_string();
+            delete_scene_sequence_at(&database_path, sequence_id)?;
+            return respond_json(request, StatusCode(200), json!({ "ok": true }));
+        }
+    }
+
+    // Street-view imagery routes: own captured imagery (portable relative
+    // paths inside the media root) plus the local redaction pipeline.
+    if method == Method::Get && path == "/workspace/street-view" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let profile_scope = query_param(&url, "profileScope")
+            .ok_or_else(|| "missing profileScope query parameter".to_string())?;
+        let payload = list_street_view_images_at(&database_path, &profile_scope)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/street-view" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let body = read_body(&mut request)?;
+        let input: serde_json::Value =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let media_root = input["mediaRoot"]
+            .as_str()
+            .ok_or_else(|| "missing mediaRoot".to_string())?;
+        let image: StreetViewImageRecord = serde_json::from_value(
+            input["image"].clone(),
+        )
+        .map_err(|error| error.to_string())?;
+        let payload = register_street_view_image_at(&database_path, media_root, image)?;
+        return respond_json(request, StatusCode(201), payload);
+    }
+
+    if let Some(street_view_path) = path.strip_prefix("/workspace/street-view/") {
+        let (id, action) = match street_view_path.split_once('/') {
+            Some((id, action)) => (id.to_string(), action.to_string()),
+            None => (street_view_path.to_string(), String::new()),
+        };
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+
+        if method == Method::Post && action == "regions" {
+            let body = read_body(&mut request)?;
+            let input: serde_json::Value =
+                serde_json::from_str(&body).map_err(|error| error.to_string())?;
+            let region: StreetViewRegion = serde_json::from_value(input["region"].clone())
+                .map_err(|error| error.to_string())?;
+            let payload = add_manual_street_view_region_at(&database_path, &id, region)?;
+            return respond_json(request, StatusCode(200), payload);
+        }
+
+        if method == Method::Post && action == "redact" {
+            let body = read_body(&mut request)?;
+            let input: serde_json::Value =
+                serde_json::from_str(&body).map_err(|error| error.to_string())?;
+            let media_root = input["mediaRoot"]
+                .as_str()
+                .ok_or_else(|| "missing mediaRoot".to_string())?;
+            let payload = apply_street_view_redaction_at(&database_path, media_root, &id)?;
+            return respond_json(request, StatusCode(200), payload);
+        }
+
+        if method == Method::Post && action == "none-needed" {
+            let payload = mark_street_view_redaction_none_needed_at(&database_path, &id)?;
+            return respond_json(request, StatusCode(200), payload);
+        }
+    }
+
+    if method == Method::Post && path == "/workspace/keepsake" {
+        let body = read_body(&mut request)?;
+        let input: serde_json::Value =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let output_dir = input["outputDir"]
+            .as_str()
+            .ok_or_else(|| "missing outputDir".to_string())?;
+        let media_root = input["mediaRoot"]
+            .as_str()
+            .ok_or_else(|| "missing mediaRoot".to_string())?;
+        let manifest_json = input["manifestJson"]
+            .as_str()
+            .ok_or_else(|| "missing manifestJson".to_string())?;
+        let payload = write_keepsake_bundle_at(output_dir, media_root, manifest_json)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Get && path == "/workspace/palace-curation" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let profile_scope = query_param(&url, "profileScope")
+            .ok_or_else(|| "missing profileScope query parameter".to_string())?;
+        let payload = load_palace_curation_at(&database_path, &profile_scope)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/palace-curation" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let body = read_body(&mut request)?;
+        let input: serde_json::Value =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let profile_scope = input["profileScope"]
+            .as_str()
+            .ok_or_else(|| "missing profileScope".to_string())?;
+        let curation = input["curation"].clone();
+        let payload = save_palace_curation_at(&database_path, profile_scope, curation)?;
         return respond_json(request, StatusCode(200), payload);
     }
 

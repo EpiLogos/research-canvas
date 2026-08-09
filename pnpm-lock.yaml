@@ -50,6 +50,9 @@ importers:
       '@research-canvas/desktop-api':
         specifier: workspace:*
         version: link:../../packages/desktop-api
+      '@research-canvas/geography':
+        specifier: workspace:*
+        version: link:../../packages/geography
       '@research-canvas/node-document':
         specifier: workspace:*
         version: link:../../packages/node-document

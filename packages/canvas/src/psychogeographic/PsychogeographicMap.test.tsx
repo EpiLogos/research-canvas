@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { createLiveServicePolicy } from "@research-canvas/geography";
 
