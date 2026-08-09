@@ -302,7 +302,108 @@ room-as-object, and inside/outside entry behavior.
 - Real tests, no mocks (AGENTS.md): rendering-logic tests exercise the real scene graph and
   real files; WebGL is verified by real-browser e2e.
 
-## 4. Build order and dependencies
+## 4. The full data flow — project to palace
+
+The pipeline is one substrate with five movements. Legacy formations (how the Antichrist
+profile currently exists) are not the target shape; the flow below is the general design,
+and the Antichrist corpus is only the bootstrapping content.
+
+```mermaid
+flowchart LR
+  H[Home · projects] --> I[Ingest · sources + agent chats]
+  I --> C[Constellations · episode / document / conceptual]
+  C --> T[Timeline · dynamic relational query]
+  T --> W[Global/temporal walk · subtimelines in place]
+  W --> P[Palace · objectification]
+  P -. "1/0 compress (ingoing)" .-> C
+  C -. "0/1 unfold (outgoing)" .-> P
+```
+
+### 4.1 Home and projects (D10)
+
+- First-run setup creates or selects a **research canvas home**; packaging ships this setup.
+  Projects live under home; a project is a **directory** (typical) or a **single file**
+  (lightweight — one artifact as a project). Directory projects have a known skeleton:
+  immutable raw corpus + derived workspace. File projects treat the file as the project
+  root; derived data lives in the app-managed workspace store keyed by path/hash — the raw
+  file is never written.
+- `projectSchema` gains `rootType: "directory" | "file"` and `profileScope`; the project
+  is the entry into all surfaces (hardens D7). The project list is the home surface;
+  opening a project routes into its surfaces.
+
+### 4.2 Ingestion — sources and agent chats become QL-organised constellations (D11)
+
+- Two source families: **raw source files** (documents, transcripts, recordings, images)
+  and **agent work** (chats and agent-produced structure in the terminal). Agent harnesses
+  plug in through seams — the tmux terminal session, skill packages, and lifecycle hooks —
+  harness-agnostic by design, so Claude Code, Codex, ai-kit, or a custom harness can drive
+  the same surface. Integration/forking is a first-class design goal, explored through
+  these seams rather than a hard-wired harness.
+- Raw sources are parsed via QL (and MEF) into constellations — derived objects with
+  passage-level provenance. Constellation kinds (same data model, different assembly and
+  telos):
+  - **episode** — captures an event in QL: a transcript or recording becomes a QL reading
+    of the event it carries (agent-parse of the artifact; user-curated).
+  - **document** — a research doc parsed via QL/MEF into structure.
+  - **conceptual** — constructed idea networks assembled over graph objects.
+- QL-organising is **not a rigid mod-6 schema**: constellations are living partial
+  structures at any stage of unfolding (dyad, triad, quaternity, 4+2, nested). The six
+  positions are the complete frame, not a required slot count. QL resonance tags stay
+  optional; QL-aligned titles are chosen by the agent (relative to project/source kind) or
+  by the user, and are user-overridable.
+- Members carry time, place, QL, file refs, deep details/content, other metadata, and
+  Neo4j edges, and are contemplated across other modular constellations in the project.
+
+### 4.3 Encapsulation — the substrate mechanism (D12)
+
+- A constellation can be **encapsulated as a single node** included in another
+  constellation: object compression at the data level. One new substrate relation
+  `ENCAPSULATES` (container → member) with a mode property:
+  - `outgoing` (0/1, bimba) — a node unfolds into its constellation: ground → articulation,
+    source leaning into display.
+  - `ingoing` (1/0, pratibimba) — a constellation compresses into a single node included in
+    a parent: articulation → ground, display leaning back into source.
+- The node and its constellation are the same object at two scales — the quotient
+  identification, exactly as the Spanda genesis runs `0/1 ↔ 1/0`. Recursion is allowed;
+  cycles are prohibited (no transitive self-encapsulation). The latent 5 becomes explicit
+  when the 4+2 nests: recursion depth is nesting level, and the synthesis position of a
+  nested constellation is the recognition of its participation in the larger whole.
+- This deliberately reopens the relationship vocabulary by exactly one slot:
+  encapsulation is the processual backbone of the system, not a content category.
+
+### 4.4 Timeline — dynamic relational query (D13)
+
+- The timeline is a lazy query surface, not a full materialisation: the base view is dated
+  events. Clicking a node fires a live relational query (Neo4j) that loads that node's
+  edges and neighbours on demand; clicked nodes accumulate into a **working set (the
+  stack)**; deep relation property data surfaces (edge provenance, precision, role, mode,
+  temporal bounds). Unloading removes from the stack. The full graph never floods the
+  timeline; relational depth is one click away.
+
+### 4.5 Global/temporal walk — subtimelines in place (D13)
+
+- The timeline composes into a **global/temporal walk**: a traversable sequence of located,
+  dated events across the project — the spine connecting timeline → places → stories.
+- Sub-timelines factor in for **in-place timeline mapping**: any node can frame a
+  sub-timeline (a place's history, a figure's life, an event's causes), mapped in place
+  inside the walk (nested), not as a separate lens. Earth remains the spatial zero-case.
+
+### 4.6 Palace objectification (D5 extension)
+
+- The walk and its constellations objectify into the palace. **Encapsulation level
+  determines palace form**:
+  - a full 4+2 constellation → a room (six faces; members placed by QL position where
+    resonance exists);
+  - a partial constellation → partial architecture faithful to the actual shape (alcove,
+    corridor, wall section — never forced into a cube);
+  - a compressed constellation (a node) → a single palace object: approach it and enter to
+    unfold (0/1) into its internal constellation; exit to compress (1/0) back. The
+    room-as-object of the QL 6+6' layer is this mechanism: inside/outside differentiation
+    IS the 0/1 ↔ 1/0 traversal, enacted spatially.
+- Guided recall walks the encapsulation tree, compressing and expanding as it moves
+  between scales.
+
+## 5. Build order and dependencies
 
 1. **Places surface (rename + globe)** — globe renderer validation, offline posture,
    travel, walk arcs. Blocks everything visual downstream.
@@ -319,8 +420,13 @@ room-as-object, and inside/outside entry behavior.
 7. **Profiles as project layer** — projects carry profile scope and route into the
    surfaces; foundational for the shell rework. No blocker (parallel to 1–6 where it
    touches the project/schema layer).
-8. **Left sidebar harmonization** — projects layer in the left rail routing into icons and
+8. **Constellation ingestion** — QL-organised constellations from sources and agent chats
+   (episode/document/conceptual, flexible shapes, encapsulation contract). Blocked by 7
+   (projects are the ingestion context).
+9. **Timeline dynamic query + global/temporal walk** — lazy relational expansion, working
+   set stack, subtimelines in place. Blocked by 8 (rich constellation data).
+10. **Left sidebar harmonization** — projects layer in the left rail routing into icons and
    surfaces, consistent with the pipeline rail. Blocked by 6 and 7.
-9. **Data-layer hardening** — audit and clean the data layers as the new stores land
+11. **Data-layer hardening** — audit and clean the data layers as the new stores land
    (schema ownership, store boundaries, dead-code removal, migration hygiene, naming
    consistency). Blocked by 7.
