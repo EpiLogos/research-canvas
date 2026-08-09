@@ -36,8 +36,10 @@ The palace ticket's foundation decisions draw on:
   https://dev.to/yelnady/i-built-a-3d-memory-palace-that-listens-remembers-and-speaks-back-2hip
 - **Obsidian "Memory Palace 3D"** — Three.js `CSS3DRenderer` rooms as cubes with six named
   wall faces (`front/back/up/down/left/right`) + a floating central object; images attach to
-  wall faces; FPS navigation. This is the direct precedent for **wall fixtures** and
-  room-as-chamber. Source: https://github.com/latazadehomero/memory-palace
+  wall faces; FPS navigation. Precedent for **wall fixtures** and room-as-chamber — **not an
+  integration target** (it is an Obsidian plugin; we take its principles, never its code).
+  The six-face pattern is re-derived as the bootstrapping profile's QL 6+6' tacit structural
+  layer (§D5 item 11). Source: https://github.com/latazadehomero/memory-palace
 - **Palais de Mémoire** — build rooms, place memory objects inside them, pick objects up and
   carry them between rooms. Precedent for **object placement and object inventory**.
   Source: https://github.com/christopherdebeer/Palais-de-Memoire
@@ -113,26 +115,33 @@ The palace ticket's foundation decisions draw on:
 - Evidence gate: every seeded lane resolves to real located places and real passages;
   rendering + temporal filtering tested with real graph data (no mock fixtures in tests).
 
-### D3 — Agentic asset gathering (terminal-driven, validated, provenance-recorded)
+### D3 — Agentic asset gathering (agent skills in the background tmux session)
 
-- The fetch mechanism is a **specified agent prompt + a deterministic app-side gate**, using
-  the existing xterm ↔ PTY bridge. The agent (human or coding agent in the embedded
-  terminal) runs download commands; nothing is trusted until it passes the gate.
-- New app-side command/CLI (`rc-asset ingest`): validates mime type and byte size against
-  allow-lists, captures source URL + license + retrieval timestamp, imports the bytes into
-  the content-addressed media store, runs the existing local redaction pipeline
-  (pending → detected/manual regions → redacted derived copy; raw bytes untouched), and only
-  then associates the image with a place / walk / scene, writing a provenance record.
+- The terminal is the **access point to the agent**, not a dumb fetch pipe. The embedded
+  terminal is a durable per-workspace tmux session (`tmux new-session -A`, verified in
+  `apps/desktop/src-tauri/src/pty/session.rs`); agents — the antichrist/agent skills, any
+  agent with terminal access — run inside that session in the background. The app hosts the
+  session; it does not fetch on its own.
+- Asset gathering = an agent runs a research/fetch **skill** in the background tmux session:
+  intelligent source and image selection, license checking, and provenance capture — not a
+  direct download. The skill is authored in the repo's agent-skill format (pattern:
+  `.claude/skills/build-movement.md`) and documented in `docs/agents/asset-fetching.md`.
+- The deterministic app-side gate stays as the trust boundary on what the agent produces:
+  `rc-asset ingest` validates mime type and byte size against allow-lists, captures source
+  URL + license + retrieval timestamp, imports the bytes into the content-addressed media
+  store, runs the existing local redaction pipeline (pending → detected/manual regions →
+  redacted derived copy; raw bytes untouched), and only then associates the image with a
+  place / walk / scene, writing a provenance record. Rejections report the reason back into
+  the session so the agent can correct course.
 - Fetch record contract: `{ id, agentSessionId, sourceUrl, license, fetchedAt, mimeType,
   byteSize, validation { mimeOk, sizeOk, licenseOk, sourceOk }, artifactPath,
-  redactionStatus, placeId?, walkId?, sceneId? }`.
-- The agent prompt spec lives in-repo (`docs/agents/asset-fetching.md`): what to fetch, what
-  licenses are acceptable, how to report the result, what to do when the gate rejects.
-- Evidence gate: one documented end-to-end run with a **real gathered image** (e.g., a real
-  CC-licensed photograph fetched by the agent through the terminal) that lands in the
-  street-view store, is redacted locally, and appears associated with a place in a walk.
-  No placeholder or fixture bytes masquerade as gathered assets in the demo; gate unit tests
-  use real image files.
+  redactionStatus, placeId?, walkId?, sceneId? }` — `agentSessionId` links to the tmux
+  session that produced the asset.
+- Evidence gate: one documented end-to-end run where the agent, running in the background
+  tmux session via its skill, gathers a **real CC-licensed image**; the gate validates it;
+  it lands in the street-view store, is redacted locally, and appears associated with a
+  place in a walk. No placeholder or fixture bytes masquerade as gathered assets in the
+  demo; gate unit tests use real image files.
 
 ### D4 — Stories are agnostic journeys
 
@@ -182,25 +191,42 @@ card list is deleted, not dressed up. Its full shape:
    **constellation object**: the chamber's subgraph (nodes + real graph edges) laid out in
    3D (seeded force/spring layout over the actual edges) and rendered as labeled nodes and
    links you can walk around and inspect. This is the graph, embodied — not a picture of it.
-7. **Navigation and guided recall** — first-person navigation (WASD/pointer) plus fly-to
+7. **QL 6+6' tacit structural layer (bootstrapping profile only)** — rooms are cubes whose
+   six interior faces map to the six QL Day positions (P0–P5; per the canonical
+   position–lens coordinates: P0 ground/source, P1 material, P2 dynamis, P3 pattern, P4
+   context, P5 synthesis). Chamber members with QL resonance place on the face matching
+   their position; non-resonant members place on the floor/center or a neutral face. The
+   conjugate 6' (Night positions P0'–P5') maps to the **room-as-object**: from the palace
+   exterior each room presents as an object whose exterior face/portal carries its conjugate
+   position — the room's shadow. Entering the room inverts the view to the six interior
+   faces. The full 12-fold system is therefore shown **structurally**, as an
+   inside/outside differentiation (exterior 6', interior 6), never as labels. QL is
+   generation geometry and placement rules only — tacit, never forced into visible
+   vocabulary; curated titles stay. Other profiles get neutral cube rooms (§3.12
+   profile-aware shaping; QL is never forced on non-bootstrapping profiles).
+8. **Navigation and guided recall** — first-person navigation (WASD/pointer) plus fly-to
    (room/object), and the existing guided-recall mode becomes **embodied**: the camera walks
    the curated palace walk room to room, revealing fixtures/objects one at a time, reusing
    the scene-sequence machinery (palace walk = scene sequence with chamber anchors).
-8. **Curation, persisted** — existing pin/exclude/rename/reorder chamber curation survives
+   For the bootstrapping profile, recall can traverse both halves of the 12-fold: the
+   exterior (rooms as objects, Night faces) and the interior (Day faces) of each room.
+9. **Curation, persisted** — existing pin/exclude/rename/reorder chamber curation survives
    and gains object/fixture/collection placement edits. All palace layout lives in the
    SQLite presentation store (profile-scoped), keyed by chamber/object ids; regeneration is
    stable because generation is deterministic and curation overlays it.
-9. **Exportable** — the palace serializes to a static scene bundle (geometry + layout JSON +
+10. **Exportable** — the palace serializes to a static scene bundle (geometry + layout JSON +
    content-addressed media) that the existing exporter writes and the public viewer renders
    offline, honoring the keepsake posture.
-10. **Profile-aware shaping** — bootstrapping profile shapes chambers with QL vocabulary;
+11. **Profile-aware shaping** — bootstrapping profile shapes chambers with QL vocabulary;
    other profiles shape from their own; QL never forced on non-bootstrapping profiles.
 
 Evidence gate: a navigable palace generated from a **real graph** with real objects on
 walls, a real collection, a real constellation object, persisted curation, an embodied
 guided recall, and an export that opens in the public viewer — all verified by real tests
 (scene-graph/layout unit tests + Playwright WebGL e2e). The card-list implementation is
-removed in this ticket.
+removed in this ticket. For the bootstrapping profile, tests additionally verify the QL
+6+6' structure: six interior faces mapped to P0–P5, exterior conjugate faces on the
+room-as-object, and inside/outside entry behavior.
 
 ### D6 — The canvas becomes a pipeline, not a tab rack
 
@@ -218,6 +244,51 @@ removed in this ticket.
 - Evidence gate: an object is pushed through the entire pipeline (constellation → timeline →
   places → story → palace) with real data and is visible at each stage, verified end to end
   by tests that exercise the real transport contracts.
+
+### D7 — Profiles operate as the project layer
+
+- Projects become profile-scoped: `projectSchema` gains `profileScope`, and the project is
+  the entry point into the surfaces. Opening a project selects its profile; every surface
+  (timeline shaping, story wording, palace shaping, walks, street-view scope) derives its
+  profile from the project instead of a loose string.
+- The profile-scoped records already exist (scenes, sequences, palace curation, street-view
+  images); the project layer binds them: **project → profileScope → surface data**. No
+  duplicate state: one project, one active profile. Future multi-profile projects are an
+  explicit scope selection, never parallel data.
+- Routing: the project list routes into the existing icons and surfaces (files / search /
+  sequences / annotations / inspector / terminal / the pipeline stages).
+- Evidence gate: a profile-scoped project opens, its surfaces read the profile-derived data,
+  and switching projects switches surface scopes with real data — tested through the real
+  transport contracts.
+
+### D8 — Left sidebar harmonization (projects layer into icons and surfaces)
+
+- The left rail gains a proper **projects layer** at the top: project picker and project
+  state; selecting a project routes into its surfaces. The existing icons (files / search /
+  sequences / annotations / inspector / settings / terminal) remain but are scoped to the
+  active project, and the pipeline rail (D6) is the surface spine the sidebar stays
+  consistent with — no tab-rack duplication between rail and sidebar.
+- Left overlay modes (files / search / annotations) become project-scoped; empty states
+  explain project/profile selection instead of showing dead panels.
+- Evidence gate: project selection drives every left-rail surface with real data; rail and
+  sidebar agree on the active surface; e2e covers project → surface routing.
+
+### D9 — Data-layer hardening (clean layers as refinement-2 lands)
+
+- Keep the layers clean and owned: **substrate** (locked graph categories/relationships,
+  temporal validity, provenance) / **profile** (scenes, sequences, geography edges) /
+  **presentation** (layout, curation, palace layout, fetch records). Each store has one
+  repository boundary; joins happen at the repository layer only, never across the database
+  boundary from frontend code.
+- Remove dead code from superseded implementations as they are replaced: the old palace
+  card list, stale migration-framed seed strings after the stories reframe, and any orphaned
+  schema/commands once the new stores land.
+- Migration hygiene: one migration per change, no re-runs on existing workspaces, idempotent
+  seeds; naming consistent across layers (profileScope keys stable internally, visible
+  language agnostic; geography edge vs street-view record vs passage ref never overlap).
+- Evidence gate: a data-layer audit (schema ownership + store boundaries + dead code) lands
+  with tests asserting the boundaries, and the full suites stay green as the new layers are
+  added — the system is updated and cleaned, not only layered.
 
 ## 3. Data posture and invariants that hold (unchanged)
 
@@ -237,11 +308,19 @@ removed in this ticket.
    travel, walk arcs. Blocks everything visual downstream.
 2. **Movement streams** — geography-edge contract + seeds + globe rendering. Blocked by 1.
 3. **Agentic asset gathering** — fetch prompt spec + validation gate + import/redaction/
-   association. Blocked by 1 (place association + globe walk evidence).
+   association; agent skill runs in the background tmux session. Blocked by 1 (place
+   association + globe walk evidence).
 4. **Stories reframe** — agnostic wording + media/street data as scene content. Blocked by 1
    (scene imagery comes from places/walks).
 5. **Palace 3D** — full shape above. Blocked by 4 (story scenes are palace objects with
    media content).
 6. **Canvas pipeline redesign** — pipeline rail + send-to actions + flow view. Blocked by 5
    (the pipeline's terminal stage is the palace).
-
+7. **Profiles as project layer** — projects carry profile scope and route into the
+   surfaces; foundational for the shell rework. No blocker (parallel to 1–6 where it
+   touches the project/schema layer).
+8. **Left sidebar harmonization** — projects layer in the left rail routing into icons and
+   surfaces, consistent with the pipeline rail. Blocked by 6 and 7.
+9. **Data-layer hardening** — audit and clean the data layers as the new stores land
+   (schema ownership, store boundaries, dead-code removal, migration hygiene, naming
+   consistency). Blocked by 7.
