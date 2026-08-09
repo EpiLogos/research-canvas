@@ -32,6 +32,11 @@ export interface MigrationStorySeedInput {
   /** Monorepo root; corpus source coordinates are relative to it. */
   corpusRoot: string;
   gazetteer: GazetteerIndex;
+  /**
+   * The active project's profile scope. Seeding stays on the active project;
+   * falls back to the internal `migration` key when omitted.
+   */
+  profileScope?: string;
 }
 
 export interface MigrationStorySeedResult {
@@ -40,7 +45,6 @@ export interface MigrationStorySeedResult {
   scenes: Scene[];
 }
 
-const PROFILE_SCOPE = "migration";
 const MAX_JOURNEY_STOPS = 4;
 const PASSAGE_SOURCE_PREFIX = "seed:migration-journey";
 
@@ -48,9 +52,10 @@ export async function ensureMigrationStorySeed(
   input: MigrationStorySeedInput,
 ): Promise<MigrationStorySeedResult> {
   const { transport, databasePath } = input;
+  const profileScope = input.profileScope?.trim() || "migration";
   const [existingSequences, existingScenes] = await Promise.all([
-    transport.listSceneSequences({ databasePath, profileScope: PROFILE_SCOPE }),
-    transport.listScenes({ databasePath, profileScope: PROFILE_SCOPE }),
+    transport.listSceneSequences({ databasePath, profileScope }),
+    transport.listScenes({ databasePath, profileScope }),
   ]);
   if (existingSequences.length > 0) {
     return {
@@ -80,7 +85,7 @@ export async function ensureMigrationStorySeed(
     const windowEnd = stop.validTo ?? stop.validFrom;
     const scene: Scene = {
       id: stop.sceneId,
-      profileScope: PROFILE_SCOPE,
+      profileScope,
       placeFrame: {
         placeId: stop.placeId,
         validAt: { instant: stop.validFrom },
@@ -153,7 +158,7 @@ export async function ensureMigrationStorySeed(
 
   const sequence: SceneSequence = {
     id: sequenceId,
-    profileScope: PROFILE_SCOPE,
+    profileScope,
     name: "From origin to destination",
     sceneIds: scenes.map((scene) => scene.id),
     createdAt: now,

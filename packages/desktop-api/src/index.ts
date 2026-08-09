@@ -292,8 +292,10 @@ export interface ResourceRoot {
 
 export interface WorkspaceBootstrap {
   activeConstellationId: string;
-  activeProjectId?: string;
-  activeProfileScope?: string;
+  /** The active project — projects ARE constellations, so this is the same row as `activeConstellationId`. */
+  activeProjectId: string;
+  /** The active project's profile scope; lenses read their surface data through this scope. */
+  activeProfileScope: string;
   databasePath: string;
   /** Server-derived identity of the canonical SQLite path. */
   workspaceId: string;
@@ -311,6 +313,38 @@ export interface ActiveProject {
   projectId: string;
   profileScope: string;
   rootType: ProjectRootType;
+}
+
+export interface HomeProject {
+  id: string;
+  name: string;
+  slug: string;
+  rootPath: string;
+  rootType: ProjectRootType;
+  profileScope: string;
+  summary: string;
+  parentId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ResolveHomeResult {
+  homePath: string;
+  projects: HomeProject[];
+}
+
+export interface ResolveHomeInput {
+  databasePath?: string;
+  homePath?: string;
+}
+
+export interface CreateProjectInput {
+  databasePath: string;
+  homePath: string;
+  name: string;
+  rootType: ProjectRootType;
+  sourcePath?: string;
+  summary?: string;
 }
 
 export interface ConstellationDocument {
@@ -600,6 +634,10 @@ export interface WorkspaceTransport {
   ): Promise<ResourceRoot>;
   bootstrapWorkspace(): Promise<WorkspaceBootstrap>;
   selectProject(input: { databasePath: string; projectId: string }): Promise<ActiveProject>;
+  /** Resolve-or-create the research-canvas home directory (the parent of all projects) and list the projects under it. */
+  resolveOrCreateHome(input: ResolveHomeInput): Promise<ResolveHomeResult>;
+  /** Create a directory or file project under the home. Idempotent per project slug. */
+  createProject(input: CreateProjectInput): Promise<WorkspaceConstellation>;
   detachConstellationResourceRoot(request: {
     databasePath: string;
     constellationId: string;
@@ -803,6 +841,17 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
       });
       activeProfileScope = result.profileScope;
       return result;
+    },
+    async resolveOrCreateHome(input) {
+      return invokeTauri<ResolveHomeResult>("resolve_or_create_home_command", {
+        request: {
+          databasePath: input.databasePath ?? null,
+          homePath: input.homePath ?? null,
+        },
+      });
+    },
+    async createProject(input) {
+      return invokeTauri<WorkspaceConstellation>("create_project_command", { request: input });
     },
     async detachConstellationResourceRoot(request) {
       await invokeTauri<void>("detach_constellation_resource_root_command", {
@@ -1124,6 +1173,21 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     },
     async selectProject() {
       throw new Error("selectProject is not supported by the browser bridge transport");
+    },
+    async resolveOrCreateHome(input) {
+      const params = new URLSearchParams();
+      if (input.databasePath) params.set("databasePath", input.databasePath);
+      if (input.homePath) params.set("homePath", input.homePath);
+      const query = params.toString();
+      return requestJsonWithRetry<ResolveHomeResult>(
+        `/workspace/home${query ? `?${query}` : ""}`
+      );
+    },
+    async createProject(input) {
+      return requestJsonWithRetry<WorkspaceConstellation>("/workspace/projects", {
+        method: "POST",
+        body: input,
+      });
     },
     async detachConstellationResourceRoot({ constellationId, rootPath }) {
       await requestJsonWithRetry<void>(
@@ -1756,6 +1820,8 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
     attachConstellationResourceRoot: readOnlyReject,
     bootstrapWorkspace: readOnlyReject,
     selectProject: readOnlyReject,
+    resolveOrCreateHome: readOnlyReject,
+    createProject: readOnlyReject,
     detachConstellationResourceRoot: readOnlyReject,
     listConstellationResourceRoots: readOnlyReject,
     loadConstellationDocument: readOnlyReject,

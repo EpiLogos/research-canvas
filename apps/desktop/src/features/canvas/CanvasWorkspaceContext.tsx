@@ -42,7 +42,10 @@ import {
   type SavedSequence,
   type SearchHit,
   type GraphNodePatch,
-  type WorkspaceConstellation
+  type WorkspaceConstellation,
+  type ResolveHomeInput,
+  type ResolveHomeResult,
+  type CreateProjectInput
 } from "@research-canvas/desktop-api";
 type WorkspaceTransport = ReturnType<typeof createWorkspaceTransport>;
 import {
@@ -71,6 +74,16 @@ interface WorkspaceStores {
 interface CanvasWorkspaceContextValue extends WorkspaceStores {
   activeConstellation: WorkspaceConstellation | null;
   activeConstellationId: string | null;
+  /** The active project — projects ARE constellations, so this mirrors `activeConstellationId`. */
+  activeProjectId: string | null;
+  /** The active project's profile scope; profile-scoped surfaces read through this. */
+  activeProfileScope: string | null;
+  /** Select a project by id, switching the active profile scope (and re-hydrating the canvas for its primary canvas). */
+  selectProject: (projectId: string) => Promise<void>;
+  /** Resolve-or-create the research-canvas home directory and list projects under it. */
+  resolveOrCreateHome: (input: ResolveHomeInput) => Promise<ResolveHomeResult>;
+  /** Create a directory or file project under the home. */
+  createProject: (input: CreateProjectInput) => Promise<WorkspaceConstellation>;
   canvasId: string;
   databasePath: string | null;
   workspaceId: string | null;
@@ -175,6 +188,8 @@ export function CanvasWorkspaceProvider({
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [activeConstellation, setActiveConstellation] = useState<WorkspaceConstellation | null>(null);
   const [activeConstellationId, setActiveConstellationId] = useState<string | null>(null);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [activeProfileScope, setActiveProfileScope] = useState<string | null>(null);
   const [activeCanvasId, setActiveCanvasId] = useState(EMPTY_CANVAS_ID);
   const [entries, setEntries] = useState<IndexedEntry[]>([]);
   const [resourceRoots, setResourceRoots] = useState<ResourceRoot[]>([]);
@@ -263,6 +278,8 @@ export function CanvasWorkspaceProvider({
             ? current
             : workspace.activeConstellationId
         );
+        setActiveProjectId(workspace.activeProjectId);
+        setActiveProfileScope(workspace.activeProfileScope);
         setErrorMessage(null);
       })
       .catch((error: Error) => {
@@ -779,6 +796,37 @@ export function CanvasWorkspaceProvider({
     setActiveConstellationId(constellationId);
   }, [activateCanvasTabById, activeConstellationId, captureActiveCanvasTabSession]);
 
+  const selectProject = useCallback(
+    async (projectId: string) => {
+      if (!databasePath) {
+        throw new Error("selectProject: no database path yet");
+      }
+      const selected = await transport.selectProject({ databasePath, projectId });
+      // Guard against stale state: the active scope always follows the
+      // selected project, and the canvas re-hydrates from the project's
+      // primary canvas because activeConstellationId changes too.
+      setActiveProjectId(selected.projectId);
+      setActiveProfileScope(selected.profileScope);
+      selectedEdgeIdRef.current = null;
+      selectedNodeIdRef.current = null;
+      setSelectedEdgeId(null);
+      setSelectedNodeId(null);
+      setActiveConstellationId(selected.projectId);
+      setErrorMessage(null);
+    },
+    [databasePath, transport],
+  );
+
+  const resolveOrCreateHome = useCallback(
+    (input: ResolveHomeInput) => transport.resolveOrCreateHome(input),
+    [transport],
+  );
+
+  const createProject = useCallback(
+    (input: CreateProjectInput) => transport.createProject(input),
+    [transport],
+  );
+
   const closeCanvasTab = useCallback(async (tabId: string) => {
     const current = canvasTabStateRef.current;
     const tab = current.tabs.find((candidate) => candidate.id === tabId);
@@ -830,6 +878,11 @@ export function CanvasWorkspaceProvider({
       ...stores,
       activeConstellation,
       activeConstellationId,
+      activeProjectId,
+      activeProfileScope,
+      selectProject,
+      resolveOrCreateHome,
+      createProject,
       canvasId: activeCanvasId,
       databasePath,
       workspaceId,
@@ -1231,6 +1284,11 @@ export function CanvasWorkspaceProvider({
     [
       activeConstellation,
       activeConstellationId,
+      activeProjectId,
+      activeProfileScope,
+      selectProject,
+      resolveOrCreateHome,
+      createProject,
       activeCanvasId,
       contentLinkingActions,
       databasePath,

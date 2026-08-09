@@ -215,4 +215,45 @@ describe("ensureMigrationStorySeed", () => {
     expect(savedScenes).toHaveLength(0);
     expect(savedSequences).toHaveLength(0);
   });
+
+  test("writes scenes and the sequence into the active project's profile scope", async () => {
+    const { transport, savedScenes, savedSequences } = transportFixture();
+    const pack = loadBundledGeographyPack();
+
+    const result = await ensureMigrationStorySeed({
+      transport,
+      databasePath: "/tmp/ws.sqlite",
+      workspaceId: "sqlite:/tmp/ws",
+      corpusRoot: "/tmp/ws",
+      gazetteer: pack.gazetteer,
+      profileScope: "project:alpha-field",
+    });
+
+    expect(result.seeded).toBe(true);
+    expect(savedScenes).toHaveLength(3);
+    for (const scene of savedScenes) {
+      expect(scene.profileScope).toBe("project:alpha-field");
+    }
+    expect(savedSequences[0]?.profileScope).toBe("project:alpha-field");
+  });
+
+  test("falls back to the internal migration scope when no profile scope is provided", async () => {
+    const { transport, savedScenes, savedSequences } = transportFixture();
+    const pack = loadBundledGeographyPack();
+
+    const result = await ensureMigrationStorySeed({
+      transport,
+      databasePath: "/tmp/ws.sqlite",
+      workspaceId: "sqlite:/tmp/ws",
+      corpusRoot: "/tmp/ws",
+      gazetteer: pack.gazetteer,
+      profileScope: "   ",
+    });
+
+    expect(result.seeded).toBe(true);
+    for (const scene of savedScenes) {
+      expect(scene.profileScope).toBe("migration");
+    }
+    expect(savedSequences[0]?.profileScope).toBe("migration");
+  });
 });

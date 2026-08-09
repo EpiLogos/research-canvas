@@ -354,7 +354,7 @@ export function Shell() {
                 transport={workspace.transport}
                 databasePath={workspace.databasePath}
                 workspaceId={workspace.workspaceId}
-                profileScope="bootstrapping"
+                profileScope={workspace.activeProfileScope ?? "bootstrapping"}
                 mediaRoot={workspace.workingRoot ?? ""}
               />
             </section>
@@ -367,7 +367,7 @@ export function Shell() {
                 databasePath={workspace.databasePath}
                 workspaceId={workspace.workspaceId}
                 repoRoot={workspace.repoRoot ?? ""}
-                profileScope="migration"
+                profileScope={workspace.activeProfileScope ?? "migration"}
                 workingRoot={workspace.workingRoot ?? ""}
               />
             </section>
@@ -379,7 +379,7 @@ export function Shell() {
                 transport={workspace.transport}
                 databasePath={workspace.databasePath}
                 workspaceId={workspace.workspaceId}
-                profileScope="bootstrapping"
+                profileScope={workspace.activeProfileScope ?? "bootstrapping"}
               />
             </section>
           )}

@@ -85,6 +85,7 @@ export function StoryLens({
           workspaceId,
           corpusRoot: repoRoot,
           gazetteer: loadBundledGeographyPack().gazetteer,
+          profileScope,
         });
         await reload();
       } catch (cause) {
@@ -106,6 +107,7 @@ export function StoryLens({
     repoRoot,
     workingRoot,
     workspaceId,
+    profileScope,
   ]);
 
   const storyScenes: StorySurfaceSceneData[] = useMemo(
