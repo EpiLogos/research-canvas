@@ -337,9 +337,9 @@ fn json_decode(error: serde_json::Error) -> rusqlite::Error {
 /// Applies the redaction pipeline: blurs every region on a derived copy of
 /// the image and writes it next to the source under `redacted/`. Returns the
 /// portable output path relative to the media root. The source file is never
-/// modified. The pipeline decodes PNG in v1 (the bundled `image` feature set);
-/// other formats are rejected with a clear error rather than silently
-/// producing an unredacted copy.
+/// modified. The bundled codecs are PNG and JPEG (the common fieldwork
+/// formats); other formats are rejected with a clear error rather than
+/// silently producing an unredacted copy.
 pub fn apply_region_redaction(
     media_root: &Path,
     record: &StreetViewImageRecord,

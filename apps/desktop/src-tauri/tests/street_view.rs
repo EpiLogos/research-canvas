@@ -51,6 +51,26 @@ fn write_test_png(media_root: &std::path::Path, name: &str) {
         .expect("write fixture png");
 }
 
+fn write_test_jpeg(media_root: &std::path::Path, name: &str) {
+    let mut image = RgbImage::from_pixel(64, 64, Rgb([90, 140, 60]));
+    for y in 0..16 {
+        for x in 0..16 {
+            image.put_pixel(
+                x,
+                y,
+                if (x + y) % 2 == 0 {
+                    Rgb([220, 40, 40])
+                } else {
+                    Rgb([240, 230, 200])
+                },
+            );
+        }
+    }
+    image
+        .save(media_root.join(name))
+        .expect("write fixture jpeg");
+}
+
 fn pixel(image: &RgbImage, x: u32, y: u32) -> Rgb<u8> {
     *image.get_pixel(x, y)
 }
@@ -210,4 +230,61 @@ fn street_view_list_round_trips_through_the_command() {
     assert!(list_street_view_images_at(&database_path, "bootstrapping")
         .expect("other profile")
         .is_empty());
+}
+
+#[test]
+fn street_view_redaction_pipeline_handles_jpeg_fieldwork_imagery() {
+    let dir = tempdir().unwrap();
+    let media_root = dir.path().join("media");
+    std::fs::create_dir_all(&media_root).unwrap();
+    write_test_jpeg(&media_root, "crossing.jpg");
+    let database_path = dir.path().join("street-view.sqlite");
+    let database_path = database_path.to_string_lossy().to_string();
+    let media_root_string = media_root.to_string_lossy().to_string();
+
+    let registered = register_street_view_image_at(
+        &database_path,
+        &media_root_string,
+        image_record("img-jpeg", "crossing.jpg"),
+    )
+    .expect("register jpeg image");
+    assert_eq!(registered.artifact_path, "crossing.jpg");
+
+    let with_region = add_manual_street_view_region_at(
+        &database_path,
+        "img-jpeg",
+        StreetViewRegion {
+            x: 0.0,
+            y: 0.0,
+            width: 0.25,
+            height: 0.25,
+            reason: "license_plate".into(),
+            source: "manual".into(),
+        },
+    )
+    .expect("add region to jpeg");
+    assert_eq!(with_region.redaction_regions.len(), 1);
+
+    let redacted = apply_street_view_redaction_at(
+        &database_path,
+        &media_root_string,
+        "img-jpeg",
+    )
+    .expect("apply redaction to jpeg");
+    assert_eq!(redacted.redaction_status, REDACTION_STATUS_REDACTED);
+
+    let output_path = media_root.join(
+        redacted
+            .redacted_artifact_path
+            .expect("redacted artifact path"),
+    );
+    assert!(output_path.is_file());
+    let output = image::open(&output_path).expect("decode redacted png").to_rgb8();
+    // The checkerboard contrast inside the region is gone after the blur.
+    let blurred = pixel(&output, 8, 8);
+    assert_ne!(blurred, Rgb([220, 40, 40]));
+    assert_ne!(blurred, Rgb([240, 230, 200]));
+    // Outside the region the JPEG background survives (within codec tolerance).
+    let outside = pixel(&output, 40, 40);
+    assert!(outside.0[0] > 60 && outside.0[1] > 110 && outside.0[2] > 40);
 }
