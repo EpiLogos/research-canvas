@@ -27,6 +27,16 @@ fn scene(id: &str, profile: &str) -> SceneRecord {
             "artifactId": "recording-001",
             "unit": { "kind": "timestamp_range", "startMs": 12000, "endMs": 45000 },
         })],
+        consents: vec![serde_json::json!({
+            "passageRef": {
+                "artifactId": "recording-001",
+                "unit": { "kind": "timestamp_range", "startMs": 12000, "endMs": 45000 }
+            },
+            "state": "captured",
+            "scope": "publication",
+            "capturedAt": "2026-08-08T10:00:00.000Z"
+        })],
+        redactions: vec![],
         language_variants: vec![serde_json::json!({
             "id": "variant-ar-1",
             "language": "ar",

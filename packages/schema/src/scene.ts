@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { passageRefKey, passageRefSchema } from "./passage";
+import { passageConsentSchema, redactedSpanSchema } from "./consent";
 import { compareTemporalBounds, isoTemporalBoundSchema } from "./time";
 
 /** A scene's time window; instants are allowed (start === end). */
@@ -118,6 +119,10 @@ export const sceneSchema = z
     timeWindow: sceneTimeWindowSchema,
     people: z.array(scenePeopleRefSchema),
     passages: z.array(passageRefSchema),
+    /** Passage-level consent and redaction artifacts (vision §3.13): derived,
+     * never written into the raw corpus. Publication filters on these. */
+    consents: z.array(passageConsentSchema).default([]),
+    redactions: z.array(redactedSpanSchema).default([]),
     languageVariants: z.array(sceneLanguageVariantSchema),
     title: z.string().optional(),
     narration: z.string().optional(),

@@ -107,6 +107,8 @@ pub struct SceneRecord {
     pub time_window: SceneTimeWindow,
     pub people: Vec<Value>,
     pub passages: Vec<Value>,
+    pub consents: Vec<Value>,
+    pub redactions: Vec<Value>,
     pub language_variants: Vec<Value>,
     pub title: Option<String>,
     pub narration: Option<String>,
@@ -153,6 +155,8 @@ impl<'conn> SceneRepository<'conn> {
         for (name, values) in [
             ("people", &scene.people),
             ("passages", &scene.passages),
+            ("consents", &scene.consents),
+            ("redactions", &scene.redactions),
             ("languageVariants", &scene.language_variants),
             ("curationEvents", &scene.curation_events),
         ] {
@@ -183,9 +187,10 @@ impl<'conn> SceneRepository<'conn> {
         self.connection.execute(
             "INSERT INTO scenes (
              id, profile_scope, place_frame_json, time_window_json, people_json,
-             passages_json, language_variants_json, title, narration, assembled_by,
-             curation_events_json, nested_sequence_ids_json, created_at, updated_at)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
+             passages_json, consents_json, redactions_json, language_variants_json,
+             title, narration, assembled_by, curation_events_json,
+             nested_sequence_ids_json, created_at, updated_at)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
             params![
                 scene.id,
                 scene.profile_scope,
@@ -195,6 +200,8 @@ impl<'conn> SceneRepository<'conn> {
                     .map_err(validation_error)?,
                 serde_json::to_string(&scene.people).map_err(validation_error)?,
                 serde_json::to_string(&scene.passages).map_err(validation_error)?,
+                serde_json::to_string(&scene.consents).map_err(validation_error)?,
+                serde_json::to_string(&scene.redactions).map_err(validation_error)?,
                 serde_json::to_string(&scene.language_variants)
                     .map_err(validation_error)?,
                 scene.title,
@@ -216,8 +223,9 @@ impl<'conn> SceneRepository<'conn> {
         self.connection
             .query_row(
                 "SELECT id, profile_scope, place_frame_json, time_window_json, people_json,
-                 passages_json, language_variants_json, title, narration, assembled_by,
-                 curation_events_json, nested_sequence_ids_json, created_at, updated_at
+                 passages_json, consents_json, redactions_json, language_variants_json,
+                 title, narration, assembled_by, curation_events_json,
+                 nested_sequence_ids_json, created_at, updated_at
                  FROM scenes WHERE id = ?1",
                 [id],
                 scene_from_row,
@@ -229,8 +237,9 @@ impl<'conn> SceneRepository<'conn> {
     pub fn list_for_profile(&self, profile_scope: &str) -> RepositoryResult<Vec<SceneRecord>> {
         let mut statement = self.connection.prepare(
             "SELECT id, profile_scope, place_frame_json, time_window_json, people_json,
-             passages_json, language_variants_json, title, narration, assembled_by,
-             curation_events_json, nested_sequence_ids_json, created_at, updated_at
+             passages_json, consents_json, redactions_json, language_variants_json,
+             title, narration, assembled_by, curation_events_json,
+             nested_sequence_ids_json, created_at, updated_at
              FROM scenes WHERE profile_scope = ?1 ORDER BY created_at ASC",
         )?;
         let rows = statement.query_map([profile_scope], scene_from_row)?;
@@ -242,9 +251,10 @@ impl<'conn> SceneRepository<'conn> {
         let now = current_timestamp();
         let affected = self.connection.execute(
             "UPDATE scenes SET profile_scope=?2, place_frame_json=?3, time_window_json=?4,
-             people_json=?5, passages_json=?6, language_variants_json=?7, title=?8,
-             narration=?9, assembled_by=?10, curation_events_json=?11,
-             nested_sequence_ids_json=?12, updated_at=?13 WHERE id=?1",
+             people_json=?5, passages_json=?6, consents_json=?7, redactions_json=?8,
+             language_variants_json=?9, title=?10, narration=?11, assembled_by=?12,
+             curation_events_json=?13, nested_sequence_ids_json=?14, updated_at=?15
+             WHERE id=?1",
             params![
                 scene.id,
                 scene.profile_scope,
@@ -254,6 +264,8 @@ impl<'conn> SceneRepository<'conn> {
                     .map_err(validation_error)?,
                 serde_json::to_string(&scene.people).map_err(validation_error)?,
                 serde_json::to_string(&scene.passages).map_err(validation_error)?,
+                serde_json::to_string(&scene.consents).map_err(validation_error)?,
+                serde_json::to_string(&scene.redactions).map_err(validation_error)?,
                 serde_json::to_string(&scene.language_variants)
                     .map_err(validation_error)?,
                 scene.title,
@@ -411,9 +423,11 @@ fn scene_from_row(row: &Row<'_>) -> SqlResult<SceneRecord> {
     let time_window: String = row.get(3)?;
     let people: String = row.get(4)?;
     let passages: String = row.get(5)?;
-    let language_variants: String = row.get(6)?;
-    let curation_events: String = row.get(10)?;
-    let nested_sequence_ids: String = row.get(11)?;
+    let consents: String = row.get(6)?;
+    let redactions: String = row.get(7)?;
+    let language_variants: String = row.get(8)?;
+    let curation_events: String = row.get(12)?;
+    let nested_sequence_ids: String = row.get(13)?;
     Ok(SceneRecord {
         id: row.get(0)?,
         profile_scope: row.get(1)?,
@@ -421,21 +435,23 @@ fn scene_from_row(row: &Row<'_>) -> SqlResult<SceneRecord> {
         time_window: serde_json::from_str(&time_window).map_err(json_decode)?,
         people: serde_json::from_str(&people).map_err(json_decode)?,
         passages: serde_json::from_str(&passages).map_err(json_decode)?,
+        consents: serde_json::from_str(&consents).map_err(json_decode)?,
+        redactions: serde_json::from_str(&redactions).map_err(json_decode)?,
         language_variants: serde_json::from_str(&language_variants)
             .map_err(json_decode)?,
-        title: row.get(7)?,
-        narration: row.get(8)?,
-        assembled_by: SceneAssembler::try_from(row.get::<_, String>(9)?)
+        title: row.get(9)?,
+        narration: row.get(10)?,
+        assembled_by: SceneAssembler::try_from(row.get::<_, String>(11)?)
             .map_err(|error| rusqlite::Error::FromSqlConversionFailure(
-                9,
+                11,
                 rusqlite::types::Type::Text,
                 Box::new(error),
             ))?,
         curation_events: serde_json::from_str(&curation_events).map_err(json_decode)?,
         nested_sequence_ids: serde_json::from_str(&nested_sequence_ids)
             .map_err(json_decode)?,
-        created_at: row.get(12)?,
-        updated_at: row.get(13)?,
+        created_at: row.get(14)?,
+        updated_at: row.get(15)?,
     })
 }
 

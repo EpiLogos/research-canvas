@@ -118,6 +118,10 @@ const MIGRATIONS: &[Migration] = &[
         version: "0026_scenes",
         sql: include_str!("../../migrations/0026_scenes.sql"),
     },
+    Migration {
+        version: "0027_scene_consent",
+        sql: include_str!("../../migrations/0027_scene_consent.sql"),
+    },
 ];
 
 impl MigrationRunner {
