@@ -1,8 +1,14 @@
 # Build execution map — Research Canvas surfaces
 
 **Date:** 2026-08-08
-**Status:** execution phase after the wayfinder run closed #2–#11; destination is the locked
-vision spec `docs/superpowers/specs/2026-08-08-research-canvas-surfaces-vision.md`.
+**Status:** superseded by the refinement-2 map
+([#17](https://github.com/EpiLogos/research-canvas/issues/17),
+`docs/wayfinder/2026-08-09-refinement-2-direction.md` +
+`docs/wayfinder/2026-08-09-refinement-2-design.md`). The slice builds below shipped, but the
+product review reworked their shape: Places is globe-first, stories are agnostic journeys,
+the palace is a real 3D space, and the canvas is a pipeline. Slice issues #14–#16 are closed
+with pointers to the rework tickets. The locked vision spec
+`docs/superpowers/specs/2026-08-08-research-canvas-surfaces-vision.md` remains canonical.
 
 ## Live issues (2026-08-09)
 
