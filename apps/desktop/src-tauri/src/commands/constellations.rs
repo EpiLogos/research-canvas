@@ -371,6 +371,20 @@ fn home_project_payload(constellation: Constellation) -> HomeProjectPayload {
     }
 }
 
+/// Whether a project root lives under the research-canvas home directory.
+/// The single predicate shared by the home listing and project creation so the
+/// "projects live under home" invariant can never diverge between them. Paths
+/// are canonicalised when they exist so a symlinked home (e.g. macOS `/var`
+/// → `/private/var`) does not break the comparison; lexical fallback keeps the
+/// check working before a project is scaffolded.
+fn is_project_under_home(root_path: &Path, home: &Path) -> bool {
+    let root = fs::canonicalize(root_path).unwrap_or_else(|_| root_path.to_path_buf());
+    let home = fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
+    root.strip_prefix(&home)
+        .map(|suffix| !suffix.as_os_str().is_empty())
+        .unwrap_or(false)
+}
+
 /// Lists projects whose root path lives under the home directory. Projects are
 /// constellations; the home filter is applied over the flat constellation list.
 pub fn list_home_projects(
@@ -380,7 +394,7 @@ pub fn list_home_projects(
     let all = list_constellations_flat(connection)?;
     Ok(all
         .into_iter()
-        .filter(|constellation| Path::new(&constellation.root_path).starts_with(home))
+        .filter(|constellation| is_project_under_home(Path::new(&constellation.root_path), home))
         .collect())
 }
 
@@ -420,6 +434,61 @@ pub fn resolve_or_create_home_command(
     Ok(result)
 }
 
+/// Resolves the final slug for a new project and, when the caller is
+/// re-creating an existing project, that existing row.
+///
+/// Idempotency is scoped to the requested home: an identical slug under this
+/// home returns the existing project. Because `projects.slug` is globally
+/// unique, a base slug already taken by a constellation *outside* the home
+/// (e.g. the seeded `root-archetypal-field`) is disambiguated to `base-1`,
+/// `base-2`, … rather than silently returning the foreign row or tripping a
+/// raw UNIQUE constraint. The disambiguated slug is also checked for an
+/// existing home project, so re-creating a previously-disambiguated project is
+/// still idempotent.
+fn resolve_home_project_slug(
+    connection: &Connection,
+    home: &Path,
+    base_slug: &str,
+) -> Result<(Option<Constellation>, String), String> {
+    let constellations = list_constellations_flat(connection)?;
+    let existing_slugs: BTreeSet<&str> = constellations
+        .iter()
+        .map(|constellation| constellation.slug.as_str())
+        .collect();
+
+    let home_project = |slug: &str| {
+        constellations
+            .iter()
+            .find(|constellation| {
+                constellation.slug == slug
+                    && is_project_under_home(Path::new(&constellation.root_path), home)
+            })
+            .cloned()
+    };
+
+    if let Some(existing) = home_project(base_slug) {
+        return Ok((Some(existing), base_slug.to_string()));
+    }
+    if !existing_slugs.contains(base_slug) {
+        return Ok((None, base_slug.to_string()));
+    }
+
+    let mut suffix = 1u32;
+    loop {
+        let candidate = format!("{base_slug}-{suffix}");
+        // A previously-disambiguated project under this home must be returned
+        // before the global collision check, or re-creation would keep
+        // disambiguating (creating a new row each time).
+        if let Some(existing) = home_project(&candidate) {
+            return Ok((Some(existing), candidate));
+        }
+        if !existing_slugs.contains(candidate.as_str()) {
+            return Ok((None, candidate));
+        }
+        suffix += 1;
+    }
+}
+
 pub fn create_project_at(
     request: CreateProjectRequest,
 ) -> Result<WorkspaceConstellationPayload, String> {
@@ -445,14 +514,12 @@ pub fn create_project_at(
     let home = PathBuf::from(&request.home_path);
     fs::create_dir_all(&home).map_err(|error| error.to_string())?;
 
-    let (root_path, slug) = if root_type == "directory" {
+    let base_slug = if root_type == "directory" {
         let slug = slugify_project_name(&request.name);
         if slug.is_empty() {
             return Err("name produced an empty slug".to_string());
         }
-        let project_dir = home.join(&slug);
-        scaffold_directory_project(&project_dir)?;
-        (project_dir.to_string_lossy().to_string(), slug)
+        slug
     } else {
         let source_path = request
             .source_path
@@ -462,21 +529,46 @@ pub fn create_project_at(
         if !source.is_file() {
             return Err(format!("sourcePath `{source_path}` is not a file"));
         }
-        // The raw file is the project root; it is NEVER written by the app.
-        let slug = file_project_slug(&source);
-        (source.to_string_lossy().to_string(), slug)
+        // Projects live under the home (§4.1): a file project's raw file must
+        // resolve to a path under the home directory. The raw file is NEVER
+        // written by the app; it is the project root, and derived data lives
+        // in the app-managed store keyed by path/hash.
+        if !is_project_under_home(&source, &home) {
+            return Err(format!(
+                "file project source `{source_path}` must live under the research-canvas home `{}`",
+                home.to_string_lossy()
+            ));
+        }
+        file_project_slug(&source)
     };
 
-    let database = Database::open(PathBuf::from(&request.database_path)).map_err(|e| e.to_string())?;
+    let database =
+        Database::open(PathBuf::from(&request.database_path)).map_err(|e| e.to_string())?;
     ensure_workspace_constellations(database.connection(), &workspace_root())?;
 
-    // Idempotent: the slug is the project's natural key — creating the same
-    // project again returns the existing row instead of duplicating it.
-    for constellation in list_constellations_flat(database.connection())? {
-        if constellation.slug == slug {
-            return constellation_payload(constellation);
-        }
+    // Idempotency is home-scoped: only a project already under this home with
+    // the same slug is returned. A base slug taken by a constellation outside
+    // the home is disambiguated, never silently returned.
+    let (existing, final_slug) =
+        resolve_home_project_slug(database.connection(), &home, &base_slug)?;
+    if let Some(existing) = existing {
+        return constellation_payload(existing);
     }
+
+    let (root_path, slug) = if root_type == "directory" {
+        // Scaffold only after the idempotency check so a slug collision cannot
+        // leave an orphaned home/<slug>/ directory behind.
+        let project_dir = home.join(&final_slug);
+        scaffold_directory_project(&project_dir)?;
+        (project_dir.to_string_lossy().to_string(), final_slug)
+    } else {
+        let source_path = request
+            .source_path
+            .clone()
+            .ok_or_else(|| "file projects require a sourcePath".to_string())?;
+        let source = PathBuf::from(&source_path);
+        (source.to_string_lossy().to_string(), final_slug)
+    };
 
     let repository = ConstellationRepository::new(database.connection());
 

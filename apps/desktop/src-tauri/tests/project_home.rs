@@ -144,7 +144,8 @@ fn file_project_uses_the_raw_file_as_root_and_never_writes_it() {
     let home = dir.path().join("home");
     fs::create_dir_all(&home).unwrap();
 
-    let source = dir.path().join("manifesto.md");
+    // Projects live under home: the raw file must be inside the home directory.
+    let source = home.join("manifesto.md");
     let original_bytes = b"# The Image of the Antichrist\n\nRaw corpus is canonical.";
     fs::write(&source, original_bytes).unwrap();
     let original_after_creation = fs::read(&source).unwrap();
@@ -219,7 +220,7 @@ fn project_creation_rejects_unknown_root_types_and_missing_sources() {
     assert!(bad_root_type.is_err(), "unknown rootType is rejected");
 
     let missing_source = create_project_at(CreateProjectRequest {
-        database_path,
+        database_path: database_path.clone(),
         home_path: home.to_string_lossy().to_string(),
         name: "Missing".to_string(),
         root_type: "file".to_string(),
@@ -227,6 +228,109 @@ fn project_creation_rejects_unknown_root_types_and_missing_sources() {
         summary: None,
     });
     assert!(missing_source.is_err(), "file projects require a sourcePath");
+
+    // A file project whose raw file lives outside the home violates the
+    // "projects live under home" invariant and is rejected.
+    let outside_source = dir.path().join("outside.md");
+    fs::write(&outside_source, b"outside the home").unwrap();
+    let outside_home = create_project_at(CreateProjectRequest {
+        database_path,
+        home_path: home.to_string_lossy().to_string(),
+        name: "Outside".to_string(),
+        root_type: "file".to_string(),
+        source_path: Some(outside_source.to_string_lossy().to_string()),
+        summary: None,
+    });
+    assert!(
+        outside_home.is_err(),
+        "file project sources outside the home are rejected"
+    );
+    assert!(
+        outside_home.unwrap_err().contains("must live under"),
+        "rejection names the home invariant"
+    );
+}
+
+#[test]
+fn file_project_created_under_home_appears_in_the_home_project_listing() {
+    let dir = tempdir().unwrap();
+    let database_path = dir.path().join("workspace.sqlite");
+    let database_path = database_path.to_string_lossy().to_string();
+    let home = dir.path().join("home");
+    fs::create_dir_all(&home).unwrap();
+
+    let source = home.join("manifesto.md");
+    fs::write(&source, b"# Canonical raw corpus").unwrap();
+
+    let project = create_project_at(CreateProjectRequest {
+        database_path: database_path.clone(),
+        home_path: home.to_string_lossy().to_string(),
+        name: "Manifesto".to_string(),
+        root_type: "file".to_string(),
+        source_path: Some(source.to_string_lossy().to_string()),
+        summary: None,
+    })
+    .expect("create file project");
+
+    let resolved = resolve_or_create_home_at(&database_path, Some(home.to_str().unwrap()))
+        .expect("resolve home");
+    assert_eq!(
+        resolved.projects.len(),
+        1,
+        "a file project under home is reachable from the project listing"
+    );
+    assert_eq!(resolved.projects[0].id, project.id);
+    assert_eq!(resolved.projects[0].root_type, "file");
+    assert_eq!(resolved.projects[0].slug, project.slug);
+}
+
+#[test]
+fn directory_project_name_colliding_with_a_seeded_constellation_slug_is_disambiguated() {
+    let dir = tempdir().unwrap();
+    let database_path = dir.path().join("workspace.sqlite");
+    let database_path = database_path.to_string_lossy().to_string();
+    let home = dir.path().join("home");
+    fs::create_dir_all(&home).unwrap();
+
+    // The seeded workspace constellation owns slug `root-archetypal-field`
+    // (root_path under the monorepo, NOT under home). Creating a user project
+    // with the same display name must NOT return the seed row and must NOT trip
+    // the global UNIQUE constraint — it is created under home with a
+    // disambiguated slug.
+    let project = create_project_at(create_directory_project_request(
+        &database_path,
+        &home,
+        "Root Archetypal Field",
+    ))
+    .expect("create project colliding with a seeded constellation slug");
+
+    assert_ne!(project.slug, "root-archetypal-field");
+    assert!(
+        project.slug.starts_with("root-archetypal-field-"),
+        "colliding slug is disambiguated: {}",
+        project.slug
+    );
+    assert!(
+        PathBuf::from(&project.root_path).starts_with(&home),
+        "the colliding project is created under home"
+    );
+
+    // The home listing shows exactly this one project — not the seed.
+    let resolved = resolve_or_create_home_at(&database_path, Some(home.to_str().unwrap()))
+        .expect("resolve home");
+    assert_eq!(resolved.projects.len(), 1);
+    assert_eq!(resolved.projects[0].id, project.id);
+    assert_eq!(resolved.projects[0].slug, project.slug);
+
+    // Re-creating the same display name is still idempotent on the
+    // disambiguated slug under home.
+    let again = create_project_at(create_directory_project_request(
+        &database_path,
+        &home,
+        "Root Archetypal Field",
+    ))
+    .expect("re-create colliding project");
+    assert_eq!(again.id, project.id);
 }
 
 #[test]
