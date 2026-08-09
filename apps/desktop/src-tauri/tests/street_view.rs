@@ -3,7 +3,7 @@ use research_canvas_desktop_lib::{
     commands::street_view::{
         add_manual_street_view_region_at, apply_street_view_redaction_at,
         list_street_view_images_at, register_street_view_image_at,
-        stage_street_view_image_at, StageStreetViewImageRequest,
+        stage_street_view_image_at,
     },
     db::repositories::{
         REDACTION_STATUS_PENDING, REDACTION_STATUS_REDACTED, StreetViewImageRecord,
@@ -168,12 +168,12 @@ fn staged_import_bytes_register_as_real_artifacts() {
     let database_path = dir.path().join("street-view.sqlite");
     let database_path = database_path.to_string_lossy().to_string();
 
-    let staged = stage_street_view_image_at(StageStreetViewImageRequest {
-        media_root: media_root.to_string_lossy().to_string(),
-        profile_scope: "migration".into(),
-        file_name: "prague-crossing.png".into(),
-        bytes: png_bytes(),
-    })
+    let staged = stage_street_view_image_at(
+        media_root.to_string_lossy().as_ref(),
+        "migration",
+        "prague-crossing.png",
+        &png_bytes(),
+    )
     .expect("stage imported bytes");
     assert_eq!(staged.artifact_path, "street-view/migration/prague-crossing.png");
     let staged_file = media_root.join(&staged.artifact_path);
@@ -199,36 +199,36 @@ fn staged_import_rejects_non_images_and_traversal_names() {
     let media_root = dir.path().join("media");
     std::fs::create_dir_all(&media_root).unwrap();
 
-    let not_an_image = stage_street_view_image_at(StageStreetViewImageRequest {
-        media_root: media_root.to_string_lossy().to_string(),
-        profile_scope: "migration".into(),
-        file_name: "notes.txt".into(),
-        bytes: b"not an image at all".to_vec(),
-    });
+    let not_an_image = stage_street_view_image_at(
+        media_root.to_string_lossy().as_ref(),
+        "migration",
+        "notes.txt",
+        b"not an image at all",
+    );
     assert!(not_an_image.is_err(), "text bytes are rejected");
 
-    let wrong_magic = stage_street_view_image_at(StageStreetViewImageRequest {
-        media_root: media_root.to_string_lossy().to_string(),
-        profile_scope: "migration".into(),
-        file_name: "fake.png".into(),
-        bytes: b"PNG but actually text".to_vec(),
-    });
+    let wrong_magic = stage_street_view_image_at(
+        media_root.to_string_lossy().as_ref(),
+        "migration",
+        "fake.png",
+        b"PNG but actually text",
+    );
     assert!(wrong_magic.is_err(), "mismatched magic bytes are rejected");
 
-    let traversal = stage_street_view_image_at(StageStreetViewImageRequest {
-        media_root: media_root.to_string_lossy().to_string(),
-        profile_scope: "migration".into(),
-        file_name: "../../outside.png".into(),
-        bytes: png_bytes(),
-    });
+    let traversal = stage_street_view_image_at(
+        media_root.to_string_lossy().as_ref(),
+        "migration",
+        "../../outside.png",
+        &png_bytes(),
+    );
     assert!(traversal.is_err(), "path traversal names are rejected");
 
-    let empty = stage_street_view_image_at(StageStreetViewImageRequest {
-        media_root: media_root.to_string_lossy().to_string(),
-        profile_scope: "migration".into(),
-        file_name: "empty.png".into(),
-        bytes: vec![],
-    });
+    let empty = stage_street_view_image_at(
+        media_root.to_string_lossy().as_ref(),
+        "migration",
+        "empty.png",
+        &[],
+    );
     assert!(empty.is_err(), "empty payloads are rejected");
 }
 

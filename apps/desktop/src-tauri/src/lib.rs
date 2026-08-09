@@ -98,6 +98,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::constellations::bootstrap_workspace_command,
+            commands::constellations::resolve_or_create_home_command,
+            commands::constellations::create_project_command,
             commands::constellations::attach_constellation_resource_root_command,
             commands::constellations::detach_constellation_resource_root_command,
             commands::export::export_constellation_bundle_command,

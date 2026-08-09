@@ -21,7 +21,7 @@ use crate::{
         },
         root_archetypal_seed::ensure_root_archetypal_local_projection,
     },
-    fs::indexer::{index_directory, IndexedEntry, IndexedEntryKind},
+    fs::indexer::{classify_file, index_directory, IndexedEntry, IndexedEntryKind},
     SharedApiState,
 };
 
@@ -29,6 +29,11 @@ use crate::{
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceBootstrap {
     pub active_constellation_id: String,
+    /// The active project — projects ARE constellations, so this is the same
+    /// row as `active_constellation_id`. Populated so the frontend has a real
+    /// active project + profile scope at first boot.
+    pub active_project_id: String,
+    pub active_profile_scope: String,
     pub database_path: String,
     pub workspace_id: String,
     pub constellations: Vec<ConstellationTreeNodePayload>,
@@ -267,7 +272,300 @@ pub struct ResourceRootLookupRequest {
 }
 
 pub fn index_constellation_root(root: impl AsRef<Path>) -> std::io::Result<Vec<IndexedEntry>> {
+    let root = root.as_ref();
+    if root.is_file() {
+        // A file project's root is the raw file itself — index it as a single
+        // entry rather than trying to read it as a directory.
+        let file_name = root
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("project")
+            .to_string();
+        let metadata = fs::symlink_metadata(root)?;
+        return Ok(vec![IndexedEntry {
+            name: file_name.clone(),
+            relative_path: file_name,
+            absolute_path: root.to_path_buf(),
+            kind: classify_file(root),
+            is_directory: false,
+            depth: 0,
+            size_bytes: metadata.len(),
+        }]);
+    }
     index_directory(root)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HomeProjectPayload {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+    pub root_path: String,
+    pub root_type: String,
+    pub profile_scope: String,
+    pub summary: String,
+    pub parent_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveHomePayload {
+    pub home_path: String,
+    pub projects: Vec<HomeProjectPayload>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolveHomeRequest {
+    pub database_path: Option<String>,
+    pub home_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateProjectRequest {
+    pub database_path: String,
+    pub home_path: String,
+    pub name: String,
+    pub root_type: String,
+    pub source_path: Option<String>,
+    pub summary: Option<String>,
+}
+
+/// Resolves the research-canvas home directory — the parent of all projects.
+/// Precedence: an explicit override (from the transport), then the
+/// `RESEARCH_CANVAS_HOME` environment variable, then the OS user home.
+pub fn research_canvas_home(home_override: Option<&Path>) -> Result<PathBuf, String> {
+    if let Some(path) = home_override {
+        if !path.as_os_str().is_empty() {
+            return Ok(path.to_path_buf());
+        }
+    }
+    if let Ok(path) = env::var("RESEARCH_CANVAS_HOME") {
+        if !path.trim().is_empty() {
+            return Ok(PathBuf::from(path));
+        }
+    }
+    dirs::home_dir()
+        .map(|home| home.join("research-canvas"))
+        .ok_or_else(|| {
+            "could not determine the OS user home directory; set RESEARCH_CANVAS_HOME".to_string()
+        })
+}
+
+fn home_project_payload(constellation: Constellation) -> HomeProjectPayload {
+    HomeProjectPayload {
+        id: constellation.id,
+        name: constellation.display_name,
+        slug: constellation.slug,
+        root_path: constellation.root_path,
+        root_type: constellation.root_type,
+        profile_scope: constellation.profile_scope,
+        summary: constellation.summary.unwrap_or_default(),
+        parent_id: constellation.parent_constellation_id,
+        created_at: constellation.created_at,
+        updated_at: constellation.updated_at,
+    }
+}
+
+/// Lists projects whose root path lives under the home directory. Projects are
+/// constellations; the home filter is applied over the flat constellation list.
+pub fn list_home_projects(
+    connection: &Connection,
+    home: &Path,
+) -> Result<Vec<Constellation>, String> {
+    let all = list_constellations_flat(connection)?;
+    Ok(all
+        .into_iter()
+        .filter(|constellation| Path::new(&constellation.root_path).starts_with(home))
+        .collect())
+}
+
+pub fn resolve_or_create_home_at(
+    database_path: impl AsRef<Path>,
+    home_override: Option<&str>,
+) -> Result<ResolveHomePayload, String> {
+    let database_path = database_path.as_ref().to_path_buf();
+    let home = research_canvas_home(home_override.map(Path::new))?;
+    fs::create_dir_all(&home).map_err(|error| error.to_string())?;
+    let database = Database::open(&database_path).map_err(|error| error.to_string())?;
+    ensure_workspace_constellations(database.connection(), &workspace_root())?;
+    let projects = list_home_projects(database.connection(), &home)?
+        .into_iter()
+        .map(home_project_payload)
+        .collect();
+    Ok(ResolveHomePayload {
+        home_path: home.to_string_lossy().to_string(),
+        projects,
+    })
+}
+
+#[tauri::command]
+pub fn resolve_or_create_home_command(
+    request: ResolveHomeRequest,
+    api_state: tauri::State<SharedApiState>,
+) -> Result<ResolveHomePayload, String> {
+    let database_path = match &request.database_path {
+        Some(path) if !path.trim().is_empty() => PathBuf::from(path),
+        _ => default_database_path(None)?,
+    };
+    let result = resolve_or_create_home_at(&database_path, request.home_path.as_deref())?;
+    {
+        let mut state = api_state.lock().unwrap();
+        state.db_path = Some(database_path.to_string_lossy().to_string());
+    }
+    Ok(result)
+}
+
+pub fn create_project_at(
+    request: CreateProjectRequest,
+) -> Result<WorkspaceConstellationPayload, String> {
+    if request.database_path.trim().is_empty() {
+        return Err("databasePath must not be empty".to_string());
+    }
+    if request.home_path.trim().is_empty() {
+        return Err("homePath must not be empty".to_string());
+    }
+    if request.name.trim().is_empty() {
+        return Err("name must not be empty".to_string());
+    }
+    let root_type = match request.root_type.as_str() {
+        "file" => "file",
+        "directory" => "directory",
+        other => {
+            return Err(format!(
+                "unsupported rootType `{other}` (expected `directory` or `file`)"
+            ))
+        }
+    };
+
+    let home = PathBuf::from(&request.home_path);
+    fs::create_dir_all(&home).map_err(|error| error.to_string())?;
+
+    let (root_path, slug) = if root_type == "directory" {
+        let slug = slugify_project_name(&request.name);
+        if slug.is_empty() {
+            return Err("name produced an empty slug".to_string());
+        }
+        let project_dir = home.join(&slug);
+        scaffold_directory_project(&project_dir)?;
+        (project_dir.to_string_lossy().to_string(), slug)
+    } else {
+        let source_path = request
+            .source_path
+            .clone()
+            .ok_or_else(|| "file projects require a sourcePath".to_string())?;
+        let source = PathBuf::from(&source_path);
+        if !source.is_file() {
+            return Err(format!("sourcePath `{source_path}` is not a file"));
+        }
+        // The raw file is the project root; it is NEVER written by the app.
+        let slug = file_project_slug(&source);
+        (source.to_string_lossy().to_string(), slug)
+    };
+
+    let database = Database::open(PathBuf::from(&request.database_path)).map_err(|e| e.to_string())?;
+    ensure_workspace_constellations(database.connection(), &workspace_root())?;
+
+    // Idempotent: the slug is the project's natural key — creating the same
+    // project again returns the existing row instead of duplicating it.
+    for constellation in list_constellations_flat(database.connection())? {
+        if constellation.slug == slug {
+            return constellation_payload(constellation);
+        }
+    }
+
+    let repository = ConstellationRepository::new(database.connection());
+
+    let profile_scope = format!("project:{slug}");
+    let constellation = repository
+        .create_project(
+            request.name.clone(),
+            slug,
+            None,
+            root_path,
+            root_type.to_string(),
+            profile_scope,
+            request.summary.clone(),
+            None,
+            serde_json::json!({ "includeResources": true, "theme": "paper" }),
+        )
+        .map_err(|error| error.to_string())?;
+
+    constellation_payload(constellation)
+}
+
+#[tauri::command]
+pub fn create_project_command(
+    request: CreateProjectRequest,
+) -> Result<WorkspaceConstellationPayload, String> {
+    create_project_at(request)
+}
+
+fn slugify_project_name(name: &str) -> String {
+    let slug = name
+        .to_lowercase()
+        .trim()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("-")
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric() || *character == '-')
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    slug
+}
+
+/// A stable, filesystem-agnostic slug for a file project: the file stem plus a
+/// short content-independent path hash keeps it unique across directories
+/// while remaining idempotent for the same source path.
+fn file_project_slug(source: &Path) -> String {
+    let stem = source
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .map(slugify_project_name)
+        .filter(|slug| !slug.is_empty())
+        .unwrap_or_else(|| "project".to_string());
+    let canonical = fs::canonicalize(source).unwrap_or_else(|_| source.to_path_buf());
+    let hash = stable_path_hash(&canonical.to_string_lossy());
+    format!("file-{stem}-{hash}")
+}
+
+fn stable_path_hash(value: &str) -> String {
+    let mut hash: u64 = 1469598103934665603;
+    for byte in value.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(1099511628211);
+    }
+    format!("{:016x}", hash & 0xFFFF_FFFF_FFFF_FFFF)[..12].to_string()
+}
+
+/// Scaffolds the known directory-project skeleton: an immutable raw corpus and
+/// a derived workspace. No new store is invented — the constellation's root is
+/// the project directory, and derived data lives under `workspace/`.
+fn scaffold_directory_project(project_dir: &Path) -> Result<(), String> {
+    let raw = project_dir.join("raw");
+    let workspace = project_dir.join("workspace");
+    fs::create_dir_all(&raw).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&workspace).map_err(|error| error.to_string())?;
+    let manifest = project_dir.join(".research-canvas.json");
+    if !manifest.exists() {
+        let manifest_value = serde_json::json!({
+            "kind": "research-canvas-project",
+            "rootType": "directory",
+            "skeletonVersion": 1,
+        });
+        fs::write(
+            &manifest,
+            serde_json::to_string_pretty(&manifest_value).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -280,6 +578,8 @@ pub fn bootstrap_workspace_command(
         let mut api = api_state.lock().unwrap();
         api.db_path = Some(database_path.to_string_lossy().to_string());
         api.active_constellation_id = Some(result.active_constellation_id.clone());
+        api.active_project_id = Some(result.active_project_id.clone());
+        api.active_profile_scope = Some(result.active_profile_scope.clone());
     }
     Ok(result)
 }
@@ -328,7 +628,7 @@ pub fn bootstrap_workspace_at(
     ensure_workspace_constellations(database.connection(), &root)?;
 
     let constellations = list_constellations_flat(database.connection())?;
-    let active_constellation_id = constellations
+    let active_constellation = constellations
         .iter()
         .find(|constellation| constellation.slug == "root-archetypal-field")
         .or_else(|| {
@@ -337,11 +637,15 @@ pub fn bootstrap_workspace_at(
                 .find(|constellation| constellation.parent_constellation_id.is_none())
         })
         .or_else(|| constellations.first())
-        .map(|constellation| constellation.id.clone())
         .ok_or_else(|| "workspace bootstrap found no constellations".to_string())?;
+    let active_constellation_id = active_constellation.id.clone();
 
     Ok(WorkspaceBootstrap {
-        active_constellation_id,
+        active_constellation_id: active_constellation_id.clone(),
+        // Projects ARE constellations: the active project is the resolved
+        // active constellation, carrying its profile scope and root type.
+        active_project_id: active_constellation_id.clone(),
+        active_profile_scope: active_constellation.profile_scope.clone(),
         database_path: database_path.to_string_lossy().to_string(),
         workspace_id: timeline_workspace_identity(&database_path)?,
         constellations: constellations
@@ -370,6 +674,18 @@ pub fn load_constellation_document_at(
 
     let resource_roots =
         list_constellation_resource_roots(database.connection(), &constellation.id)?;
+    // A file project's raw file is the root; derived data lives in the
+    // app-managed workspace store. The working root presented to the frontend
+    // is the file's parent directory (so mediaRoot/terminal remain usable),
+    // while indexing treats the raw file itself as a single entry.
+    let working_root = if constellation.root_type == "file" {
+        Path::new(&constellation.root_path)
+            .parent()
+            .map(|parent| parent.to_string_lossy().to_string())
+            .unwrap_or_else(|| constellation.root_path.clone())
+    } else {
+        constellation.root_path.clone()
+    };
     let entries = index_constellation_entries(&constellation.root_path, &resource_roots)
         .map_err(|error| error.to_string())?;
     let graph = CanvasGraphRepository::new(database.connection());
@@ -409,7 +725,7 @@ pub fn load_constellation_document_at(
     };
 
     Ok(ConstellationDocumentPayload {
-        working_root: constellation.root_path.clone(),
+        working_root,
         canvas_id,
         database_path: database_path.to_string_lossy().to_string(),
         entries: entries.into_iter().map(indexed_entry_payload).collect(),

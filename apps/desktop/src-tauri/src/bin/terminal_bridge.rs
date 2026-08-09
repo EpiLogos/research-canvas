@@ -4,10 +4,11 @@ use research_canvas_desktop_lib::{
     commands::{
         constellations::{
             attach_constellation_resource_root_at, bootstrap_workspace_at,
-            create_saved_sequence_command, default_database_path, delete_saved_sequence_command,
-            detach_constellation_resource_root_at, list_constellation_resource_roots_at,
-            list_directories_at, list_saved_sequences_command, load_constellation_document_at,
-            persist_constellation_document_at, update_saved_sequence_command,
+            create_project_at, create_saved_sequence_command, default_database_path,
+            delete_saved_sequence_command, detach_constellation_resource_root_at,
+            list_constellation_resource_roots_at, list_directories_at, list_saved_sequences_command,
+            load_constellation_document_at, persist_constellation_document_at,
+            resolve_or_create_home_at, update_saved_sequence_command, CreateProjectRequest,
             CreateSavedSequenceRequest, DeleteSavedSequenceRequest, ListSavedSequencesRequest,
             PersistConstellationDocumentRequest, ResourceRootLookupRequest,
             ResourceRootMutationRequest, UpdateSavedSequenceRequest,
@@ -20,7 +21,6 @@ use research_canvas_desktop_lib::{
             add_manual_street_view_region_at, apply_street_view_redaction_at,
             list_street_view_images_at, mark_street_view_redaction_none_needed_at,
             register_street_view_image_at, stage_street_view_image_at,
-            StageStreetViewImageRequest,
         },
         keepsake::write_keepsake_bundle_at,
         palace::{load_palace_curation_at, save_palace_curation_at},
@@ -150,6 +150,24 @@ fn handle_request(
     if method == Method::Get && path == "/workspace/bootstrap" {
         let database_path = session_database_path(&request)?;
         let payload = bootstrap_workspace_at(&database_path)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Get && path == "/workspace/home" {
+        let database_path = match query_param(&url, "databasePath") {
+            Some(path) if !path.trim().is_empty() => path,
+            _ => session_database_path(&request)?.to_string_lossy().to_string(),
+        };
+        let home_path = query_param(&url, "homePath");
+        let payload = resolve_or_create_home_at(&database_path, home_path.as_deref())?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/projects" {
+        let body = read_body(&mut request)?;
+        let project_request: CreateProjectRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let payload = create_project_at(project_request)?;
         return respond_json(request, StatusCode(200), payload);
     }
 
@@ -313,12 +331,7 @@ fn handle_request(
         let media_root = query_param(&url, "mediaRoot")
             .ok_or_else(|| "missing mediaRoot query parameter".to_string())?;
         let bytes = read_body_bytes(&mut request)?;
-        let payload = stage_street_view_image_at(StageStreetViewImageRequest {
-            media_root,
-            profile_scope,
-            file_name,
-            bytes,
-        })?;
+        let payload = stage_street_view_image_at(&media_root, &profile_scope, &file_name, &bytes)?;
         return respond_json(request, StatusCode(201), payload);
     }
 
