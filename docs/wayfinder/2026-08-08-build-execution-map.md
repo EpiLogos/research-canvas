@@ -14,6 +14,13 @@ vision spec `docs/superpowers/specs/2026-08-08-research-canvas-surfaces-vision.m
 
 Dependencies are native GitHub issue dependencies (14→13, 15→14, 16→15).
 
+**Build status (2026-08-09):** slice 1 closed (#13) — spine contracts, graph
+wiring, scene storage, nestable timeline frames all verified. Slices 2–4 are
+implemented at their core layers (#14 geography/walks/map, #15 consent/
+multilingual/keepsake, #16 palace generation/curation) with remaining UI
+integration tracked in each ticket; full frontend suite 644/645 and the Rust
+graph integration suite green.
+
 ---
 
 This is the canonical task list for the build. Each slice is one GitHub issue (labelled
