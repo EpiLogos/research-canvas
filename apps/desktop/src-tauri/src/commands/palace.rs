@@ -3,10 +3,12 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::commands::constellations::resolve_active_profile_scope;
 use crate::db::{
     connection::Database,
     repositories::PalaceRepository,
 };
+use crate::SharedApiState;
 
 /// Mind-palace curation commands (vision §3.12, ticket #4): the curation
 /// layer is a derived artifact stored per profile — pin, exclude, rename,
@@ -16,14 +18,14 @@ use crate::db::{
 #[serde(rename_all = "camelCase")]
 pub struct PalaceScopeRequest {
     pub database_path: String,
-    pub profile_scope: String,
+    pub profile_scope: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SavePalaceCurationRequest {
     pub database_path: String,
-    pub profile_scope: String,
+    pub profile_scope: Option<String>,
     pub curation: Value,
 }
 
@@ -37,15 +39,19 @@ pub struct PalaceCurationPayload {
 #[tauri::command]
 pub fn load_palace_curation_command(
     request: PalaceScopeRequest,
+    api_state: tauri::State<SharedApiState>,
 ) -> Result<PalaceCurationPayload, String> {
-    load_palace_curation_at(&request.database_path, &request.profile_scope)
+    let profile_scope = resolve_active_profile_scope(&api_state, request.profile_scope.as_deref())?;
+    load_palace_curation_at(&request.database_path, &profile_scope)
 }
 
 #[tauri::command]
 pub fn save_palace_curation_command(
     request: SavePalaceCurationRequest,
+    api_state: tauri::State<SharedApiState>,
 ) -> Result<PalaceCurationPayload, String> {
-    save_palace_curation_at(&request.database_path, &request.profile_scope, request.curation)
+    let profile_scope = resolve_active_profile_scope(&api_state, request.profile_scope.as_deref())?;
+    save_palace_curation_at(&request.database_path, &profile_scope, request.curation)
 }
 
 pub fn load_palace_curation_at(

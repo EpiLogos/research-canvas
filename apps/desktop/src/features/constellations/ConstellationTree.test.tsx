@@ -14,6 +14,8 @@ describe("ConstellationTree", () => {
         name: "sample-project",
         slug: "sample-project",
         rootPath: "/workspace/sample-project",
+        rootType: "directory",
+        profileScope: "bootstrapping",
         summary: "Seed workspace for explorer and export flows.",
         parentId: null,
         children: []
@@ -23,6 +25,8 @@ describe("ConstellationTree", () => {
         name: "ep-0.1",
         slug: "ep-0-1",
         rootPath: "/workspace/episodes/ep-0.1",
+        rootType: "directory",
+        profileScope: "bootstrapping",
         summary: "Markdown-heavy nested project.",
         parentId: "sample-project",
         children: []
@@ -32,6 +36,8 @@ describe("ConstellationTree", () => {
         name: "ep-0.2",
         slug: "ep-0-2",
         rootPath: "/workspace/episodes/ep-0.2",
+        rootType: "directory",
+        profileScope: "bootstrapping",
         summary: "Research reports and media assets.",
         parentId: "sample-project",
         children: []

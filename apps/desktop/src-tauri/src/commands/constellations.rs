@@ -46,6 +46,8 @@ pub struct ConstellationTreeNodePayload {
     pub name: String,
     pub slug: String,
     pub root_path: String,
+    pub root_type: String,
+    pub profile_scope: String,
     pub summary: String,
     pub parent_id: Option<String>,
     pub children: Vec<ConstellationTreeNodePayload>,
@@ -67,6 +69,8 @@ pub struct WorkspaceConstellationPayload {
     pub slug: String,
     pub parent_constellation_id: Option<String>,
     pub root_path: String,
+    pub root_type: String,
+    pub profile_scope: String,
     pub primary_canvas_id: String,
     pub summary: String,
     pub cover_asset_path: Option<String>,
@@ -485,6 +489,8 @@ fn list_constellations_flat(connection: &Connection) -> Result<Vec<Constellation
                 slug,
                 parent_project_id,
                 root_path,
+                root_type,
+                profile_scope,
                 primary_canvas_id,
                 summary,
                 cover_asset,
@@ -506,12 +512,14 @@ fn list_constellations_flat(connection: &Connection) -> Result<Vec<Constellation
                 slug: row.get(2)?,
                 parent_constellation_id: row.get(3)?,
                 root_path: row.get(4)?,
-                primary_canvas_id: row.get(5)?,
-                summary: row.get(6)?,
-                cover_asset: row.get(7)?,
-                publish_settings: row.get(8)?,
-                created_at: row.get(9)?,
-                updated_at: row.get(10)?,
+                root_type: row.get(5)?,
+                profile_scope: row.get(6)?,
+                primary_canvas_id: row.get(7)?,
+                summary: row.get(8)?,
+                cover_asset: row.get(9)?,
+                publish_settings: row.get(10)?,
+                created_at: row.get(11)?,
+                updated_at: row.get(12)?,
             })
         })
         .map_err(|error| error.to_string())?;
@@ -778,6 +786,8 @@ fn constellation_tree_payload(constellation: Constellation) -> ConstellationTree
         name: constellation.display_name,
         slug: constellation.slug,
         root_path: constellation.root_path,
+        root_type: constellation.root_type,
+        profile_scope: constellation.profile_scope,
         summary: constellation.summary.unwrap_or_default(),
         parent_id: constellation.parent_constellation_id,
         children: Vec::new(),
@@ -793,6 +803,8 @@ fn constellation_payload(
         slug: constellation.slug,
         parent_constellation_id: constellation.parent_constellation_id,
         root_path: constellation.root_path,
+        root_type: constellation.root_type,
+        profile_scope: constellation.profile_scope,
         primary_canvas_id: constellation
             .primary_canvas_id
             .ok_or_else(|| "constellation missing primary canvas".to_string())?,
@@ -1257,6 +1269,83 @@ fn walk_directories(
 pub fn activate_canvas_command(canvas_id: String, api_state: tauri::State<SharedApiState>) {
     let mut state = api_state.lock().unwrap();
     state.active_canvas_id = Some(canvas_id);
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetActiveProjectRequest {
+    pub database_path: String,
+    pub project_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveProjectPayload {
+    pub project_id: String,
+    pub profile_scope: String,
+    pub root_type: String,
+}
+
+#[tauri::command]
+pub fn set_active_project_command(
+    request: SetActiveProjectRequest,
+    api_state: tauri::State<SharedApiState>,
+) -> Result<ActiveProjectPayload, String> {
+    let database = Database::open(PathBuf::from(&request.database_path)).map_err(|e| e.to_string())?;
+    let constellation = ConstellationRepository::new(database.connection())
+        .get_by_id(&request.project_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("project {} not found", request.project_id))?;
+    {
+        let mut state = api_state.lock().unwrap();
+        state.active_project_id = Some(constellation.id.clone());
+        state.active_profile_scope = Some(constellation.profile_scope.clone());
+        state.active_constellation_id = Some(constellation.id.clone());
+    }
+    Ok(ActiveProjectPayload {
+        project_id: constellation.id,
+        profile_scope: constellation.profile_scope,
+        root_type: constellation.root_type,
+    })
+}
+
+pub fn resolve_active_profile_scope(
+    api_state: &SharedApiState,
+    explicit_profile_scope: Option<&str>,
+) -> Result<String, String> {
+    if let Some(scope) = explicit_profile_scope {
+        if !scope.trim().is_empty() {
+            return Ok(scope.to_string());
+        }
+    }
+    let state = api_state.lock().unwrap();
+    state
+        .active_profile_scope
+        .clone()
+        .ok_or_else(|| "no active project profile scope and no explicit profileScope provided".to_string())
+}
+
+pub fn set_active_project_at(
+    database_path: &str,
+    project_id: &str,
+    api_state: &SharedApiState,
+) -> Result<ActiveProjectPayload, String> {
+    let database = Database::open(PathBuf::from(database_path)).map_err(|e| e.to_string())?;
+    let constellation = ConstellationRepository::new(database.connection())
+        .get_by_id(project_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("project {} not found", project_id))?;
+    {
+        let mut state = api_state.lock().unwrap();
+        state.active_project_id = Some(constellation.id.clone());
+        state.active_profile_scope = Some(constellation.profile_scope.clone());
+        state.active_constellation_id = Some(constellation.id.clone());
+    }
+    Ok(ActiveProjectPayload {
+        project_id: constellation.id,
+        profile_scope: constellation.profile_scope,
+        root_type: constellation.root_type,
+    })
 }
 
 #[tauri::command]

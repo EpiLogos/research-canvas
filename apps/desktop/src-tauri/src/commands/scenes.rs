@@ -3,12 +3,14 @@ use std::path::PathBuf;
 use serde::Deserialize;
 
 use crate::{
+    commands::constellations::resolve_active_profile_scope,
     db::{
         connection::Database,
         repositories::{
             SceneRecord, SceneRepository, SceneSequenceRecord,
         },
     },
+    SharedApiState,
 };
 
 /// Profile-scoped scene/sequence commands (vision §3.7/§3.15, tickets #9/#10):
@@ -20,7 +22,7 @@ use crate::{
 #[serde(rename_all = "camelCase")]
 pub struct SceneScopeRequest {
     pub database_path: String,
-    pub profile_scope: String,
+    pub profile_scope: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -52,15 +54,21 @@ pub fn open_database(database_path: &str) -> Result<Database, String> {
 }
 
 #[tauri::command]
-pub fn list_scenes_command(request: SceneScopeRequest) -> Result<Vec<SceneRecord>, String> {
-    list_scenes_at(&request.database_path, &request.profile_scope)
+pub fn list_scenes_command(
+    request: SceneScopeRequest,
+    api_state: tauri::State<SharedApiState>,
+) -> Result<Vec<SceneRecord>, String> {
+    let profile_scope = resolve_active_profile_scope(&api_state, request.profile_scope.as_deref())?;
+    list_scenes_at(&request.database_path, &profile_scope)
 }
 
 #[tauri::command]
 pub fn list_scene_sequences_command(
     request: SceneScopeRequest,
+    api_state: tauri::State<SharedApiState>,
 ) -> Result<Vec<SceneSequenceRecord>, String> {
-    list_scene_sequences_at(&request.database_path, &request.profile_scope)
+    let profile_scope = resolve_active_profile_scope(&api_state, request.profile_scope.as_deref())?;
+    list_scene_sequences_at(&request.database_path, &profile_scope)
 }
 
 #[tauri::command]

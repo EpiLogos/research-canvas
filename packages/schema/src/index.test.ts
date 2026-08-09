@@ -119,6 +119,8 @@ const now = "2026-03-30T20:00:00.000Z";
       slug: "episode-0-2",
       parentConstellationId: null,
       rootPath: "/tmp/episode-0-2",
+      rootType: "directory",
+      profileScope: "bootstrapping",
       primaryCanvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
       summary: "Research-driven pilot episode.",
       coverAssetPath: null,
@@ -132,6 +134,8 @@ const now = "2026-03-30T20:00:00.000Z";
     });
 
     expect(parsed.publishSettings.theme).toBe("ledger");
+    expect(parsed.rootType).toBe("directory");
+    expect(parsed.profileScope).toBe("bootstrapping");
   });
 
   it("rejects invalid edge directionality", () => {
@@ -447,6 +451,8 @@ const now = "2026-03-30T20:00:00.000Z";
         slug: "episode-0-2",
         parentConstellationId: null,
         rootPath: "/tmp/episode-0-2",
+        rootType: "directory",
+        profileScope: "bootstrapping",
         primaryCanvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
         summary: "Research-driven pilot episode.",
         coverAssetPath: null,

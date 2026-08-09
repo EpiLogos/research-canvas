@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use crate::commands::constellations::resolve_active_profile_scope;
 use crate::db::{
     connection::Database,
     repositories::{
@@ -9,6 +10,7 @@ use crate::db::{
         StreetViewRepository,
     },
 };
+use crate::SharedApiState;
 
 /// Street-view imagery commands (vision §3.9/§3.13, research findings §2):
 /// own captured imagery is the privacy-safe base; redaction regions are
@@ -19,7 +21,7 @@ use crate::db::{
 #[serde(rename_all = "camelCase")]
 pub struct StreetViewProfileRequest {
     pub database_path: String,
-    pub profile_scope: String,
+    pub profile_scope: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -34,7 +36,7 @@ pub struct RegisterStreetViewImageRequest {
 #[serde(rename_all = "camelCase")]
 pub struct StageStreetViewImageRequest {
     pub media_root: String,
-    pub profile_scope: String,
+    pub profile_scope: Option<String>,
     pub file_name: String,
     pub bytes: Vec<u8>,
 }
@@ -71,8 +73,10 @@ pub struct ApplyStreetViewRedactionRequest {
 #[tauri::command]
 pub fn list_street_view_images_command(
     request: StreetViewProfileRequest,
+    api_state: tauri::State<SharedApiState>,
 ) -> Result<Vec<StreetViewImageRecord>, String> {
-    list_street_view_images_at(&request.database_path, &request.profile_scope)
+    let profile_scope = resolve_active_profile_scope(&api_state, request.profile_scope.as_deref())?;
+    list_street_view_images_at(&request.database_path, &profile_scope)
 }
 
 #[tauri::command]
@@ -85,8 +89,15 @@ pub fn register_street_view_image_command(
 #[tauri::command]
 pub fn stage_street_view_image_command(
     request: StageStreetViewImageRequest,
+    api_state: tauri::State<SharedApiState>,
 ) -> Result<StagedStreetViewImage, String> {
-    stage_street_view_image_at(request)
+    let profile_scope = resolve_active_profile_scope(&api_state, request.profile_scope.as_deref())?;
+    stage_street_view_image_at(
+        &request.media_root,
+        &profile_scope,
+        &request.file_name,
+        &request.bytes,
+    )
 }
 
 #[tauri::command]
@@ -147,43 +158,46 @@ pub fn register_street_view_image_at(
 /// portable artifact path is returned; raw source bytes are never stored in
 /// the database, and the source file is never modified.
 pub fn stage_street_view_image_at(
-    request: StageStreetViewImageRequest,
+    media_root: &str,
+    profile_scope: &str,
+    file_name: &str,
+    bytes: &[u8],
 ) -> Result<StagedStreetViewImage, String> {
-    if request.profile_scope.trim().is_empty() {
+    if profile_scope.trim().is_empty() {
         return Err("street view profileScope must not be blank".into());
     }
-    if request.media_root.trim().is_empty() {
+    if media_root.trim().is_empty() {
         return Err("street view mediaRoot must not be blank".into());
     }
-    let file_name = sanitize_street_view_file_name(&request.file_name)?;
+    let file_name = sanitize_street_view_file_name(file_name)?;
     let extension = file_extension(&file_name).ok_or_else(|| {
-        format!("street view file must be PNG or JPEG: {}", request.file_name)
+        format!("street view file must be PNG or JPEG: {}", file_name)
     })?;
     if !matches!(extension.as_str(), "png" | "jpg" | "jpeg") {
         return Err(format!(
             "street view file must be PNG or JPEG: {}",
-            request.file_name
+            file_name
         ));
     }
-    if request.bytes.is_empty() {
+    if bytes.is_empty() {
         return Err("street view file bytes must not be empty".into());
     }
-    if !sniffs_like_image(&request.bytes) {
+    if !sniffs_like_image(bytes) {
         return Err("street view bytes do not look like a PNG or JPEG image".into());
     }
 
-    let media_root = PathBuf::from(&request.media_root);
+    let media_root = PathBuf::from(media_root);
     let destination_dir = media_root
         .join("street-view")
-        .join(&request.profile_scope);
+        .join(profile_scope);
     std::fs::create_dir_all(&destination_dir).map_err(|error| error.to_string())?;
     let destination = destination_dir.join(&file_name);
-    std::fs::write(&destination, &request.bytes).map_err(|error| error.to_string())?;
+    std::fs::write(&destination, bytes).map_err(|error| error.to_string())?;
 
     Ok(StagedStreetViewImage {
         artifact_path: format!(
             "street-view/{}/{}",
-            request.profile_scope, file_name
+            profile_scope, file_name
         ),
     })
 }

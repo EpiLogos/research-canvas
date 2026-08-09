@@ -18,6 +18,8 @@ describe("desktop api tree helpers", () => {
         name: "sample-project",
         slug: "sample-project",
         rootPath: "/workspace/sample-project",
+        rootType: "directory",
+        profileScope: "bootstrapping",
         summary: "Workspace root",
         parentId: null,
         children: []
@@ -27,6 +29,8 @@ describe("desktop api tree helpers", () => {
         name: "ep-0.1",
         slug: "ep-0-1",
         rootPath: "/workspace/sample-project/ep-0.1",
+        rootType: "directory",
+        profileScope: "bootstrapping",
         summary: "Episode 0.1",
         parentId: "sample-project",
         children: []

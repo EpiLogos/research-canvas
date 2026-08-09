@@ -4,6 +4,7 @@ import type {
   CanvasNode,
   ExportAsset,
   ExportBundle,
+  ProjectRootType,
   PublishSettings,
 } from "@research-canvas/schema";
 
@@ -257,6 +258,8 @@ export interface ConstellationTreeNode {
   name: string;
   slug: string;
   rootPath: string;
+  rootType: ProjectRootType;
+  profileScope: string;
   summary: string;
   parentId: string | null;
   children: ConstellationTreeNode[];
@@ -268,6 +271,8 @@ export interface WorkspaceConstellation {
   slug: string;
   parentConstellationId: string | null;
   rootPath: string;
+  rootType: ProjectRootType;
+  profileScope: string;
   primaryCanvasId: string;
   summary: string;
   coverAssetPath: string | null;
@@ -287,6 +292,8 @@ export interface ResourceRoot {
 
 export interface WorkspaceBootstrap {
   activeConstellationId: string;
+  activeProjectId?: string;
+  activeProfileScope?: string;
   databasePath: string;
   /** Server-derived identity of the canonical SQLite path. */
   workspaceId: string;
@@ -298,6 +305,12 @@ export interface WorkspaceBootstrap {
    * use this, not a constellation's `rootPath`.
    */
   workspaceRoot: string;
+}
+
+export interface ActiveProject {
+  projectId: string;
+  profileScope: string;
+  rootType: ProjectRootType;
 }
 
 export interface ConstellationDocument {
@@ -586,6 +599,7 @@ export interface WorkspaceTransport {
     request: ResourceRootMutationRequest
   ): Promise<ResourceRoot>;
   bootstrapWorkspace(): Promise<WorkspaceBootstrap>;
+  selectProject(input: { databasePath: string; projectId: string }): Promise<ActiveProject>;
   detachConstellationResourceRoot(request: {
     databasePath: string;
     constellationId: string;
@@ -645,11 +659,11 @@ export interface WorkspaceTransport {
   // ---- Mind-palace curation (SQLite; vision §3.12) ----
   loadPalaceCuration(input: {
     databasePath: string;
-    profileScope: string;
+    profileScope?: string;
   }): Promise<{ profileScope: string; curation: unknown }>;
   savePalaceCuration(input: {
     databasePath: string;
-    profileScope: string;
+    profileScope?: string;
     curation: unknown;
   }): Promise<{ profileScope: string; curation: unknown }>;
 
@@ -769,6 +783,7 @@ export async function readWorkspaceTextFile(absolutePath: string) {
 
 function createTauriWorkspaceTransport(): WorkspaceTransport {
   let activeDatabasePath: string | undefined;
+  let activeProfileScope: string | undefined;
 
   return {
     async attachConstellationResourceRoot(request) {
@@ -779,6 +794,14 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async bootstrapWorkspace() {
       const result = await invokeTauri<WorkspaceBootstrap>("bootstrap_workspace_command");
       activeDatabasePath = result.databasePath;
+      activeProfileScope = result.activeProfileScope;
+      return result;
+    },
+    async selectProject({ databasePath, projectId }) {
+      const result = await invokeTauri<ActiveProject>("set_active_project_command", {
+        request: { databasePath, projectId }
+      });
+      activeProfileScope = result.profileScope;
       return result;
     },
     async detachConstellationResourceRoot(request) {
@@ -855,14 +878,22 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
       await invokeTauri<void>("delete_saved_sequence_command", { request });
     },
     async listScenes({ databasePath, profileScope }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listScenes: no profileScope in input or active project");
+      }
       const wires = await invokeTauri<SceneWire[]>("list_scenes_command", {
-        request: { databasePath, profileScope },
+        request: { databasePath, profileScope: scope },
       });
       return wires.map(sceneFromWire);
     },
     async listSceneSequences({ databasePath, profileScope }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listSceneSequences: no profileScope in input or active project");
+      }
       const wires = await invokeTauri<SceneSequenceWire[]>("list_scene_sequences_command", {
-        request: { databasePath, profileScope },
+        request: { databasePath, profileScope: scope },
       });
       return wires.map(sceneSequenceFromWire);
     },
@@ -895,8 +926,12 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
       });
     },
     async listStreetViewImages({ databasePath, profileScope }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listStreetViewImages: no profileScope in input or active project");
+      }
       return invokeTauri<StreetViewImageRecord[]>("list_street_view_images_command", {
-        request: { databasePath, profileScope },
+        request: { databasePath, profileScope: scope },
       });
     },
     async registerStreetViewImage({ databasePath, mediaRoot, image }) {
@@ -905,10 +940,14 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
       });
     },
     async stageStreetViewImage({ mediaRoot, profileScope, fileName, bytes }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("stageStreetViewImage: no profileScope in input or active project");
+      }
       return invokeTauri<{ artifactPath: string }>("stage_street_view_image_command", {
         request: {
           mediaRoot,
-          profileScope,
+          profileScope: scope,
           fileName,
           bytes: Array.from(bytes),
         },
@@ -937,15 +976,23 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
       );
     },
     async loadPalaceCuration(input) {
+      const scope = input.profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("loadPalaceCuration: no profileScope in input or active project");
+      }
       return invokeTauri<{ profileScope: string; curation: unknown }>(
         "load_palace_curation_command",
-        { request: input },
+        { request: { databasePath: input.databasePath, profileScope: scope } },
       );
     },
     async savePalaceCuration(input) {
+      const scope = input.profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("savePalaceCuration: no profileScope in input or active project");
+      }
       return invokeTauri<{ profileScope: string; curation: unknown }>(
         "save_palace_curation_command",
-        { request: input },
+        { request: { databasePath: input.databasePath, profileScope: scope, curation: input.curation } },
       );
     },
     async readGraphNode(input) {
@@ -1054,6 +1101,7 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
 
 export function createBrowserBridgeTransport(): WorkspaceTransport {
   let activeDatabasePath: string | undefined;
+  let activeProfileScope: string | undefined;
 
   return {
     async attachConstellationResourceRoot(request) {
@@ -1071,7 +1119,11 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     async bootstrapWorkspace() {
       const result = await requestJsonWithRetry<WorkspaceBootstrap>("/workspace/bootstrap");
       activeDatabasePath = result.databasePath;
+      activeProfileScope = result.activeProfileScope;
       return result;
+    },
+    async selectProject() {
+      throw new Error("selectProject is not supported by the browser bridge transport");
     },
     async detachConstellationResourceRoot({ constellationId, rootPath }) {
       await requestJsonWithRetry<void>(
@@ -1175,14 +1227,22 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       );
     },
     async listScenes({ databasePath: _, profileScope }) {
-      const params = new URLSearchParams({ profileScope });
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listScenes: no profileScope in input or active project");
+      }
+      const params = new URLSearchParams({ profileScope: scope });
       const wires = await requestJsonWithRetry<SceneWire[]>(
         `/workspace/scenes?${params.toString()}`,
       );
       return wires.map(sceneFromWire);
     },
     async listSceneSequences({ databasePath: _, profileScope }) {
-      const params = new URLSearchParams({ profileScope });
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listSceneSequences: no profileScope in input or active project");
+      }
+      const params = new URLSearchParams({ profileScope: scope });
       const wires = await requestJsonWithRetry<SceneSequenceWire[]>(
         `/workspace/scene-sequences?${params.toString()}`,
       );
@@ -1220,7 +1280,11 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       );
     },
     async listStreetViewImages({ databasePath: _, profileScope }) {
-      const params = new URLSearchParams({ profileScope });
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listStreetViewImages: no profileScope in input or active project");
+      }
+      const params = new URLSearchParams({ profileScope: scope });
       return requestJsonWithRetry<StreetViewImageRecord[]>(
         `/workspace/street-view?${params.toString()}`,
       );
@@ -1232,7 +1296,11 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       });
     },
     async stageStreetViewImage({ mediaRoot, profileScope, fileName, bytes }) {
-      const params = new URLSearchParams({ mediaRoot, profileScope, fileName });
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("stageStreetViewImage: no profileScope in input or active project");
+      }
+      const params = new URLSearchParams({ mediaRoot, profileScope: scope, fileName });
       const response = await fetch(
         `${BRIDGE_BASE_URL}/workspace/street-view/stage?${params.toString()}`,
         {
@@ -1277,15 +1345,23 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       );
     },
     async loadPalaceCuration({ databasePath: _, profileScope }) {
-      const params = new URLSearchParams({ profileScope });
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("loadPalaceCuration: no profileScope in input or active project");
+      }
+      const params = new URLSearchParams({ profileScope: scope });
       return requestJsonWithRetry<{ profileScope: string; curation: unknown }>(
         `/workspace/palace-curation?${params.toString()}`,
       );
     },
     async savePalaceCuration({ databasePath: _, profileScope, curation }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("savePalaceCuration: no profileScope in input or active project");
+      }
       return requestJsonWithRetry<{ profileScope: string; curation: unknown }>(
         "/workspace/palace-curation",
-        { method: "POST", body: { profileScope, curation } },
+        { method: "POST", body: { profileScope: scope, curation } },
       );
     },
     async readGraphNode(input) {
@@ -1679,6 +1755,7 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
     // ---- existing constellation/file/annotation methods: not served by the static bundle ----
     attachConstellationResourceRoot: readOnlyReject,
     bootstrapWorkspace: readOnlyReject,
+    selectProject: readOnlyReject,
     detachConstellationResourceRoot: readOnlyReject,
     listConstellationResourceRoots: readOnlyReject,
     loadConstellationDocument: readOnlyReject,

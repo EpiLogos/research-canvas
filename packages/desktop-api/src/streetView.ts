@@ -36,7 +36,7 @@ export interface StreetViewImageRecord {
 
 export interface ListStreetViewImagesRequest {
   databasePath: string;
-  profileScope: string;
+  profileScope?: string;
 }
 
 export interface RegisterStreetViewImageRequest {
@@ -47,7 +47,7 @@ export interface RegisterStreetViewImageRequest {
 
 export interface StageStreetViewImageInput {
   mediaRoot: string;
-  profileScope: string;
+  profileScope?: string;
   fileName: string;
   /** Raw PNG/JPEG bytes; staged verbatim under the media root. */
   bytes: Uint8Array;

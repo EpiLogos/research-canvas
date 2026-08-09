@@ -766,16 +766,20 @@ fn ensure_root_constellation(
                 ROOT_CONSTELLATION_SLUG.to_string(),
                 None,
                 root_path.to_string(),
+                "directory".to_string(),
+                "bootstrapping".to_string(),
                 Some(ROOT_CONSTELLATION_SUMMARY.to_string()),
                 None,
                 serde_json::json!({ "includeResources": true, "theme": "dark" }),
             )
         } else {
-            repository.create(
+            repository.create_project(
                 ROOT_CONSTELLATION_TITLE.to_string(),
                 ROOT_CONSTELLATION_SLUG.to_string(),
                 None,
                 root_path.to_string(),
+                "directory".to_string(),
+                "bootstrapping".to_string(),
                 Some(ROOT_CONSTELLATION_SUMMARY.to_string()),
                 None,
                 serde_json::json!({ "includeResources": true, "theme": "dark" }),
@@ -853,6 +857,8 @@ fn ensure_constellation_canvases(
                         seed.slug.to_string(),
                         Some(root_constellation_id.to_string()),
                         root_path.to_string(),
+                        "directory".to_string(),
+                        "bootstrapping".to_string(),
                         Some(seed.canvas_summary.to_string()),
                         None,
                         serde_json::json!({

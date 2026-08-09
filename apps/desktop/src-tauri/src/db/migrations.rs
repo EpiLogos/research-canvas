@@ -130,6 +130,10 @@ const MIGRATIONS: &[Migration] = &[
         version: "0029_palace_curations",
         sql: include_str!("../../migrations/0029_palace_curations.sql"),
     },
+    Migration {
+        version: "0030_project_profile_scope",
+        sql: include_str!("../../migrations/0030_project_profile_scope.sql"),
+    },
 ];
 
 impl MigrationRunner {

@@ -30,6 +30,8 @@ pub struct ApiState {
     pub db_path: Option<String>,
     pub active_constellation_id: Option<String>,
     pub active_canvas_id: Option<String>,
+    pub active_project_id: Option<String>,
+    pub active_profile_scope: Option<String>,
 }
 
 pub type SharedApiState = Arc<Mutex<ApiState>>;
@@ -111,6 +113,7 @@ pub fn run() {
             commands::terminal::resize_terminal_session,
             commands::terminal::send_terminal_input,
             commands::constellations::activate_canvas_command,
+            commands::constellations::set_active_project_command,
             commands::constellations::read_workspace_text_file_command,
             commands::assets::import_node_image_command,
             commands::assets::attach_node_attachment_command,

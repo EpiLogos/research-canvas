@@ -85,12 +85,12 @@ export function sceneSequenceToWire(sequence: SceneSequence): SceneSequenceWire 
 
 export interface ListScenesRequest {
   databasePath: string;
-  profileScope: string;
+  profileScope?: string;
 }
 
 export interface ListSceneSequencesRequest {
   databasePath: string;
-  profileScope: string;
+  profileScope?: string;
 }
 
 export interface SceneIdRequest {
