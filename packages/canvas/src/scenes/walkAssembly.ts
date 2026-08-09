@@ -14,6 +14,9 @@ export interface WalkStop {
   coordinate: { latitude: number; longitude: number } | null;
   gazetteerEntry: GazetteerEntry | null;
   located: boolean;
+  /** Explicit waypoints for a non-great-circle route segment *from this
+   * stop to the next located stop* (refinement-2 D1, task-2 step 5). */
+  controlPoints?: Array<{ latitude: number; longitude: number }>;
 }
 
 export function assembleWalk(

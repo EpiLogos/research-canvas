@@ -7,6 +7,12 @@ import {
   createOfflineMapStyle,
 } from "./mapStyle";
 
+type RenderedStyle = {
+  sources: Record<string, { type: string; data?: unknown; attribution?: string; url?: string }>;
+  layers: Array<Record<string, unknown>>;
+  projection?: { type: string };
+};
+
 function stop(id: string, coordinate: WalkStop["coordinate"]): WalkStop {
   return {
     sceneId: id,
@@ -50,6 +56,38 @@ describe("createOfflineMapStyle", () => {
     expect(style.sources.offline.type).toBe("vector");
     expect(style.sources.offline.url).toContain("pmtiles://");
   });
+
+  test("the globe is the default projection with a graticule and dark ocean", () => {
+    const style = createOfflineMapStyle({
+      kind: "geojson",
+      url: "assets/map/places.geojson",
+      attribution: "Pleiades CC BY",
+    }) as RenderedStyle;
+    expect(style.projection).toEqual({ type: "globe" });
+    // The ocean background layer colours the sphere surface.
+    expect(style.layers[0]).toMatchObject({
+      id: "ocean-background",
+      type: "background",
+      paint: { "background-color": "#0a1322" },
+    });
+    // Graticule is a locally computed GeoJSON source, never fetched.
+    expect(style.sources.graticule.type).toBe("geojson");
+    expect(style.layers.some((layer) => layer.id === "graticule-lines")).toBe(true);
+  });
+
+  test("the flat projection omits the graticule and globe projection key", () => {
+    const style = createOfflineMapStyle(
+      {
+        kind: "geojson",
+        url: "assets/map/places.geojson",
+        attribution: "Pleiades CC BY",
+      },
+      { projection: "flat" },
+    ) as RenderedStyle;
+    expect(style.projection).toBeUndefined();
+    expect(style.sources.graticule).toBeUndefined();
+    expect(style.layers.some((layer) => layer.id === "graticule-lines")).toBe(false);
+  });
 });
 
 describe("marker and walk geometry", () => {
@@ -69,9 +107,29 @@ describe("marker and walk geometry", () => {
       stop("unlocated", null),
       stop("last", { latitude: 43.77, longitude: 11.25 }),
     ]);
-    expect(path.geometry.coordinates).toEqual([
-      [28.9, 41.0],
-      [11.25, 43.77],
+    const coordinates = path.geometry.coordinates as [number, number][];
+    // Great-circle arc: starts and ends exactly at the located stops, with
+    // interpolated points between (not a two-point straight line).
+    expect(coordinates[0]).toEqual([28.9, 41.0]);
+    expect(coordinates[coordinates.length - 1]).toEqual([11.25, 43.77]);
+    expect(coordinates.length).toBeGreaterThan(2);
+    expect(path.properties).toEqual({ walkId: "walk-1" });
+  });
+
+  test("explicit control points bend the arc off the great circle", () => {
+    // Control points on a stop apply to the segment from that stop to the
+    // next located stop.
+    const path = buildWalkPathSource("walk-1", [
+      {
+        ...stop("a", { latitude: 41.0, longitude: 28.9 }),
+        controlPoints: [{ latitude: 45.0, longitude: 20.0 }],
+      },
+      stop("b", { latitude: 43.77, longitude: 11.25 }),
     ]);
+    const coordinates = path.geometry.coordinates as [number, number][];
+    // The arc passes exactly through the control point.
+    expect(coordinates.some(([lng, lat]) => Math.abs(lng - 20.0) < 1e-6 && Math.abs(lat - 45.0) < 1e-6)).toBe(
+      true,
+    );
   });
 });

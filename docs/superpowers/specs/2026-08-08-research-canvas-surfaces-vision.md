@@ -83,7 +83,7 @@ The canvas is the **facilitator instrument** — the professional's authoring to
 |---|---|
 | Canvas (trans-temporal) | exists — stays the authoring surface |
 | Timeline | exists — becomes nested sub-timelines |
-| Psychogeographic (map / street view / globe) | new — scene-based walks, globe exploration of historical periods |
+| Places (map / street view / globe) | new — scene-based walks, globe exploration of historical periods |
 | Story (migration) | new — journey as scene sequence, human voice front and centre |
 | Mind palace | new — definition open, §5 |
 
@@ -91,7 +91,7 @@ The canvas is the **facilitator instrument** — the professional's authoring to
 
 Offline-first core; live services are explicit opt-in:
 
-- The psychogeographic surface renders fully offline by default: bundled basemap tiles, local
+- The Places surface renders fully offline by default: bundled basemap tiles, local
   geocoding against a bundled gazetteer index, and local 3D where feasible (terrain packaged
   with the app, or a terrain-less globe for v1).
 - Live services are explicit opt-in at the surface level and per action, never silently
@@ -105,7 +105,7 @@ Offline-first core; live services are explicit opt-in:
 ### 3.11 Build order and the first execution slice (locked by #3)
 
 1. Spine — substrate geography (Temporal Place contract) + nested sub-timelines.
-2. Psychogeographic surface as the first full surface (map / globe / street view over the
+2. Places surface as the first full surface (map / globe / street view over the
    spine).
 3. Migration profile — journey as scene sequence.
 4. Mind palace — reuses mature scene/walk machinery.

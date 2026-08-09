@@ -14,7 +14,7 @@ with pointers to the rework tickets. The locked vision spec
 
 - Map: [Research Canvas — build execution map (all slices)](https://github.com/EpiLogos/research-canvas/issues/12) (`#12`, `wayfinder:map`)
 - [Slice 1 — Spine: Temporal Place, Scene, nested sub-timelines](https://github.com/EpiLogos/research-canvas/issues/13) (`#13`, assigned, in progress)
-- [Slice 2 — Psychogeographic surface](https://github.com/EpiLogos/research-canvas/issues/14) (`#14`, blocked by #13)
+- [Slice 2 — Places surface](https://github.com/EpiLogos/research-canvas/issues/14) (`#14`, blocked by #13)
 - [Slice 3 — Migration profile](https://github.com/EpiLogos/research-canvas/issues/15) (`#15`, blocked by #14)
 - [Slice 4 — Mind palace](https://github.com/EpiLogos/research-canvas/issues/16) (`#16`, blocked by #15)
 
@@ -42,7 +42,7 @@ and dependencies come from build-order ticket #3:
 
 1. **Spine** — Temporal Place + Scene contracts at the substrate/profile boundary, nested
    sub-timelines (first slice; everything else depends on it).
-2. **Psychogeographic surface** — map / globe / street view over the spine.
+2. **Places surface** — map / globe / street view over the spine.
 3. **Migration profile** — journey as scene sequence, multilingual, consent-aware.
 4. **Mind palace** — generated navigable space from graph structure.
 
@@ -87,7 +87,7 @@ offline data posture all verified by the frontend and Rust suites.
 
 ---
 
-## Slice 2 — Psychogeographic surface
+## Slice 2 — Places surface
 
 Labels: `wayfinder:task`. Blocked by: Slice 1.
 

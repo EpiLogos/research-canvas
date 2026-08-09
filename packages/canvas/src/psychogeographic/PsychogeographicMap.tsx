@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 
 import type { LiveServicePolicy } from "@research-canvas/geography";
 
@@ -7,6 +7,7 @@ import type { MapTileSource } from "./mapStyle";
 import {
   createMaplibreRenderer,
   type MapSurfaceRenderer,
+  type MapViewState,
 } from "./renderer";
 
 export interface PsychogeographicMapProps {
@@ -21,9 +22,11 @@ export interface PsychogeographicMapProps {
 }
 
 /**
- * The psychogeographic surface (slice 2): an offline-first map over the
- * spine's Temporal Places, drawing a walk from a scene sequence. Live
- * services never fire unless the policy grants them, and the connection
+ * The Places surface (refinement-2 D1): a globe-first map over the spine's
+ * Temporal Places, drawing a walk from a scene sequence as great-circle arcs.
+ * The globe is the default surface; clicking a place or walk stop descends
+ * into the flat map (the detail view), and one action returns to the globe.
+ * Live services never fire unless the policy grants them, and the connection
  * indicator is always visible while a live call is active.
  */
 export function PsychogeographicMap({
@@ -44,6 +47,15 @@ export function PsychogeographicMap({
   const activeReason = policy.activeReason();
   const tileRefreshOptedIn = policy.isOptedIn("tile_refresh");
   const mountedRenderer = useRef<MapSurfaceRenderer | null>(null);
+  const [view, setView] = useState<"globe" | "flat">("globe");
+  const [selectedStopId, setSelectedStopId] = useState<string | null>(null);
+  const [travelIndex, setTravelIndex] = useState(0);
+  const [viewState, setViewState] = useState<MapViewState>({
+    latitude: 20,
+    longitude: 0,
+    zoom: 1,
+  });
+  const stopClickRef = useRef<(sceneId: string) => void>(() => {});
 
   useEffect(() => {
     let cancelled = false;
@@ -61,12 +73,58 @@ export function PsychogeographicMap({
     };
   }, [rendererProp]);
 
+  const selectStop = useCallback(
+    (sceneId: string) => {
+      const stop = stops.find((candidate) => candidate.sceneId === sceneId);
+      if (!stop?.coordinate) return;
+      setSelectedStopId(sceneId);
+      setView("flat");
+      void mountedRenderer.current?.setProjection?.("flat");
+      void mountedRenderer.current?.flyTo?.(
+        stop.coordinate.latitude,
+        stop.coordinate.longitude,
+        4,
+      );
+      onOpenStop?.(stop);
+    },
+    [onOpenStop, stops],
+  );
+  stopClickRef.current = selectStop;
+
+  const backToGlobe = useCallback(() => {
+    setSelectedStopId(null);
+    setView("globe");
+    void mountedRenderer.current?.setProjection?.("globe");
+    void mountedRenderer.current?.flyTo?.(20, 0, 1);
+  }, []);
+
+  const flyToNextPlace = useCallback(() => {
+    const located = stops.filter(
+      (stop): stop is WalkStop & { coordinate: { latitude: number; longitude: number } } =>
+        stop.coordinate !== null,
+    );
+    if (located.length === 0) return;
+    const index = travelIndex % located.length;
+    const stop = located[index];
+    setTravelIndex((current) => current + 1);
+    setSelectedStopId(stop.sceneId);
+    void mountedRenderer.current?.flyTo?.(
+      stop.coordinate.latitude,
+      stop.coordinate.longitude,
+      3,
+    );
+  }, [stops, travelIndex]);
+
   useEffect(() => {
     if (!renderer || !containerRef.current) return;
     mountedRenderer.current = renderer;
     renderer
-      .create(containerRef.current, tileSource)
-      .then(() => renderer.drawWalk(walkId, stops))
+      .create(containerRef.current, tileSource, { projection: "globe" })
+      .then(() => {
+        renderer.setStopClickHandler?.((sceneId) => stopClickRef.current(sceneId));
+        renderer.onViewChange?.((next) => setViewState(next));
+        return renderer.drawWalk(walkId, stops);
+      })
       .catch((cause: unknown) =>
         setError(cause instanceof Error ? cause.message : String(cause)),
       );
@@ -100,11 +158,38 @@ export function PsychogeographicMap({
   );
 
   return (
-    <div className="psychogeographic-surface" data-testid="psychogeographic-surface">
+    <div
+      className="psychogeographic-surface"
+      data-testid="psychogeographic-surface"
+      data-view={view}
+    >
+      <div className="psychogeographic-toolbar">
+        {view === "flat" ? (
+          <button
+            type="button"
+            data-testid="places-back-to-globe"
+            onClick={backToGlobe}
+          >
+            ← Back to globe
+          </button>
+        ) : (
+          <button
+            type="button"
+            data-testid="places-fly-next"
+            onClick={flyToNextPlace}
+          >
+            Fly to next place
+          </button>
+        )}
+        <span className="psychogeographic-view-label" data-testid="places-view-label">
+          {view === "globe" ? "Globe" : "Flat detail"}
+        </span>
+      </div>
       <div
         ref={containerRef}
         className="psychogeographic-map"
         data-testid="psychogeographic-map"
+        data-center={`${viewState.longitude.toFixed(4)},${viewState.latitude.toFixed(4)}`}
       />
       <div
         className="psychogeographic-connection"
@@ -146,7 +231,9 @@ export function PsychogeographicMap({
               <button
                 type="button"
                 data-testid={`psychogeographic-stop-${stop.sceneId}`}
-                onClick={() => onOpenStop?.(stop)}
+                data-selected={selectedStopId === stop.sceneId ? "true" : "false"}
+                data-located={stop.located ? "true" : "false"}
+                onClick={() => selectStop(stop.sceneId)}
               >
                 {stop.title} · {stop.validAt}
                 {!stop.located && " · unlocated"}

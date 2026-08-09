@@ -1,3 +1,5 @@
+import "maplibre-gl/dist/maplibre-gl.css";
+
 import type {
   GeoJSONSource,
   SourceSpecification,
@@ -9,37 +11,84 @@ import {
   buildPlaceMarkers,
   buildWalkPathSource,
   createOfflineMapStyle,
+  type MapSurfaceOptions,
+  type MapSurfaceProjection,
   type MapTileSource,
 } from "./mapStyle";
 
 /**
- * The rendering port of the psychogeographic surface. The desktop app binds
- * the MapLibre GL implementation (below); tests and the static web viewer
- * can bind their own adapter. All geography logic (styles, markers, walk
+ * The rendering port of the Places surface. The desktop app binds the
+ * MapLibre GL implementation (below); tests and the static web viewer can
+ * bind their own adapter. All geography logic (styles, markers, walk
  * geometry, policy gating) lives outside this port.
  */
+export interface MapViewState {
+  latitude: number;
+  longitude: number;
+  zoom: number;
+}
+
 export interface MapSurfaceRenderer {
-  create(container: HTMLElement, tileSource: MapTileSource): Promise<void>;
+  create(
+    container: HTMLElement,
+    tileSource: MapTileSource,
+    options?: MapSurfaceOptions,
+  ): Promise<void>;
   drawWalk(walkId: string, stops: WalkStop[]): Promise<void>;
   setLiveTileSource(tileSource: MapTileSource): Promise<void>;
   centerOn(latitude: number, longitude: number, zoom?: number): Promise<void>;
+  /** Animated camera flight to a place over the globe surface (task-2 step 4). */
+  flyTo?(latitude: number, longitude: number, zoom?: number): Promise<void>;
+  /** Switch between the globe surface and the flat detail map (task-2 step 6). */
+  setProjection?(projection: MapSurfaceProjection): Promise<void>;
+  /** Register a handler for stop-marker clicks on the map surface. */
+  setStopClickHandler?(handler: (sceneId: string) => void): void;
+  /** Register a handler for camera moves (used to surface the current center). */
+  onViewChange?(handler: (view: MapViewState) => void): void;
   destroy(): void;
 }
 
 /** MapLibre GL implementation of the renderer port. The map stays fully
- * offline by default: the style references only local sources. */
+ * offline by default: the style references only local sources, so the globe
+ * and the walk arcs draw with zero external network requests. */
 export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
   const maplibre = await import("maplibre-gl");
   let map: InstanceType<typeof maplibre.Map> | null = null;
+  let stopClickHandler: ((sceneId: string) => void) | null = null;
+  let viewChangeHandler: ((view: MapViewState) => void) | null = null;
+
+  function emitViewChange(): void {
+    if (!map || !viewChangeHandler) return;
+    const center = map.getCenter();
+    viewChangeHandler({
+      latitude: center.lat,
+      longitude: center.lng,
+      zoom: map.getZoom(),
+    });
+  }
 
   return {
-    async create(el, tileSource) {
+    async create(el, tileSource, options) {
+      const projection: MapSurfaceProjection =
+        options?.projection ?? "globe";
       map = new maplibre.Map({
         container: el,
-        style: createOfflineMapStyle(tileSource) as StyleSpecification,
+        style: createOfflineMapStyle(tileSource, {
+          projection,
+        }) as StyleSpecification,
         attributionControl: { compact: false },
       });
+      if (projection === "globe") {
+        map.setSky({ "sky-color": "#05070f", "sky-horizon-blend": 0.4 });
+      }
+      map.on("moveend", emitViewChange);
+      map.on("click", "psychogeographic-marker-layer", (event) => {
+        const feature = event.features?.[0];
+        const sceneId = feature?.properties?.id as string | undefined;
+        if (sceneId && stopClickHandler) stopClickHandler(sceneId);
+      });
       await waitForStyleLoad(map);
+      emitViewChange();
     },
     async drawWalk(walkId, stops) {
       if (!map) throw new Error("map renderer is not initialized");
@@ -81,9 +130,34 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
       if (!map) return;
       map.jumpTo({ center: [longitude, latitude], zoom: zoom ?? 5 });
     },
+    async flyTo(latitude, longitude, zoom) {
+      if (!map) return;
+      map.flyTo({
+        center: [longitude, latitude],
+        zoom: zoom ?? 4,
+        duration: 1800,
+      });
+    },
+    async setProjection(projection) {
+      if (!map) return;
+      map.setProjection({
+        type: projection === "globe" ? "globe" : "mercator",
+      });
+      if (projection === "globe") {
+        map.setSky({ "sky-color": "#05070f", "sky-horizon-blend": 0.4 });
+      }
+    },
+    setStopClickHandler(handler) {
+      stopClickHandler = handler;
+    },
+    onViewChange(handler) {
+      viewChangeHandler = handler;
+    },
     destroy() {
       map?.remove();
       map = null;
+      stopClickHandler = null;
+      viewChangeHandler = null;
     },
   };
 }

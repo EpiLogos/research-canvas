@@ -1,16 +1,28 @@
 import type { WalkStop } from "../scenes/walkAssembly";
+import {
+  buildGraticule,
+  greatCircleArc,
+  type LonLat,
+} from "./geometry";
 
 /**
- * Offline-first map style construction (vision §3.10, research findings §2):
- * the surface renders from a local source by default — a bundled GeoJSON
- * dataset for v1, or a local raster/PMTiles archive when a tile pack is
- * bundled. Live tile refresh only ever swaps the source URL, and only after
- * the policy gates it.
+ * Offline-first map style construction (vision §3.10, refinement-2 D1): the
+ * Places surface renders from local sources by default — the bundled GeoJSON
+ * basemap (place points), a locally computed graticule, and great-circle walk
+ * arcs. Live tile refresh only ever swaps the source URL, and only after the
+ * policy gates it. The globe is the default surface; the flat map is the
+ * detail view (one action returns to the globe).
  */
 export type MapTileSource =
   | { kind: "geojson"; url: string; attribution: string }
   | { kind: "raster"; url: string; attribution: string; tileSize?: number }
   | { kind: "pmtiles"; url: string; attribution: string };
+
+export type MapSurfaceProjection = "globe" | "flat";
+
+export interface MapSurfaceOptions {
+  projection?: MapSurfaceProjection;
+}
 
 export interface MapMarkerFeature {
   type: "Feature";
@@ -26,12 +38,31 @@ export interface MapMarkerFeature {
 export interface WalkPathFeature {
   type: "Feature";
   geometry:
-    | { type: "LineString"; coordinates: Array<[number, number]> }
+    | { type: "LineString"; coordinates: LonLat[] }
     | { type: "LineString"; coordinates: [] };
   properties: { walkId: string };
 }
 
-export function createOfflineMapStyle(tileSource: MapTileSource): object {
+const GLOBE = {
+  /** Dark ocean — the background layer colours the sphere surface. */
+  ocean: "#0a1322",
+  /** Space around the globe. */
+  space: "#05070f",
+  /** Graticule line colour. */
+  graticule: "#182440",
+  /** Basemap place points. */
+  basePoint: "#2f6f8f",
+  /** Walk arc. */
+  arc: "#8a6bbf",
+  /** Walk stop marker. */
+  marker: "#d0a24a",
+} as const;
+
+export function createOfflineMapStyle(
+  tileSource: MapTileSource,
+  options: MapSurfaceOptions = {},
+): object {
+  const projection = options.projection ?? "globe";
   const sources: Record<string, unknown> =
     tileSource.kind === "geojson"
       ? {
@@ -57,26 +88,71 @@ export function createOfflineMapStyle(tileSource: MapTileSource): object {
             },
           };
 
-  return {
+  const baseLayer =
+    tileSource.kind === "geojson"
+      ? {
+          id: "offline-base",
+          type: "circle",
+          source: "offline",
+          paint: {
+            "circle-radius": 4,
+            "circle-color": GLOBE.basePoint,
+            "circle-opacity": 0.9,
+          },
+        }
+      : {
+          id: "offline-base",
+          type: tileSource.kind === "raster" ? "raster" : "background",
+          source: "offline",
+          paint: {},
+        };
+
+  const globeLayers: object[] =
+    projection === "globe"
+      ? [
+          {
+            id: "graticule-lines",
+            type: "line",
+            source: "graticule",
+            layout: {
+              "line-cap": "round",
+            },
+            paint: {
+              "line-color": GLOBE.graticule,
+              "line-width": 0.5,
+              "line-opacity": 0.6,
+            },
+          },
+        ]
+      : [];
+
+  const style: Record<string, unknown> = {
     version: 8,
     name: "psychogeographic-offline",
     sources,
     layers: [
-      tileSource.kind === "geojson"
-        ? {
-            id: "offline-base",
-            type: "circle",
-            source: "offline",
-            paint: { "circle-radius": 4, "circle-color": "#8a6bbf" },
-          }
-        : {
-            id: "offline-base",
-            type: tileSource.kind === "raster" ? "raster" : "background",
-            source: "offline",
-            paint: {},
-          },
+      {
+        id: "ocean-background",
+        type: "background",
+        paint: { "background-color": GLOBE.ocean },
+      },
+      ...globeLayers,
+      baseLayer,
     ],
   };
+
+  if (projection === "globe") {
+    style.projection = { type: "globe" };
+  }
+
+  if (projection === "globe") {
+    sources.graticule = {
+      type: "geojson",
+      data: buildGraticule(),
+    };
+  }
+
+  return style;
 }
 
 /** Converts walk stops into GeoJSON point markers. Unlocated stops carry a
@@ -103,14 +179,35 @@ export function buildPlaceMarkers(stops: WalkStop[]): MapMarkerFeature[] {
   return features;
 }
 
+/**
+ * Builds the walk's GeoJSON LineString. Consecutive located stops are joined
+ * by great-circle arcs (task-2 step 5), so the route follows the globe's
+ * surface; a stop's `controlPoints` subdivide the arc leaving that stop.
+ * Unlocated stops are dropped rather than guessed.
+ */
 export function buildWalkPathSource(
   walkId: string,
   stops: WalkStop[],
 ): WalkPathFeature {
-  const coordinates: Array<[number, number]> = [];
-  for (const stop of stops) {
-    if (stop.coordinate) {
-      coordinates.push([stop.coordinate.longitude, stop.coordinate.latitude]);
+  const located = stops.filter(
+    (stop): stop is WalkStop & { coordinate: { latitude: number; longitude: number } } =>
+      stop.coordinate !== null,
+  );
+  const coordinates: LonLat[] = [];
+  for (let i = 0; i < located.length - 1; i += 1) {
+    const from = located[i];
+    const to = located[i + 1];
+    const arc = greatCircleArc(
+      from.coordinate,
+      to.coordinate,
+      64,
+      from.controlPoints ?? [],
+    );
+    if (coordinates.length === 0) {
+      coordinates.push(...arc);
+    } else {
+      // Skip the arc's start point — it was the previous arc's endpoint.
+      coordinates.push(...arc.slice(1));
     }
   }
   return {

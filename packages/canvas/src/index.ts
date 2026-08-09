@@ -10,6 +10,7 @@ export * from "./content";
 export * from "./geography/bundledPack";
 export * from "./palace/PalaceLens";
 export type { PalaceCuration } from "./palace/curation";
+export * from "./psychogeographic/geometry";
 export * from "./psychogeographic/PsychogeographicMap";
 export * from "./psychogeographic/renderer";
 export * from "./scenes/walkAssembly";

@@ -67,7 +67,7 @@ scene sequences whose place frames are chamber anchors.
 **Resolution: the recommended order stands.**
 
 1. **Spine** — substrate geography (Temporal Place contract) + nested sub-timelines.
-2. **Psychogeographic surface** as the first full surface (map / globe / street view over the
+2. **Places surface** as the first full surface (map / globe / street view over the
    spine).
 3. **Migration profile** — journey as scene sequence.
 4. **Mind palace** — reuses mature scene/walk machinery.

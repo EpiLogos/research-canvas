@@ -23,10 +23,11 @@ import {
 import { StreetViewImportDialog } from "./StreetViewImportDialog";
 
 /**
- * The psychogeographic lens (slice 2): an offline-first map over the spine's
- * Temporal Places plus the street-view imagery core, sharing one live-service
- * policy so opt-ins are explicit per action and every live call is visible.
- * Walks are agent-assembled from real graph events when none exist yet.
+ * The Places lens (slice 2, refinement-2 D1): a globe-first offline map over
+ * the spine's Temporal Places plus the street-view imagery core, sharing one
+ * live-service policy so opt-ins are explicit per action and every live call
+ * is visible. Walks are agent-assembled from real graph events when none exist
+ * yet.
  */
 
 export interface PsychogeographicLensProps {
@@ -142,7 +143,7 @@ export function PsychogeographicLens({
     return (
       <section className="psychogeographic-lens" data-testid="psychogeographic-lens">
         <p data-testid="psychogeographic-loading">
-          {assembling ? "Assembling the walk from the graph…" : "Loading the psychogeographic surface…"}
+          {assembling ? "Assembling the walk from the graph…" : "Loading the Places surface…"}
         </p>
       </section>
     );
@@ -164,7 +165,7 @@ export function PsychogeographicLens({
   return (
     <section className="psychogeographic-lens" data-testid="psychogeographic-lens">
       <div className="psychogeographic-toolbar">
-        <h2>Psychogeographic surface · {profileScope}</h2>
+        <h2>Places surface · {profileScope}</h2>
         <button
           type="button"
           data-testid="psychogeographic-refresh"

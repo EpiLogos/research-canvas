@@ -10,7 +10,7 @@ interface TransportBarProps {
 const LENSES: { id: LensMode; label: string }[] = [
   { id: "canvas", label: "Canvas" },
   { id: "timeline", label: "Timeline" },
-  { id: "psychogeographic", label: "Psychogeographic" },
+  { id: "psychogeographic", label: "Places" },
   { id: "story", label: "Story" },
   { id: "palace", label: "Palace" },
 ];
