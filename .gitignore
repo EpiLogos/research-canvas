@@ -23,6 +23,7 @@ apps/desktop/src-tauri/target
 .env.*.local
 .epi/
 .research-canvas/
+.wayfinder/
 
 # Python environments and generated caches
 .venv/
