@@ -58,10 +58,26 @@ export function usePipelineStages(
 
   const refresh = useCallback(() => setVersion((v) => v + 1), []);
 
+  // Stable gate: the store reads fire only once there is at least one canvas
+  // object to track. A boolean (not the `objects` array) is the dependency so
+  // callers passing a fresh array each render cannot retrigger the effect.
+  const hasObjects = objects.length > 0;
+
   useEffect(() => {
     const canReadTimeline = Boolean(transport?.loadTimelineView && workspaceId);
     const canReadScenes = Boolean(transport?.listScenes && databasePath);
     const canReadCuration = Boolean(transport?.loadPalaceCuration && databasePath);
+
+    // Nothing to track until there are canvas objects: rail counts and the
+    // flow view are derived from the tracked objects, and a selected object
+    // implies a non-empty canvas. Deferring the store reads keeps the
+    // pipeline's load off the workspace-boot critical path.
+    if (!hasObjects) {
+      setTimeline(null);
+      setScenes([]);
+      setCuration(null);
+      return;
+    }
 
     if (!canReadTimeline && !canReadScenes && !canReadCuration) {
       setTimeline(null);
@@ -114,7 +130,7 @@ export function usePipelineStages(
     return () => {
       cancelled = true;
     };
-  }, [transport, workspaceId, databasePath, profileScope, version]);
+  }, [transport, workspaceId, databasePath, profileScope, version, hasObjects]);
 
   const byGraphNodeId = useMemo(
     () => deriveStageState(objects, timeline, scenes, curation),

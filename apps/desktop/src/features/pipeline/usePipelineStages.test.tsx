@@ -212,7 +212,8 @@ describe("usePipelineStages", () => {
         workspaceId: "sqlite:/canonical/workspace.sqlite",
         databasePath: "/canonical/workspace.sqlite",
         profileScope: "bootstrapping",
-        objects: [],
+        // Store reads are deferred until there is a canvas object to track.
+        objects: [{ graphNodeId: bullOx, title: "Bull-ox" }],
       }),
     );
     await waitFor(() => {
