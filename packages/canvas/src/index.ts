@@ -30,3 +30,4 @@ export * from "./timeline/TimelineLens";
 export * from "./timeline/TimelineRelationField";
 export * from "./timeline/TimelineWorkingSet";
 export * from "./timeline/walk";
+export * from "./theme";
