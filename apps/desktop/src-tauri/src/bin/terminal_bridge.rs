@@ -25,6 +25,7 @@ use research_canvas_desktop_lib::{
             list_street_view_images_at, mark_street_view_redaction_none_needed_at,
             register_street_view_image_at, stage_street_view_image_at,
         },
+        fetch_asset::{ingest_fetched_asset_at, list_fetch_records_at, IngestFetchedAssetRequest},
         keepsake::write_keepsake_bundle_at,
         palace::{load_palace_curation_at, save_palace_curation_at},
         layout::{flush_canvas_layout_at, FlushCanvasLayoutRequest},
@@ -406,6 +407,33 @@ fn handle_request(
             let payload = mark_street_view_redaction_none_needed_at(&database_path, &id)?;
             return respond_json(request, StatusCode(200), payload);
         }
+    }
+
+    if method == Method::Get && path == "/workspace/fetch-records" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let profile_scope = query_param(&url, "profileScope")
+            .ok_or_else(|| "missing profileScope query parameter".to_string())?;
+        let payload = list_fetch_records_at(&database_path, &profile_scope)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/fetch-records/ingest" {
+        let session_database = session_database_path(&request)?;
+        let body = read_body(&mut request)?;
+        let mut input: IngestFetchedAssetRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        if input.database_path.trim().is_empty() {
+            input.database_path = session_database.to_string_lossy().to_string();
+        }
+        let payload = ingest_fetched_asset_at(&input)?;
+        let status = if payload.validation.all_ok() {
+            StatusCode(201)
+        } else {
+            StatusCode(422)
+        };
+        return respond_json(request, status, payload);
     }
 
     if method == Method::Post && path == "/workspace/keepsake" {

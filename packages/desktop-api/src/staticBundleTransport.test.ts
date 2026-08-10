@@ -342,5 +342,18 @@ describe("createStaticBundleTransport", () => {
         appState: {}
       })
     ).toThrow("read-only web build");
+    await expect(
+      transport.listFetchRecords({ databasePath: "x", profileScope: "bootstrapping" })
+    ).rejects.toThrow("read-only web build");
+    await expect(
+      transport.ingestFetchedAsset({
+        databasePath: "x",
+        mediaRoot: "x",
+        agentSessionId: "s",
+        sourceUrl: "https://upload.wikimedia.org/x.png",
+        license: "public domain",
+        sourcePath: "/tmp/x.png"
+      })
+    ).rejects.toThrow("read-only web build");
   });
 });

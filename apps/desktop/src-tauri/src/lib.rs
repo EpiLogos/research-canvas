@@ -6,6 +6,7 @@ pub mod commands {
     pub mod constellations;
     pub mod export;
     pub mod export_graph_bundle;
+    pub mod fetch_asset;
     pub mod geography_edges;
     pub mod graph;
     pub mod keepsake;
@@ -159,6 +160,8 @@ pub fn run() {
             commands::street_view::add_manual_street_view_region_command,
             commands::street_view::apply_street_view_redaction_command,
             commands::street_view::mark_street_view_redaction_none_needed_command,
+            commands::fetch_asset::ingest_fetched_asset_command,
+            commands::fetch_asset::list_fetch_records_command,
             commands::keepsake::write_keepsake_bundle_command,
             commands::palace::load_palace_curation_command,
             commands::palace::save_palace_curation_command,

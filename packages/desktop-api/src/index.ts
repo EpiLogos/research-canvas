@@ -66,6 +66,13 @@ export type {
   ListGeographyEdgesRequest,
   UpsertGeographyEdgeRequest,
 } from "./geographyEdges";
+export type {
+  FetchRecord,
+  FetchRecordRedactionStatus,
+  FetchValidation,
+  IngestFetchedAssetRequest,
+  ListFetchRecordsRequest,
+} from "./fetchRecords";
 import {
   sceneFromWire,
   sceneSequenceFromWire,
@@ -98,6 +105,12 @@ import {
   type ListGeographyEdgesRequest,
   type UpsertGeographyEdgeRequest,
 } from "./geographyEdges";
+import {
+  fetchRecordFromWire,
+  type FetchRecord,
+  type IngestFetchedAssetRequest,
+  type ListFetchRecordsRequest,
+} from "./fetchRecords";
 
 export type NodeDocumentMutation =
   | { kind: "created" }
@@ -706,6 +719,12 @@ export interface WorkspaceTransport {
   upsertGeographyEdge(input: UpsertGeographyEdgeRequest): Promise<GeographyEdge>;
   deleteGeographyEdge(input: GeographyEdgeIdRequest): Promise<void>;
 
+  // ---- Fetch records (agentic asset gathering gate; ticket #20) ----
+  // The gate is offline-first: it validates bytes already on disk. Rejected
+  // attempts return a record with `validation.all_ok() === false`.
+  listFetchRecords(input: ListFetchRecordsRequest): Promise<FetchRecord[]>;
+  ingestFetchedAsset(input: IngestFetchedAssetRequest): Promise<FetchRecord>;
+
   // ---- Keepsake export (self-contained static bundle) ----
   writeKeepsakeBundle(input: {
     outputDir: string;
@@ -1056,6 +1075,21 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async deleteGeographyEdge({ databasePath, id }) {
       await invokeTauri<void>("delete_geography_edge_command", {
         request: { databasePath, id },
+      });
+    },
+    async listFetchRecords({ databasePath, profileScope }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listFetchRecords: no profileScope in input or active project");
+      }
+      const wires = await invokeTauri<FetchRecord[]>("list_fetch_records_command", {
+        request: { databasePath, profileScope: scope },
+      });
+      return wires.map(fetchRecordFromWire);
+    },
+    async ingestFetchedAsset(input) {
+      return invokeTauri<FetchRecord>("ingest_fetched_asset_command", {
+        request: input,
       });
     },
     async writeKeepsakeBundle(input) {
@@ -1465,6 +1499,23 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
         `/workspace/geography-edges/${encodeURIComponent(id)}`,
         { method: "DELETE" },
       );
+    },
+    async listFetchRecords({ databasePath: _, profileScope }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listFetchRecords: no profileScope in input or active project");
+      }
+      const params = new URLSearchParams({ profileScope: scope });
+      const wires = await requestJsonWithRetry<FetchRecord[]>(
+        `/workspace/fetch-records?${params.toString()}`,
+      );
+      return wires.map(fetchRecordFromWire);
+    },
+    async ingestFetchedAsset(input) {
+      return requestJsonWithRetry<FetchRecord>("/workspace/fetch-records/ingest", {
+        method: "POST",
+        body: input,
+      });
     },
     async writeKeepsakeBundle(input) {
       return requestJsonWithRetry<{ mediaCopied: number; manifestPath: string }>(
@@ -1913,6 +1964,8 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
     listGeographyEdges: readOnlyReject,
     upsertGeographyEdge: readOnlyReject,
     deleteGeographyEdge: readOnlyReject,
+    listFetchRecords: readOnlyReject,
+    ingestFetchedAsset: readOnlyReject,
     writeKeepsakeBundle: readOnlyReject,
     loadPalaceCuration: readOnlyReject,
     savePalaceCuration: readOnlyReject,

@@ -3,6 +3,7 @@ pub mod annotations;
 pub mod canvas;
 pub mod constellations;
 pub mod error;
+pub mod fetch_record;
 pub mod geography_edge_repository;
 pub mod graph;
 pub mod graph_metadata;
@@ -27,6 +28,7 @@ pub use canvas::{
 };
 pub use constellations::{Constellation, ConstellationRepository};
 pub use error::{RepositoryError, RepositoryResult};
+pub use fetch_record::{FetchRecord, FetchRecordRepository, FetchValidation};
 pub use graph::{
     ArchetypalLightingResult, GraphNode, GraphNodePatch, GraphRelationship, GraphRepository,
     LitInstance, NewGraphNode, OperatorSeed,

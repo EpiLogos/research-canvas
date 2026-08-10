@@ -138,6 +138,10 @@ const MIGRATIONS: &[Migration] = &[
         version: "0031_geography_edges",
         sql: include_str!("../../migrations/0031_geography_edges.sql"),
     },
+    Migration {
+        version: "0032_fetch_records",
+        sql: include_str!("../../migrations/0032_fetch_records.sql"),
+    },
 ];
 
 impl MigrationRunner {
