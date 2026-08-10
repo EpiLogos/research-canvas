@@ -269,6 +269,26 @@ pub struct TimelineRelationFieldRequest {
     pub graph_node_id: String,
 }
 
+/// Timeline lazy relational expansion (ticket #28, D13 §4.4): one node's
+/// edges and neighbour nodes loaded on demand through the repository layer.
+/// The timeline base view stays dated-events-only; relational depth is one
+/// click away and never materialises the full graph.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExpandTimelineNodeRequest {
+    pub workspace_id: String,
+    pub graph_node_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExpandTimelineNodeView {
+    pub subject_graph_node_id: String,
+    pub subject: GraphNode,
+    pub edges: Vec<GraphRelationship>,
+    pub neighbours: Vec<GraphNode>,
+}
+
 fn graph_node_from_local_projection(
     record: &TemporalGraphNodeMetadataRecord,
     document: Option<LocalNodeDocument>,
@@ -384,7 +404,7 @@ fn timeline_relation_companions(
         .collect()
 }
 
-fn merge_relationships_by_canonical_key(
+pub fn merge_relationships_by_canonical_key(
     local: impl IntoIterator<Item = GraphRelationship>,
     remote: impl IntoIterator<Item = GraphRelationship>,
 ) -> Vec<GraphRelationship> {
@@ -686,6 +706,77 @@ pub fn load_timeline_relation_field_at_path(
         subject_graph_node_id: graph_node_id.to_string(),
         relationships,
         contextual_nodes,
+    })
+}
+
+/// Lazy relational expansion (ticket #28): the subject node, its edges, and
+/// its neighbour nodes, property-complete, through the local projection first
+/// (offline-first) so the timeline stays light. Any node may be expanded —
+/// temporal or not — because the working-set stack is the user's own
+/// exploration of relational depth, not a filtered timeline read.
+pub fn expand_timeline_node_at_path(
+    path: impl AsRef<std::path::Path>,
+    workspace_id: &str,
+    graph_node_id: &str,
+) -> Result<ExpandTimelineNodeView, String> {
+    let expected_workspace = timeline_workspace_identity(&path)?;
+    if workspace_id != expected_workspace {
+        return Err(format!(
+            "workspaceId does not match active SQLite workspace: expected {expected_workspace}"
+        ));
+    }
+    if graph_node_id.trim().is_empty() {
+        return Err("graphNodeId must not be empty".into());
+    }
+    let database = Database::open(path).map_err(|error| error.to_string())?;
+    let metadata_repository = GraphNodeMetadataRepository::new(database.connection());
+    let documents = NodeDocumentRepository::new(database.connection());
+    let Some(subject_metadata) = metadata_repository
+        .get_with_timestamps(graph_node_id)
+        .map_err(|error| error.to_string())?
+    else {
+        return Err("expand subject graph node does not exist".into());
+    };
+    let subject_document = documents
+        .get_node_document(graph_node_id)
+        .map_err(|error| error.to_string())?;
+    let subject = graph_node_from_local_projection(&subject_metadata, subject_document);
+
+    let relationships = NodeRelationshipRepository::new(database.connection())
+        .list_involving(&BTreeSet::from([graph_node_id.to_string()]))
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .filter(|relationship| !relationship.is_tombstone)
+        .map(|relationship| relationship.as_graph_relationship())
+        .collect::<Vec<_>>();
+    let neighbour_ids = relationships
+        .iter()
+        .flat_map(|relationship| {
+            [
+                relationship.source_graph_node_id.as_str(),
+                relationship.target_graph_node_id.as_str(),
+            ]
+        })
+        .filter(|endpoint_id| *endpoint_id != graph_node_id)
+        .collect::<BTreeSet<_>>();
+    let mut neighbours = Vec::with_capacity(neighbour_ids.len());
+    for endpoint_id in neighbour_ids {
+        let Some(metadata) = metadata_repository
+            .get_with_timestamps(endpoint_id)
+            .map_err(|error| error.to_string())?
+        else {
+            continue;
+        };
+        let document = documents
+            .get_node_document(endpoint_id)
+            .map_err(|error| error.to_string())?;
+        neighbours.push(graph_node_from_local_projection(&metadata, document));
+    }
+    Ok(ExpandTimelineNodeView {
+        subject_graph_node_id: graph_node_id.to_string(),
+        subject,
+        edges: relationships,
+        neighbours,
     })
 }
 
@@ -1009,6 +1100,88 @@ pub async fn load_timeline_relation_field_command(
         }
     }
     Ok(field)
+}
+
+#[tauri::command]
+pub async fn expand_timeline_node_command(
+    request: ExpandTimelineNodeRequest,
+    api_state: tauri::State<'_, SharedApiState>,
+    app_handle: tauri::AppHandle,
+) -> Result<ExpandTimelineNodeView, String> {
+    let path = api_state
+        .lock()
+        .map_err(|_| "API state lock poisoned".to_string())?
+        .db_path
+        .clone()
+        .ok_or_else(|| "App not bootstrapped yet".to_string())?;
+    let mut view =
+        expand_timeline_node_at_path(&path, &request.workspace_id, &request.graph_node_id)?;
+    let Some(graph_state) = app_handle.try_state::<SharedGraphState>() else {
+        return Ok(view);
+    };
+    let graph = crate::db::repositories::graph::GraphRepository::new(
+        graph_state.graph.clone(),
+        graph_state.database.clone(),
+    );
+    let tombstones = local_relationship_tombstones_at_path(
+        &path,
+        &BTreeSet::from([request.graph_node_id.clone()]),
+    )?;
+    let tombstoned_keys = tombstones
+        .iter()
+        .map(|relationship| {
+            canonical_relationship_key(
+                &relationship.source_graph_node_id,
+                &relationship.target_graph_node_id,
+                &relationship.rel_type,
+                &relationship.properties,
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    for tombstone in &tombstones {
+        let _ = graph.disconnect_by_canonical_relationship(tombstone).await;
+    }
+    let Ok(remote_relationships) = graph.relationships_for_node(&request.graph_node_id).await
+    else {
+        return Ok(view);
+    };
+    view.edges = merge_relationships_by_canonical_key(
+        std::mem::take(&mut view.edges),
+        remote_relationships.into_iter().filter(|relationship| {
+            !tombstoned_keys.contains(&canonical_relationship_key(
+                &relationship.source_graph_node_id,
+                &relationship.target_graph_node_id,
+                &relationship.rel_type,
+                &relationship.properties,
+            ))
+        }),
+    );
+    let known_ids = view
+        .neighbours
+        .iter()
+        .map(|node| node.graph_node_id.clone())
+        .collect::<BTreeSet<_>>();
+    let missing_ids = view
+        .edges
+        .iter()
+        .flat_map(|relationship| {
+            [
+                relationship.source_graph_node_id.as_str(),
+                relationship.target_graph_node_id.as_str(),
+            ]
+        })
+        .filter(|node_id| *node_id != request.graph_node_id && !known_ids.contains(*node_id))
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
+    if !missing_ids.is_empty() {
+        if let Ok(nodes) = graph
+            .get_nodes(&missing_ids.into_iter().collect::<Vec<_>>())
+            .await
+        {
+            view.neighbours.extend(nodes);
+        }
+    }
+    Ok(view)
 }
 
 #[tauri::command]

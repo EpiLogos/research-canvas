@@ -144,6 +144,7 @@ pub fn run() {
             commands::graph::load_canvas_view_command,
             commands::timeline::load_timeline_view_command,
             commands::timeline::load_timeline_relation_field_command,
+            commands::timeline::expand_timeline_node_command,
             commands::timeline::upsert_timeline_layout_command,
             commands::scenes::list_scenes_command,
             commands::scenes::list_scene_sequences_command,

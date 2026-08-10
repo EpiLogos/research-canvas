@@ -35,7 +35,10 @@ use research_canvas_desktop_lib::{
             rebuild_constellation_search_index_command, search_constellation_command,
             RebuildConstellationSearchIndexRequest, SearchConstellationRequest,
         },
-        timeline::{load_timeline_view_at_path, LoadTimelineViewRequest},
+        timeline::{
+            expand_timeline_node_at_path, load_timeline_view_at_path, merge_relationships_by_canonical_key,
+            ExpandTimelineNodeRequest, LoadTimelineViewRequest,
+        },
     },
     db::{
         canvas_service::CanvasService,
@@ -538,6 +541,54 @@ fn handle_request(
             serde_json::from_str(&body).map_err(|error| error.to_string())?;
         let payload = load_timeline_view_at_path(session_database_path(&request)?, input)?;
         return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/graph/timeline-expand" {
+        let body = read_body(&mut request)?;
+        let input: ExpandTimelineNodeRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let database_path = session_database_path(&request)?;
+        let mut view =
+            expand_timeline_node_at_path(&database_path, &input.workspace_id, &input.graph_node_id)?;
+        // Opportunistic remote enrichment: a configured live graph merges its
+        // authoritative edges over the offline projection (ticket #28 D13
+        // §4.4). The local projection alone remains a complete offline answer.
+        if let Some(graph_state) = graph_state.as_ref() {
+            let repo =
+                GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
+            if let Ok(remote) = graph_state
+                .runtime
+                .block_on(repo.relationships_for_node(&input.graph_node_id))
+            {
+                view.edges =
+                    merge_relationships_by_canonical_key(std::mem::take(&mut view.edges), remote);
+                let known_ids = view
+                    .neighbours
+                    .iter()
+                    .map(|node| node.graph_node_id.clone())
+                    .collect::<std::collections::BTreeSet<_>>();
+                let missing_ids = view
+                    .edges
+                    .iter()
+                    .flat_map(|relationship| {
+                        [
+                            relationship.source_graph_node_id.clone(),
+                            relationship.target_graph_node_id.clone(),
+                        ]
+                    })
+                    .filter(|node_id| *node_id != input.graph_node_id && !known_ids.contains(node_id))
+                    .collect::<std::collections::BTreeSet<_>>();
+                if !missing_ids.is_empty() {
+                    if let Ok(nodes) = graph_state
+                        .runtime
+                        .block_on(repo.get_nodes(&missing_ids.into_iter().collect::<Vec<_>>()))
+                    {
+                        view.neighbours.extend(nodes);
+                    }
+                }
+            }
+        }
+        return respond_json(request, StatusCode(200), view);
     }
 
     if method == Method::Get && path == "/graph/search" {
