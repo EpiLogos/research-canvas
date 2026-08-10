@@ -110,7 +110,12 @@ export function buildKeepsakeManifest(input: KeepsakeInput): KeepsakeManifest {
       assertPortablePath(path, `scene ${sceneId}`);
       media.add(path);
     }
-    const streetViewImages = streetViewForScene(sceneId);
+    // Only `redacted` / `none_needed` imagery is publishable (the same
+    // contract `StorySceneStreetView` documents): a pending capture is never
+    // shipped, even if a caller supplies one.
+    const streetViewImages = streetViewForScene(sceneId).filter(
+      (image) => image.redactionStatus !== "pending",
+    );
     for (const image of streetViewImages) {
       const path = image.redactedArtifactPath ?? image.artifactPath;
       assertPortablePath(path, `scene ${sceneId} street view`);

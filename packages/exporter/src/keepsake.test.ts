@@ -180,6 +180,40 @@ describe("buildKeepsakeManifest", () => {
     );
   });
 
+  test("never ships pending street-view imagery, even when a caller supplies it", () => {
+    const manifest = buildKeepsakeManifest(
+      input({
+        streetViewImagesForScene: () => [
+          {
+            id: "sv-arrival-pending",
+            artifactPath: "street-view/imported/pending.png",
+            redactionStatus: "pending",
+            redactedArtifactPath: null,
+            capturedAt: null,
+            latitude: null,
+            longitude: null,
+            headingDegrees: null,
+          },
+          {
+            id: "sv-arrival-1",
+            artifactPath: "street-view/imported/arrival.png",
+            redactionStatus: "redacted",
+            redactedArtifactPath: "redacted/sv-arrival-1.png",
+            capturedAt: null,
+            latitude: null,
+            longitude: null,
+            headingDegrees: null,
+          },
+        ],
+      }),
+    );
+    expect(manifest.scenes[0].streetViewImages).toHaveLength(1);
+    expect(manifest.scenes[0].streetViewImages[0].id).toBe("sv-arrival-1");
+    // The pending original is not copied into the bundle.
+    expect(manifest.media).not.toContain("street-view/imported/pending.png");
+    expect(manifest.media).toContain("redacted/sv-arrival-1.png");
+  });
+
   test("refuses non-portable street-view image paths", () => {
     expect(() =>
       buildKeepsakeManifest(

@@ -271,16 +271,31 @@ export function streetViewImagesForPlace(
   fetchRecords: FetchRecord[],
 ): StorySceneStreetView[] {
   const entry = gazetteer.resolveById(placeId);
+  // Normalize both sides to the gazetteer id: the scene's `placeFrame.placeId`
+  // is the gazetteer id (e.g. `wikidata:Q727`), while a Task-4 fetch record may
+  // store the raw graph node id (`root-archetypal-field:place-amsterdam`) or
+  // the gazetteer id itself. Unmatched ids still degrade to the neutral
+  // fallback — never an error.
+  const canonicalPlaceId = canonicalGazetteerPlaceId(placeId, gazetteer);
   const matched = new Map<string, StreetViewImageRecord>();
 
   for (const record of fetchRecords) {
-    if (record.placeId !== placeId || !record.streetViewImageId) continue;
+    if (!record.streetViewImageId || !record.placeId) continue;
+    if (canonicalGazetteerPlaceId(record.placeId, gazetteer) !== canonicalPlaceId) {
+      continue;
+    }
     const image = streetImages.find(
       (candidate) => candidate.id === record.streetViewImageId,
     );
     if (image) matched.set(image.id, image);
   }
 
+  // Coordinate-proximity fallback for manually imported captures whose
+  // lat/lng match the gazetteer place. The 1° threshold is deliberately
+  // coarse (it rescues captures registered without a fetch-record place
+  // match) and can over-associate imagery of a nearby city; it is a
+  // best-effort convenience, never a correctness guarantee — unknown places
+  // simply keep the neutral fallback.
   if (entry?.latitude !== undefined && entry.longitude !== undefined) {
     for (const image of streetImages) {
       if (image.latitude === null || image.longitude === null) continue;
@@ -309,4 +324,27 @@ export function streetViewImagesForPlace(
       longitude: image.longitude,
       headingDegrees: image.headingDegrees,
     }));
+}
+
+/**
+ * Normalizes a place id to the gazetteer's canonical id. A gazetteer id
+ * (`wikidata:Q727`) resolves directly; a raw graph node id
+ * (`root-archetypal-field:place-amsterdam`) is resolved through the gazetteer
+ * by name (the trailing slug is the place name). Anything unresolvable passes
+ * through unchanged so matching degrades to the coordinate-proximity fallback
+ * and ultimately the neutral scene fallback — never an error.
+ */
+function canonicalGazetteerPlaceId(
+  placeId: string,
+  gazetteer: GazetteerIndex,
+): string {
+  const byId = gazetteer.resolveById(placeId);
+  if (byId) return byId.id;
+  const slug = placeId.split(":place-").pop();
+  if (slug) {
+    const name = slug.replace(/-/g, " ");
+    const matches = gazetteer.searchByName(name, { limit: 1 });
+    if (matches.length > 0) return matches[0].id;
+  }
+  return placeId;
 }

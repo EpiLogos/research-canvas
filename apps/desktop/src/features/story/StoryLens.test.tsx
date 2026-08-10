@@ -239,6 +239,38 @@ describe("StoryLens", () => {
     expect(screen.queryByTestId("story-street-view-fallback")).toBeNull();
   });
 
+  test("normalizes a fetch-record raw graph node id to the scene's gazetteer place", async () => {
+    // Task-4 fetch records may store the raw graph node id
+    // (`root-archetypal-field:place-amsterdam`) while the scene's
+    // placeFrame.placeId is the gazetteer id (`wikidata:Q727`). The direct
+    // id match would miss; the gazetteer normalization must still associate.
+    const image = redactedStreetImage();
+    const fetchRecord = fetchRecordFor(image.id, "root-archetypal-field:place-amsterdam");
+    render(
+      <StoryLens
+        transport={makeTransport(
+          [scene()],
+          vi.fn(),
+          { images: [image], fetchRecords: [fetchRecord] },
+        )}
+        databasePath="/tmp/ws.sqlite"
+        workspaceId="sqlite:/tmp/ws"
+        repoRoot="/tmp/repo"
+        profileScope="migration"
+        workingRoot="/tmp/ws"
+      />,
+    );
+
+    await screen.findByText("The Crossing");
+    await waitFor(() => {
+      expect(screen.getByTestId("story-street-view-image")).toHaveAttribute(
+        "src",
+        "redacted/sv-prague-1.png",
+      );
+    });
+    expect(screen.queryByTestId("story-street-view-fallback")).toBeNull();
+  });
+
   test("keeps pending (unredacted) imagery out of published scenes", async () => {
     const image = redactedStreetImage({
       redactionStatus: "pending",

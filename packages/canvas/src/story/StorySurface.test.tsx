@@ -30,7 +30,9 @@ function sceneData(over: Partial<StorySurfaceSceneData> = {}): StorySurfaceScene
       },
     ],
     media: ["media/arrival.mp3"],
-    transcriptPath: "transcripts/arrival.vtt",
+    // Default to no transcript so tests that don't exercise transcript sync
+    // never trigger the async transcript fetch (avoids React act warnings).
+    transcriptPath: null,
     ...over,
   };
 }
@@ -79,7 +81,7 @@ describe("StorySurface", () => {
       <StorySurface
         title="The Crossing"
         profileScope="migration"
-        scenes={[sceneData()]}
+        scenes={[sceneData({ transcriptPath: "transcripts/arrival.vtt" })]}
         defaultLanguage="original"
         resolveAsset={(path) => `/assets/${path}`}
         loadTranscript={async () => VTT}
