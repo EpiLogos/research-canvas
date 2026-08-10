@@ -124,4 +124,80 @@ describe("buildKeepsakeManifest", () => {
       ),
     ).toThrow(/non-portable/);
   });
+
+  test("carries the place's redacted street-view imagery and walk context, copying image paths into media", () => {
+    const manifest = buildKeepsakeManifest(
+      input({
+        streetViewImagesForScene: () => [
+          {
+            id: "sv-arrival-1",
+            artifactPath: "street-view/imported/arrival.png",
+            redactionStatus: "redacted",
+            redactedArtifactPath: "redacted/sv-arrival-1.png",
+            capturedAt: "2026-08-01T10:00:00.000Z",
+            latitude: 41.0082,
+            longitude: 28.9784,
+            headingDegrees: 90,
+          },
+        ],
+      }),
+    );
+    const scene = manifest.scenes[0];
+    expect(scene.streetViewImages).toHaveLength(1);
+    // The redacted derived copy is the portable asset a scene ships.
+    expect(scene.streetViewImages[0].redactedArtifactPath).toBe(
+      "redacted/sv-arrival-1.png",
+    );
+    expect(scene.walkContext).toEqual({
+      coordinate: { latitude: 41.0082, longitude: 28.9784 },
+      route: [{ latitude: 41.0082, longitude: 28.9784 }],
+    });
+    // The street-view image lands in top-level media so the bundle writer
+    // copies it alongside the audio and transcripts.
+    expect(manifest.media).toContain("redacted/sv-arrival-1.png");
+  });
+
+  test("uses the original capture path when a capture needed no redaction", () => {
+    const manifest = buildKeepsakeManifest(
+      input({
+        streetViewImagesForScene: () => [
+          {
+            id: "sv-arrival-1",
+            artifactPath: "street-view/imported/arrival.png",
+            redactionStatus: "none_needed",
+            redactedArtifactPath: null,
+            capturedAt: null,
+            latitude: null,
+            longitude: null,
+            headingDegrees: null,
+          },
+        ],
+      }),
+    );
+    expect(manifest.media).toContain("street-view/imported/arrival.png");
+    expect(manifest.scenes[0].streetViewImages[0].redactionStatus).toBe(
+      "none_needed",
+    );
+  });
+
+  test("refuses non-portable street-view image paths", () => {
+    expect(() =>
+      buildKeepsakeManifest(
+        input({
+          streetViewImagesForScene: () => [
+            {
+              id: "sv-arrival-1",
+              artifactPath: "/Users/admin/street-view/imported/arrival.png",
+              redactionStatus: "none_needed",
+              redactedArtifactPath: null,
+              capturedAt: null,
+              latitude: null,
+              longitude: null,
+              headingDegrees: null,
+            },
+          ],
+        }),
+      ),
+    ).toThrow(/non-portable/);
+  });
 });

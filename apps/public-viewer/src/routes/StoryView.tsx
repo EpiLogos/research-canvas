@@ -44,7 +44,7 @@ export function StoryView(): JSX.Element {
   if (loading) {
     return (
       <main className="viewer viewer--story">
-        <p data-testid="story-loading">Loading published story…</p>
+        <p data-testid="story-loading">Loading published journey…</p>
       </main>
     );
   }
@@ -53,7 +53,7 @@ export function StoryView(): JSX.Element {
     return (
       <main className="viewer viewer--story">
         <p data-testid="story-unavailable">
-          No published story bundle was found in this export.
+          No published journey bundle was found in this export.
         </p>
       </main>
     );
@@ -95,6 +95,8 @@ export function keepsakeSceneToStory(
     })),
     media: scene.media,
     transcriptPath: transcriptFor(scene, language),
+    streetViewImages: scene.streetViewImages ?? [],
+    walkContext: scene.walkContext ?? null,
   };
 }
 

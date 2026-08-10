@@ -14,15 +14,17 @@ import type {
 import { gazetteerEntryForPlace } from "../psychogeographic/assembleWalk";
 
 /**
- * Migration-story seed (workstream 3): a real origin → transit → destination
- * journey assembled from the corpus places, so the story lens and the
- * keepsake export have genuine content on a fresh workspace. Nothing is
- * invented here — scenes come from temporal events with LOCATED_AT
- * relationships that resolve against the offline gazetteer, passage refs
- * point at the actual corpus artifact files, narration comes from the
- * corpus summaries, and consent/redaction/language-variant records are
- * written through the same profile store the UI reads. Seeding is
- * idempotent: once a migration sequence exists, nothing is rewritten.
+ * Journey seed (refinement-2 D4, ticket #21): a neutral journey over located
+ * events assembled from the corpus places, so the story lens and the keepsake
+ * export have genuine content on a fresh workspace. Nothing is invented here —
+ * scenes come from temporal events with LOCATED_AT relationships that resolve
+ * against the offline gazetteer, passage refs point at the actual corpus
+ * artifact files, narration comes from the corpus summaries, and
+ * consent/redaction/language-variant records are written through the same
+ * profile store the UI reads. Seeding is idempotent: once a journey sequence
+ * exists, nothing is rewritten. The profile-scope key, scene ids, and
+ * `PASSAGE_SOURCE_PREFIX` stay on the internal `migration` key for data
+ * compatibility — only the visible narrative is agnostic.
  */
 
 export interface MigrationStorySeedInput {
@@ -159,7 +161,7 @@ export async function ensureMigrationStorySeed(
   const sequence: SceneSequence = {
     id: sequenceId,
     profileScope,
-    name: "From origin to destination",
+    name: "A journey over located events",
     sceneIds: scenes.map((scene) => scene.id),
     createdAt: now,
     updatedAt: now,

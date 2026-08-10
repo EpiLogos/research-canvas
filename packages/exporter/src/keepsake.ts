@@ -11,14 +11,32 @@ import {
 /**
  * Keepsake export (vision §3.13/§3.16, tickets #8/#11): a self-contained
  * offline static bundle — navigable journey, own-language, media playback,
- * consent-filtered. The manifest never contains hardcoded local paths: every
- * asset reference is relative, and the builder refuses absolute paths.
+ * consent-filtered, with the place's redacted street-view imagery and the
+ * walk's map/globe context as first-class scene content. The manifest never
+ * contains hardcoded local paths: every asset reference is relative, and the
+ * builder refuses absolute paths.
  */
 export interface KeepsakeWalkStop {
   sceneId: string;
   placeId: string;
   title: string;
   coordinate: { latitude: number; longitude: number } | null;
+}
+
+export interface KeepsakeStreetViewImage {
+  id: string;
+  artifactPath: string;
+  redactionStatus: string;
+  redactedArtifactPath: string | null;
+  capturedAt: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  headingDegrees: number | null;
+}
+
+export interface KeepsakeWalkContext {
+  coordinate: { latitude: number; longitude: number } | null;
+  route: Array<{ latitude: number; longitude: number }>;
 }
 
 export interface KeepsakeScene {
@@ -32,6 +50,10 @@ export interface KeepsakeScene {
     gaps: Array<{ startOffset: number; endOffset: number }>;
   }>;
   media: string[];
+  /** The place's redacted street-view imagery (refinement-2 D4). */
+  streetViewImages: KeepsakeStreetViewImage[];
+  /** The walk's map/globe context for this stop. */
+  walkContext: KeepsakeWalkContext | null;
 }
 
 export interface KeepsakeManifest {
@@ -53,6 +75,8 @@ export interface KeepsakeInput {
   /** Relative asset paths per scene (media, transcripts, translations). */
   mediaForScene: (sceneId: string) => string[];
   walk: KeepsakeWalkStop[];
+  /** The place's redacted street-view imagery per scene (refinement-2 D4). */
+  streetViewImagesForScene?: (sceneId: string) => KeepsakeStreetViewImage[];
 }
 
 export function buildKeepsakeManifest(input: KeepsakeInput): KeepsakeManifest {
@@ -63,6 +87,13 @@ export function buildKeepsakeManifest(input: KeepsakeInput): KeepsakeManifest {
       sceneSchema.parse(scene) as Scene,
     ]),
   );
+  const streetViewForScene = input.streetViewImagesForScene ?? (() => []);
+  const walkBySceneId = new Map(
+    input.walk.map((stop) => [stop.sceneId, stop]),
+  );
+  const route = input.walk
+    .filter((stop) => stop.coordinate !== null)
+    .map((stop) => stop.coordinate as { latitude: number; longitude: number });
   const media = new Set<string>();
   const keepsakeScenes: KeepsakeScene[] = [];
 
@@ -79,6 +110,13 @@ export function buildKeepsakeManifest(input: KeepsakeInput): KeepsakeManifest {
       assertPortablePath(path, `scene ${sceneId}`);
       media.add(path);
     }
+    const streetViewImages = streetViewForScene(sceneId);
+    for (const image of streetViewImages) {
+      const path = image.redactedArtifactPath ?? image.artifactPath;
+      assertPortablePath(path, `scene ${sceneId} street view`);
+      media.add(path);
+    }
+    const stop = walkBySceneId.get(sceneId);
     keepsakeScenes.push({
       sceneId,
       placeId: scene.placeFrame.placeId,
@@ -93,6 +131,11 @@ export function buildKeepsakeManifest(input: KeepsakeInput): KeepsakeManifest {
         gaps,
       })),
       media: sceneMedia,
+      streetViewImages,
+      walkContext: {
+        coordinate: stop?.coordinate ?? null,
+        route,
+      },
     });
   }
 

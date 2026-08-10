@@ -2,22 +2,31 @@ import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
 
 import {
   assembleWalk,
+  loadBundledGeographyPack,
   presentStoryScene,
   StorySurface,
+  walkPathGeometry,
+  type StorySceneStreetView,
   type StorySurfaceSceneData,
 } from "@research-canvas/canvas";
-import type { WorkspaceTransport } from "@research-canvas/desktop-api";
+import type {
+  FetchRecord,
+  StreetViewImageRecord,
+  WorkspaceTransport,
+} from "@research-canvas/desktop-api";
 import { buildKeepsakeManifest } from "@research-canvas/exporter";
-import { loadBundledGeographyPack } from "@research-canvas/canvas";
+import type { GazetteerIndex } from "@research-canvas/geography";
 import type { Scene, SceneSequence } from "@research-canvas/schema";
 
 import { ensureMigrationStorySeed } from "./seedMigrationStory";
 
 /**
- * The story lens (slice 3): the migration profile's journey as a scene
+ * The story lens (slice 3): a journey over located events as a scene
  * sequence — multilingual presentation over derived variants, passage-level
- * consent filtering, and one-click keepsake export through the validated
- * bundle writer. The raw graph and scene store are never modified.
+ * consent filtering, the place's redacted street-view imagery and the walk's
+ * map/globe context inside each scene, and one-click keepsake export through
+ * the validated bundle writer. The raw graph and scene store are never
+ * modified.
  */
 
 export interface StoryLensProps {
@@ -40,6 +49,8 @@ export function StoryLens({
   const [sequences, setSequences] = useState<SceneSequence[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [languages, setLanguages] = useState<Record<string, string>>({});
+  const [streetImages, setStreetImages] = useState<StreetViewImageRecord[]>([]);
+  const [fetchRecords, setFetchRecords] = useState<FetchRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exportState, setExportState] = useState<
@@ -48,16 +59,23 @@ export function StoryLens({
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [seedError, setSeedError] = useState<string | null>(null);
 
+  const pack = useMemo(() => loadBundledGeographyPack(), []);
+
   const reload = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [nextSequences, nextScenes] = await Promise.all([
-        transport.listSceneSequences({ databasePath, profileScope }),
-        transport.listScenes({ databasePath, profileScope }),
-      ]);
+      const [nextSequences, nextScenes, nextStreetImages, nextFetchRecords] =
+        await Promise.all([
+          transport.listSceneSequences({ databasePath, profileScope }),
+          transport.listScenes({ databasePath, profileScope }),
+          transport.listStreetViewImages({ databasePath, profileScope }),
+          transport.listFetchRecords({ databasePath, profileScope }),
+        ]);
       setSequences(nextSequences);
       setScenes(nextScenes);
+      setStreetImages(nextStreetImages);
+      setFetchRecords(nextFetchRecords);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -69,9 +87,9 @@ export function StoryLens({
     void reload();
   }, [reload]);
 
-  // On a fresh workspace the migration profile has no scenes yet; seed the
-  // journey from the corpus so the lens and the keepsake export have real
-  // content. Seeding is idempotent and never touches the raw graph.
+  // On a fresh workspace the profile has no scenes yet; seed the journey from
+  // the corpus so the lens and the keepsake export have real content. Seeding
+  // is idempotent and never touches the raw graph.
   const [seeding, setSeeding] = useState(false);
   useEffect(() => {
     if (!loading || sequences.length > 0 || scenes.length > 0 || seeding) return;
@@ -84,12 +102,12 @@ export function StoryLens({
           databasePath,
           workspaceId,
           corpusRoot: repoRoot,
-          gazetteer: loadBundledGeographyPack().gazetteer,
+          gazetteer: pack.gazetteer,
           profileScope,
         });
         await reload();
       } catch (cause) {
-        // The lens stays usable without a seeded story; the empty state
+        // The lens stays usable without a seeded journey; the empty state
         // explains why assembly did not run.
         setSeedError(cause instanceof Error ? cause.message : String(cause));
       } finally {
@@ -110,20 +128,33 @@ export function StoryLens({
     profileScope,
   ]);
 
-  const storyScenes: StorySurfaceSceneData[] = useMemo(
-    () =>
-      scenes.map((scene) =>
-        presentStoryScene({
-          scene,
-          consents: scene.consents,
-          redactions: scene.redactions,
-          language: languages[scene.id] ?? "original",
-          media: [],
-          transcriptPath: null,
-        }),
-      ),
-    [languages, scenes],
-  );
+  const storyScenes: StorySurfaceSceneData[] = useMemo(() => {
+    const stops = sequences[0]
+      ? assembleWalk(sequences[0], scenes, pack.gazetteer)
+      : [];
+    const route = walkPathGeometry(stops);
+    return scenes.map((scene) => {
+      const stop =
+        stops.find((candidate) => candidate.sceneId === scene.id) ?? null;
+      return presentStoryScene({
+        scene,
+        consents: scene.consents,
+        redactions: scene.redactions,
+        language: languages[scene.id] ?? "original",
+        media: [],
+        transcriptPath: null,
+        streetViewImages: streetViewImagesForPlace(
+          scene.placeFrame.placeId,
+          pack.gazetteer,
+          streetImages,
+          fetchRecords,
+        ),
+        walkContext: stop
+          ? { coordinate: stop.coordinate, route }
+          : null,
+      });
+    });
+  }, [fetchRecords, languages, pack.gazetteer, scenes, sequences, streetImages]);
 
   const exportKeepsake = async () => {
     const sequence = sequences[0];
@@ -131,7 +162,6 @@ export function StoryLens({
     setExportState("exporting");
     setExportMessage(null);
     try {
-      const pack = loadBundledGeographyPack();
       const stops = assembleWalk(sequence, scenes, pack.gazetteer);
       const manifest = buildKeepsakeManifest({
         sequence,
@@ -140,6 +170,16 @@ export function StoryLens({
         redactions: scenes.flatMap((scene) => scene.redactions),
         mediaForScene: () => [],
         walk: stops,
+        streetViewImagesForScene: (sceneId) => {
+          const scene = scenes.find((candidate) => candidate.id === sceneId);
+          if (!scene) return [];
+          return streetViewImagesForPlace(
+            scene.placeFrame.placeId,
+            pack.gazetteer,
+            streetImages,
+            fetchRecords,
+          );
+        },
       });
       const outputDir = `${workingRoot.replace(/\/+$/, "")}/keepsake/${sequence.id}`;
       const result = await transport.writeKeepsakeBundle({
@@ -160,7 +200,7 @@ export function StoryLens({
   if (loading) {
     return (
       <section className="story-lens" data-testid="story-lens">
-        <p data-testid="story-loading">Loading the migration story…</p>
+        <p data-testid="story-loading">Loading the journey…</p>
       </section>
     );
   }
@@ -178,7 +218,7 @@ export function StoryLens({
   return (
     <section className="story-lens" data-testid="story-lens">
       <StorySurface
-        title={sequences[0]?.name ?? "Migration story"}
+        title={sequences[0]?.name ?? "Journey"}
         profileScope={profileScope}
         scenes={storyScenes}
         defaultLanguage="original"
@@ -189,7 +229,7 @@ export function StoryLens({
       />
       {sequences.length === 0 && seedError && (
         <p className="story-lens__seed-error" data-testid="story-seed-error">
-          Story assembly unavailable: {seedError}
+          Journey assembly unavailable: {seedError}
         </p>
       )}
       {sequences[0] && (
@@ -214,4 +254,59 @@ export function StoryLens({
       )}
     </section>
   );
+}
+
+/**
+ * The publishable street-view imagery for a scene's place (refinement-2 D4):
+ * fetch records associate a place with the street-view image the agentic gate
+ * registered (`placeId` → `streetViewImageId`); a coordinate-proximity fallback
+ * catches manually imported captures whose lat/lng match the gazetteer place.
+ * Only `redacted` or `none_needed` imagery is publishable — a pending capture
+ * is never shown in a scene.
+ */
+export function streetViewImagesForPlace(
+  placeId: string,
+  gazetteer: GazetteerIndex,
+  streetImages: StreetViewImageRecord[],
+  fetchRecords: FetchRecord[],
+): StorySceneStreetView[] {
+  const entry = gazetteer.resolveById(placeId);
+  const matched = new Map<string, StreetViewImageRecord>();
+
+  for (const record of fetchRecords) {
+    if (record.placeId !== placeId || !record.streetViewImageId) continue;
+    const image = streetImages.find(
+      (candidate) => candidate.id === record.streetViewImageId,
+    );
+    if (image) matched.set(image.id, image);
+  }
+
+  if (entry?.latitude !== undefined && entry.longitude !== undefined) {
+    for (const image of streetImages) {
+      if (image.latitude === null || image.longitude === null) continue;
+      if (
+        Math.abs(image.latitude - entry.latitude) < 1 &&
+        Math.abs(image.longitude - entry.longitude) < 1
+      ) {
+        matched.set(image.id, image);
+      }
+    }
+  }
+
+  return [...matched.values()]
+    .filter(
+      (image) =>
+        image.redactionStatus === "redacted" ||
+        image.redactionStatus === "none_needed",
+    )
+    .map((image) => ({
+      id: image.id,
+      artifactPath: image.artifactPath,
+      redactionStatus: image.redactionStatus,
+      redactedArtifactPath: image.redactedArtifactPath,
+      capturedAt: image.capturedAt,
+      latitude: image.latitude,
+      longitude: image.longitude,
+      headingDegrees: image.headingDegrees,
+    }));
 }

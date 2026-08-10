@@ -163,4 +163,111 @@ describe("StorySurface", () => {
     );
     expect(screen.getByTestId("story-surface-empty")).toBeInTheDocument();
   });
+
+  test("labels the surface as a published journey, never a migration story", () => {
+    render(
+      <StorySurface
+        title="The Crossing"
+        profileScope="migration"
+        scenes={[sceneData()]}
+        defaultLanguage="original"
+        resolveAsset={(path) => path}
+      />,
+    );
+    expect(screen.getByText("Published journey")).toBeInTheDocument();
+    expect(screen.queryByText(/migration story/i)).toBeNull();
+  });
+
+  test("renders the place's redacted street-view imagery inside the scene", () => {
+    render(
+      <StorySurface
+        title="The Crossing"
+        profileScope="migration"
+        scenes={[
+          sceneData({
+            streetViewImages: [
+              {
+                id: "sv-arrival-1",
+                artifactPath: "street-view/imported/arrival.png",
+                redactionStatus: "redacted",
+                redactedArtifactPath: "redacted/sv-arrival-1.png",
+                capturedAt: "2026-08-01T10:00:00.000Z",
+                latitude: 41.0082,
+                longitude: 28.9784,
+                headingDegrees: 90,
+              },
+            ],
+          }),
+        ]}
+        defaultLanguage="original"
+        resolveAsset={(path) => `/assets/${path}`}
+      />,
+    );
+
+    expect(screen.getByTestId("story-street-view")).toBeInTheDocument();
+    // The redacted derived copy is what the scene renders.
+    expect(screen.getByTestId("story-street-view-image")).toHaveAttribute(
+      "src",
+      "/assets/redacted/sv-arrival-1.png",
+    );
+    expect(screen.queryByTestId("story-street-view-fallback")).toBeNull();
+  });
+
+  test("renders a neutral fallback when the place has no street-view imagery", () => {
+    render(
+      <StorySurface
+        title="The Crossing"
+        profileScope="migration"
+        scenes={[sceneData()]}
+        defaultLanguage="original"
+        resolveAsset={(path) => path}
+      />,
+    );
+
+    expect(screen.getByTestId("story-street-view-fallback")).toBeInTheDocument();
+    expect(screen.getByText(/No captured street-view imagery for this place yet/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("story-street-view-image")).toBeNull();
+  });
+
+  test("renders the walk's route diagram with the current stop marked", () => {
+    render(
+      <StorySurface
+        title="The Crossing"
+        profileScope="migration"
+        scenes={[
+          sceneData({
+            walkContext: {
+              coordinate: { latitude: 41.0082, longitude: 28.9784 },
+              route: [
+                { latitude: 40.0, longitude: 28.0 },
+                { latitude: 41.0082, longitude: 28.9784 },
+              ],
+            },
+          }),
+        ]}
+        defaultLanguage="original"
+        resolveAsset={(path) => path}
+      />,
+    );
+
+    expect(screen.getByTestId("story-walk-context")).toBeInTheDocument();
+    expect(screen.getByTestId("story-walk-svg")).toBeInTheDocument();
+    expect(screen.queryByTestId("story-walk-context-fallback")).toBeNull();
+  });
+
+  test("renders a neutral fallback when the walk has no map context", () => {
+    render(
+      <StorySurface
+        title="The Crossing"
+        profileScope="migration"
+        scenes={[sceneData()]}
+        defaultLanguage="original"
+        resolveAsset={(path) => path}
+      />,
+    );
+
+    expect(screen.getByTestId("story-walk-context-fallback")).toBeInTheDocument();
+    expect(screen.getByText(/No map context for this stop yet/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("story-walk-svg")).toBeNull();
+  });
 });

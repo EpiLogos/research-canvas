@@ -86,7 +86,7 @@ describe("ensureMigrationStorySeed", () => {
     vi.clearAllMocks();
   });
 
-  test("assembles a located origin-transit-destination journey from real corpus places", async () => {
+  test("assembles a located journey over real corpus places", async () => {
     const { transport, savedScenes, savedSequences } = transportFixture();
     const pack = loadBundledGeographyPack();
 
@@ -99,10 +99,14 @@ describe("ensureMigrationStorySeed", () => {
     });
 
     expect(result.seeded).toBe(true);
+    // The visible narrative is a neutral journey over located events — the
+    // internal `migration:journey:` ids and storage keys stay untouched.
+    expect(result.sequence?.name).toBe("A journey over located events");
+    expect(result.sequence?.id.startsWith("migration:journey:")).toBe(true);
     // Intended consequence of the Task-3 gazetteer enrichment: the Banda
-    // Islands now resolve in the bundled offline pack, so the migration story
-    // journey grew from 3 to 4 gazetteer-resolved scenes (Banda Islands sits
-    // between Amsterdam and Paris, matching the VOC's historical route).
+    // Islands now resolve in the bundled offline pack, so the journey grew
+    // from 3 to 4 gazetteer-resolved scenes (Banda Islands sits between
+    // Amsterdam and Paris, matching the VOC's historical route).
     expect(result.sequence?.sceneIds).toHaveLength(4);
     // Chronological distinct gazetteer-resolved places: Prague, Amsterdam,
     // Banda Islands, Paris.
@@ -170,7 +174,38 @@ describe("ensureMigrationStorySeed", () => {
     ).toBe(true);
   });
 
-  test("is idempotent and never rewrites an existing migration story", async () => {
+  test("keeps the visible narrative agnostic while preserving internal seed keys", async () => {
+    const { transport, savedScenes, savedSequences } = transportFixture();
+    const pack = loadBundledGeographyPack();
+
+    const result = await ensureMigrationStorySeed({
+      transport,
+      databasePath: "/tmp/ws.sqlite",
+      workspaceId: "sqlite:/tmp/ws",
+      corpusRoot: "/tmp/ws",
+      gazetteer: pack.gazetteer,
+    });
+
+    expect(result.seeded).toBe(true);
+    // Visible strings never carry migration-only framing: the journey name,
+    // every scene title, and every scene narration are agnostic.
+    expect(result.sequence?.name).toMatch(/journey/i);
+    expect(result.sequence?.name).not.toMatch(/migration/i);
+    for (const scene of savedScenes) {
+      expect(scene.title).not.toMatch(/migration/i);
+      expect(scene.narration ?? "").not.toMatch(/migration/i);
+    }
+    // Internal storage keys stay untouched for data compatibility: the
+    // profile-scope key, scene ids, sequence id, and passage source prefix.
+    for (const scene of savedScenes) {
+      expect(scene.id.startsWith("migration:journey:")).toBe(true);
+      expect(scene.profileScope).toBe("migration");
+    }
+    expect(savedSequences[0]?.id.startsWith("migration:journey:")).toBe(true);
+    expect(savedSequences[0]?.profileScope).toBe("migration");
+  });
+
+  test("is idempotent and never rewrites an existing journey", async () => {
     const { transport, savedScenes, savedSequences } = transportFixture();
     const pack = loadBundledGeographyPack();
     const input = {

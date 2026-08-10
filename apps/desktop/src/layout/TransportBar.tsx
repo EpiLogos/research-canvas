@@ -11,7 +11,7 @@ const LENSES: { id: LensMode; label: string }[] = [
   { id: "canvas", label: "Canvas" },
   { id: "timeline", label: "Timeline" },
   { id: "psychogeographic", label: "Places" },
-  { id: "story", label: "Story" },
+  { id: "story", label: "Journeys" },
   { id: "palace", label: "Palace" },
 ];
 

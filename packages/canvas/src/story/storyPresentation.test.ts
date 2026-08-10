@@ -140,4 +140,47 @@ describe("presentStoryScene", () => {
     // The underlying scene keeps its canonical original untouched.
     expect(view.title).toBe("Arrival");
   });
+
+  test("passes through the place's redacted street-view imagery and walk context", () => {
+    const streetViewImages = [
+      {
+        id: "sv-arrival-1",
+        artifactPath: "street-view/imported/arrival.png",
+        redactionStatus: "redacted",
+        redactedArtifactPath: "redacted/sv-arrival-1.png",
+        capturedAt: "2026-08-01T10:00:00.000Z",
+        latitude: 41.0082,
+        longitude: 28.9784,
+        headingDegrees: 90,
+      },
+    ];
+    const walkContext = {
+      coordinate: { latitude: 41.0082, longitude: 28.9784 },
+      route: [
+        { latitude: 40.0, longitude: 28.0 },
+        { latitude: 41.0082, longitude: 28.9784 },
+      ],
+    };
+    const view = presentStoryScene({
+      scene: scene(),
+      consents: [],
+      redactions: [],
+      streetViewImages,
+      walkContext,
+    });
+
+    expect(view.streetViewImages).toEqual(streetViewImages);
+    expect(view.walkContext).toEqual(walkContext);
+  });
+
+  test("defaults street-view imagery to empty and walk context to null", () => {
+    const view = presentStoryScene({
+      scene: scene(),
+      consents: [],
+      redactions: [],
+    });
+
+    expect(view.streetViewImages).toEqual([]);
+    expect(view.walkContext).toBeNull();
+  });
 });

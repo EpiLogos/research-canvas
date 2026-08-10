@@ -1,7 +1,11 @@
 import { describe, expect, test, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import type { WorkspaceTransport } from "@research-canvas/desktop-api";
+import type {
+  FetchRecord,
+  StreetViewImageRecord,
+  WorkspaceTransport,
+} from "@research-canvas/desktop-api";
 import type { Scene, SceneSequence } from "@research-canvas/schema";
 
 import { StoryLens } from "./StoryLens";
@@ -91,6 +95,10 @@ function sequence(scenes: Scene[]): SceneSequence {
 function makeTransport(
   scenes: Scene[],
   writeKeepsake: ReturnType<typeof vi.fn>,
+  street: {
+    images?: StreetViewImageRecord[];
+    fetchRecords?: FetchRecord[];
+  } = {},
 ): WorkspaceTransport {
   return {
     async listSceneSequences() {
@@ -98,6 +106,12 @@ function makeTransport(
     },
     async listScenes() {
       return scenes;
+    },
+    async listStreetViewImages() {
+      return street.images ?? [];
+    },
+    async listFetchRecords() {
+      return street.fetchRecords ?? [];
     },
     async loadTimelineView() {
       return {
@@ -118,8 +132,56 @@ function makeTransport(
   } as unknown as WorkspaceTransport;
 }
 
+function redactedStreetImage(
+  over: Partial<StreetViewImageRecord> = {},
+): StreetViewImageRecord {
+  return {
+    id: "sv-prague-1",
+    profileScope: "migration",
+    artifactPath: "street-view/imported/prague.png",
+    capturedAt: "2026-08-01T10:00:00.000Z",
+    latitude: 50.0875,
+    longitude: 14.4213,
+    headingDegrees: 90,
+    redactionStatus: "redacted",
+    redactionRegions: [],
+    redactedArtifactPath: "redacted/sv-prague-1.png",
+    createdAt: "2026-08-01T10:00:00.000Z",
+    updatedAt: "2026-08-01T10:00:00.000Z",
+    ...over,
+  };
+}
+
+function fetchRecordFor(
+  streetViewImageId: string,
+  placeId: string,
+  over: Partial<FetchRecord> = {},
+): FetchRecord {
+  return {
+    id: `fetch-${streetViewImageId}`,
+    profileScope: "migration",
+    agentSessionId: "tmux-agent-1",
+    sourceUrl: "https://commons.wikimedia.org/wiki/File:placeholder",
+    license: "CC0",
+    fetchedAt: "2026-08-01T10:00:00.000Z",
+    mimeType: "image/png",
+    byteSize: 4096,
+    validation: { mimeOk: true, sizeOk: true, licenseOk: true, sourceOk: true },
+    contentHash: "abc123",
+    artifactPath: "street-view/imported/prague.png",
+    redactionStatus: "redacted",
+    streetViewImageId,
+    placeId,
+    walkId: null,
+    sceneId: null,
+    createdAt: "2026-08-01T10:00:00.000Z",
+    updatedAt: "2026-08-01T10:00:00.000Z",
+    ...over,
+  };
+}
+
 describe("StoryLens", () => {
-  test("renders the migration story with consent filtering and language variants", async () => {
+  test("renders the journey with consent filtering and language variants", async () => {
     render(
       <StoryLens
         transport={makeTransport([scene()], vi.fn())}
@@ -138,6 +200,71 @@ describe("StoryLens", () => {
       target: { value: "ar" },
     });
     expect(screen.getByTestId("story-language")).toHaveValue("ar");
+    // The scene falls back to a neutral street-view note when no imagery is
+    // associated with the place (never an empty/error state on real data).
+    expect(screen.getByTestId("story-street-view-fallback")).toBeInTheDocument();
+    // The story title is the seeded journey name — never "Migration story".
+    expect(screen.queryByText(/Migration story/i)).toBeNull();
+  });
+
+  test("renders the place's redacted street-view imagery and walk context inside the scene", async () => {
+    const image = redactedStreetImage();
+    const fetchRecord = fetchRecordFor(image.id, "wikidata:Q727");
+    render(
+      <StoryLens
+        transport={makeTransport(
+          [scene()],
+          vi.fn(),
+          { images: [image], fetchRecords: [fetchRecord] },
+        )}
+        databasePath="/tmp/ws.sqlite"
+        workspaceId="sqlite:/tmp/ws"
+        repoRoot="/tmp/repo"
+        profileScope="migration"
+        workingRoot="/tmp/ws"
+      />,
+    );
+
+    await screen.findByText("The Crossing");
+    // The redacted derived copy is what the scene renders.
+    await waitFor(() => {
+      expect(screen.getByTestId("story-street-view-image")).toHaveAttribute(
+        "src",
+        "redacted/sv-prague-1.png",
+      );
+    });
+    // The walk's map/globe context renders as the route diagram.
+    expect(screen.getByTestId("story-walk-context")).toBeInTheDocument();
+    expect(screen.getByTestId("story-walk-svg")).toBeInTheDocument();
+    expect(screen.queryByTestId("story-street-view-fallback")).toBeNull();
+  });
+
+  test("keeps pending (unredacted) imagery out of published scenes", async () => {
+    const image = redactedStreetImage({
+      redactionStatus: "pending",
+      redactedArtifactPath: null,
+    });
+    const fetchRecord = fetchRecordFor(image.id, "wikidata:Q727", {
+      redactionStatus: "pending",
+    });
+    render(
+      <StoryLens
+        transport={makeTransport(
+          [scene()],
+          vi.fn(),
+          { images: [image], fetchRecords: [fetchRecord] },
+        )}
+        databasePath="/tmp/ws.sqlite"
+        workspaceId="sqlite:/tmp/ws"
+        repoRoot="/tmp/repo"
+        profileScope="migration"
+        workingRoot="/tmp/ws"
+      />,
+    );
+
+    await screen.findByText("The Crossing");
+    expect(screen.queryByTestId("story-street-view-image")).toBeNull();
+    expect(screen.getByTestId("story-street-view-fallback")).toBeInTheDocument();
   });
 
   test("exports a consent-filtered keepsake through the transport", async () => {
@@ -179,7 +306,7 @@ describe("StoryLens", () => {
     );
   });
 
-  test("shows the empty state when the migration profile has no story yet", async () => {
+  test("shows the empty state when the journey profile has no scenes yet", async () => {
     render(
       <StoryLens
         transport={makeTransport([], vi.fn())}

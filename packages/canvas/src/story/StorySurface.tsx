@@ -15,12 +15,15 @@ import {
 import {
   passageUnitLabel,
   type StoryPassageView,
+  type StorySceneStreetView,
+  type StorySceneWalkContext,
 } from "./storyPresentation";
 
 /**
  * The story surface (vision §3.13/§3.16): a journey as a scene sequence with
  * per-scene language switching, consent-filtered passages (redactions as
- * gaps), and media playback with transcript sync. The surface is
+ * gaps), media playback with transcript sync, the place's redacted street-view
+ * imagery, and the walk's map/globe context inside the scene. The surface is
  * presentation-only — all consent/language logic lives in
  * `presentStoryScene`/`consentedPassages`, which the export path shares.
  */
@@ -35,6 +38,10 @@ export interface StorySurfaceSceneData {
   passages: StoryPassageView[];
   media: string[];
   transcriptPath: string | null;
+  /** The place's redacted street-view imagery (media-first scene content). */
+  streetViewImages?: StorySceneStreetView[];
+  /** The walk's map/globe context for this stop. */
+  walkContext?: StorySceneWalkContext | null;
 }
 
 export interface StorySurfaceProps {
@@ -74,6 +81,8 @@ export function StorySurface({
   const redactedCount = activeScene
     ? activeScene.passages.filter((passage) => passage.redacted).length
     : 0;
+  const activeStreetViewImages = activeScene?.streetViewImages ?? [];
+  const activeWalkContext = activeScene?.walkContext ?? null;
 
   const loadTranscriptForScene = useCallback(
     async (scene: StorySurfaceSceneData) => {
@@ -129,9 +138,13 @@ export function StorySurface({
   };
 
   return (
-    <section className="story-surface" data-testid="story-surface">
+    <section
+      className="story-surface"
+      data-testid="story-surface"
+      data-profile-scope={profileScope}
+    >
       <header className="story-surface__header">
-        <p className="story-surface__eyebrow">{profileScope} profile · published story</p>
+        <p className="story-surface__eyebrow">Published journey</p>
         <h2>{title}</h2>
       </header>
 
@@ -229,6 +242,69 @@ export function StorySurface({
               </div>
             )}
 
+            {activeStreetViewImages.length > 0 ? (
+              <div
+                className="story-surface__street-view"
+                data-testid="story-street-view"
+              >
+                {activeStreetViewImages.map((image) => (
+                  <figure
+                    key={image.id}
+                    className="story-surface__street-figure"
+                  >
+                    <img
+                      src={resolveAsset(
+                        image.redactedArtifactPath ?? image.artifactPath,
+                      )}
+                      alt={`Street view capture at ${activeScene.title}`}
+                      data-testid="story-street-view-image"
+                    />
+                    <figcaption>
+                      {image.redactionStatus === "none_needed"
+                        ? "No redaction needed"
+                        : "Redacted"}
+                      {image.capturedAt ? ` · ${image.capturedAt}` : ""}
+                      {image.latitude !== null && image.longitude !== null
+                        ? ` · ${image.latitude.toFixed(4)}, ${image.longitude.toFixed(4)}`
+                        : ""}
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            ) : (
+              <p
+                className="story-surface__street-fallback"
+                data-testid="story-street-view-fallback"
+              >
+                No captured street-view imagery for this place yet.
+              </p>
+            )}
+
+            {activeWalkContext && activeWalkContext.route.length > 0 ? (
+              <figure
+                className="story-surface__walk"
+                data-testid="story-walk-context"
+              >
+                <WalkRouteDiagram
+                  route={activeWalkContext.route}
+                  coordinate={activeWalkContext.coordinate}
+                />
+                <figcaption>
+                  Stop {activeIndex + 1} of {scenes.length}
+                  {activeWalkContext.coordinate
+                    ? ` · ${activeWalkContext.coordinate.latitude.toFixed(4)}, ${activeWalkContext.coordinate.longitude.toFixed(4)}`
+                    : " · unlocated"}
+                </figcaption>
+              </figure>
+            ) : (
+              <p
+                className="story-surface__walk-fallback"
+                data-testid="story-walk-context-fallback"
+              >
+                No map context for this stop yet.
+              </p>
+            )}
+
             {transcriptErrors[activeScene.sceneId] && (
               <p className="story-surface__transcript-error">
                 Transcript unavailable: {transcriptErrors[activeScene.sceneId]}
@@ -296,4 +372,89 @@ function isTimestampRange(
     unit !== null &&
     (unit as { kind?: string }).kind === "timestamp_range"
   );
+}
+
+/** The walk's map/globe context rendered as a compact route diagram: the
+ * ordered route as a line with the current stop marked. Pure projection —
+ * no tiles, no network, fully offline and testable. */
+interface WalkRouteDiagramProps {
+  route: Array<{ latitude: number; longitude: number }>;
+  coordinate: { latitude: number; longitude: number } | null;
+}
+
+interface WalkRoutePoint {
+  x: number;
+  y: number;
+}
+
+function WalkRouteDiagram({
+  route,
+  coordinate,
+}: WalkRouteDiagramProps): JSX.Element {
+  const geometry = buildWalkRouteGeometry(route);
+  if (!geometry) return <div />;
+  const currentPoint = currentStopPoint(
+    geometry.points,
+    route,
+    coordinate,
+  );
+  return (
+    <svg
+      className="story-surface__walk-svg"
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      data-testid="story-walk-svg"
+      role="img"
+      aria-label="Walk route map context"
+    >
+      <polyline
+        className="story-surface__walk-route"
+        points={geometry.points
+          .map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`)
+          .join(" ")}
+      />
+      {currentPoint && (
+        <circle
+          className="story-surface__walk-stop"
+          cx={currentPoint.x.toFixed(2)}
+          cy={currentPoint.y.toFixed(2)}
+          r="4"
+        />
+      )}
+    </svg>
+  );
+}
+
+function buildWalkRouteGeometry(
+  route: Array<{ latitude: number; longitude: number }>,
+): { points: WalkRoutePoint[] } | null {
+  if (route.length === 0) return null;
+  const lats = route.map((point) => point.latitude);
+  const lngs = route.map((point) => point.longitude);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs);
+  const maxLng = Math.max(...lngs);
+  const spanLat = maxLat - minLat || 1;
+  const spanLng = maxLng - minLng || 1;
+  const pad = 8;
+  const points = route.map((point) => ({
+    x: pad + ((point.longitude - minLng) / spanLng) * (100 - 2 * pad),
+    y: pad + ((maxLat - point.latitude) / spanLat) * (100 - 2 * pad),
+  }));
+  return { points };
+}
+
+function currentStopPoint(
+  points: WalkRoutePoint[],
+  route: Array<{ latitude: number; longitude: number }>,
+  coordinate: { latitude: number; longitude: number } | null,
+): WalkRoutePoint | null {
+  if (!coordinate) return null;
+  const index = route.findIndex(
+    (point) =>
+      point.latitude === coordinate.latitude &&
+      point.longitude === coordinate.longitude,
+  );
+  return index >= 0 ? (points[index] ?? null) : null;
 }

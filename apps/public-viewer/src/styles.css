@@ -265,6 +265,83 @@ a {
   width: 100%;
 }
 
+/* Story scene media-first content (refinement-2 D4): redacted street-view
+   imagery and the walk's map/globe context rendered inside the scene. */
+.story-surface__street-view {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--viewer-line);
+  border-radius: 14px;
+  background: var(--viewer-panel);
+}
+
+.story-surface__street-figure {
+  margin: 0;
+}
+
+.story-surface__street-figure img {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  object-fit: cover;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.story-surface__street-figure figcaption,
+.story-surface__walk figcaption {
+  margin-top: 6px;
+  color: var(--viewer-faint);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.story-surface__street-fallback,
+.story-surface__walk-fallback {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px dashed var(--viewer-line);
+  border-radius: 14px;
+  color: var(--viewer-faint);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+}
+
+.story-surface__walk {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--viewer-line);
+  border-radius: 14px;
+  background: var(--viewer-panel);
+}
+
+.story-surface__walk-svg {
+  display: block;
+  width: 100%;
+  height: 96px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.story-surface__walk-route {
+  fill: none;
+  stroke: var(--viewer-accent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.story-surface__walk-stop {
+  fill: var(--viewer-accent);
+  stroke: var(--viewer-panel);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
 .story-surface__transcript-error {
   margin: 0;
   color: #a34a3a;

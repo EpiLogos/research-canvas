@@ -28,6 +28,8 @@ function keepsakeScene(over: Partial<KeepsakeScene> = {}): KeepsakeScene {
       },
     ],
     media: ["media/arrival.mp3", "transcripts/arrival.vtt"],
+    streetViewImages: [],
+    walkContext: null,
     ...over,
   };
 }
@@ -97,6 +99,9 @@ describe("StoryView", () => {
     await screen.findByText("The Crossing");
     expect(screen.getByTestId("story-surface")).toBeInTheDocument();
     expect(screen.getByText(/1 published passage · 1 redacted gap/)).toBeInTheDocument();
+    // The published surface reads as a journey, never a migration story.
+    expect(screen.getByText("Published journey")).toBeInTheDocument();
+    expect(screen.queryByText(/migration story/i)).toBeNull();
     await waitFor(() => {
       expect(screen.getByTestId("story-audio")).toHaveAttribute(
         "src",
@@ -111,6 +116,50 @@ describe("StoryView", () => {
     stubKeepsakeFetch(null);
     render(<StoryView />);
     expect(await screen.findByTestId("story-unavailable")).toBeInTheDocument();
+  });
+
+  test("renders the place's redacted street-view imagery and walk context from the keepsake", async () => {
+    stubKeepsakeFetch(
+      keepsakeManifest({
+        scenes: [
+          keepsakeScene({
+            streetViewImages: [
+              {
+                id: "sv-arrival-1",
+                artifactPath: "street-view/imported/arrival.png",
+                redactionStatus: "redacted",
+                redactedArtifactPath: "redacted/sv-arrival-1.png",
+                capturedAt: "2026-08-01T10:00:00.000Z",
+                latitude: 41.0082,
+                longitude: 28.9784,
+                headingDegrees: 90,
+              },
+            ],
+            walkContext: {
+              coordinate: { latitude: 41.0082, longitude: 28.9784 },
+              route: [
+                { latitude: 40.0, longitude: 28.0 },
+                { latitude: 41.0082, longitude: 28.9784 },
+              ],
+            },
+          }),
+        ],
+      }),
+    );
+    render(<StoryView />);
+
+    await screen.findByText("The Crossing");
+    // Media AND place imagery both render inside the scene.
+    expect(screen.getByTestId("story-audio")).toHaveAttribute(
+      "src",
+      "media/arrival.mp3",
+    );
+    expect(screen.getByTestId("story-street-view-image")).toHaveAttribute(
+      "src",
+      "redacted/sv-arrival-1.png",
+    );
+    expect(screen.getByTestId("story-walk-svg")).toBeInTheDocument();
+    expect(screen.queryByTestId("story-street-view-fallback")).toBeNull();
   });
 
   test("language picker switches the active transcript", async () => {

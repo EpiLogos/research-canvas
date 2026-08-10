@@ -26,6 +26,30 @@ export interface StoryPassageView {
   gaps: Array<{ startOffset: number; endOffset: number }>;
 }
 
+/** A publishable street-view capture for a scene's place (refinement-2 D4):
+ * only `redacted` or `none_needed` imagery ever reaches the surface — the
+ * redacted derived copy is what scenes render, never the pending original. */
+export interface StorySceneStreetView {
+  id: string;
+  artifactPath: string;
+  redactionStatus: string;
+  redactedArtifactPath: string | null;
+  capturedAt: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  headingDegrees: number | null;
+}
+
+/** The walk's map/globe context for one scene: where this stop sits on the
+ * ordered route, so the scene renders its geography inline, not as an
+ * afterthought. */
+export interface StorySceneWalkContext {
+  /** Coordinate of this scene's place frame; null when unlocated. */
+  coordinate: { latitude: number; longitude: number } | null;
+  /** Ordered coordinates of the whole walk (for the route line). */
+  route: Array<{ latitude: number; longitude: number }>;
+}
+
 export interface StorySceneView {
   sceneId: string;
   title: string;
@@ -39,6 +63,10 @@ export interface StorySceneView {
   passages: StoryPassageView[];
   media: string[];
   transcriptPath: string | null;
+  /** The place's redacted street-view imagery (media-first scene content). */
+  streetViewImages: StorySceneStreetView[];
+  /** The walk's map/globe context for this stop. */
+  walkContext: StorySceneWalkContext | null;
 }
 
 export interface PresentStorySceneOptions {
@@ -49,6 +77,8 @@ export interface PresentStorySceneOptions {
   media?: string[];
   transcriptPath?: string | null;
   scope?: string;
+  streetViewImages?: StorySceneStreetView[];
+  walkContext?: StorySceneWalkContext | null;
 }
 
 export function presentStoryScene(
@@ -62,6 +92,8 @@ export function presentStoryScene(
     media = [],
     transcriptPath = null,
     scope = "publication",
+    streetViewImages = [],
+    walkContext = null,
   } = options;
   const presentation = presentScene(scene, language);
   const published = consentedPassages(
@@ -89,6 +121,8 @@ export function presentStoryScene(
     })),
     media,
     transcriptPath,
+    streetViewImages,
+    walkContext,
   };
 }
 
