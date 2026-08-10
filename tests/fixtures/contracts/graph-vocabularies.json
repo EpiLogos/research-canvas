@@ -1,5 +1,5 @@
 {
-  "entityType": ["Figure", "People", "Event", "Institution", "Source", "Claim", "Myth", "Interpretation", "Place", "Work", "Archetype", "Dynamic", "Constellation", "PsychoidOperator"],
+  "entityType": ["Figure", "People", "Event", "Institution", "Source", "Claim", "Myth", "Interpretation", "Place", "Work", "Archetype", "ArchetypeExpression", "Dynamic", "Constellation", "PsychoidOperator"],
   "temporalPrecision": ["millennium", "century", "decade", "year", "month", "day"],
   "contentOrigin": ["seed", "corpus_compiled", "user_authored", "imported"],
   "historicity": ["historical", "mythic", "literary", "theoretical", "mixed"],

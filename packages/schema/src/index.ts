@@ -1,4 +1,5 @@
 export * from "./annotation";
+export * from "./archetype";
 export * from "./canvas";
 export * from "./consent";
 export * from "./constellation";

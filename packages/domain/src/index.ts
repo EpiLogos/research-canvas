@@ -1,5 +1,6 @@
 export * from "./types";
 export * from "./ports/project";
+export * from "./ports/archetypeRepository";
 export * from "./ports/constellation";
 export * from "./ports/canvas";
 export * from "./ports/node";

@@ -1,3 +1,5 @@
+import type { ArchetypeHeatmapEntry } from "@research-canvas/schema";
+
 import type { Node } from "../types";
 
 export interface NodeFilter {
@@ -26,4 +28,5 @@ export interface NodeRepository {
   createNode(input: CreateNodeInput): Promise<Node>;
   updateNode(id: string, patch: UpdateNodePatch): Promise<Node>;
   deleteNode(id: string): Promise<void>;
+  getArchetypeHeatmap(projectId: string): Promise<ArchetypeHeatmapEntry[]>;
 }

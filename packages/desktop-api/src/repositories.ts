@@ -27,6 +27,7 @@ import type {
   UpdateNodePatch,
   Viewport,
 } from "@research-canvas/domain";
+import type { ArchetypeHeatmapEntry } from "@research-canvas/schema";
 import type { WorkspaceTransport, CreateProjectInput, SavedSequence } from "./index";
 
 function notImplemented(method: string): never {
@@ -115,6 +116,10 @@ export class DesktopNodeRepository implements NodeRepository {
 
   async deleteNode(_id: string): Promise<void> {
     notImplemented("NodeRepository.deleteNode");
+  }
+
+  async getArchetypeHeatmap(_projectId: string): Promise<ArchetypeHeatmapEntry[]> {
+    notImplemented("NodeRepository.getArchetypeHeatmap");
   }
 }
 

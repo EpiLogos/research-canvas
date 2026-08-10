@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
+import { compareTemporalBounds } from "@research-canvas/schema";
 import type {
+  ArchetypeRepository,
+  ArchetypalExpression,
+  ArchetypeHeatmapEntry,
   Canvas,
   CanvasNode,
   CanvasRepository,
@@ -71,6 +75,7 @@ class FakeDomainAdapter
     ConstellationRepository,
     CanvasRepository,
     NodeRepository,
+    ArchetypeRepository,
     EdgeRepository,
     SequenceRepository,
     SceneRepository
@@ -81,6 +86,7 @@ class FakeDomainAdapter
   private nodes: Node[] = [];
   private edges: Edge[] = [];
   private sequences: Sequence[] = [];
+  private expressions: ArchetypalExpression[] = [];
 
   private id(prefix: string): string {
     return `${prefix}-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
@@ -236,6 +242,123 @@ class FakeDomainAdapter
   async deleteNode(id: string): Promise<void> {
     this.nodes = this.nodes.filter((n) => n.graphNodeId !== id);
     this.edges = this.edges.filter((e) => e.sourceGraphNodeId !== id && e.targetGraphNodeId !== id);
+    this.expressions = this.expressions.filter((e) => e.archetypeGraphNodeId !== id);
+  }
+
+  // ArchetypeRepository
+  async createArchetypalExpression(
+    input: Omit<ArchetypalExpression, "id">,
+  ): Promise<ArchetypalExpression> {
+    const expression: ArchetypalExpression = {
+      id: this.id("expr"),
+      ...input,
+    };
+    this.expressions.push(expression);
+    return expression;
+  }
+
+  async listExpressions(archetypeId: string): Promise<ArchetypalExpression[]> {
+    return this.expressions.filter((e) => e.archetypeGraphNodeId === archetypeId);
+  }
+
+  async listExpressionsForTimeWindow(
+    _projectId: string,
+    start: string,
+    end: string,
+  ): Promise<ArchetypalExpression[]> {
+    return this.expressions.filter((e) => {
+      const startsBeforeWindowEnd = compareTemporalBounds(e.timeWindow.start, end);
+      if (startsBeforeWindowEnd !== null && startsBeforeWindowEnd > 0) {
+        return false;
+      }
+      if (e.timeWindow.end == null) {
+        return true;
+      }
+      const endsAfterWindowStart = compareTemporalBounds(e.timeWindow.end, start);
+      return endsAfterWindowStart === null || endsAfterWindowStart >= 0;
+    });
+  }
+
+  async listExpressionsForPlace(
+    _projectId: string,
+    placeGraphNodeId: string,
+  ): Promise<ArchetypalExpression[]> {
+    return this.expressions.filter((e) => e.placeGraphNodeId === placeGraphNodeId);
+  }
+
+  private pointFromPlaceNode(node: Node): { latitude: number; longitude: number } | null {
+    const place = node.place;
+    if (place == null) return null;
+    const coord = place.coordinate;
+    if (coord.precision === "exact" || coord.precision === "approximate") {
+      return { latitude: coord.latitude, longitude: coord.longitude };
+    }
+    if (coord.precision === "region") {
+      const geometry = coord.geometry;
+      if (geometry.type !== "Polygon") return null;
+      const ring = geometry.coordinates[0];
+      if (!ring || ring.length === 0) return null;
+      const sum = ring.reduce(
+        (acc, [longitude, latitude]) => ({
+          longitude: acc.longitude + longitude,
+          latitude: acc.latitude + latitude,
+        }),
+        { longitude: 0, latitude: 0 },
+      );
+      return {
+        latitude: sum.latitude / ring.length,
+        longitude: sum.longitude / ring.length,
+      };
+    }
+    return null;
+  }
+
+  async getArchetypeHeatmap(_projectId: string): Promise<ArchetypeHeatmapEntry[]> {
+    const archetypes = this.nodes.filter((n) => n.entityType === "Archetype");
+    return archetypes.map((archetype) => {
+      const expressions = this.expressions.filter(
+        (e) => e.archetypeGraphNodeId === archetype.graphNodeId,
+      );
+
+      const orderedStarts = expressions
+        .map((e) => ({ bound: e.timeWindow.start, ms: Date.parse(e.timeWindow.start) }))
+        .filter((item) => !Number.isNaN(item.ms))
+        .sort((a, b) => a.ms - b.ms);
+      const orderedEnds = expressions
+        .map((e) => (e.timeWindow.end == null ? null : { bound: e.timeWindow.end, ms: Date.parse(e.timeWindow.end) }))
+        .filter((item): item is { bound: string; ms: number } => item != null && !Number.isNaN(item.ms))
+        .sort((a, b) => a.ms - b.ms);
+
+      const temporalSpan = {
+        start: orderedStarts[0]?.bound ?? expressions[0]?.timeWindow.start ?? "",
+        end: orderedEnds[orderedEnds.length - 1]?.bound ?? null,
+      };
+
+      const points = expressions
+        .map((e) => {
+          const node = this.nodes.find((n) => n.graphNodeId === e.placeGraphNodeId);
+          return node ? this.pointFromPlaceNode(node) : null;
+        })
+        .filter((p): p is { latitude: number; longitude: number } => p != null);
+
+      const geographicBounds =
+        points.length > 0
+          ? {
+              north: Math.max(...points.map((p) => p.latitude)),
+              south: Math.min(...points.map((p) => p.latitude)),
+              east: Math.max(...points.map((p) => p.longitude)),
+              west: Math.min(...points.map((p) => p.longitude)),
+            }
+          : { north: 0, south: 0, east: 0, west: 0 };
+
+      return {
+        archetypeId: archetype.graphNodeId,
+        title: archetype.title,
+        expressions,
+        temporalSpan,
+        geographicBounds,
+      };
+    });
   }
 
   // EdgeRepository

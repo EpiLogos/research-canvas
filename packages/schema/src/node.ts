@@ -34,6 +34,7 @@ export const ENTITY_TYPES = [
   "Place",
   "Work",
   "Archetype",
+  "ArchetypeExpression",
   "Dynamic",
   "Constellation",
   "PsychoidOperator",
@@ -138,7 +139,7 @@ export const EMPTY_GRAPH_NODE_METADATA = {
   historicity: null, claimKind: null, evidenceStatus: null, temporalRole: null,
   placeCoverage: null, place: null, qlForm: null, qlUnitId: null, qlArc: null,
   qlTopology: null, qlSchemaVersion: null, qlSourceCoordinates: [] as string[],
-  qlCompletenessStatus: null,
+  qlCompletenessStatus: null, isArchetype: false,
 } as const;
 
 /**
@@ -151,6 +152,7 @@ export const EMPTY_GRAPH_NODE_METADATA = {
 export const graphNodeSchema = z.strictObject({
   graphNodeId: z.string().min(1),
   entityType: entityTypeSchema,
+  isArchetype: z.boolean().optional(),
   title: z.string(),
   body: z.string(),
   summary: z.string(),
