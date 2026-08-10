@@ -26,6 +26,7 @@ export type {
   NodeLayout,
   PalaceGraphView,
   TimelineView,
+  ExpandedTimelineNode,
   TimelineRelationField,
   TimelineAnchor,
   TimelineDiagnostic,
@@ -245,6 +246,7 @@ import type {
   CanvasView,
   ContentOrigin,
   EntityType,
+  ExpandedTimelineNode,
   GraphNode,
   GraphNodePatch,
   GraphRelationship,
@@ -792,6 +794,10 @@ export interface WorkspaceTransport {
    * ENCAPSULATES edges read through the graph repository layer. */
   loadPalaceGraph(input: { workspaceId: string }): Promise<PalaceGraphView>;
   loadTimelineRelationField?(input: { workspaceId: string; graphNodeId: string }): Promise<TimelineRelationField>;
+  /** Lazy relational expansion (ticket #28): one node's edges + neighbours,
+   * property-complete, through the repository layer. Opt-in per click; the
+   * timeline base view is never full-graph materialised. */
+  expandTimelineNode(input: { workspaceId: string; graphNodeId: string }): Promise<ExpandedTimelineNode>;
   upsertTimelineLayout(input: UpsertTimelineLayoutInput): Promise<TimelineLayoutMutationResult>;
 
   // ---- Two-lens / archetypal lighting ----
@@ -1185,6 +1191,9 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     },
     async loadTimelineRelationField(input) {
       return invokeTauri<TimelineRelationField>("load_timeline_relation_field_command", { request: input });
+    },
+    async expandTimelineNode(input) {
+      return invokeTauri<ExpandedTimelineNode>("expand_timeline_node_command", { request: input });
     },
     async upsertTimelineLayout(input) {
       return invokeTauri<TimelineLayoutMutationResult>("upsert_timeline_layout_command", { request: input });
@@ -1597,6 +1606,12 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       });
     },
     async loadTimelineRelationField() { throw new Error("read-only web build"); },
+    async expandTimelineNode(input) {
+      return requestJsonWithRetry<ExpandedTimelineNode>("/graph/timeline-expand", {
+        method: "POST",
+        body: input,
+      });
+    },
     async upsertTimelineLayout() { throw new Error("read-only web build"); },
     async archetypalLighting(input) {
       return requestJsonWithRetry<ArchetypalLighting>(
@@ -2120,6 +2135,29 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
           return node ? [node] : [];
         });
       return { subjectGraphNodeId: graphNodeId, relationships, contextualNodes };
+    },
+    async expandTimelineNode({ workspaceId, graphNodeId }) {
+      const canonicalWorkspaceId = `static:${bundle.project.id}`;
+      if (workspaceId.trim() === "" || workspaceId !== canonicalWorkspaceId) {
+        throw new Error(`workspaceId does not match static bundle: expected ${canonicalWorkspaceId}`);
+      }
+      const subject = nodeById.get(graphNodeId);
+      if (!subject) {
+        throw new Error(`graph node not found: ${graphNodeId}`);
+      }
+      const edges = bundle.relationships.filter((relationship) =>
+        relationship.sourceGraphNodeId === graphNodeId || relationship.targetGraphNodeId === graphNodeId,
+      );
+      const neighbours = [...new Set(edges.flatMap((relationship) => [
+        relationship.sourceGraphNodeId,
+        relationship.targetGraphNodeId,
+      ]))]
+        .filter((nodeId) => nodeId !== graphNodeId)
+        .flatMap((nodeId) => {
+          const node = nodeById.get(nodeId);
+          return node ? [node] : [];
+        });
+      return { subjectGraphNodeId: graphNodeId, subject, edges, neighbours };
     },
     async upsertTimelineLayout() { throw new Error("read-only static bundle"); },
     async archetypalLighting({ operatorGraphNodeId }) {

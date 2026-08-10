@@ -207,6 +207,21 @@ export interface TimelineRelationField {
   contextualNodes: GraphNode[];
 }
 
+/**
+ * Lazy timeline relational expansion (ticket #28, D13 §4.4): one node's
+ * edges and neighbour nodes, property-complete, loaded on demand through the
+ * repository layer. The timeline base view stays dated-events-only; clicking a
+ * node fires this query and accumulates the result into the working-set stack.
+ * Any node may be expanded — the stack is the user's own exploration surface,
+ * not a temporal filter.
+ */
+export interface ExpandedTimelineNode {
+  subjectGraphNodeId: string;
+  subject: GraphNode;
+  edges: GraphRelationship[];
+  neighbours: GraphNode[];
+}
+
 export interface CanvasView {
   canvasId: string;
   nodes: JoinedCanvasNode[];

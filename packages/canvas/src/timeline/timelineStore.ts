@@ -1,6 +1,6 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 
-import type { ArchetypalLighting, GraphRelationship, TimelineDiagnostic, TimelineLane, TimelineLayoutOverride, TimelineView, TimelineViewNode } from "./contracts";
+import type { ArchetypalLighting, ExpandedTimelineNode, GraphNode, GraphRelationship, TimelineDiagnostic, TimelineLane, TimelineLayoutOverride, TimelineView, TimelineViewNode } from "./contracts";
 import { tierForPixelsPerYear, type ScaleTier } from "./scale";
 import { projectNodes, type TimelineItem, type TimelinePresentation } from "./projection";
 import {
@@ -26,6 +26,20 @@ export interface TimelineVerticalPanBounds {
   max: number;
 }
 
+/**
+ * One entry of the working-set stack (ticket #28, D13 §4.4): a node the user
+ * clicked, its real edges, and its neighbour nodes — all property-complete.
+ * Clicked nodes accumulate on the stack; unloading removes them. The full
+ * graph never floods the timeline.
+ */
+export interface WorkingSetEntry {
+  graphNodeId: string;
+  node: GraphNode;
+  edges: GraphRelationship[];
+  neighbours: GraphNode[];
+  loadedAt: number;
+}
+
 export interface TimelineStoreState {
   centerYear: number;
   pixelsPerYear: number;
@@ -46,6 +60,8 @@ export interface TimelineStoreState {
   /** Transient screen-space camera offset for cards above/below the axis. */
   verticalOffset: number;
   manualViewport: boolean;
+  /** Working-set stack (ticket #28): clicked nodes + their real edges/neighbours. */
+  workingSet: WorkingSetEntry[];
 
   viewport: () => TimelineViewport;
   tier: () => ScaleTier;
@@ -61,6 +77,14 @@ export interface TimelineStoreState {
   clearLighting: () => void;
   setSelected: (nodeId: string | null) => void;
   setFrameForNode: (nodeId: string | null) => void;
+  isNodeExpanded: (graphNodeId: string) => boolean;
+  /** Push (or refresh) a node's real expansion onto the working set. */
+  expandNode: (expansion: ExpandedTimelineNode) => void;
+  /** Remove one clicked node (and its edges) from the working set. */
+  collapseNode: (graphNodeId: string) => void;
+  /** Pop the most recent entry off the stack. */
+  popWorkingSet: () => void;
+  clearWorkingSet: () => void;
   updateCardSize: (nodeId: string, size: TimelineCardGeometryUpdate) => void;
   updateCardStyle: (nodeId: string, style: Partial<TimelinePresentation["style"]>) => void;
   applyPersistedLayout: (nodeId: string, layout: TimelineLayoutOverride) => void;
@@ -99,6 +123,7 @@ export function createTimelineStore(
     lightingOperatorId: null,
     verticalOffset: 0,
     manualViewport: hasRememberedViewport,
+    workingSet: [],
 
     viewport: () => {
       const s = get();
@@ -210,6 +235,45 @@ export function createTimelineStore(
           : {}),
       });
     },
+    isNodeExpanded: (graphNodeId) =>
+      get().workingSet.some((entry) => entry.graphNodeId === graphNodeId),
+    expandNode: (expansion) => {
+      const now = Date.now();
+      const entry: WorkingSetEntry = {
+        graphNodeId: expansion.subjectGraphNodeId,
+        node: expansion.subject,
+        edges: expansion.edges,
+        neighbours: expansion.neighbours,
+        loadedAt: now,
+      };
+      set((state) => {
+        const existingIndex = state.workingSet.findIndex(
+          (existing) => existing.graphNodeId === entry.graphNodeId,
+        );
+        if (existingIndex === -1) {
+          // A stack: the latest click sits on top.
+          return { workingSet: [...state.workingSet, entry] };
+        }
+        // Refresh the existing entry in place (the query result can be newer
+        // than the click that stacked it); preserve its stack position.
+        const next = [...state.workingSet];
+        next[existingIndex] = entry;
+        return { workingSet: next };
+      });
+    },
+    collapseNode: (graphNodeId) =>
+      set((state) => ({
+        workingSet: state.workingSet.filter(
+          (entry) => entry.graphNodeId !== graphNodeId,
+        ),
+      })),
+    popWorkingSet: () => {
+      const top = get().workingSet[get().workingSet.length - 1];
+      if (top) {
+        get().collapseNode(top.graphNodeId);
+      }
+    },
+    clearWorkingSet: () => set({ workingSet: [] }),
     updateCardSize: (nodeId, size) =>
       set((state) => ({
         items: state.items.map((item) =>
