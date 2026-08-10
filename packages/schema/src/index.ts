@@ -3,6 +3,7 @@ export * from "./canvas";
 export * from "./consent";
 export * from "./export";
 export * from "./edge";
+export * from "./geography_edge";
 export * from "./node";
 export * from "./passage";
 export * from "./place";

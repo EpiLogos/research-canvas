@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 
+import type { GeographyEdge } from "@research-canvas/schema";
 import type { LiveServicePolicy } from "@research-canvas/geography";
 
 import type { WalkStop } from "../scenes/walkAssembly";
@@ -19,6 +20,8 @@ export interface PsychogeographicMapProps {
    * recording adapter. */
   renderer?: MapSurfaceRenderer;
   onOpenStop?: (stop: WalkStop) => void;
+  /** Movement-stream lanes (ticket #19) drawn as mode-styled arcs. */
+  lanes?: GeographyEdge[];
 }
 
 /**
@@ -36,6 +39,7 @@ export function PsychogeographicMap({
   policy,
   renderer: rendererProp,
   onOpenStop,
+  lanes = [],
 }: PsychogeographicMapProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [renderer, setRenderer] = useState<MapSurfaceRenderer | null>(
@@ -56,6 +60,47 @@ export function PsychogeographicMap({
     zoom: 1,
   });
   const stopClickRef = useRef<(sceneId: string) => void>(() => {});
+  const laneClickRef = useRef<(laneId: string) => void>(() => {});
+  const [activeLaneYear, setActiveLaneYear] = useState<number | null>(null);
+  const [selectedLaneId, setSelectedLaneId] = useState<string | null>(null);
+
+  const laneYearRange = useMemo(() => {
+    if (lanes.length === 0) return null;
+    const years = lanes.flatMap((lane) => [
+      temporalBoundYear(lane.timeWindow.start),
+      temporalBoundYear(lane.timeWindow.end),
+    ]);
+    return [Math.min(...years), Math.max(...years)] as [number, number];
+  }, [lanes]);
+
+  const filteredLanes = useMemo(() => {
+    if (activeLaneYear === null) return lanes;
+    return lanes.filter((lane) => {
+      const start = temporalBoundYear(lane.timeWindow.start);
+      const end = temporalBoundYear(lane.timeWindow.end);
+      return start <= activeLaneYear && activeLaneYear <= end;
+    });
+  }, [lanes, activeLaneYear]);
+
+  const selectedLane = useMemo(
+    () => lanes.find((lane) => lane.id === selectedLaneId) ?? null,
+    [lanes, selectedLaneId],
+  );
+
+  const selectLane = useCallback(
+    (laneId: string) => {
+      const lane = lanes.find((candidate) => candidate.id === laneId);
+      if (!lane) return;
+      setSelectedLaneId(laneId);
+      const coordinates = lane.geometry.coordinates;
+      if (coordinates.length >= 2) {
+        const mid = coordinates[Math.floor(coordinates.length / 2)];
+        void mountedRenderer.current?.flyTo?.(mid[1], mid[0], 3);
+      }
+    },
+    [lanes],
+  );
+  laneClickRef.current = selectLane;
 
   useEffect(() => {
     let cancelled = false;
@@ -125,8 +170,12 @@ export function PsychogeographicMap({
       .create(containerRef.current, tileSource, { projection: "globe" })
       .then(() => {
         renderer.setStopClickHandler?.((sceneId) => stopClickRef.current(sceneId));
+        renderer.setLaneClickHandler?.((laneId) => laneClickRef.current(laneId));
         renderer.onViewChange?.((next) => setViewState(next));
-        return renderer.drawWalk(walkId, stops);
+        // Draw lanes before the walk so place markers sit above the arcs.
+        return renderer
+          .drawLanes?.(filteredLanes)
+          .then(() => renderer.drawWalk(walkId, stops));
       })
       .catch((cause: unknown) =>
         setError(cause instanceof Error ? cause.message : String(cause)),
@@ -144,6 +193,11 @@ export function PsychogeographicMap({
     if (!mountedRenderer.current) return;
     void mountedRenderer.current.drawWalk(walkId, stops);
   }, [walkId, stops]);
+
+  useEffect(() => {
+    if (!mountedRenderer.current) return;
+    void mountedRenderer.current.drawLanes?.(filteredLanes);
+  }, [filteredLanes]);
 
   const liveTileRequested = useMemo(
     () => () => {
@@ -245,6 +299,81 @@ export function PsychogeographicMap({
           ))}
         </ol>
       )}
+      {lanes.length > 0 && (
+        <div className="psychogeographic-lanes-panel" data-testid="psychogeographic-lanes-panel">
+          {laneYearRange && (
+            <label className="psychogeographic-lane-filter">
+              <span>Lanes active in year</span>
+              <input
+                type="range"
+                data-testid="lane-year-filter"
+                min={laneYearRange[0]}
+                max={laneYearRange[1]}
+                value={activeLaneYear ?? laneYearRange[1]}
+                onChange={(event) => setActiveLaneYear(Number(event.target.value))}
+              />
+              <span data-testid="lane-year-value">
+                {activeLaneYear === null ? "all" : activeLaneYear}
+              </span>
+              {activeLaneYear !== null && (
+                <button
+                  type="button"
+                  data-testid="lane-year-clear"
+                  onClick={() => setActiveLaneYear(null)}
+                >
+                  Show all
+                </button>
+              )}
+            </label>
+          )}
+          <ol className="psychogeographic-lanes" data-testid="psychogeographic-lanes">
+            {filteredLanes.map((lane) => (
+              <li key={lane.id}>
+                <button
+                  type="button"
+                  data-testid={`geography-lane-${lane.seedKey}`}
+                  data-selected={selectedLaneId === lane.id ? "true" : "false"}
+                  data-mode={lane.mode}
+                  onClick={() => selectLane(lane.id)}
+                >
+                  {lane.label} · {lane.mode} · {lane.timeWindow.start}–{lane.timeWindow.end}
+                </button>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+      {selectedLane && (
+        <aside className="psychogeographic-lane-provenance" data-testid="lane-provenance">
+          <h3>{selectedLane.label}</h3>
+          <dl>
+            <dt>Mode</dt>
+            <dd>{selectedLane.mode}</dd>
+            <dt>Time window</dt>
+            <dd>
+              {selectedLane.timeWindow.start} – {selectedLane.timeWindow.end}
+            </dd>
+            <dt>Route</dt>
+            <dd>
+              {selectedLane.sourcePlaceId} → {selectedLane.targetPlaceId}
+            </dd>
+          </dl>
+          <h4>Source passages</h4>
+          <ul>
+            {selectedLane.provenance.sourceRefs.map((ref, index) => (
+              <li key={index}>
+                {ref.artifactId}
+                {ref.unit.kind === "text_span" && (
+                  <span>
+                    {" "}
+                    · chars {ref.unit.startOffset}–{ref.unit.endOffset}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )}
       {error && (
         <div role="alert" data-testid="psychogeographic-error">
           Map unavailable: {error}
@@ -252,4 +381,11 @@ export function PsychogeographicMap({
       )}
     </div>
   );
+}
+
+/** Extracts the calendar year from an ISO-8601 temporal bound (`YYYY` or a
+ * fuller date/datetime). Used for the lane temporal filter. */
+function temporalBoundYear(value: string): number {
+  const match = /^(\d{4})/.exec(value);
+  return match ? Number(match[1]) : 0;
 }

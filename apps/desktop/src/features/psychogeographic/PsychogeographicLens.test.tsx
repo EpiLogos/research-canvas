@@ -4,7 +4,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import type {
   MapSurfaceRenderer,
 } from "@research-canvas/canvas";
-import type { TimelineView, WorkspaceTransport } from "@research-canvas/desktop-api";
+import type { GeographyEdge, TimelineView, WorkspaceTransport } from "@research-canvas/desktop-api";
 import type { Scene, SceneSequence } from "@research-canvas/schema";
 
 import { PsychogeographicLens } from "./PsychogeographicLens";
@@ -17,21 +17,28 @@ function emptyTimelineView(): TimelineView {
 function makeRenderer(): {
   renderer: MapSurfaceRenderer;
   drawWalk: ReturnType<typeof vi.fn>;
+  drawLanes: ReturnType<typeof vi.fn>;
 } {
   const drawWalk = vi.fn(async () => {});
+  const drawLanes = vi.fn(async () => {});
   return {
     renderer: {
     create: vi.fn(async () => {}),
     drawWalk,
+    drawLanes,
     setLiveTileSource: vi.fn(async () => {}),
     centerOn: vi.fn(async () => {}),
     destroy: vi.fn(),
     } as unknown as MapSurfaceRenderer,
     drawWalk,
+    drawLanes,
   };
 }
 
-function makeTransport(view: TimelineView): WorkspaceTransport {
+function makeTransport(
+  view: TimelineView,
+  lanes: GeographyEdge[] = [],
+): WorkspaceTransport {
   const savedScenes: Scene[] = [];
   const savedSequences: SceneSequence[] = [];
   return {
@@ -51,6 +58,9 @@ function makeTransport(view: TimelineView): WorkspaceTransport {
     async upsertSceneSequence({ sequence }: { sequence: SceneSequence }) {
       savedSequences.push(sequence);
       return sequence;
+    },
+    async listGeographyEdges() {
+      return lanes;
     },
     async listStreetViewImages() {
       return [
@@ -72,6 +82,34 @@ function makeTransport(view: TimelineView): WorkspaceTransport {
     },
   } as unknown as WorkspaceTransport;
 }
+
+const vocLane: GeographyEdge = {
+  id: "geo:voc",
+  profileScope: "bootstrapping",
+  mode: "shipping",
+  sourcePlaceId: "root-archetypal-field:place-amsterdam",
+  targetPlaceId: "root-archetypal-field:place-banda-islands",
+  label: "VOC shipping lane Amsterdam → Banda",
+  timeWindow: { start: "1602-03-20", end: "1621-05-08" },
+  geometry: {
+    type: "LineString",
+    coordinates: [
+      [4.8936, 52.3728],
+      [129.9, -4.55],
+    ],
+  },
+  provenance: {
+    sourceRefs: [
+      {
+        artifactId: "antichrist-vault/episodes/2/Research/Report8.md",
+        unit: { kind: "text_span", startOffset: 100, endOffset: 200 },
+      },
+    ],
+  },
+  seedKey: "voc:amsterdam-to-banda",
+  createdAt: "2026-08-10T00:00:00.000Z",
+  updatedAt: "2026-08-10T00:00:00.000Z",
+};
 
 describe("PsychogeographicLens", () => {
   test("assembles the walk from the graph and renders the map with located stops", async () => {
@@ -95,6 +133,29 @@ describe("PsychogeographicLens", () => {
     expect(stops.some((stop) => stop.placeId === "wikidata:Q1085" && stop.located)).toBe(true);
     expect(screen.getByTestId("psychogeographic-map")).toBeInTheDocument();
     expect(await screen.findByTestId("street-view-surface")).toBeInTheDocument();
+  });
+
+  test("passes persisted movement lanes to the map surface", async () => {
+    const { renderer, drawLanes } = makeRenderer();
+    render(
+      <PsychogeographicLens
+        transport={makeTransport(timelineView(), [vocLane])}
+        databasePath="/tmp/ws.sqlite"
+        workspaceId="sqlite:/tmp/ws"
+        profileScope="bootstrapping"
+        renderer={renderer}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(drawLanes).toHaveBeenCalled();
+    });
+    const laneCall = drawLanes.mock.calls.at(-1) as [unknown];
+    const drawn = laneCall[0] as GeographyEdge[];
+    expect(drawn.map((edge) => edge.seedKey)).toEqual(["voc:amsterdam-to-banda"]);
+    expect(
+      await screen.findByTestId("geography-lane-voc:amsterdam-to-banda"),
+    ).toBeInTheDocument();
   });
 
   test("empty graphs show the walk-empty state instead of failing", async () => {

@@ -99,15 +99,17 @@ describe("ensureMigrationStorySeed", () => {
     });
 
     expect(result.seeded).toBe(true);
-    expect(result.sequence?.sceneIds).toHaveLength(3);
-    // Chronological distinct gazetteer-resolved places: Prague, Amsterdam, Paris.
+    expect(result.sequence?.sceneIds).toHaveLength(4);
+    // Chronological distinct gazetteer-resolved places: Prague, Amsterdam,
+    // Banda Islands, Paris.
     expect(result.sequence?.sceneIds).toEqual([
       "migration:journey:prague",
       "migration:journey:amsterdam",
+      "migration:journey:banda-islands",
       "migration:journey:paris",
     ]);
     expect(savedSequences).toHaveLength(1);
-    expect(savedScenes).toHaveLength(3);
+    expect(savedScenes).toHaveLength(4);
 
     const prague = savedScenes.find((scene) => scene.id === "migration:journey:prague");
     expect(prague?.placeFrame.placeId).toBe("wikidata:Q1085");
@@ -230,7 +232,7 @@ describe("ensureMigrationStorySeed", () => {
     });
 
     expect(result.seeded).toBe(true);
-    expect(savedScenes).toHaveLength(3);
+    expect(savedScenes).toHaveLength(4);
     for (const scene of savedScenes) {
       expect(scene.profileScope).toBe("project:alpha-field");
     }

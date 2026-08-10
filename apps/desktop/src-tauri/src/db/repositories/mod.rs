@@ -3,6 +3,7 @@ pub mod annotations;
 pub mod canvas;
 pub mod constellations;
 pub mod error;
+pub mod geography_edge_repository;
 pub mod graph;
 pub mod graph_metadata;
 pub mod layout;
@@ -29,6 +30,9 @@ pub use error::{RepositoryError, RepositoryResult};
 pub use graph::{
     ArchetypalLightingResult, GraphNode, GraphNodePatch, GraphRelationship, GraphRepository,
     LitInstance, NewGraphNode, OperatorSeed,
+};
+pub use geography_edge_repository::{
+    GeographyEdgeMode, GeographyEdgeRecord, GeographyEdgeRepository,
 };
 pub use graph_metadata::{
     GraphMetadataMutation, GraphNodeMetadataRecord, GraphNodeMetadataRepository, SyncState,

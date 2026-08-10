@@ -134,6 +134,10 @@ const MIGRATIONS: &[Migration] = &[
         version: "0030_project_profile_scope",
         sql: include_str!("../../migrations/0030_project_profile_scope.sql"),
     },
+    Migration {
+        version: "0031_geography_edges",
+        sql: include_str!("../../migrations/0031_geography_edges.sql"),
+    },
 ];
 
 impl MigrationRunner {

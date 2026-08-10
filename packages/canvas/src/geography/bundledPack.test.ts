@@ -7,7 +7,9 @@ describe("bundled geography pack", () => {
     const pack = loadBundledGeographyPack();
 
     expect(pack.manifest.offline).toBe(true);
-    expect(pack.manifest.recordCount).toBe(12);
+    // The pack carries the movement-stream lane places (Banda, Kimberley,
+    // Vienna, …), so the record count is larger than the original subset.
+    expect(pack.manifest.recordCount).toBe(16);
     expect(pack.manifest.entryIds).toEqual([...pack.gazetteer.entryIds()].sort());
     expect(pack.manifest.tileSource.kind).toBe("geojson");
     expect(pack.manifest.tileSource.url).toBe("basemap.geojson");
@@ -16,7 +18,7 @@ describe("bundled geography pack", () => {
     expect(pack.gazetteer.resolveById("pleiades:520998")?.names.map((n) => n.name)).toContain(
       "Constantinople",
     );
-    expect(pack.basemap.features).toHaveLength(11);
+    expect(pack.basemap.features).toHaveLength(15);
     expect(pack.gazetteer.resolveById("wikidata:Q727")?.latitude).toBe(52.3728);
   });
 });

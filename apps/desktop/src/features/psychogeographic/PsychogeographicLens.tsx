@@ -8,6 +8,7 @@ import {
   type WalkStop,
 } from "@research-canvas/canvas";
 import type {
+  GeographyEdge,
   StreetViewImageRecord,
   WorkspaceTransport,
 } from "@research-canvas/desktop-api";
@@ -21,6 +22,7 @@ import {
   loadProfileWalks,
 } from "./assembleWalk";
 import { StreetViewImportDialog } from "./StreetViewImportDialog";
+import { ensureGeographyEdgeSeed } from "./seedGeographyEdges";
 
 /**
  * The Places lens (slice 2, refinement-2 D1): a globe-first offline map over
@@ -36,6 +38,9 @@ export interface PsychogeographicLensProps {
   workspaceId: string;
   profileScope: string;
   mediaRoot?: string;
+  /** Monorepo root; corpus files (and the movement-stream seed) are relative
+   * to it. When omitted, lanes are only read, never seeded. */
+  repoRoot?: string;
   renderer?: MapSurfaceRenderer;
   resolveAsset?: (artifactPath: string) => string;
 }
@@ -60,15 +65,18 @@ export function PsychogeographicLens({
   workspaceId,
   profileScope,
   mediaRoot = "",
+  repoRoot = "",
   renderer,
   resolveAsset,
 }: PsychogeographicLensProps): JSX.Element {
   const pack = useMemo(() => loadBundledGeographyPack(), []);
   const policy = useMemo(() => geographyPolicy(), []);
   const [walks, setWalks] = useState<WalkView[]>([]);
+  const [lanes, setLanes] = useState<GeographyEdge[]>([]);
   const [streetImages, setStreetImages] = useState<StreetViewImageRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [assembling, setAssembling] = useState(false);
+  const [seedingLanes, setSeedingLanes] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [importOpen, setImportOpen] = useState(false);
@@ -110,6 +118,32 @@ export function PsychogeographicLens({
           })),
         );
       }
+
+      let loadedLanes: GeographyEdge[] =
+        (await transport.listGeographyEdges?.({ databasePath, profileScope })) ??
+        [];
+      // Seed real corpus movement streams once on a fresh profile; the seed is
+      // idempotent per (profileScope, seedKey), so this only ever writes what
+      // is missing. Fails loudly (surfaced in the lens error state) when a
+      // lane cannot resolve a real place or passage.
+      if (loadedLanes.length === 0 && repoRoot.trim()) {
+        setSeedingLanes(true);
+        try {
+          const seeded = await ensureGeographyEdgeSeed({
+            transport,
+            databasePath,
+            workspaceId,
+            corpusRoot: repoRoot,
+            gazetteer: pack.gazetteer,
+            profileScope,
+          });
+          loadedLanes = seeded.edges;
+        } finally {
+          setSeedingLanes(false);
+        }
+      }
+      setLanes(loadedLanes);
+
       setStreetImages(
         await transport.listStreetViewImages({
           databasePath,
@@ -121,7 +155,14 @@ export function PsychogeographicLens({
     } finally {
       setLoading(false);
     }
-  }, [databasePath, pack.gazetteer, profileScope, transport, workspaceId]);
+  }, [
+    databasePath,
+    pack.gazetteer,
+    profileScope,
+    repoRoot,
+    transport,
+    workspaceId,
+  ]);
 
   useEffect(() => {
     void reload();
@@ -143,7 +184,11 @@ export function PsychogeographicLens({
     return (
       <section className="psychogeographic-lens" data-testid="psychogeographic-lens">
         <p data-testid="psychogeographic-loading">
-          {assembling ? "Assembling the walk from the graph…" : "Loading the Places surface…"}
+          {assembling
+            ? "Assembling the walk from the graph…"
+            : seedingLanes
+              ? "Seeding movement streams from the corpus…"
+              : "Loading the Places surface…"}
         </p>
       </section>
     );
@@ -181,6 +226,7 @@ export function PsychogeographicLens({
           tileSource={tileSource}
           policy={policy}
           renderer={renderer}
+          lanes={lanes}
         />
       ) : (
         <div className="psychogeographic-empty" data-testid="psychogeographic-empty">

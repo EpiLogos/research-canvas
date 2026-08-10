@@ -1,5 +1,6 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 
+import type { GeographyEdge } from "@research-canvas/schema";
 import type {
   GeoJSONSource,
   SourceSpecification,
@@ -8,9 +9,11 @@ import type {
 
 import type { WalkStop } from "../scenes/walkAssembly";
 import {
+  buildGeographyEdgeSource,
   buildPlaceMarkers,
   buildWalkPathSource,
   createOfflineMapStyle,
+  GEOGRAPHY_EDGE_COLORS,
   GLOBE,
   type MapSurfaceOptions,
   type MapSurfaceProjection,
@@ -36,6 +39,8 @@ export interface MapSurfaceRenderer {
     options?: MapSurfaceOptions,
   ): Promise<void>;
   drawWalk(walkId: string, stops: WalkStop[]): Promise<void>;
+  /** Draw movement-stream lanes (ticket #19) as mode-styled arcs. */
+  drawLanes?(edges: GeographyEdge[]): Promise<void>;
   setLiveTileSource(tileSource: MapTileSource): Promise<void>;
   centerOn(latitude: number, longitude: number, zoom?: number): Promise<void>;
   /** Animated camera flight to a place over the globe surface (task-2 step 4). */
@@ -44,6 +49,8 @@ export interface MapSurfaceRenderer {
   setProjection?(projection: MapSurfaceProjection): Promise<void>;
   /** Register a handler for stop-marker clicks on the map surface. */
   setStopClickHandler?(handler: (sceneId: string) => void): void;
+  /** Register a handler for lane-arc clicks on the map surface (ticket #19). */
+  setLaneClickHandler?(handler: (laneId: string) => void): void;
   /** Register a handler for camera moves (used to surface the current center). */
   onViewChange?(handler: (view: MapViewState) => void): void;
   destroy(): void;
@@ -56,6 +63,7 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
   const maplibre = await import("maplibre-gl");
   let map: InstanceType<typeof maplibre.Map> | null = null;
   let stopClickHandler: ((sceneId: string) => void) | null = null;
+  let laneClickHandler: ((laneId: string) => void) | null = null;
   let viewChangeHandler: ((view: MapViewState) => void) | null = null;
 
   function emitViewChange(): void {
@@ -84,6 +92,11 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
         const feature = event.features?.[0];
         const sceneId = feature?.properties?.id as string | undefined;
         if (sceneId && stopClickHandler) stopClickHandler(sceneId);
+      });
+      map.on("click", "geography-edges-layer", (event) => {
+        const feature = event.features?.[0];
+        const laneId = feature?.properties?.id as string | undefined;
+        if (laneId && laneClickHandler) laneClickHandler(laneId);
       });
       await waitForStyleLoad(map);
       // setSky throws "Style is not done loading" if called before the style
@@ -118,6 +131,33 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
           "circle-color": GLOBE.marker,
           "circle-stroke-color": "#17171d",
           "circle-stroke-width": 2,
+        },
+      });
+    },
+    async drawLanes(edges) {
+      if (!map) throw new Error("map renderer is not initialized");
+      addGeoJsonSource(map, "geography-edges", buildGeographyEdgeSource(edges));
+      ensureLayer(map, {
+        id: "geography-edges-layer",
+        type: "line",
+        source: "geography-edges",
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: {
+          "line-color": [
+            "match",
+            ["get", "mode"],
+            "flight",
+            GEOGRAPHY_EDGE_COLORS.flight,
+            "shipping",
+            GEOGRAPHY_EDGE_COLORS.shipping,
+            "overland",
+            GEOGRAPHY_EDGE_COLORS.overland,
+            "inland_water",
+            GEOGRAPHY_EDGE_COLORS.inland_water,
+            GLOBE.arc,
+          ],
+          "line-width": 2,
+          "line-opacity": 0.85,
         },
       });
     },
@@ -173,6 +213,9 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
     setStopClickHandler(handler) {
       stopClickHandler = handler;
     },
+    setLaneClickHandler(handler) {
+      laneClickHandler = handler;
+    },
     onViewChange(handler) {
       viewChangeHandler = handler;
     },
@@ -180,6 +223,7 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
       map?.remove();
       map = null;
       stopClickHandler = null;
+      laneClickHandler = null;
       viewChangeHandler = null;
     },
   };

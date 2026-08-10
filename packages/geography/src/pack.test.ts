@@ -46,22 +46,22 @@ describe("geography pack", () => {
     const pack = buildSamplePack();
     expect(pack.manifest.offline).toBe(true);
     expect(pack.manifest.formatVersion).toBe(1);
-    expect(pack.manifest.recordCount).toBe(12);
+    expect(pack.manifest.recordCount).toBe(16);
     expect(pack.manifest.sources.map((source) => source.id)).toEqual([
       "pleiades",
       "wikidata",
       "geonames",
     ]);
     expect(pack.manifest.sources[0].recordCount).toBe(6);
-    expect(pack.manifest.sources[1].recordCount).toBe(5);
-    expect(pack.manifest.sources[2].recordCount).toBe(1);
+    expect(pack.manifest.sources[1].recordCount).toBe(8);
+    expect(pack.manifest.sources[2].recordCount).toBe(2);
     expect(pack.gazetteer.resolveById("pleiades:520998")?.precision).toBe("exact");
   });
 
   test("basemap carries only located entries with WGS84 ordering", () => {
     const basemap = buildPackBasemap(sampleEntries());
     expect(basemap.type).toBe("FeatureCollection");
-    expect(basemap.features).toHaveLength(11);
+    expect(basemap.features).toHaveLength(15);
     const constantinople = basemap.features.find(
       (feature) => feature.properties.id === "pleiades:520998",
     );
@@ -77,9 +77,9 @@ describe("geography pack", () => {
       JSON.stringify(pack.manifest),
       JSON.stringify(pack.basemap),
     );
-    expect(parsed.gazetteer.size).toBe(12);
+    expect(parsed.gazetteer.size).toBe(16);
     expect(parsed.manifest.entryIds).toEqual(pack.manifest.entryIds);
-    expect(parsed.basemap.features).toHaveLength(11);
+    expect(parsed.basemap.features).toHaveLength(15);
   });
 
   test("parseGeographyPack rejects a live tile host", () => {

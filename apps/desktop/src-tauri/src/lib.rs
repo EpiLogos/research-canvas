@@ -6,6 +6,7 @@ pub mod commands {
     pub mod constellations;
     pub mod export;
     pub mod export_graph_bundle;
+    pub mod geography_edges;
     pub mod graph;
     pub mod keepsake;
     pub mod layout;
@@ -148,6 +149,10 @@ pub fn run() {
             commands::scenes::upsert_scene_sequence_command,
             commands::scenes::delete_scene_command,
             commands::scenes::delete_scene_sequence_command,
+            commands::geography_edges::list_geography_edges_command,
+            commands::geography_edges::get_geography_edge_command,
+            commands::geography_edges::upsert_geography_edge_command,
+            commands::geography_edges::delete_geography_edge_command,
             commands::street_view::list_street_view_images_command,
             commands::street_view::register_street_view_image_command,
             commands::street_view::stage_street_view_image_command,

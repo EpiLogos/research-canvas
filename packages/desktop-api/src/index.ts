@@ -60,6 +60,12 @@ export type {
   StreetViewRedactionStatus,
   StreetViewRegion,
 } from "./streetView";
+export type {
+  GeographyEdge,
+  GeographyEdgeIdRequest,
+  ListGeographyEdgesRequest,
+  UpsertGeographyEdgeRequest,
+} from "./geographyEdges";
 import {
   sceneFromWire,
   sceneSequenceFromWire,
@@ -84,6 +90,14 @@ import type {
   StreetViewIdRequest,
   StreetViewImageRecord,
 } from "./streetView";
+import {
+  geographyEdgeFromWire,
+  geographyEdgeToWire,
+  type GeographyEdge,
+  type GeographyEdgeIdRequest,
+  type ListGeographyEdgesRequest,
+  type UpsertGeographyEdgeRequest,
+} from "./geographyEdges";
 
 export type NodeDocumentMutation =
   | { kind: "created" }
@@ -687,6 +701,11 @@ export interface WorkspaceTransport {
   applyStreetViewRedaction(input: ApplyStreetViewRedactionRequest): Promise<StreetViewImageRecord>;
   markStreetViewRedactionNoneNeeded(input: StreetViewIdRequest): Promise<StreetViewImageRecord>;
 
+  // ---- Geography edges (SQLite surface movement streams; ticket #19) ----
+  listGeographyEdges(input: ListGeographyEdgesRequest): Promise<GeographyEdge[]>;
+  upsertGeographyEdge(input: UpsertGeographyEdgeRequest): Promise<GeographyEdge>;
+  deleteGeographyEdge(input: GeographyEdgeIdRequest): Promise<void>;
+
   // ---- Keepsake export (self-contained static bundle) ----
   writeKeepsakeBundle(input: {
     outputDir: string;
@@ -1017,6 +1036,27 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
         "mark_street_view_redaction_none_needed_command",
         { request: { databasePath, id } },
       );
+    },
+    async listGeographyEdges({ databasePath, profileScope }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listGeographyEdges: no profileScope in input or active project");
+      }
+      const wires = await invokeTauri<GeographyEdge[]>("list_geography_edges_command", {
+        request: { databasePath, profileScope: scope },
+      });
+      return wires.map(geographyEdgeFromWire);
+    },
+    async upsertGeographyEdge({ databasePath, edge }) {
+      const saved = await invokeTauri<GeographyEdge>("upsert_geography_edge_command", {
+        request: { databasePath, edge: geographyEdgeToWire(edge) },
+      });
+      return geographyEdgeFromWire(saved);
+    },
+    async deleteGeographyEdge({ databasePath, id }) {
+      await invokeTauri<void>("delete_geography_edge_command", {
+        request: { databasePath, id },
+      });
     },
     async writeKeepsakeBundle(input) {
       return invokeTauri<{ mediaCopied: number; manifestPath: string }>(
@@ -1400,6 +1440,30 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       return requestJsonWithRetry<StreetViewImageRecord>(
         `/workspace/street-view/${encodeURIComponent(id)}/none-needed`,
         { method: "POST" },
+      );
+    },
+    async listGeographyEdges({ databasePath: _, profileScope }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listGeographyEdges: no profileScope in input or active project");
+      }
+      const params = new URLSearchParams({ profileScope: scope });
+      const wires = await requestJsonWithRetry<GeographyEdge[]>(
+        `/workspace/geography-edges?${params.toString()}`,
+      );
+      return wires.map(geographyEdgeFromWire);
+    },
+    async upsertGeographyEdge({ databasePath: _, edge }) {
+      const saved = await requestJsonWithRetry<GeographyEdge>("/workspace/geography-edges", {
+        method: "POST",
+        body: geographyEdgeToWire(edge),
+      });
+      return geographyEdgeFromWire(saved);
+    },
+    async deleteGeographyEdge({ databasePath: _, id }) {
+      await requestJsonWithRetry<void>(
+        `/workspace/geography-edges/${encodeURIComponent(id)}`,
+        { method: "DELETE" },
       );
     },
     async writeKeepsakeBundle(input) {
@@ -1846,6 +1910,9 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
     addManualStreetViewRegion: readOnlyReject,
     applyStreetViewRedaction: readOnlyReject,
     markStreetViewRedactionNoneNeeded: readOnlyReject,
+    listGeographyEdges: readOnlyReject,
+    upsertGeographyEdge: readOnlyReject,
+    deleteGeographyEdge: readOnlyReject,
     writeKeepsakeBundle: readOnlyReject,
     loadPalaceCuration: readOnlyReject,
     savePalaceCuration: readOnlyReject,

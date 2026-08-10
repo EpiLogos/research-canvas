@@ -17,6 +17,9 @@ use research_canvas_desktop_lib::{
             delete_scene_at, delete_scene_sequence_at, list_scene_sequences_at, list_scenes_at,
             upsert_scene_at, upsert_scene_sequence_at,
         },
+        geography_edges::{
+            delete_geography_edge_at, list_geography_edges_at, upsert_geography_edge_at,
+        },
         street_view::{
             add_manual_street_view_region_at, apply_street_view_redaction_at,
             list_street_view_images_at, mark_street_view_redaction_none_needed_at,
@@ -289,6 +292,40 @@ fn handle_request(
                 .to_string_lossy()
                 .to_string();
             delete_scene_sequence_at(&database_path, sequence_id)?;
+            return respond_json(request, StatusCode(200), json!({ "ok": true }));
+        }
+    }
+
+    // Geography-edge routes (refinement-2 D2, ticket #19): surface-layer
+    // movement streams, the same wire records the Tauri commands use, served
+    // over the dev bridge so the browser build can seed and read lanes.
+    if method == Method::Get && path == "/workspace/geography-edges" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let profile_scope = query_param(&url, "profileScope")
+            .ok_or_else(|| "missing profileScope query parameter".to_string())?;
+        let payload = list_geography_edges_at(&database_path, &profile_scope)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/geography-edges" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let body = read_body(&mut request)?;
+        let edge: research_canvas_desktop_lib::db::repositories::GeographyEdgeRecord =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let payload = upsert_geography_edge_at(&database_path, edge)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if let Some(edge_id) = path.strip_prefix("/workspace/geography-edges/") {
+        if method == Method::Delete {
+            let database_path = session_database_path(&request)?
+                .to_string_lossy()
+                .to_string();
+            delete_geography_edge_at(&database_path, edge_id)?;
             return respond_json(request, StatusCode(200), json!({ "ok": true }));
         }
     }

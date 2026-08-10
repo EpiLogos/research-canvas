@@ -22,6 +22,22 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
+          24.7719,
+          -28.7419
+        ]
+      },
+      "properties": {
+        "id": "geonames:964432",
+        "title": "Kimberley",
+        "source": "geonames",
+        "precision": "exact"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
           11.254,
           43.7714
         ]
@@ -118,6 +134,38 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
+          -1.2577,
+          51.752
+        ]
+      },
+      "properties": {
+        "id": "wikidata:Q152",
+        "title": "Oxford",
+        "source": "wikidata",
+        "precision": "approximate"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          16.3738,
+          48.2082
+        ]
+      },
+      "properties": {
+        "id": "wikidata:Q1741",
+        "title": "Wien",
+        "source": "wikidata",
+        "precision": "approximate"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
           4.8936,
           52.3728
         ]
@@ -125,6 +173,22 @@
       "properties": {
         "id": "wikidata:Q727",
         "title": "Amsterdam",
+        "source": "wikidata",
+        "precision": "approximate"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          129.9,
+          -4.55
+        ]
+      },
+      "properties": {
+        "id": "wikidata:Q806249",
+        "title": "Banda Islands",
         "source": "wikidata",
         "precision": "approximate"
       }

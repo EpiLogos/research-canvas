@@ -356,6 +356,7 @@ export function Shell() {
                 workspaceId={workspace.workspaceId}
                 profileScope={workspace.activeProfileScope ?? "bootstrapping"}
                 mediaRoot={workspace.workingRoot ?? ""}
+                repoRoot={workspace.repoRoot ?? ""}
               />
             </section>
           )}

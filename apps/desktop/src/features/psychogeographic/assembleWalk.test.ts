@@ -76,11 +76,11 @@ describe("assembleProfileWalk", () => {
     expect(prague?.located).toBe(true);
     const amsterdam = result.stops.find((stop) => stop.placeId === "wikidata:Q727");
     expect(amsterdam?.located).toBe(true);
-    // Banda Islands is not in the bundled subset: it stays an unlocated stop
-    // and is reported as unmatched — never silently dropped.
+    // Banda Islands is in the bundled subset for the movement-stream lanes, so
+    // it resolves to real coordinates like any other gazetted place.
     const banda = result.stops.find((stop) => stop.sceneId === "walk:event-banda-genocide");
-    expect(banda?.located).toBe(false);
-    expect(result.unmatchedPlaces).toContain("Banda Islands");
+    expect(banda?.located).toBe(true);
+    expect(banda?.coordinate).toEqual({ latitude: -4.55, longitude: 129.9 });
 
     // Scenes carry real temporal windows from the graph events.
     const paris = savedScenes.find((scene) => scene.id === "walk:event-cult-of-reason");
@@ -119,6 +119,7 @@ describe("gazetteerEntryForPlace", () => {
     expect(gazetteerEntryForPlace(pack.gazetteer, "Paris")?.id).toBe("wikidata:Q90");
     expect(gazetteerEntryForPlace(pack.gazetteer, "Prague")?.id).toBe("wikidata:Q1085");
     expect(gazetteerEntryForPlace(pack.gazetteer, "Amsterdam")?.id).toBe("wikidata:Q727");
-    expect(gazetteerEntryForPlace(pack.gazetteer, "Banda Islands")).toBeNull();
+    expect(gazetteerEntryForPlace(pack.gazetteer, "Banda Islands")?.id).toBe("wikidata:Q806249");
+    expect(gazetteerEntryForPlace(pack.gazetteer, "Kimberley")?.id).toBe("geonames:964432");
   });
 });

@@ -1,3 +1,5 @@
+import type { GeographyEdge } from "@research-canvas/schema";
+
 import type { WalkStop } from "../scenes/walkAssembly";
 import {
   buildGraticule,
@@ -59,6 +61,15 @@ export const GLOBE = {
   /** Walk stop marker. */
   marker: "#d0a24a",
 } as const;
+
+/** Route-mode styling for movement streams (refinement-2 D2, ticket #19):
+ * a distinct, offline-drawn colour per geography-edge mode. */
+export const GEOGRAPHY_EDGE_COLORS: Record<GeographyEdge["mode"], string> = {
+  flight: "#7ec8e3",
+  shipping: "#4a9fd8",
+  overland: "#d0a24a",
+  inland_water: "#3fb89a",
+};
 
 export function createOfflineMapStyle(
   tileSource: MapTileSource,
@@ -176,6 +187,46 @@ export function buildPlaceMarkers(stops: WalkStop[]): MapMarkerFeature[] {
     });
   }
   return features;
+}
+
+export interface GeographyEdgeFeature {
+  type: "Feature";
+  geometry: { type: "LineString"; coordinates: LonLat[] };
+  properties: {
+    id: string;
+    seedKey: string;
+    mode: GeographyEdge["mode"];
+    label: string;
+    sourcePlaceId: string;
+    targetPlaceId: string;
+    timeWindowStart: string;
+    timeWindowEnd: string;
+  };
+}
+
+/** Builds the GeoJSON source for movement-stream lanes (ticket #19). The arc
+ * geometry is stored on the surface record, so this is a straight serialization
+ * — nothing is recomputed or fetched. */
+export function buildGeographyEdgeSource(
+  edges: GeographyEdge[],
+): { type: "FeatureCollection"; features: GeographyEdgeFeature[] } {
+  return {
+    type: "FeatureCollection",
+    features: edges.map((edge) => ({
+      type: "Feature",
+      geometry: edge.geometry,
+      properties: {
+        id: edge.id,
+        seedKey: edge.seedKey,
+        mode: edge.mode,
+        label: edge.label,
+        sourcePlaceId: edge.sourcePlaceId,
+        targetPlaceId: edge.targetPlaceId,
+        timeWindowStart: edge.timeWindow.start,
+        timeWindowEnd: edge.timeWindow.end,
+      },
+    })),
+  };
 }
 
 /**

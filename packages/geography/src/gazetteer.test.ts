@@ -13,7 +13,7 @@ const index = GazetteerIndex.loadNdjson(
 
 describe("GazetteerIndex", () => {
   test("loads the bundled offline subset and resolves by id", () => {
-    expect(index.size).toBe(12);
+    expect(index.size).toBe(16);
     const constantinople = index.resolveById("pleiades:520998");
     expect(constantinople?.names.map((name) => name.name)).toContain(
       "Constantinople",
@@ -25,6 +25,20 @@ describe("GazetteerIndex", () => {
     expect(index.resolveById("wikidata:Q727")?.names[0].name).toBe("Amsterdam");
     expect(index.resolveById("wikidata:Q90")?.names[0].name).toBe("Paris");
     expect(index.resolveById("wikidata:Q1085")?.names[0].name).toBe("Praha");
+  });
+
+  test("resolves the movement-stream places (Oxford, Banda, Vienna, Kimberley)", () => {
+    expect(index.resolveById("wikidata:Q152")?.names[0].name).toBe("Oxford");
+    expect(index.resolveById("wikidata:Q806249")?.names[0].name).toBe(
+      "Banda Islands",
+    );
+    expect(
+      index.resolveById("wikidata:Q1741")?.names.find((name) => name.language === "en")
+        ?.name,
+    ).toBe("Vienna");
+    expect(index.resolveById("geonames:964432")?.names[0].name).toBe(
+      "Kimberley",
+    );
   });
 
   test("searches by name with language preference", () => {
