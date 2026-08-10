@@ -176,6 +176,16 @@ importers:
         specifier: workspace:*
         version: link:../schema
 
+  packages/domain:
+    dependencies:
+      '@research-canvas/schema':
+        specifier: workspace:*
+        version: link:../schema
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@24.12.0)(jsdom@27.4.0)
+
   packages/exporter:
     dependencies:
       '@research-canvas/desktop-api':
