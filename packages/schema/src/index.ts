@@ -10,4 +10,6 @@ export * from "./passage";
 export * from "./place";
 export * from "./scene";
 export * from "./project";
+export * from "./sequence";
+export * from "./surface";
 export * from "./time";

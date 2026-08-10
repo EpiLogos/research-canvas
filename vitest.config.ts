@@ -44,6 +44,6 @@ export default defineConfig({
       "apps/**/*.test.tsx",
       "tests/docs/**/*.test.ts"
     ],
-    setupFiles: ["./tests/setup/vitest.setup.ts"]
+    setupFiles: [fileURLToPath(new URL("./tests/setup/vitest.setup.ts", import.meta.url))],
   }
 });
