@@ -4,7 +4,7 @@ import { describe, expect, test, vi } from "vitest";
 import type { TimelineWalk as TimelineWalkData } from "./walk";
 import { TimelineWalk } from "./TimelineWalk";
 
-function walk(over: Partial<TimelineWalkData>): TimelineWalkData {
+function walk(over: Partial<TimelineWalkData> = {}): TimelineWalkData {
   return {
     stops: [
       {
