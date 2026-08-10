@@ -8,7 +8,8 @@ import type { Scene, SceneSequence } from "@research-canvas/schema";
 import { assembleWalk, loadBundledGeographyPack } from "@research-canvas/canvas";
 import { buildKeepsakeManifest } from "@research-canvas/exporter";
 
-import { TransportBar } from "../../layout/TransportBar";
+import { PipelineRail } from "../../layout/PipelineRail";
+import type { PipelineStageId } from "../pipeline/pipelineStages";
 import { timelineView } from "../psychogeographic/walkFixture";
 import { ensureMigrationStorySeed } from "./seedMigrationStory";
 
@@ -156,10 +157,19 @@ describe("story wording sweep", () => {
 
   test("the shell's story lens is labelled Journeys, not a migration story", () => {
     render(
-      <TransportBar
+      <PipelineRail
         lens="story"
         onSetLens={() => {}}
         onOpenPalette={() => {}}
+        stageCounts={
+          {
+            constellations: 0,
+            timeline: 0,
+            places: 0,
+            stories: 0,
+            palace: 0,
+          } satisfies Record<PipelineStageId, number>
+        }
       />,
     );
     expect(screen.getByTestId("lens-story")).toHaveTextContent("Journeys");

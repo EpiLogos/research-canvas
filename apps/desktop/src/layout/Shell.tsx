@@ -6,8 +6,19 @@ import { LeftOverlay } from "./LeftOverlay";
 import { BottomDock } from "./BottomDock";
 import { InspectorOverlay } from "./InspectorOverlay";
 import { StatusStrip } from "./StatusStrip";
-import { TransportBar } from "./TransportBar";
+import { PipelineRail } from "./PipelineRail";
 import { ReadingLens } from "./ReadingLens";
+import { FlowView } from "../features/pipeline/FlowView";
+import {
+  usePipelineActions,
+} from "../features/pipeline/usePipelineActions";
+import {
+  usePipelineStages,
+} from "../features/pipeline/usePipelineStages";
+import {
+  PIPELINE_STAGES,
+  type PipelineStageId,
+} from "../features/pipeline/pipelineStages";
 import { InspectorTab } from "../features/inspector/InspectorTab";
 import { TerminalPane } from "../features/terminal/TerminalPane";
 import { useShellLayout } from "./useShellLayout";
@@ -267,6 +278,43 @@ export function Shell() {
 
   const handlePlaySequence = useCallback(() => enterFullScreen("sequence"), [enterFullScreen]);
 
+  // ---- Canvas pipeline (task-9): one visible sequence --------------------
+  // Stage state is derived from the real stores (timeline view + scenes +
+  // palace curation); the rail and the flow view are navigation + action
+  // surfaces over that derived state — no new ledger.
+  const pipelineObjects = useMemo(
+    () =>
+      workspace.nodes.map((node) => ({
+        graphNodeId: node.graphNodeId,
+        title: node.title,
+      })),
+    [workspace.nodes],
+  );
+  const pipelineStages = usePipelineStages({
+    transport: workspace.transport,
+    workspaceId: workspace.workspaceId,
+    databasePath: workspace.databasePath,
+    profileScope: workspace.activeProfileScope,
+    objects: pipelineObjects,
+  });
+  const pipelineActions = usePipelineActions({
+    transport: workspace.transport,
+    workspaceId: workspace.workspaceId,
+    databasePath: workspace.databasePath,
+    profileScope: workspace.activeProfileScope,
+    onSettled: pipelineStages.refresh,
+  });
+  const stageCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        PIPELINE_STAGES.map((stage) => [
+          stage.id,
+          pipelineStages.countAt(stage.id),
+        ]),
+      ) as Record<PipelineStageId, number>,
+    [pipelineStages.countAt],
+  );
+
   const selectedTitle = workspace.nodes.find((n) => n.id === workspace.selectedNodeId)?.title;
   // The inspector is a canvas/graph affordance — it must never float over
   // the immersive reading lens's stage content (its ⤢ fullscreen / "Back to
@@ -280,13 +328,29 @@ export function Shell() {
     lens !== "reading" &&
     !readingOverlayOpen;
 
+  const flowNode =
+    (() => {
+      const selected = workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
+      if (!selected?.graphNodeId) return null;
+      return {
+        graphNodeId: selected.graphNodeId,
+        title: selected.title,
+        canvasNodeType: selected.type,
+        entityType: selected.graph?.entityType,
+      };
+    })();
+  const flowStageState = flowNode
+    ? pipelineStages.byGraphNodeId.get(flowNode.graphNodeId) ?? null
+    : null;
+
   return (
     <div className="ishell" data-lens={lens} ref={layout.shellRef} style={{ "--browser-width": `${layout.browserWidth}px` } as React.CSSProperties}>
-      <TransportBar
+      <PipelineRail
         lens={readingOverlayOpen ? "reading" : lens}
         onSetLens={setShellLens}
         breadcrumb={selectedTitle}
         onOpenPalette={openPalette}
+        stageCounts={stageCounts}
       />
 
       <div className="ishell-body">
@@ -418,7 +482,17 @@ export function Shell() {
             onClose={layout.closeInspector}
             onResizeStart={layout.beginInspectorResize}
           >
-            <InspectorTab />
+            <InspectorTab
+            flowView={
+              <FlowView
+                node={flowNode}
+                stageState={flowStageState}
+                candidatePlaces={pipelineStages.candidatePlaces}
+                actions={pipelineActions}
+                onJump={(lens) => setShellLens(lens)}
+              />
+            }
+          />
           </InspectorOverlay>
 
           <BottomDock
