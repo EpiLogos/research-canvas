@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
 
 import {
+  buildPalaceBundle,
   buildPalaceScene,
   clusterChambers,
   curateChambers,
@@ -28,6 +29,8 @@ export interface PalaceLensHostProps {
   databasePath: string;
   workspaceId: string;
   profileScope: string;
+  /** The workspace content root; the palace bundle is exported under it. */
+  workingRoot: string;
 }
 
 export function PalaceLensHost({
@@ -35,12 +38,17 @@ export function PalaceLensHost({
   databasePath,
   workspaceId,
   profileScope,
+  workingRoot,
 }: PalaceLensHostProps): JSX.Element {
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [relationships, setRelationships] = useState<GraphRelationship[]>([]);
   const [storedCuration, setStoredCuration] = useState<PalaceCuration | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exportState, setExportState] = useState<"idle" | "exporting" | "done" | "failed">(
+    "idle",
+  );
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -116,6 +124,36 @@ export function PalaceLensHost({
     [nodes, relationships, profileScope, curation, encapsulationEdges],
   );
 
+  const exportPalaceBundle = useCallback(() => {
+    const bundle = buildPalaceBundle({
+      scene,
+      nodes,
+      relationships,
+      encapsulationEdges,
+      curation,
+    });
+    setExportState("exporting");
+    setExportMessage(null);
+    const outputDir = workingRoot
+      ? `${workingRoot.replace(/\/+$/, "")}/palace`
+      : "palace";
+    void (async () => {
+      try {
+        const result = await transport.writePalaceBundle({
+          outputDir,
+          bundleJson: JSON.stringify(bundle),
+        });
+        setExportState("done");
+        setExportMessage(
+          `Palace bundle written to palace/${result.bundlePath}`,
+        );
+      } catch (cause) {
+        setExportState("failed");
+        setExportMessage(cause instanceof Error ? cause.message : String(cause));
+      }
+    })();
+  }, [scene, nodes, relationships, encapsulationEdges, curation, workingRoot, transport]);
+
   const isEmpty = useMemo(
     () => nodes.length === 0 && relationships.length === 0,
     [nodes.length, relationships.length],
@@ -159,7 +197,17 @@ export function PalaceLensHost({
         curation={curation}
         onSaveCuration={saveCuration}
         onPersistWalk={persistWalk}
+        onExportBundle={exportPalaceBundle}
       />
+      {exportMessage && (
+        <p
+          className="palace-lens__export-state"
+          data-state={exportState}
+          data-testid="palace-export-state"
+        >
+          {exportMessage}
+        </p>
+      )}
     </section>
   );
 }

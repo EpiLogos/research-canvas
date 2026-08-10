@@ -381,6 +381,7 @@ export function Shell() {
                 databasePath={workspace.databasePath}
                 workspaceId={workspace.workspaceId}
                 profileScope={workspace.activeProfileScope ?? "bootstrapping"}
+                workingRoot={workspace.workingRoot ?? ""}
               />
             </section>
           )}

@@ -181,6 +181,7 @@ describe("PalaceLensHost", () => {
         databasePath="/tmp/ws.sqlite"
         workspaceId="sqlite:/tmp/ws"
         profileScope="bootstrapping"
+        workingRoot="/tmp/ws"
       />,
     );
 
@@ -209,6 +210,7 @@ describe("PalaceLensHost", () => {
         databasePath="/tmp/ws.sqlite"
         workspaceId="sqlite:/tmp/ws"
         profileScope="bootstrapping"
+        workingRoot="/tmp/ws"
       />,
     );
 
@@ -246,8 +248,49 @@ describe("PalaceLensHost", () => {
         databasePath="/tmp/ws.sqlite"
         workspaceId="sqlite:/tmp/ws"
         profileScope="bootstrapping"
+        workingRoot="/tmp/ws"
       />,
     );
     expect(await screen.findByTestId("palace-host-empty")).toBeInTheDocument();
+  });
+
+  test("export palace bundle writes palace-bundle.json through the transport", async () => {
+    const { transport } = makeTransport();
+    const writeSpy = vi.fn<typeof transport.writePalaceBundle>(async () => ({
+      bundlePath: "palace-bundle.json",
+    }));
+    const exportTransport = {
+      ...transport,
+      loadTimelineView: async () => palaceTimelineView(),
+      writePalaceBundle: writeSpy,
+    } as unknown as WorkspaceTransport;
+
+    render(
+      <PalaceLensHost
+        transport={exportTransport}
+        databasePath="/tmp/ws.sqlite"
+        workspaceId="sqlite:/tmp/ws"
+        profileScope="bootstrapping"
+        workingRoot="/tmp/ws"
+      />,
+    );
+
+    await screen.findByTestId("palace-surface");
+    fireEvent.click(screen.getByTestId("palace-export-bundle"));
+
+    await waitFor(() => expect(writeSpy).toHaveBeenCalled());
+    const call = writeSpy.mock.calls[0]?.[0];
+    expect(call).toBeTruthy();
+    if (!call) return;
+    expect(call.outputDir).toBe("/tmp/ws/palace");
+    const bundle = JSON.parse(call.bundleJson) as {
+      formatVersion: number;
+      scene: { rooms: unknown[] };
+    };
+    expect(bundle.formatVersion).toBe(1);
+    expect(Array.isArray(bundle.scene.rooms)).toBe(true);
+    expect(await screen.findByTestId("palace-export-state")).toHaveTextContent(
+      "Palace bundle written",
+    );
   });
 });
