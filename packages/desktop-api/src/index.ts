@@ -743,6 +743,12 @@ export interface WorkspaceTransport {
     curation: unknown;
   }): Promise<{ profileScope: string; curation: unknown }>;
 
+  // ---- Palace export (self-contained palace-bundle.json for the public viewer) ----
+  writePalaceBundle(input: {
+    outputDir: string;
+    bundleJson: string;
+  }): Promise<{ bundlePath: string }>;
+
   // ---- Substance (Neo4j) ----
   readGraphNode(input: { graphNodeId: string }): Promise<GraphNode>;
   findGraphNode(input: { graphNodeId: string }): Promise<GraphNode | null>;
@@ -1116,6 +1122,12 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
       return invokeTauri<{ profileScope: string; curation: unknown }>(
         "save_palace_curation_command",
         { request: { databasePath: input.databasePath, profileScope: scope, curation: input.curation } },
+      );
+    },
+    async writePalaceBundle(input) {
+      return invokeTauri<{ bundlePath: string }>(
+        "write_palace_bundle_command",
+        { request: input },
       );
     },
     async readGraphNode(input) {
@@ -1541,6 +1553,12 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       return requestJsonWithRetry<{ profileScope: string; curation: unknown }>(
         "/workspace/palace-curation",
         { method: "POST", body: { profileScope: scope, curation } },
+      );
+    },
+    async writePalaceBundle(input) {
+      return requestJsonWithRetry<{ bundlePath: string }>(
+        "/workspace/palace-bundle",
+        { method: "POST", body: input },
       );
     },
     async readGraphNode(input) {
@@ -1969,6 +1987,7 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
     writeKeepsakeBundle: readOnlyReject,
     loadPalaceCuration: readOnlyReject,
     savePalaceCuration: readOnlyReject,
+    writePalaceBundle: readOnlyReject,
 
     // ---- substance reads ----
     async readGraphNode({ graphNodeId }) {

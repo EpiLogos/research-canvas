@@ -13,6 +13,7 @@ pub mod commands {
     pub mod layout;
     pub mod node_document;
     pub mod palace;
+    pub mod palace_export;
     pub mod scenes;
     pub mod search;
     pub mod street_view;
@@ -163,6 +164,7 @@ pub fn run() {
             commands::fetch_asset::ingest_fetched_asset_command,
             commands::fetch_asset::list_fetch_records_command,
             commands::keepsake::write_keepsake_bundle_command,
+            commands::palace_export::write_palace_bundle_command,
             commands::palace::load_palace_curation_command,
             commands::palace::save_palace_curation_command,
             commands::graph::upsert_node_layout_command,

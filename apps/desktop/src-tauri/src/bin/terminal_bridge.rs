@@ -28,6 +28,7 @@ use research_canvas_desktop_lib::{
         fetch_asset::{ingest_fetched_asset_at, list_fetch_records_at, IngestFetchedAssetRequest},
         keepsake::write_keepsake_bundle_at,
         palace::{load_palace_curation_at, save_palace_curation_at},
+        palace_export::write_palace_bundle_at,
         layout::{flush_canvas_layout_at, FlushCanvasLayoutRequest},
         search::{
             rebuild_constellation_search_index_command, search_constellation_command,
@@ -451,6 +452,20 @@ fn handle_request(
             .as_str()
             .ok_or_else(|| "missing manifestJson".to_string())?;
         let payload = write_keepsake_bundle_at(output_dir, media_root, manifest_json)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/palace-bundle" {
+        let body = read_body(&mut request)?;
+        let input: serde_json::Value =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let output_dir = input["outputDir"]
+            .as_str()
+            .ok_or_else(|| "missing outputDir".to_string())?;
+        let bundle_json = input["bundleJson"]
+            .as_str()
+            .ok_or_else(|| "missing bundleJson".to_string())?;
+        let payload = write_palace_bundle_at(output_dir, bundle_json)?;
         return respond_json(request, StatusCode(200), payload);
     }
 
