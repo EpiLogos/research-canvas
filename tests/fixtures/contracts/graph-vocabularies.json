@@ -16,5 +16,6 @@
   "passageNativeUnitKinds": ["text_span", "timestamp_range", "image_region"],
   "sceneAssemblers": ["agent", "human"],
   "curationEventTypes": ["pin", "exclude", "reorder", "split", "merge", "edit_as_derived"],
-  "subTimelineSpatialFrames": ["earth", "place", "none"]
+  "subTimelineSpatialFrames": ["earth", "place", "none"],
+  "colourTag": ["evidence-documented", "evidence-interpretive", "evidence-contested", "historicity-mythic", "historicity-historical", "archetype-expression", "relation-causal", "relation-analogical", "surface-places", "surface-palace"]
 }

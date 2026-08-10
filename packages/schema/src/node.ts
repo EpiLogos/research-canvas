@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { viewportSchema } from "./canvas";
+import { colourTagSchema } from "./colour";
 import { temporalPlaceSchema } from "./place";
 
 const nullToUndefined = <T extends z.ZodTypeAny>(schema: T) =>
@@ -213,6 +214,7 @@ const baseNodeSchema = z.object({
   position: positionSchema,
   size: sizeSchema,
   summary: z.string().default(""),
+  colourTag: colourTagSchema.nullable().optional(),
   dotColour: nullToUndefined(z.string().optional()),
   bgColour: nullToUndefined(z.string().optional()),
   textColour: nullToUndefined(z.string().optional()),

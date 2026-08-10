@@ -1,5 +1,6 @@
 export * from "./annotation";
 export * from "./canvas";
+export * from "./colour";
 export * from "./consent";
 export * from "./constellation";
 export * from "./export";

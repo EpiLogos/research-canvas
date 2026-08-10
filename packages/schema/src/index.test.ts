@@ -16,6 +16,7 @@ import {
   QL_TOPOLOGIES, QL_COMPLETENESS_STATUSES,
   PLACE_COORDINATE_PRECISIONS, GAZETTEER_KINDS, PASSAGE_NATIVE_UNIT_KINDS,
   SCENE_ASSEMBLERS, CURATION_EVENT_TYPES, SUB_TIMELINE_SPATIAL_FRAMES,
+  COLOUR_TAGS,
 } from "./index";
 
 const now = "2026-03-30T20:00:00.000Z";
@@ -35,6 +36,7 @@ const now = "2026-03-30T20:00:00.000Z";
       sceneAssemblers: SCENE_ASSEMBLERS,
       curationEventTypes: CURATION_EVENT_TYPES,
       subTimelineSpatialFrames: SUB_TIMELINE_SPATIAL_FRAMES,
+      colourTag: COLOUR_TAGS,
     }).toEqual(vocabularyManifest);
   });
 
