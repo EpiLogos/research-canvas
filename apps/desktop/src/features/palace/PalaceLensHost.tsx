@@ -42,6 +42,9 @@ export function PalaceLensHost({
 }: PalaceLensHostProps): JSX.Element {
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [relationships, setRelationships] = useState<GraphRelationship[]>([]);
+  const [encapsulationEdges, setEncapsulationEdges] = useState<
+    GraphRelationship[]
+  >([]);
   const [storedCuration, setStoredCuration] = useState<PalaceCuration | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,13 +59,19 @@ export function PalaceLensHost({
       setLoading(true);
       setError(null);
       try {
+        // The palace subgraph surface returns the real ENCAPSULATES edges
+        // through the graph repository layer (`list_encapsulation_edges`),
+        // not a filter over the timeline view's bounded relationship
+        // neighbourhood. The palace shapes full/partial/compressed
+        // constellations from this repository surface.
         const [view, stored] = await Promise.all([
-          transport.loadTimelineView({ workspaceId }),
+          transport.loadPalaceGraph({ workspaceId }),
           transport.loadPalaceCuration({ databasePath, profileScope }),
         ]);
         if (cancelled) return;
         setNodes(view.nodes.map((record) => record.node));
         setRelationships(view.relationships);
+        setEncapsulationEdges(view.encapsulationEdges);
         setStoredCuration((stored.curation as PalaceCuration | null) ?? null);
       } catch (cause) {
         if (!cancelled) {
@@ -100,17 +109,21 @@ export function PalaceLensHost({
     [databasePath, transport],
   );
 
-  const encapsulationEdges = useMemo(
-    () => encapsulationEdgesFromRelationships(relationships),
-    [relationships],
-  );
-
   const curation = useMemo<PalaceCuration>(() => {
     if (storedCuration) return storedCuration;
     const candidates = clusterChambers(nodes, relationships);
     const nodesById = new Map(nodes.map((node) => [node.graphNodeId, node]));
     return curateChambers(candidates, nodesById, profileScope);
   }, [storedCuration, nodes, relationships, profileScope]);
+
+  // The transport returns raw ENCAPSULATES GraphRelationships; the palace
+  // scene builder consumes the edge view. The adapter is a pure shape
+  // conversion — the edges themselves come from the graph repository surface
+  // (`loadPalaceGraph`), not a filter over the timeline view.
+  const encapsulationEdgesInput = useMemo(
+    () => encapsulationEdgesFromRelationships(encapsulationEdges),
+    [encapsulationEdges],
+  );
 
   const scene = useMemo(
     () =>
@@ -119,9 +132,9 @@ export function PalaceLensHost({
         relationships,
         profileScope,
         curation,
-        encapsulationEdges,
+        encapsulationEdges: encapsulationEdgesInput,
       }),
-    [nodes, relationships, profileScope, curation, encapsulationEdges],
+    [nodes, relationships, profileScope, curation, encapsulationEdgesInput],
   );
 
   const exportPalaceBundle = useCallback(() => {
@@ -129,7 +142,7 @@ export function PalaceLensHost({
       scene,
       nodes,
       relationships,
-      encapsulationEdges,
+      encapsulationEdges: encapsulationEdgesInput,
       curation,
     });
     setExportState("exporting");
@@ -152,7 +165,7 @@ export function PalaceLensHost({
         setExportMessage(cause instanceof Error ? cause.message : String(cause));
       }
     })();
-  }, [scene, nodes, relationships, encapsulationEdges, curation, workingRoot, transport]);
+  }, [scene, nodes, relationships, encapsulationEdgesInput, curation, workingRoot, transport]);
 
   const isEmpty = useMemo(
     () => nodes.length === 0 && relationships.length === 0,
@@ -188,12 +201,16 @@ export function PalaceLensHost({
   }
 
   return (
-    <section className="palace-host" data-testid="palace-host">
+    <section
+      className="palace-host"
+      data-testid="palace-host"
+      data-encapsulation-edges={encapsulationEdges.length}
+    >
       <PalaceSurface
         scene={scene}
         nodes={nodes}
         relationships={relationships}
-        encapsulationEdges={encapsulationEdges}
+        encapsulationEdges={encapsulationEdgesInput}
         curation={curation}
         onSaveCuration={saveCuration}
         onPersistWalk={persistWalk}

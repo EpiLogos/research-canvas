@@ -3,7 +3,9 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type {
   GraphNode,
-  TimelineView,
+  GraphRelationship,
+  PalaceGraphView,
+  TimelineViewNode,
   WorkspaceTransport,
 } from "@research-canvas/desktop-api";
 import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
@@ -37,11 +39,11 @@ function graphNode(
   };
 }
 
-function palaceTimelineView(): TimelineView {
+function palaceGraphView(
+  over: Partial<PalaceGraphView> = {},
+): PalaceGraphView {
   return {
     workspaceId: "sqlite:/tmp/ws",
-    lanes: [{ id: "events" }],
-    diagnostics: [],
     relationships: [
       {
         id: "r1",
@@ -58,6 +60,7 @@ function palaceTimelineView(): TimelineView {
         properties: {},
       },
     ],
+    encapsulationEdges: [],
     nodes: [
       {
         node: graphNode("council", "Council of Florence", "Event", {
@@ -124,6 +127,48 @@ function palaceTimelineView(): TimelineView {
         },
       },
     ],
+    ...over,
+  };
+}
+
+/** A full 4+2 constellation container with six member nodes, delivered as
+ * real ENCAPSULATES edges through the palace subgraph surface. */
+function encapsulatedPalaceGraphView(): PalaceGraphView {
+  const container = "constellation-council";
+  const memberIds = ["m1", "m2", "m3", "m4", "m5", "m6"];
+  const edges: GraphRelationship[] = memberIds.map((memberId) => ({
+    id: `enc:${container}:${memberId}`,
+    relType: "ENCAPSULATES",
+    sourceGraphNodeId: container,
+    targetGraphNodeId: memberId,
+    properties: { mode: "outgoing" },
+  }));
+  const base = palaceGraphView();
+  const memberNodes: TimelineViewNode[] = memberIds.map((memberId) => ({
+    node: graphNode(memberId, `Member ${memberId}`, "Event", {
+      validFrom: "1400-01-01",
+      validTo: null,
+    }),
+    anchor: { validFrom: "1400-01-01", validTo: null, precision: "year" },
+    layoutOverride: null,
+  }));
+  return {
+    ...base,
+    nodes: [
+      ...base.nodes,
+      {
+        node: graphNode(container, "Council constellation", "Constellation", {
+          isTemporal: false,
+          validFrom: null,
+          validTo: null,
+          temporalPrecision: null,
+        }),
+        anchor: { validFrom: "invalid", validTo: null, precision: "year" },
+        layoutOverride: null,
+      },
+      ...memberNodes,
+    ],
+    encapsulationEdges: edges,
   };
 }
 
@@ -137,8 +182,8 @@ function makeTransport(): {
   const savedScenes: Scene[] = [];
   const savedSequences: SceneSequence[] = [];
   const transport = {
-    async loadTimelineView() {
-      return palaceTimelineView();
+    async loadPalaceGraph() {
+      return palaceGraphView();
     },
     async loadPalaceCuration() {
       return { profileScope: "bootstrapping", curation: store.curation };
@@ -171,7 +216,7 @@ describe("PalaceLensHost", () => {
     >(async () => ({ profileScope: "bootstrapping", curation: null }));
     const hostTransport = {
       ...transport,
-      loadTimelineView: async () => palaceTimelineView(),
+      loadPalaceGraph: async () => palaceGraphView(),
       savePalaceCuration: saveSpy,
     } as unknown as WorkspaceTransport;
 
@@ -198,11 +243,47 @@ describe("PalaceLensHost", () => {
     expect(saved.curation.chambers.some((chamber) => chamber.pinned)).toBe(true);
   });
 
+  test("reads real ENCAPSULATES edges through loadPalaceGraph and shapes a room", async () => {
+    const { transport } = makeTransport();
+    const loadSpy = vi.fn<typeof transport.loadPalaceGraph>(async () =>
+      encapsulatedPalaceGraphView(),
+    );
+    const hostTransport = {
+      ...transport,
+      loadPalaceGraph: loadSpy,
+    } as unknown as WorkspaceTransport;
+
+    render(
+      <PalaceLensHost
+        transport={hostTransport}
+        databasePath="/tmp/ws.sqlite"
+        workspaceId="sqlite:/tmp/ws"
+        profileScope="bootstrapping"
+        workingRoot="/tmp/ws"
+      />,
+    );
+
+    await screen.findByTestId("palace-surface");
+    // The host consumes the palace subgraph surface (not a timeline filter).
+    expect(loadSpy).toHaveBeenCalledWith({ workspaceId: "sqlite:/tmp/ws" });
+    // The host exposes the real ENCAPSULATES edge count for verification.
+    expect(
+      screen.getByTestId("palace-host").getAttribute("data-encapsulation-edges"),
+    ).toBe("6");
+    // The full 4+2 container chamber is shaped as a room.
+    await waitFor(() => {
+      const chambers = screen
+        .getAllByTestId(/palace-chamber-/)
+        .map((element) => element.getAttribute("data-form"));
+      expect(chambers).toContain("room");
+    });
+  });
+
   test("persisting the walk writes scenes and the sequence to the profile store", async () => {
     const { transport, savedScenes, savedSequences } = makeTransport();
     const viewTransport = {
       ...transport,
-      loadTimelineView: async () => palaceTimelineView(),
+      loadPalaceGraph: async () => palaceGraphView(),
     } as unknown as WorkspaceTransport;
     render(
       <PalaceLensHost
@@ -227,15 +308,14 @@ describe("PalaceLensHost", () => {
   });
 
   test("empty graphs show the empty state instead of failing", async () => {
-    const emptyView: TimelineView = {
+    const emptyView: PalaceGraphView = {
       workspaceId: "sqlite:/tmp/ws",
-      lanes: [],
-      diagnostics: [],
       relationships: [],
+      encapsulationEdges: [],
       nodes: [],
     };
     const transport = {
-      async loadTimelineView() {
+      async loadPalaceGraph() {
         return emptyView;
       },
       async loadPalaceCuration() {
@@ -261,7 +341,7 @@ describe("PalaceLensHost", () => {
     }));
     const exportTransport = {
       ...transport,
-      loadTimelineView: async () => palaceTimelineView(),
+      loadPalaceGraph: async () => palaceGraphView(),
       writePalaceBundle: writeSpy,
     } as unknown as WorkspaceTransport;
 

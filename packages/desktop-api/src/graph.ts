@@ -180,6 +180,22 @@ export interface TimelineView {
 }
 
 /**
+ * The palace subgraph surface (`loadPalaceGraph`): the timeline view's nodes
+ * and relationships plus the real ENCAPSULATES edges read through the graph
+ * repository layer (Task-6 `GraphRepository::list_encapsulation_edges`). The
+ * palace host consumes this surface instead of filtering the timeline view's
+ * bounded relationship neighbourhood, so full-form shaping (full → room,
+ * partial → alcove/corridor/wallSection, compressed → single object) is driven
+ * by the repository surface the design names.
+ */
+export interface PalaceGraphView {
+  workspaceId: string;
+  nodes: TimelineViewNode[];
+  relationships: GraphRelationship[];
+  encapsulationEdges: GraphRelationship[];
+}
+
+/**
  * The complete canonical relation neighbourhood for one focused historical
  * event. Contextual nodes intentionally have no timeline anchor: their
  * relationship to history is disclosed through the focused event, not by

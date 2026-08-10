@@ -29,6 +29,7 @@ use research_canvas_desktop_lib::{
         keepsake::write_keepsake_bundle_at,
         palace::{load_palace_curation_at, save_palace_curation_at},
         palace_export::write_palace_bundle_at,
+        palace_graph::{load_palace_graph_at, merge_encapsulation_edges, LoadPalaceGraphRequest},
         layout::{flush_canvas_layout_at, FlushCanvasLayoutRequest},
         search::{
             rebuild_constellation_search_index_command, search_constellation_command,
@@ -467,6 +468,24 @@ fn handle_request(
             .ok_or_else(|| "missing bundleJson".to_string())?;
         let payload = write_palace_bundle_at(output_dir, bundle_json)?;
         return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/palace-graph" {
+        let body = read_body(&mut request)?;
+        let input: LoadPalaceGraphRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let mut view = load_palace_graph_at(&database_path, input)?;
+        if let Some(graph_state) = graph_state.as_ref() {
+            let repo =
+                GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
+            let remote = graph_state.runtime.block_on(repo.list_encapsulation_edges())?;
+            view.encapsulation_edges =
+                merge_encapsulation_edges(view.encapsulation_edges, remote);
+        }
+        return respond_json(request, StatusCode(200), view);
     }
 
     if method == Method::Get && path == "/workspace/palace-curation" {

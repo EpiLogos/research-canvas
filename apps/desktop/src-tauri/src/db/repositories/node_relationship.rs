@@ -135,6 +135,29 @@ impl<'conn> NodeRelationshipRepository<'conn> {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
+    /// Lists every non-tombstone relationship of a single type. Used by the
+    /// palace loader to read ENCAPSULATES edges from the local projection
+    /// store when no live graph connection is available. ENCAPSULATES is a
+    /// valid relation type in the vocabulary (migration 0033), so the
+    /// projection can carry the edges the palace shapes into rooms.
+    pub fn list_by_type(
+        &self,
+        rel_type: &str,
+    ) -> RepositoryResult<Vec<NodeRelationshipRecord>> {
+        validate_rel_type(rel_type).map_err(RepositoryError::Validation)?;
+        let mut statement = self.connection.prepare(
+            "SELECT relationship_id, source_graph_node_id, target_graph_node_id, rel_type,
+                    properties_json, source_coordinates_json, evidence_tags_json, origin,
+                    sync_state, relationship_revision, remote_revision, created_at, updated_at,
+                    is_tombstone
+             FROM graph_relationship
+             WHERE rel_type = ?1 AND is_tombstone = 0
+             ORDER BY relationship_id",
+        )?;
+        let rows = statement.query_map([rel_type], relationship_from_row)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
     /// A relationship tombstone is global, not canvas-local. Legacy canvas
     /// substance can lack a node_layout row, so readers need this indexed
     /// outbox view to suppress `graph:<relationship-id>` consistently.

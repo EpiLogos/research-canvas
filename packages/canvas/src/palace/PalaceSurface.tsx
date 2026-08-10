@@ -360,6 +360,7 @@ export function PalaceSurface({
                         ? "true"
                         : "false"
                     }
+                    data-form={room.form}
                     data-testid={`palace-chamber-${room.id}`}
                   >
                     {renameTarget === room.id ? (

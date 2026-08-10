@@ -24,6 +24,7 @@ export type {
   LoadTimelineViewRequest,
   NewGraphNodeInput,
   NodeLayout,
+  PalaceGraphView,
   TimelineView,
   TimelineRelationField,
   TimelineAnchor,
@@ -253,6 +254,7 @@ import type {
   NewGraphNodeInput,
   NodeLayout,
   EdgeLayout,
+  PalaceGraphView,
   TimelineView,
   TimelineRelationField,
   TimelineLayoutOverride,
@@ -786,6 +788,9 @@ export interface WorkspaceTransport {
   // ---- Joined reads (both targets) ----
   loadCanvasView(input: { databasePath?: string; canvasId: string; lens: "canvas" | "timeline" }): Promise<CanvasView>;
   loadTimelineView(input: LoadTimelineViewRequest): Promise<TimelineView>;
+  /** Palace subgraph surface: timeline nodes/relationships plus the real
+   * ENCAPSULATES edges read through the graph repository layer. */
+  loadPalaceGraph(input: { workspaceId: string }): Promise<PalaceGraphView>;
   loadTimelineRelationField?(input: { workspaceId: string; graphNodeId: string }): Promise<TimelineRelationField>;
   upsertTimelineLayout(input: UpsertTimelineLayoutInput): Promise<TimelineLayoutMutationResult>;
 
@@ -1174,6 +1179,9 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     },
     async loadTimelineView(input) {
       return invokeTauri<TimelineView>("load_timeline_view_command", { request: input });
+    },
+    async loadPalaceGraph(input) {
+      return invokeTauri<PalaceGraphView>("load_palace_graph_command", { request: input });
     },
     async loadTimelineRelationField(input) {
       return invokeTauri<TimelineRelationField>("load_timeline_relation_field_command", { request: input });
@@ -1578,6 +1586,12 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     },
     async loadTimelineView(input) {
       return requestJsonWithRetry<TimelineView>("/graph/timeline-view", {
+        method: "POST",
+        body: input,
+      });
+    },
+    async loadPalaceGraph(input) {
+      return requestJsonWithRetry<PalaceGraphView>("/workspace/palace-graph", {
         method: "POST",
         body: input,
       });
@@ -1988,6 +2002,7 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
     loadPalaceCuration: readOnlyReject,
     savePalaceCuration: readOnlyReject,
     writePalaceBundle: readOnlyReject,
+    loadPalaceGraph: readOnlyReject,
 
     // ---- substance reads ----
     async readGraphNode({ graphNodeId }) {

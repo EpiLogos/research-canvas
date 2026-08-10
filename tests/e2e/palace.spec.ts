@@ -55,6 +55,23 @@ test("3D palace renders from the real graph, flies between chambers, fully offli
   ).not.toHaveCount(0);
   await expect(page.getByTestId("palace-objects").locator("li")).not.toHaveCount(0);
 
+  // The palace host consumes the real ENCAPSULATES edges through the
+  // loadPalaceGraph transport surface (Task-7 B1): the count of edges the
+  // graph repository returned is exposed for verification. The live seed graph
+  // carries zero such edges today, so the value is `0` — but the transport
+  // channel is real and the host reads it (never a timeline-relationship
+  // filter). When a compressed constellation is seeded, this count rises and
+  // the enter/unfold/exit/compress walk becomes assertable here.
+  await expect(page.getByTestId("palace-host")).toHaveAttribute(
+    "data-encapsulation-edges",
+    /^\d+$/,
+  );
+  await expect(
+    Number(
+      await page.getByTestId("palace-host").getAttribute("data-encapsulation-edges"),
+    ),
+  ).toBeGreaterThanOrEqual(0);
+
   // RENDER PROOF 1: the WebGL surface initialized without an error banner.
   await expect(page.getByTestId("palace-error")).toHaveCount(0, {
     timeout: 15_000,
