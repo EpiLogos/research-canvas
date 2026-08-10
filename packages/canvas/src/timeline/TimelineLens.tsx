@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useStore } from "zustand";
 
-import type { ArchetypalLighting, GraphNode, LitInstance, TimelineFilters, TimelineLayoutMutationResult, TimelineRelationField as TimelineRelationFieldData, TimelineView, TimelineYearRange } from "./contracts";
+import type { ArchetypalLighting, ExpandedTimelineNode, GraphNode, LitInstance, TimelineFilters, TimelineLayoutMutationResult, TimelineRelationField as TimelineRelationFieldData, TimelineView, TimelineYearRange } from "./contracts";
 import { createTimelineStore, type TimelineCardGeometryUpdate } from "./timelineStore";
 import { DEFAULT_TIMELINE_CARD_WIDTH_PX, FALLBACK_TIMELINE_LANE_ID, placeItems, type PlacedItem, type TimelinePresentation } from "./projection";
 import { generateTicks } from "./ticks";
@@ -10,7 +10,10 @@ import { TimelineAxis } from "./TimelineAxis";
 import { TimelineNode } from "./TimelineNode";
 import { TimelineRelationshipLayer } from "./TimelineRelationshipLayer";
 import { TimelineRelationField } from "./TimelineRelationField";
+import { TimelineWalk } from "./TimelineWalk";
+import { TimelineWorkingSet } from "./TimelineWorkingSet";
 import { deriveTimelineCategory, TIMELINE_CATEGORIES, type TimelineCategory } from "./categories";
+import { assembleTimelineWalk } from "./walk";
 
 export interface TimelineDataSource {
   loadTimelineView(range?: TimelineYearRange, filters?: TimelineFilters): Promise<TimelineView>;
@@ -18,6 +21,9 @@ export interface TimelineDataSource {
   archetypalLighting(operatorGraphNodeId: string): Promise<ArchetypalLighting>;
   resonancesForInstance(graphNodeId: string): Promise<LitInstance[]>;
   relationFieldForEvent?(graphNodeId: string): Promise<TimelineRelationFieldData>;
+  /** Lazy relational expansion (ticket #28): one node's real edges + neighbours
+   * loaded on demand. Absent on read-only surfaces that cannot serve it. */
+  expandNode?(graphNodeId: string): Promise<ExpandedTimelineNode>;
   saveTimelineLayout?(input: {
     graphNodeId: string; lane: string; offsetY: number; width: number; height: number;
     style: Record<string, unknown>; expectedRevision: number | null;
@@ -290,6 +296,24 @@ export function TimelineLens({
         relationTypeFilter === null || relationTypeFilter.includes(relationship.relType),
       )
     : [];
+  // Ticket #28: the global/temporal walk is the timeline's spine recomputed as a
+  // traversable sequence of located, dated events. The working-set stack frames
+  // sub-timelines in place (nested inside the walk, never a separate lens).
+  const walk = useMemo(
+    () => assembleTimelineWalk(
+      state.nodes,
+      state.relationships,
+      state.workingSet.map((entry) => entry.graphNodeId),
+    ),
+    [state.nodes, state.relationships, state.workingSet],
+  );
+  const nodeTitleById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const record of state.nodes) {
+      map.set(record.node.graphNodeId, record.node.title);
+    }
+    return map;
+  }, [state.nodes]);
 
   const handleSelect = (graphNodeId: string) => {
     store.getState().setSelected(graphNodeId);
@@ -313,6 +337,18 @@ export function TimelineLens({
         // Relation context is supplementary. Keep the selected historical
         // event interactive if a remote/local field read is temporarily unavailable.
         if (relationFieldRequestVersion.current === requestVersion) setRelationField(null);
+      });
+    }
+
+    // Ticket #28: lazy relational expansion. Clicking a dated node loads its
+    // real edges + neighbours into the working-set stack (opt-in, one node at a
+    // time); the base timeline view stays light. Absent on read-only surfaces.
+    if (dataSource.expandNode) {
+      void dataSource.expandNode(graphNodeId).then((expansion) => {
+        store.getState().expandNode(expansion);
+      }).catch(() => {
+        // Expansion is supplementary. A failed deep read must not close the
+        // selection or surface as an unhandled rejection.
       });
     }
   };
@@ -816,6 +852,17 @@ export function TimelineLens({
           )}
         </div>
       )}
+      <TimelineWorkingSet
+        workingSet={state.workingSet}
+        onUnload={(graphNodeId) => store.getState().collapseNode(graphNodeId)}
+        onClear={() => store.getState().clearWorkingSet()}
+        onOpenNode={(graphNodeId, node) => handleOpenNode(graphNodeId, node, false)}
+      />
+      <TimelineWalk
+        walk={walk}
+        onSelectStop={(graphNodeId) => handleSelect(graphNodeId)}
+        resolveNodeTitle={(graphNodeId) => nodeTitleById.get(graphNodeId) ?? null}
+      />
     </div>
   );
 }

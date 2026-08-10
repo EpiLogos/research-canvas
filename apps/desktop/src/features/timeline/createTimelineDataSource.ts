@@ -11,7 +11,7 @@ import type {
 type TimelineTransport = Pick<
   WorkspaceTransport,
   "loadTimelineView" | "loadTimelineRelationField" | "upsertTimelineLayout" | "archetypalLighting" | "resonancesForInstance"
-> & Partial<Pick<WorkspaceTransport, "readGraphNode">>;
+> & Partial<Pick<WorkspaceTransport, "readGraphNode" | "expandTimelineNode">>;
 
 /**
  * Adapt the WS0 §5.2 WorkspaceTransport to the narrow TimelineDataSource port
@@ -47,6 +47,13 @@ export function createTimelineDataSource(input: {
       ? {
           async relationFieldForEvent(graphNodeId: string) {
             return transport.loadTimelineRelationField!({ workspaceId, graphNodeId });
+          },
+        }
+      : {}),
+    ...(transport.expandTimelineNode
+      ? {
+          async expandNode(graphNodeId: string) {
+            return transport.expandTimelineNode!({ workspaceId, graphNodeId });
           },
         }
       : {}),
