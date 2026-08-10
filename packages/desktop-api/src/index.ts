@@ -1274,8 +1274,11 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       activeProfileScope = result.activeProfileScope;
       return result;
     },
-    async selectProject() {
-      throw new Error("selectProject is not supported by the browser bridge transport");
+    async selectProject({ databasePath, projectId }) {
+      return requestJsonWithRetry<ActiveProject>("/workspace/project", {
+        body: { databasePath, projectId },
+        method: "POST",
+      });
     },
     async resolveOrCreateHome(input) {
       const params = new URLSearchParams();

@@ -216,6 +216,26 @@
 .ishell .icon-strip__btn:hover { color: var(--ob-dim); background: var(--ob-line); }
 .ishell .icon-strip__btn[data-active="true"] { color: var(--ob-accent); background: var(--ob-tint); }
 .ishell .icon-strip__btn:focus-visible { outline: 1px solid var(--ob-accent); outline-offset: 2px; }
+.ishell .projects-layer__trigger { width: 32px; height: 32px; }
+.ishell .projects-layer__popover {
+  background: var(--ob-float);
+  border: 1px solid var(--ob-line-3);
+  border-radius: 11px;
+  box-shadow: 0 22px 50px -20px rgba(0,0,0,0.9);
+}
+.ishell .projects-layer__label { color: var(--ob-faint); }
+.ishell .projects-layer__scope { color: var(--ob-faint); }
+.ishell .projects-layer__active { color: var(--ob-ink); background: var(--ob-tint); }
+.ishell .projects-layer__project:hover { background: var(--ob-line); }
+.ishell .projects-layer__project[data-active="true"] { background: var(--ob-tint); }
+.ishell .projects-layer__project-name { color: var(--ob-dim); }
+.ishell .projects-layer__project[data-active="true"] .projects-layer__project-name { color: var(--ob-accent); }
+.ishell .projects-layer__project-scope { color: var(--ob-faint); }
+.ishell .projects-layer__create { border-top-color: var(--ob-line); }
+.ishell .lo-project-scope { border-bottom-color: var(--ob-line); }
+.ishell .lo-project-scope__name { color: var(--ob-dim); }
+.ishell .lo-project-scope__profile { color: var(--ob-faint); }
+.ishell .lo-empty--project-scope { color: var(--ob-faint); }
 .ishell-stage { flex: 1 1 auto; }
 
 /* Explorer: invoked from the rail, held while pointer/focus remains in its

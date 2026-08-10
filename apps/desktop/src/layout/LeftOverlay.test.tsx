@@ -1,13 +1,12 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LeftOverlay } from "./LeftOverlay";
 
-const selectNode = vi.fn();
-const selectConstellation = vi.fn();
-
-vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
-  useCanvasWorkspace: () => ({
+const workspace = vi.hoisted(() => {
+  const selectNode = vi.fn();
+  const selectConstellation = vi.fn();
+  return {
     constellations: [
       {
         id: "main",
@@ -37,7 +36,11 @@ vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
         children: [],
       },
     ],
-    activeConstellationId: "main",
+    databasePath: "/workspace.sqlite",
+    activeConstellationId: "main" as string | null,
+    activeProjectId: "main" as string | null,
+    activeProfileScope: "bootstrapping" as string | null,
+    activeConstellation: null,
     selectConstellation,
     resourceRoots: [],
     listDirectories: vi.fn().mockResolvedValue([]),
@@ -52,7 +55,14 @@ vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
       { id: "n2", title: "The Naked Face", type: "note" },
       { id: "n3", title: "Satan Exulting", type: "resource" },
     ],
-  }),
+  };
+});
+
+const selectNode = workspace.selectNode;
+const selectConstellation = workspace.selectConstellation;
+
+vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
+  useCanvasWorkspace: () => workspace,
 }));
 
 function renderFiles() {
@@ -65,6 +75,9 @@ describe("LeftOverlay browser", () => {
   beforeEach(() => {
     selectNode.mockClear();
     selectConstellation.mockClear();
+    workspace.activeConstellationId = "main";
+    workspace.activeProjectId = "main";
+    workspace.activeProfileScope = "bootstrapping";
   });
 
   it("defaults to the Graph view and groups nodes by type", () => {
@@ -110,15 +123,39 @@ describe("LeftOverlay browser", () => {
     // Default browserView is "graph" — no click on the Files sub-tab.
     expect(screen.getByTestId("browser-graph")).toHaveAttribute("data-active", "true");
     // Constellations must be visible regardless — assert via the real selector marker.
-    expect(screen.getByTestId("lo-constellations")).toBeInTheDocument();
-    expect(screen.getByText("Root Ecology")).toBeInTheDocument();
+    const constellations = screen.getByTestId("lo-constellations");
+    expect(constellations).toBeInTheDocument();
+    expect(within(constellations).getByText("Root Ecology")).toBeInTheDocument();
     expect(screen.queryByText("Single historical timeline")).not.toBeInTheDocument();
-    expect(screen.getByText("Prometheus fire")).toBeInTheDocument();
+    expect(within(constellations).getByText("Prometheus fire")).toBeInTheDocument();
   });
 
   it("selects a constellation through the constellation selection path", () => {
     renderFiles();
     fireEvent.click(screen.getByRole("button", { name: /Prometheus fire/ }));
     expect(selectConstellation).toHaveBeenCalledWith("constellation-a");
+  });
+
+  it("shows the active project in a scope banner across every overlay mode", () => {
+    renderFiles();
+    expect(screen.getByTestId("lo-project-scope")).toBeInTheDocument();
+    expect(screen.getByTestId("lo-project-scope-name")).toHaveTextContent("Root Ecology");
+    expect(screen.getByTestId("lo-project-scope-profile")).toHaveTextContent("bootstrapping");
+  });
+
+  it("shows a project-selection empty state instead of dead panels when no project is active", () => {
+    workspace.activeConstellationId = null;
+    workspace.activeProjectId = null;
+    renderFiles();
+    expect(screen.getByTestId("lo-empty-project-selection")).toBeInTheDocument();
+    expect(screen.queryByTestId("lo-constellations")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("browser-graph")).not.toBeInTheDocument();
+  });
+
+  it("shows a project-selection empty state when a project is active but no profile scope is set", () => {
+    workspace.activeProfileScope = null;
+    renderFiles();
+    expect(screen.getByTestId("lo-empty-project-selection")).toBeInTheDocument();
+    expect(screen.queryByTestId("lo-constellations")).not.toBeInTheDocument();
   });
 });

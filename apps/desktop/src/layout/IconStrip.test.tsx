@@ -1,7 +1,43 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IconStrip } from "./IconStrip";
+
+const selectProject = vi.fn().mockResolvedValue(undefined);
+const resolveOrCreateHome = vi.fn().mockResolvedValue({
+  homePath: "/home",
+  projects: [
+    {
+      id: "proj-a",
+      name: "Project A",
+      slug: "project-a",
+      rootPath: "/home/project-a",
+      rootType: "directory",
+      profileScope: "project:project-a",
+      summary: "",
+      parentId: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    },
+  ],
+});
+const createProject = vi.fn().mockResolvedValue({ id: "proj-b", displayName: "Project B" });
+
+vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
+  useCanvasWorkspace: () => ({
+    databasePath: "/workspace.sqlite",
+    activeProjectId: "proj-a",
+    activeConstellationId: "proj-a",
+    activeProfileScope: "project:project-a",
+    activeConstellation: null,
+    constellations: [
+      { id: "proj-a", name: "Project A", slug: "project-a", rootPath: "/home/project-a", rootType: "directory", profileScope: "project:project-a", summary: "", parentId: null, children: [] },
+    ],
+    selectProject,
+    resolveOrCreateHome,
+    createProject,
+  }),
+}));
 
 function setup(overrides: Partial<Parameters<typeof IconStrip>[0]> = {}) {
   const props = {
@@ -25,6 +61,37 @@ function setup(overrides: Partial<Parameters<typeof IconStrip>[0]> = {}) {
 }
 
 describe("IconStrip rail", () => {
+  beforeEach(() => {
+    selectProject.mockClear();
+    resolveOrCreateHome.mockClear();
+    createProject.mockClear();
+  });
+
+  it("renders the projects layer at the top of the rail", async () => {
+    setup();
+    await waitFor(() => expect(resolveOrCreateHome).toHaveBeenCalled());
+    expect(screen.getByTestId("projects-trigger")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Projects" })).toBeInTheDocument();
+  });
+
+  it("opens the projects picker and lists home projects", async () => {
+    setup();
+    await waitFor(() => expect(resolveOrCreateHome).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId("projects-trigger"));
+    await waitFor(() => expect(screen.getByTestId("projects-layer")).toBeInTheDocument());
+    expect(screen.getByTestId("project-row-proj-a")).toHaveTextContent("Project A");
+    expect(screen.getByTestId("project-row-proj-a")).toHaveAttribute("data-active", "true");
+  });
+
+  it("selects a project from the picker through the workspace seam", async () => {
+    setup();
+    await waitFor(() => expect(resolveOrCreateHome).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId("projects-trigger"));
+    await waitFor(() => expect(screen.getByTestId("projects-layer")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("project-row-proj-a"));
+    expect(selectProject).toHaveBeenCalledWith("proj-a");
+  });
+
   it("exposes Inspector and Terminal verbs", () => {
     setup();
     expect(screen.getByRole("button", { name: "Inspector" })).toBeInTheDocument();

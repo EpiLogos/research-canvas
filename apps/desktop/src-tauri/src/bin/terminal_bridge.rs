@@ -8,10 +8,10 @@ use research_canvas_desktop_lib::{
             delete_saved_sequence_command, detach_constellation_resource_root_at,
             list_constellation_resource_roots_at, list_directories_at, list_saved_sequences_command,
             load_constellation_document_at, persist_constellation_document_at,
-            resolve_or_create_home_at, update_saved_sequence_command, CreateProjectRequest,
-            CreateSavedSequenceRequest, DeleteSavedSequenceRequest, ListSavedSequencesRequest,
-            PersistConstellationDocumentRequest, ResourceRootLookupRequest,
-            ResourceRootMutationRequest, UpdateSavedSequenceRequest,
+            resolve_or_create_home_at, update_saved_sequence_command, ActiveProjectPayload,
+            CreateProjectRequest, CreateSavedSequenceRequest, DeleteSavedSequenceRequest,
+            ListSavedSequencesRequest, PersistConstellationDocumentRequest, ResourceRootLookupRequest,
+            ResourceRootMutationRequest, SetActiveProjectRequest, UpdateSavedSequenceRequest,
         },
         scenes::{
             delete_scene_at, delete_scene_sequence_at, list_scene_sequences_at, list_scenes_at,
@@ -47,10 +47,11 @@ use research_canvas_desktop_lib::{
     },
     db::{
         canvas_service::CanvasService,
+        connection::Database,
         neo4j::{self, config::Neo4jConfig},
         repositories::{
-            graph::GraphRepository, SceneRecord, SceneSequenceRecord, StreetViewImageRecord,
-            StreetViewRegion,
+            graph::GraphRepository, ConstellationRepository, SceneRecord, SceneSequenceRecord,
+            StreetViewImageRecord, StreetViewRegion,
         },
     },
     pty::TerminalManager,
@@ -182,6 +183,24 @@ fn handle_request(
         let project_request: CreateProjectRequest =
             serde_json::from_str(&body).map_err(|error| error.to_string())?;
         let payload = create_project_at(project_request)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/project" {
+        let body = read_body(&mut request)?;
+        let project_request: SetActiveProjectRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let database = Database::open(std::path::PathBuf::from(&project_request.database_path))
+            .map_err(|error| error.to_string())?;
+        let constellation = ConstellationRepository::new(database.connection())
+            .get_by_id(&project_request.project_id)
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| format!("project {} not found", project_request.project_id))?;
+        let payload = ActiveProjectPayload {
+            project_id: constellation.id,
+            profile_scope: constellation.profile_scope,
+            root_type: constellation.root_type,
+        };
         return respond_json(request, StatusCode(200), payload);
     }
 

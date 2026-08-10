@@ -9,6 +9,23 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 const selectNode = vi.fn();
 const resizeNode = vi.fn();
 const updateNodeTimelineCard = vi.fn();
+const selectProject = vi.fn(async (_projectId: string) => undefined);
+const resolveOrCreateHome = vi.fn(async () => ({ homePath: "/home", projects: [] }));
+const createProject = vi.fn(async () => ({
+  id: "new-project",
+  displayName: "New Project",
+  slug: "new-project",
+  parentConstellationId: null,
+  rootPath: "/home/new-project",
+  rootType: "directory",
+  profileScope: "project:new-project",
+  summary: "",
+  primaryCanvasId: "canvas-new",
+  coverAssetPath: null,
+  publishSettings: {},
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+}));
 let workspaceId: string | null = "sqlite:/server-canonical/workspace.sqlite";
 vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
   useCanvasWorkspace: () => ({
@@ -21,10 +38,15 @@ vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
     workingRoot: "/canonical",
     workspaceId,
     activeConstellationId: "p1",
+    activeProjectId: "p1",
+    activeProfileScope: "bootstrapping",
     activeConstellation: null,
     isHydrated: false,
     errorMessage: null,
     constellations: [],
+    selectProject,
+    resolveOrCreateHome,
+    createProject,
     resourceRoots: [],
     entries: [],
     selectedEntryId: null,

@@ -1,3 +1,5 @@
+import { ProjectsLayer } from "./ProjectsLayer";
+
 interface IconStripProps {
   browserActive: boolean;
   activeLeftMode: "files" | "search" | "annotations";
@@ -65,6 +67,9 @@ export function IconStrip({ browserActive, activeLeftMode, onToggleBrowser, onSe
       onFocusCapture={onBrowserInteractionStart}
       onBlurCapture={onBrowserInteractionEnd}
     >
+      <div className="icon-strip__top">
+        <ProjectsLayer />
+      </div>
       <div className="icon-strip__nav">
         {NAV_ICONS.map((icon) => (
           <button

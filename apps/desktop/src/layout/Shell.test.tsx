@@ -9,6 +9,11 @@ import type { CanvasNode } from "@research-canvas/schema";
 
 import { CanvasWorkspaceContext, CanvasWorkspaceProvider } from "../features/canvas/CanvasWorkspaceContext";
 
+const projectSpies = vi.hoisted(() => ({
+  selectProject: vi.fn(),
+  resolveOrCreateHome: vi.fn(),
+}));
+
 // Stub the timeline-relevant transport methods so the timeline lens's real
 // createTimelineDataSource (wired in Shell.tsx) never reaches the Tauri
 // bridge. Without this, the "switches the stage surface when a lens is
@@ -25,6 +30,88 @@ vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
     ...actual,
     createWorkspaceTransport: () => ({
       ...actual.createWorkspaceTransport(),
+      bootstrapWorkspace: async () => ({
+        activeConstellationId: "root",
+        activeProjectId: "root",
+        activeProfileScope: "bootstrapping",
+        databasePath: "/tmp/workspace.sqlite",
+        workspaceId: "sqlite:/tmp/workspace.sqlite",
+        workspaceRoot: "/workspace",
+        constellations: [
+          {
+            id: "root",
+            name: "Root Archetypal Field",
+            slug: "root-archetypal-field",
+            rootPath: "/workspace",
+            rootType: "directory",
+            profileScope: "bootstrapping",
+            summary: "",
+            parentId: null,
+            children: [],
+          },
+        ],
+      }),
+      resolveOrCreateHome: projectSpies.resolveOrCreateHome.mockResolvedValue({
+        homePath: "/home",
+        projects: [
+          {
+            id: "proj-a",
+            name: "Project A",
+            slug: "project-a",
+            rootPath: "/home/project-a",
+            rootType: "directory",
+            profileScope: "project:project-a",
+            summary: "",
+            parentId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+          },
+          {
+            id: "proj-b",
+            name: "Project B",
+            slug: "project-b",
+            rootPath: "/home/project-b",
+            rootType: "directory",
+            profileScope: "project:project-b",
+            summary: "",
+            parentId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+          },
+        ],
+      }),
+      selectProject: projectSpies.selectProject.mockImplementation(
+        async ({ projectId }: { projectId: string }) => ({
+          projectId,
+          profileScope: `project:${projectId}`,
+          rootType: "directory",
+        }),
+      ),
+      loadConstellationDocument: async ({ databasePath, constellationId }: { databasePath: string; constellationId: string }) => ({
+        canvasId: "c1",
+        databasePath,
+        entries: [],
+        resourceRoots: [],
+        annotations: [],
+        edges: [],
+        nodes: [],
+        workingRoot: "/workspace",
+        constellation: {
+          id: constellationId,
+          displayName: "Root Archetypal Field",
+          slug: constellationId,
+          parentConstellationId: null,
+          rootPath: "/workspace",
+          rootType: "directory",
+          profileScope: "bootstrapping",
+          primaryCanvasId: "c1",
+          summary: "",
+          coverAssetPath: null,
+          publishSettings: {},
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+        },
+      }),
       loadCanvasView: async () => ({
         canvasId: "c1",
         nodes: [
@@ -216,8 +303,8 @@ function FakeWorkspaceProvider({
       constellationId: "11111111-1111-4111-8111-111111111111",
       databasePath: "/canonical/workspace.sqlite",
       activeConstellation: null,
-      activeConstellationId: null,
-      activeProjectId: null,
+      activeConstellationId: "11111111-1111-4111-8111-111111111111",
+      activeProjectId: "11111111-1111-4111-8111-111111111111",
       activeProfileScope: "bootstrapping",
       selectProject: vi.fn().mockResolvedValue(undefined),
       resolveOrCreateHome: vi.fn().mockResolvedValue({ homePath: "/home", projects: [] }),
@@ -515,5 +602,27 @@ describe("Shell frame", () => {
     // never cleared — only gated while the reading overlay is open).
     fireEvent.click(screen.getByRole("button", { name: "Close reading" }));
     expect(screen.getByTestId("inspector-overlay")).toBeVisible();
+  });
+
+  it("mounts the projects layer in the left rail and lists home projects in the picker", async () => {
+    renderShell();
+    const trigger = await screen.findByTestId("projects-trigger");
+    fireEvent.click(trigger);
+    const picker = await screen.findByTestId("projects-layer");
+    expect(picker).toBeInTheDocument();
+    expect(await screen.findByTestId("project-row-proj-a")).toHaveTextContent("Project A");
+    expect(screen.getByTestId("project-row-proj-b")).toHaveTextContent("Project B");
+  });
+
+  it("selecting a project from the picker routes through the real transport seam", async () => {
+    renderShell();
+    const trigger = await screen.findByTestId("projects-trigger");
+    fireEvent.click(trigger);
+    const picker = await screen.findByTestId("projects-layer");
+    expect(picker).toBeInTheDocument();
+    fireEvent.click(await screen.findByTestId("project-row-proj-a"));
+    expect(projectSpies.selectProject).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "proj-a" }),
+    );
   });
 });

@@ -24,6 +24,20 @@ export function LeftOverlay({ open, mode, onResizeStart, onInteractionStart, onI
   const [folderPickerAnchor, setFolderPickerAnchor] = useState<{ x: number; y: number } | null>(null);
   const [browserView, setBrowserView] = useState<"graph" | "files">("graph");
   const [filter, setFilter] = useState("");
+  const hasProject = Boolean(workspace.activeConstellationId || workspace.activeProjectId);
+  const hasProfile = Boolean(workspace.activeProfileScope);
+  // Only gate on project/profile selection once the workspace has bootstrapped
+  // (databasePath is set). Before boot resolves we optimistically render the
+  // mode content; after boot, a missing project/profile is explained by the
+  // informative empty state instead of a dead panel.
+  const needsProjectSelection =
+    Boolean(workspace.databasePath) && (!hasProject || !hasProfile);
+  const activeProjectName =
+    workspace.activeConstellation?.displayName ??
+    workspace.constellations.find(
+      (constellation) => constellation.id === workspace.activeProjectId,
+    )?.name ??
+    null;
   const constellationRows = useMemo(() => {
     const byId = new Map(workspace.constellations.map((constellation) => [constellation.id, constellation]));
     const childrenByParent = new Map<string | null, typeof workspace.constellations>();
@@ -67,6 +81,7 @@ export function LeftOverlay({ open, mode, onResizeStart, onInteractionStart, onI
       className="left-overlay"
       data-testid="left-overlay"
       data-open={open ? "true" : "false"}
+      data-left-mode={mode}
       data-browser-surface="true"
       aria-hidden={!open}
       onPointerEnter={onInteractionStart}
@@ -81,6 +96,31 @@ export function LeftOverlay({ open, mode, onResizeStart, onInteractionStart, onI
     >
       <div className="left-overlay__inner">
 
+        {!needsProjectSelection && (
+          <div className="lo-project-scope" data-testid="lo-project-scope">
+            <span className="lo-label">Project</span>
+            <span className="lo-project-scope__name" data-testid="lo-project-scope-name">
+              {activeProjectName ?? "Untitled project"}
+            </span>
+            {workspace.activeProfileScope && (
+              <span className="lo-project-scope__profile" data-testid="lo-project-scope-profile">
+                {workspace.activeProfileScope}
+              </span>
+            )}
+          </div>
+        )}
+
+        {needsProjectSelection ? (
+          <div
+            className="lo-empty lo-empty--project-scope"
+            data-testid="lo-empty-project-selection"
+          >
+            {!hasProject
+              ? "No project selected. Choose a project from the top of the left rail to explore its files, search, and annotations."
+              : "No profile scope is active for this project. Select a project from the top of the left rail."}
+          </div>
+        ) : (
+          <>
         {mode === "files" && (
           <>
             <header className="explorer-heading">
@@ -305,6 +345,8 @@ export function LeftOverlay({ open, mode, onResizeStart, onInteractionStart, onI
             strokeColour={strokeColour ?? "#f97316"}
             onSetStrokeColour={onSetStrokeColour ?? (() => {})}
           />
+        )}
+          </>
         )}
 
       </div>
