@@ -8,6 +8,7 @@ export * from "./state/canvasStore";
 export { serializeLayoutSnapshot, type LayoutSnapshot } from "./state/layoutSnapshot";
 export * from "./content";
 export * from "./geography/bundledPack";
+export * from "./palace/bundle";
 export * from "./palace/camera";
 export * from "./palace/clustering";
 export * from "./palace/curation";
