@@ -114,6 +114,8 @@ import {
   type ListFetchRecordsRequest,
 } from "./fetchRecords";
 
+export * from "./repositories";
+
 export type NodeDocumentMutation =
   | { kind: "created" }
   | { kind: "updated" }

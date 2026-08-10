@@ -8,6 +8,9 @@ export default defineConfig({
       "@research-canvas/canvas": fileURLToPath(
         new URL("./packages/canvas/src/index.ts", import.meta.url),
       ),
+      "@research-canvas/domain": fileURLToPath(
+        new URL("./packages/domain/src/index.ts", import.meta.url),
+      ),
       "@research-canvas/exporter": fileURLToPath(
         new URL("./packages/exporter/src/index.ts", import.meta.url),
       ),

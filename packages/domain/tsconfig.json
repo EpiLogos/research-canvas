@@ -8,14 +8,6 @@
     "emitDeclarationOnly": true,
     "noEmit": false
   },
-  "references": [
-    {
-      "path": "../schema"
-    },
-    {
-      "path": "../domain"
-    }
-  ],
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+  "references": [{ "path": "../schema" }]
 }
