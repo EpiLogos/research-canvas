@@ -36,11 +36,11 @@ Neo4j-backed; SQLite holds the local projection and the offline document body.
 
 | Table | Owning repository | Created by |
 |---|---|---|
-| `graph_node_metadata` | `db/repositories/graph_metadata.rs` | `0003_graph_metadata.sql` |
-| `node_document` | `db/repositories/node_document.rs` | `0019_node_document.sql` |
-| `graph_relationship` | `db/repositories/node_relationship.rs` | `0008_graph_relationship.sql`, rebuilt `0016`/`0033` |
+| `graph_node_metadata` | `db/repositories/graph_metadata.rs` | `0011_graph_node_metadata.sql` |
+| `node_document` | `db/repositories/node_document.rs` | `0010_node_document.sql` |
+| `graph_relationship` | `db/repositories/node_relationship.rs` | `0015_graph_relationship_projection.sql`, rebuilt `0016`/`0033` |
 | `constellations` | `db/repositories/constellation_meta.rs` | `0033_constellation_encapsulation.sql` |
-| `agent_activity` | `db/repositories/agent_activity.rs` | `0021_agent_activity.sql` |
+| `agent_activity` | `db/repositories/agent_activity.rs` | `0009_agent_activity.sql` |
 
 `graph_relationship` is the one deliberate substrate relation vocabulary; its
 `rel_type` CHECK is rebuilt by `0016` and `0033` from the canonical
@@ -70,14 +70,14 @@ SQLite-only. All `graph_node_id`-keyed layout rows join at the repository layer.
 | `canvases` | `db/repositories/canvas.rs` | `0001_initial.sql` |
 | `canvas_nodes` | `db/repositories/canvas.rs` | `0001_initial.sql` |
 | `canvas_edges` | `db/repositories/canvas.rs` | `0001_initial.sql` |
-| `canvas_annotations` | `db/repositories/annotations.rs` | `0002_annotations.sql` |
-| `node_layout` | `db/repositories/layout.rs` | `0004_canvas_layout.sql` |
-| `edge_layout` | `db/repositories/layout.rs` | `0004_canvas_layout.sql` |
-| `canvas_app_state` | `db/repositories/layout.rs` | `0005_app_state.sql` |
-| `timeline_layout` | `db/repositories/timeline_layout.rs` | `0013_timeline_layout.sql` |
-| `node_attachment` / `node_attachment_usage` / `node_attachment_presentation` | `db/repositories/node_attachment.rs` | `0022`–`0024` |
-| `project_resource_roots` | `db/repositories/resource_roots.rs` | `0009_resource_roots.sql` |
-| `search_documents` | `db/repositories/search.rs` | `0001_initial.sql` |
+| `canvas_annotations` | `db/repositories/annotations.rs` | `0001_initial.sql` |
+| `node_layout` | `db/repositories/layout.rs` | `0008_layout_store.sql` |
+| `edge_layout` | `db/repositories/layout.rs` | `0008_layout_store.sql`, rebuilt `0018` |
+| `canvas_app_state` | `db/repositories/layout.rs` | `0008_layout_store.sql` |
+| `timeline_layout` | `db/repositories/timeline_layout.rs` | `0012_timeline_layout.sql` |
+| `node_attachment` / `node_attachment_usage` / `node_attachment_presentation` | `db/repositories/node_attachment.rs` | `0019_node_attachments.sql` / `0020_node_attachment_presentation.sql`, rebuilt `0024` |
+| `project_resource_roots` | `db/repositories/resource_roots.rs` | `0003_project_resource_roots.sql` |
+| `search_documents` | `db/repositories/search.rs` | `0002_search_index.sql` (FTS5) |
 
 ### Refinement-2 stores (hardening target)
 
