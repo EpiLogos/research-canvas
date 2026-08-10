@@ -289,7 +289,7 @@ pub struct ExpandTimelineNodeView {
     pub neighbours: Vec<GraphNode>,
 }
 
-fn graph_node_from_local_projection(
+pub fn graph_node_from_local_projection(
     record: &TemporalGraphNodeMetadataRecord,
     document: Option<LocalNodeDocument>,
 ) -> GraphNode {

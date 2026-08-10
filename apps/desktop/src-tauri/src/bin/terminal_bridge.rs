@@ -37,7 +37,12 @@ use research_canvas_desktop_lib::{
         },
         timeline::{
             expand_timeline_node_at_path, load_timeline_view_at_path, merge_relationships_by_canonical_key,
-            ExpandTimelineNodeRequest, LoadTimelineViewRequest,
+            upsert_timeline_layout_at_path, ExpandTimelineNodeRequest, LoadTimelineViewRequest,
+            UpsertTimelineLayoutRequest,
+        },
+        graph::{
+            connect_graph_nodes_locally_at_path, update_node_metadata_at_path,
+            ConnectGraphNodesRequest, UpdateGraphNodeRequest,
         },
     },
     db::{
@@ -589,6 +594,30 @@ fn handle_request(
             }
         }
         return respond_json(request, StatusCode(200), view);
+    }
+
+    if method == Method::Post && path == "/graph/timeline-layout" {
+        let body = read_body(&mut request)?;
+        let input: UpsertTimelineLayoutRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let payload = upsert_timeline_layout_at_path(session_database_path(&request)?, input)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/graph/node/update" {
+        let body = read_body(&mut request)?;
+        let input: UpdateGraphNodeRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let payload = update_node_metadata_at_path(session_database_path(&request)?, &input)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/graph/connect" {
+        let body = read_body(&mut request)?;
+        let input: ConnectGraphNodesRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let local = connect_graph_nodes_locally_at_path(session_database_path(&request)?, &input)?;
+        return respond_json(request, StatusCode(200), local.relationship);
     }
 
     if method == Method::Get && path == "/graph/search" {

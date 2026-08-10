@@ -1612,7 +1612,12 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
         body: input,
       });
     },
-    async upsertTimelineLayout() { throw new Error("read-only web build"); },
+    async upsertTimelineLayout(input) {
+      return requestJsonWithRetry<TimelineLayoutMutationResult>("/graph/timeline-layout", {
+        method: "POST",
+        body: input,
+      });
+    },
     async archetypalLighting(input) {
       return requestJsonWithRetry<ArchetypalLighting>(
         `/graph/lighting/${encodeURIComponent(input.operatorGraphNodeId)}`,
@@ -1624,10 +1629,20 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       );
     },
     async createGraphNode() { throw new Error("read-only web build"); },
-    async updateGraphNode() { throw new Error("read-only web build"); },
+    async updateGraphNode(input) {
+      return requestJsonWithRetry<GraphNode>("/graph/node/update", {
+        method: "POST",
+        body: input,
+      });
+    },
     async compareAndSwapGraphNodeContent() { throw new Error("read-only web build"); },
     async deleteGraphNode() { throw new Error("read-only web build"); },
-    async connectGraphNodes() { throw new Error("read-only web build"); },
+    async connectGraphNodes(input) {
+      return requestJsonWithRetry<GraphRelationship>("/graph/connect", {
+        method: "POST",
+        body: input,
+      });
+    },
     async disconnectGraphNodes() { throw new Error("read-only web build"); },
     async upsertNodeLayout() { throw new Error("read-only web build"); },
     async upsertNodeLayouts() { throw new Error("read-only web build"); },
