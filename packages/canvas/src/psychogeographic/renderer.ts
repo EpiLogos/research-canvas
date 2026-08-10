@@ -1,4 +1,5 @@
 import "maplibre-gl/dist/maplibre-gl.css";
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 
 import type { GeographyEdge } from "@research-canvas/schema";
 import type {
@@ -61,6 +62,12 @@ export interface MapSurfaceRenderer {
  * and the walk arcs draw with zero external network requests. */
 export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
   const maplibre = await import("maplibre-gl");
+  // The maplibre-gl worker is a separate entry that Vite would otherwise
+  // reference via `new URL(…, import.meta.url)`, which 404s under the
+  // packaged app's `tauri://` asset protocol (the production bundle emits no
+  // worker, so the globe never draws in a shipped build). Import it as a
+  // bundled asset URL and pin it before any Map is constructed.
+  maplibre.setWorkerUrl(maplibreWorkerUrl);
   let map: InstanceType<typeof maplibre.Map> | null = null;
   let stopClickHandler: ((sceneId: string) => void) | null = null;
   let laneClickHandler: ((laneId: string) => void) | null = null;
