@@ -44,8 +44,16 @@ export interface PalaceSurfaceProps {
   relationships: GraphRelationship[];
   encapsulationEdges: EncapsulationEdgeInput[];
   curation: PalaceCuration;
-  onSaveCuration: (curation: PalaceCuration) => void | Promise<void>;
+  /**
+   * Persist curation changes through the layout store. Required in the
+   * desktop; the read-only public viewer renders without it (readOnly).
+   */
+  onSaveCuration?: (curation: PalaceCuration) => void | Promise<void>;
   onPersistWalk?: (walk: { sequence: SceneSequence; scenes: Scene[] }) => void | Promise<void>;
+  /** Serialize + write palace-bundle.json for the public viewer. */
+  onExportBundle?: () => void | Promise<void>;
+  /** Read-only web-layer mode: hide curation mutations, keep navigation. */
+  readOnly?: boolean;
 }
 
 export function PalaceSurface({
@@ -56,6 +64,8 @@ export function PalaceSurface({
   curation: curationProp,
   onSaveCuration,
   onPersistWalk,
+  onExportBundle,
+  readOnly = false,
 }: PalaceSurfaceProps): JSX.Element {
   const surfaceRef = useRef<HTMLElement | null>(null);
   const webgl = useMemo(() => probeWebGl2(), []);
@@ -86,12 +96,16 @@ export function PalaceSurface({
     (next: PalaceCuration) => {
       setCuration(next);
       setDirty(true);
+      if (readOnly || !onSaveCuration) {
+        setSaveState("saved");
+        return;
+      }
       setSaveState("saving");
       Promise.resolve(onSaveCuration(next))
         .then(() => setSaveState("saved"))
         .catch(() => setSaveState("failed"));
     },
-    [onSaveCuration],
+    [readOnly, onSaveCuration],
   );
 
   const flyToRoom = useCallback(
@@ -243,18 +257,25 @@ export function PalaceSurface({
           <button type="button" data-testid="palace-fly-next" onClick={flyToNextRoom}>
             Fly to next chamber
           </button>
-          {onPersistWalk && (
+          {onExportBundle && (
+            <button type="button" data-testid="palace-export-bundle" onClick={() => void onExportBundle()}>
+              Export palace bundle
+            </button>
+          )}
+          {!readOnly && onPersistWalk && (
             <button type="button" data-testid="palace-persist-walk" onClick={persistWalk}>
               Persist palace walk
             </button>
           )}
-          <span
-            className="palace-lens__save-state"
-            data-state={saveState}
-            data-testid="palace-save-state"
-          >
-            {saveState === "saving" ? "Saving…" : saveState === "failed" ? "Save failed" : "Saved"}
-          </span>
+          {!readOnly && (
+            <span
+              className="palace-lens__save-state"
+              data-state={saveState}
+              data-testid="palace-save-state"
+            >
+              {saveState === "saving" ? "Saving…" : saveState === "failed" ? "Save failed" : "Saved"}
+            </span>
+          )}
         </div>
       </header>
 
@@ -372,66 +393,68 @@ export function PalaceSurface({
                         {room.title}
                       </button>
                     )}
-                    <div className="palace-lens__actions">
-                      <button
-                        type="button"
-                        data-testid={`palace-up-${room.id}`}
-                        onClick={() => {
-                          const position = Math.max(0, roomIndex(curation, room.id) - 1);
-                          commit(reorderChamber(curation, room.id, position));
-                        }}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        data-testid={`palace-down-${room.id}`}
-                        onClick={() =>
-                          commit(
-                            reorderChamber(curation, room.id, roomIndex(curation, room.id) + 1),
-                          )
-                        }
-                      >
-                        ↓
-                      </button>
-                      <button
-                        type="button"
-                        data-testid={`palace-pin-${room.id}`}
-                        data-pinned={
-                          curation.chambers.find((chamber) => chamber.candidateId === room.id)
+                    {!readOnly && (
+                      <div className="palace-lens__actions">
+                        <button
+                          type="button"
+                          data-testid={`palace-up-${room.id}`}
+                          onClick={() => {
+                            const position = Math.max(0, roomIndex(curation, room.id) - 1);
+                            commit(reorderChamber(curation, room.id, position));
+                          }}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`palace-down-${room.id}`}
+                          onClick={() =>
+                            commit(
+                              reorderChamber(curation, room.id, roomIndex(curation, room.id) + 1),
+                            )
+                          }
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`palace-pin-${room.id}`}
+                          data-pinned={
+                            curation.chambers.find((chamber) => chamber.candidateId === room.id)
+                              ?.pinned
+                              ? "true"
+                              : "false"
+                          }
+                          onClick={() => commit(pinChamber(curation, room.id))}
+                        >
+                          {curation.chambers.find((chamber) => chamber.candidateId === room.id)
                             ?.pinned
-                            ? "true"
-                            : "false"
-                        }
-                        onClick={() => commit(pinChamber(curation, room.id))}
-                      >
-                        {curation.chambers.find((chamber) => chamber.candidateId === room.id)
-                          ?.pinned
-                          ? "Unpin"
-                          : "Pin"}
-                      </button>
-                      <button
-                        type="button"
-                        data-testid={`palace-exclude-${room.id}`}
-                        onClick={() => commit(excludeChamber(curation, room.id))}
-                      >
-                        Exclude
-                      </button>
-                      <button
-                        type="button"
-                        data-testid={`palace-rename-${room.id}`}
-                        onClick={() =>
-                          startRename(
-                            room.id,
-                            curation.chambers.find(
-                              (chamber) => chamber.candidateId === room.id,
-                            )?.title ?? room.title,
-                          )
-                        }
-                      >
-                        Rename
-                      </button>
-                    </div>
+                            ? "Unpin"
+                            : "Pin"}
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`palace-exclude-${room.id}`}
+                          onClick={() => commit(excludeChamber(curation, room.id))}
+                        >
+                          Exclude
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`palace-rename-${room.id}`}
+                          onClick={() =>
+                            startRename(
+                              room.id,
+                              curation.chambers.find(
+                                (chamber) => chamber.candidateId === room.id,
+                              )?.title ?? room.title,
+                            )
+                          }
+                        >
+                          Rename
+                        </button>
+                      </div>
+                    )}
                   </li>
                 ))}
               </ol>

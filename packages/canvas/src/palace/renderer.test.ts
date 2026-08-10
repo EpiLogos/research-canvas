@@ -76,7 +76,7 @@ function baseScene(
       .map((relationship) => ({
         containerGraphNodeId: relationship.sourceGraphNodeId,
         memberGraphNodeId: relationship.targetGraphNodeId,
-        mode: relationship.properties?.mode ?? "outgoing",
+        mode: (relationship.properties?.mode as "outgoing" | "ingoing") ?? "outgoing",
       })),
   });
 }

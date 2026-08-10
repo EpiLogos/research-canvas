@@ -17,9 +17,11 @@ function node(id: string, entityType = "Event", over: Partial<GraphNode> = {}): 
     summary: `summary of ${id}`,
     archetypalResonance: null,
     coordinate: null,
-    sourceCoordinates: [],
-    evidenceTags: [],
     ...EMPTY_GRAPH_NODE_METADATA,
+    sourceCoordinates: [] as string[],
+    evidenceTags: [] as string[],
+    bodySourceCoordinates: [] as string[],
+    qlSourceCoordinates: [] as string[],
     isTemporal: false,
     validFrom: null,
     validTo: null,
@@ -66,7 +68,7 @@ const ENCAPSULATION_EDGES = RELATIONSHIPS.filter(
 ).map((relationship) => ({
   containerGraphNodeId: relationship.sourceGraphNodeId,
   memberGraphNodeId: relationship.targetGraphNodeId,
-  mode: relationship.properties?.mode ?? "outgoing",
+  mode: (relationship.properties?.mode as "outgoing" | "ingoing") ?? "outgoing",
 }));
 
 function renderSurface(onSaveCuration?: (curation: PalaceCuration) => void) {
@@ -159,5 +161,68 @@ describe("PalaceSurface (jsdom, WebGL unavailable)", () => {
     );
     fireEvent.click(screen.getByTestId("palace-exit"));
     expect(screen.queryByTestId("palace-constellation-open")).not.toBeInTheDocument();
+  });
+
+  test("export bundle affordance invokes onExportBundle", () => {
+    const exportBundle = vi.fn(async () => undefined);
+    renderSurface();
+    // Re-render with the export callback — the button only appears when the
+    // desktop wiring supplies it.
+    const candidates = clusterChambers(NODES, RELATIONSHIPS);
+    const nodesById = new Map(NODES.map((item) => [item.graphNodeId, item]));
+    const curation = curateChambers(candidates, nodesById, "bootstrapping");
+    const scene = buildPalaceScene({
+      nodes: NODES,
+      relationships: RELATIONSHIPS,
+      profileScope: "bootstrapping",
+      curation,
+      encapsulationEdges: ENCAPSULATION_EDGES,
+    });
+    const { unmount } = render(
+      <PalaceSurface
+        scene={scene}
+        nodes={NODES}
+        relationships={RELATIONSHIPS}
+        encapsulationEdges={ENCAPSULATION_EDGES}
+        curation={curation}
+        onSaveCuration={() => undefined}
+        onExportBundle={exportBundle}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("palace-export-bundle"));
+    expect(exportBundle).toHaveBeenCalled();
+    unmount();
+  });
+
+  test("readOnly mode keeps navigation but hides curation mutations", () => {
+    const candidates = clusterChambers(NODES, RELATIONSHIPS);
+    const nodesById = new Map(NODES.map((item) => [item.graphNodeId, item]));
+    const curation = curateChambers(candidates, nodesById, "bootstrapping");
+    const scene = buildPalaceScene({
+      nodes: NODES,
+      relationships: RELATIONSHIPS,
+      profileScope: "bootstrapping",
+      curation,
+      encapsulationEdges: ENCAPSULATION_EDGES,
+    });
+    render(
+      <PalaceSurface
+        scene={scene}
+        nodes={NODES}
+        relationships={RELATIONSHIPS}
+        encapsulationEdges={ENCAPSULATION_EDGES}
+        curation={curation}
+        readOnly
+      />,
+    );
+    // Fly-to still works, no export button without onExportBundle.
+    expect(screen.getAllByTestId(/palace-fly-/).length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("palace-export-bundle")).not.toBeInTheDocument();
+    // Curation mutations and save state are hidden.
+    expect(screen.queryByTestId(/palace-pin-/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId(/palace-exclude-/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId(/palace-rename-/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("palace-save-state")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("palace-persist-walk")).not.toBeInTheDocument();
   });
 });
