@@ -3,6 +3,21 @@ import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import type { HomeProject } from "@research-canvas/desktop-api";
 
 /**
+ * Whether two project lists carry the same projects. Real transports
+ * deserialize a FRESH array reference per round-trip, so array identity
+ * cannot be used to detect "no change". Comparing length + ids keeps the
+ * home-resolution effect from re-rendering (and thus re-running) on
+ * identical data.
+ */
+function sameProjects(a: HomeProject[], b: HomeProject[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index].id !== b[index].id) return false;
+  }
+  return true;
+}
+
+/**
  * The left rail's projects layer (refinement-2 D8, task 10).
  *
  * A picker + project state at the top of the rail: it resolves the research
@@ -24,8 +39,14 @@ export function ProjectsLayer() {
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Resolve the research-canvas home once the workspace has bootstrapped a
-  // database path. The home list is the picker's real data — projects under
-  // the home, returned by the real transport seam.
+  // database path. The dependency is the STABLE `databasePath` string, not
+  // the `workspace` object: the context value is a fresh reference on
+  // frequent re-renders (its useMemo dep array includes entries, errors,
+  // activeConstellation, …), so depending on it would re-run this effect —
+  // and thus re-call the transport — on every render (an infinite loop in
+  // the running app: each resolve → setState → re-render → new `workspace`
+  // ref → resolve again). `resolveOrCreateHome` is stable on the context,
+  // so the closure stays correct across the string dep.
   useEffect(() => {
     if (!workspace.databasePath) return;
     let cancelled = false;
@@ -34,7 +55,12 @@ export function ProjectsLayer() {
       .then((result) => {
         if (cancelled) return;
         setHomePath(result.homePath);
-        setHomeProjects(result.projects);
+        // Defense in depth: real transports return a fresh array reference
+        // per call, so bail on identical data to avoid re-render churn even
+        // if the effect ever re-runs with the same projects.
+        setHomeProjects((current) =>
+          sameProjects(current, result.projects) ? current : result.projects,
+        );
         setHomeError(null);
       })
       .catch((error: Error) => {
@@ -44,7 +70,7 @@ export function ProjectsLayer() {
     return () => {
       cancelled = true;
     };
-  }, [workspace]);
+  }, [workspace.databasePath]);
 
   // Click-outside closes the popover.
   useEffect(() => {

@@ -90,7 +90,23 @@ const workspace = vi.hoisted(() => {
 });
 
 vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
-  useCanvasWorkspace: () => workspace,
+  // Return a FRESH object reference per call (the real context value is
+  // re-created on frequent re-renders) while keeping the SAME seam fns and
+  // scalar/string state. This mirrors the running app and is what makes the
+  // home-resolution regression test meaningful: an effect keyed on the
+  // `workspace` reference (rather than the stable `databasePath`) would
+  // re-run on every re-render.
+  useCanvasWorkspace: () => ({
+    databasePath: workspace.databasePath,
+    activeProjectId: workspace.activeProjectId,
+    activeConstellationId: workspace.activeConstellationId,
+    activeProfileScope: workspace.activeProfileScope,
+    activeConstellation: workspace.activeConstellation,
+    constellations: workspace.constellations,
+    selectProject: workspace.selectProject,
+    resolveOrCreateHome: workspace.resolveOrCreateHome,
+    createProject: workspace.createProject,
+  }),
 }));
 
 function renderProjectsLayer() {
@@ -191,5 +207,48 @@ describe("ProjectsLayer", () => {
     fireEvent.click(screen.getByTestId("projects-trigger"));
     await waitFor(() => expect(screen.getByTestId("projects-layer")).toBeInTheDocument());
     expect(screen.getByText("No projects yet — create one below.")).toBeInTheDocument();
+  });
+
+  it("does not re-resolve the home on re-renders even when the transport returns fresh objects", async () => {
+    // Regression for the HIGH review finding: the home-resolution effect was
+    // keyed on the `workspace` reference, which is a FRESH object on every
+    // render (the context useMemo re-creates it), and the real bridge/Tauri
+    // transport returns a FRESH array reference per call. Together that made
+    // resolve → setState → re-render → new workspace ref → resolve an
+    // infinite loop (reviewer measured 3555 calls in 500ms). The effect must
+    // key on the stable `databasePath` and bail on identical projects.
+    workspace.resolveOrCreateHome.mockImplementation(async () => ({
+      homePath: "/home",
+      // A fresh array reference per call, mirroring transport deserialization.
+      projects: [
+        {
+          id: "proj-a",
+          name: "Project A",
+          slug: "project-a",
+          rootPath: "/home/project-a",
+          rootType: "directory",
+          profileScope: "project:project-a",
+          summary: "",
+          parentId: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+        },
+      ],
+    }));
+
+    renderProjectsLayer();
+    // Exactly one resolve after the initial settle.
+    await waitFor(() => expect(workspace.resolveOrCreateHome).toHaveBeenCalledTimes(1));
+
+    // Re-render the layer (open the picker, type in the create field). Each
+    // render receives a fresh context object reference — the home must NOT be
+    // re-resolved.
+    fireEvent.click(screen.getByTestId("projects-trigger"));
+    await waitFor(() => expect(screen.getByTestId("projects-layer")).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId("projects-new-name"), { target: { value: "x" } });
+
+    // Give any (buggy) re-resolve a chance to fire; the count stays bounded.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(workspace.resolveOrCreateHome).toHaveBeenCalledTimes(1);
   });
 });
