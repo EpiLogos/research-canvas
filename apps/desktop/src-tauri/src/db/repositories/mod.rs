@@ -1,6 +1,7 @@
 pub mod agent_activity;
 pub mod annotations;
 pub mod canvas;
+pub mod constellation_meta;
 pub mod constellations;
 pub mod error;
 pub mod fetch_record;
@@ -26,12 +27,16 @@ pub use canvas::{
     Canvas, CanvasEdgeRecord, CanvasGraphRepository, CanvasNodeRecord, CanvasRepository,
     CanvasSnapshotRecord,
 };
+pub use constellation_meta::{
+    ConstellationKind, ConstellationMetaRepository, ConstellationRecord,
+};
 pub use constellations::{Constellation, ConstellationRepository};
 pub use error::{RepositoryError, RepositoryResult};
 pub use fetch_record::{FetchRecord, FetchRecordRepository, FetchValidation};
 pub use graph::{
     ArchetypalLightingResult, GraphNode, GraphNodePatch, GraphRelationship, GraphRepository,
-    LitInstance, NewGraphNode, OperatorSeed,
+    LitInstance, NewGraphNode, OperatorSeed, ENCAPSULATES, ENCAPSULATES_MODE_INGOING,
+    ENCAPSULATES_MODE_OUTGOING, validate_encapsulation_mode,
 };
 pub use geography_edge_repository::{
     GeographyEdgeMode, GeographyEdgeRecord, GeographyEdgeRepository,

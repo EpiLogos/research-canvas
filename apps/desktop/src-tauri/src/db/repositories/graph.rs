@@ -5,6 +5,25 @@ pub(crate) use super::relationship_vocabulary::{
     canonical_relationship_key, canonicalize_relationship_properties, validate_rel_type,
 };
 
+/// The one deliberate substrate-relation addition (refinement-2 D12,
+/// ticket #27): encapsulation is the processual backbone of the system, not a
+/// content category. A constellation encapsulates as a single node into a
+/// parent and unfolds back with data intact.
+pub const ENCAPSULATES: &str = "ENCAPSULATES";
+pub const ENCAPSULATES_MODE_OUTGOING: &str = "outgoing";
+pub const ENCAPSULATES_MODE_INGOING: &str = "ingoing";
+
+/// Validate the processual reading of an ENCAPSULATES edge. `outgoing` (0/1,
+/// bimba) unfolds a node into its constellation; `ingoing` (1/0, pratibimba)
+/// compresses a constellation into a single node in a parent.
+pub fn validate_encapsulation_mode(mode: &str) -> Result<&str, String> {
+    match mode {
+        ENCAPSULATES_MODE_OUTGOING => Ok(ENCAPSULATES_MODE_OUTGOING),
+        ENCAPSULATES_MODE_INGOING => Ok(ENCAPSULATES_MODE_INGOING),
+        other => Err(format!("unknown ENCAPSULATES mode: {other}")),
+    }
+}
+
 macro_rules! controlled_string_enum {
     ($name:ident { $($variant:ident => $value:literal),+ $(,)? }) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1377,6 +1396,148 @@ impl GraphRepository {
         relationship_from_row(&row, properties)
     }
 
+    /// `ENCAPSULATES` (refinement-2 D12, ticket #27): the one deliberate
+    /// substrate-relation addition. A constellation encapsulates as a single
+    /// node into a parent and unfolds back with data intact. Direction is
+    /// container → member; `mode` is the processual reading:
+    /// - `outgoing` (0/1, bimba) — the container node unfolds into its
+    ///   constellation (ground → articulation).
+    /// - `ingoing` (1/0, pratibimba) — the member constellation compresses
+    ///   into a single node included in a parent (articulation → ground).
+    /// Recursion allowed; cycles prohibited (no transitive self-encapsulation).
+    pub async fn encapsulate(
+        &self,
+        container_graph_node_id: &str,
+        member_graph_node_id: &str,
+        mode: &str,
+        properties: serde_json::Value,
+    ) -> Result<GraphRelationship, String> {
+        let mode = validate_encapsulation_mode(mode)?;
+        if container_graph_node_id == member_graph_node_id {
+            return Err(format!(
+                "ENCAPSULATES self-cycle prohibited: {container_graph_node_id}"
+            ));
+        }
+        if self
+            .encapsulation_path_exists(member_graph_node_id, container_graph_node_id)
+            .await?
+        {
+            return Err(format!(
+                "ENCAPSULATES cycle prohibited: member {member_graph_node_id} already \
+                 transitively contains container {container_graph_node_id}"
+            ));
+        }
+        let rel = validate_rel_type(ENCAPSULATES)?;
+        let mut properties = properties
+            .as_object()
+            .cloned()
+            .ok_or_else(|| "ENCAPSULATES properties must be a JSON object".to_string())?;
+        properties.insert("mode".to_string(), serde_json::Value::String(mode.to_string()));
+        let properties = serde_json::Value::Object(properties);
+        let properties = relationship_properties_with_canonical_key(
+            container_graph_node_id,
+            member_graph_node_id,
+            rel,
+            properties,
+        )?;
+        let canonical_key = canonical_relationship_key(
+            container_graph_node_id,
+            member_graph_node_id,
+            rel,
+            &properties,
+        );
+        let props_str = serde_json::to_string(&properties).map_err(|e| e.to_string())?;
+        let cypher = format!(
+            "MATCH (s:TheoryNode {{graph_node_id: $src}}), (t:TheoryNode {{graph_node_id: $tgt}}) \
+             MERGE (s)-[r:{rel} {{canonicalKey: $canonical_key}}]->(t) \
+             SET r.mode = $mode, r += apoc.convert.fromJsonMap($props) \
+             RETURN elementId(r) AS id, type(r) AS rel_type, \
+                    s.graph_node_id AS src, t.graph_node_id AS tgt, $props AS props"
+        );
+        let q = query(&cypher)
+            .param("src", container_graph_node_id.to_string())
+            .param("tgt", member_graph_node_id.to_string())
+            .param("canonical_key", canonical_key)
+            .param("mode", mode)
+            .param("props", props_str);
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("encapsulate failed: {e}"))?;
+        let row = rows
+            .next()
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "encapsulate: endpoints not found".to_string())?;
+        relationship_from_row(&row, properties)
+    }
+
+    /// True when `from` can reach `to` through one or more ENCAPSULATES edges.
+    /// Used for acyclicity: adding `container → member` is prohibited when
+    /// `member` already transitively contains `container`.
+    pub async fn encapsulation_path_exists(
+        &self,
+        from_graph_node_id: &str,
+        to_graph_node_id: &str,
+    ) -> Result<bool, String> {
+        if from_graph_node_id == to_graph_node_id {
+            return Ok(true);
+        }
+        let q = query(
+            "MATCH (from {graph_node_id: $from})-[:ENCAPSULATES*1..]->(to {graph_node_id: $to}) \
+             RETURN count(*) > 0 AS reachable",
+        )
+        .param("from", from_graph_node_id.to_string())
+        .param("to", to_graph_node_id.to_string());
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("encapsulation_path_exists failed: {e}"))?;
+        let row = rows
+            .next()
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "encapsulation_path_exists returned no row".to_string())?;
+        let reachable: bool = row.get("reachable").map_err(|e| e.to_string())?;
+        Ok(reachable)
+    }
+
+    /// Unfold a container constellation: returns its direct member nodes.
+    pub async fn unfold_constellation(
+        &self,
+        container_graph_node_id: &str,
+    ) -> Result<Vec<GraphNode>, String> {
+        let q = query(
+            "MATCH (c {graph_node_id: $id})-[:ENCAPSULATES]->(m) \
+             RETURN m ORDER BY m.title",
+        )
+        .param("id", container_graph_node_id.to_string());
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("unfold_constellation failed: {e}"))?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            let node: neo4rs::Node = row.get("m").map_err(|e| e.to_string())?;
+            out.push(node_from_neo(node)?);
+        }
+        Ok(out)
+    }
+
+    /// List every ENCAPSULATES relationship (container → member) with its mode.
+    pub async fn list_encapsulation_edges(&self) -> Result<Vec<GraphRelationship>, String> {
+        let q = query(
+            "MATCH (s:TheoryNode)-[r:ENCAPSULATES]->(t) \
+             RETURN elementId(r) AS id, type(r) AS rel_type, \
+                    s.graph_node_id AS src, t.graph_node_id AS tgt, \
+                    apoc.convert.toJson(properties(r)) AS props",
+        );
+        self.collect_relationships(q).await
+    }
+
     /// Idempotently materialize a vault file as a typed `Source` node.  This
     /// is intentionally a narrow agent boundary: it never goes through the
     /// generic patch API and therefore cannot rewrite authored document body
@@ -1799,7 +1960,8 @@ fn relationship_properties_with_canonical_key(
 #[cfg(test)]
 mod tests {
     use super::{
-        relationship_properties_with_canonical_key, GraphRepository, RELATIONSHIPS_INVOLVING_CYPHER,
+        relationship_properties_with_canonical_key, validate_encapsulation_mode, GraphRepository,
+        RELATIONSHIPS_INVOLVING_CYPHER,
     };
 
     #[test]
@@ -1831,6 +1993,14 @@ mod tests {
             GraphRepository::normalize_context_search_limit(500),
             Some(100)
         );
+    }
+
+    #[test]
+    fn encapsulation_mode_is_controlled_to_the_two_spanda_readings() {
+        assert_eq!(validate_encapsulation_mode("outgoing"), Ok("outgoing"));
+        assert_eq!(validate_encapsulation_mode("ingoing"), Ok("ingoing"));
+        assert!(validate_encapsulation_mode("sideways").is_err());
+        assert!(validate_encapsulation_mode("").is_err());
     }
 
     #[test]
