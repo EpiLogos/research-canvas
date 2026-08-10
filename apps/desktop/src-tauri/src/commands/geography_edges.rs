@@ -88,11 +88,20 @@ pub fn upsert_geography_edge_at(
 ) -> Result<GeographyEdgeRecord, String> {
     let db = open_database(database_path)?;
     let repo = GeographyEdgeRepository::new(db.connection());
+    // Idempotency is keyed on (profile_scope, seed_key), never on bare id:
+    // `id` is the PRIMARY KEY, and a deterministic per-profile id would let one
+    // profile's seed silently overwrite another profile's lane. When the same
+    // (profile_scope, seed_key) already exists we update it in place, preserving
+    // the UUIDv4 minted at first create.
     let existing = repo
-        .get_by_id(&edge.id)
+        .find_by_seed_key(&edge.profile_scope, &edge.seed_key)
         .map_err(|error| error.to_string())?;
     match existing {
-        Some(_) => repo.update(&edge).map_err(|error| error.to_string()),
+        Some(record) => {
+            let mut updated = edge;
+            updated.id = record.id;
+            repo.update(&updated).map_err(|error| error.to_string())
+        }
         None => repo.create(edge).map_err(|error| error.to_string()),
     }
 }

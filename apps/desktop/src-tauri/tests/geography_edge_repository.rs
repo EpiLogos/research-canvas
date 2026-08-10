@@ -1,7 +1,10 @@
-use research_canvas_desktop_lib::db::{
-    connection::Database,
-    repositories::{
-        GeographyEdgeMode, GeographyEdgeRecord, GeographyEdgeRepository, RepositoryError,
+use research_canvas_desktop_lib::{
+    commands::geography_edges::upsert_geography_edge_at,
+    db::{
+        connection::Database,
+        repositories::{
+            GeographyEdgeMode, GeographyEdgeRecord, GeographyEdgeRepository, RepositoryError,
+        },
     },
 };
 use tempfile::tempdir;
@@ -170,4 +173,54 @@ fn sqlite_guards_enforce_mode_and_seed_key_uniqueness() {
         [],
     );
     assert!(duplicate.is_err(), "seed key uniqueness must reject a second copy");
+}
+
+#[test]
+fn upsert_keys_on_profile_and_seed_key_so_profiles_never_clobber_each_other() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path().join("geography-edge-profiles.sqlite");
+    let db_path_str = db_path.to_string_lossy().to_string();
+
+    // Two profiles seeding the SAME lane (same seed_key) with their own
+    // app-minted UUIDv4 ids. Before the fix, `upsert` matched on bare id and a
+    // shared deterministic id (`geo:{seedKey}`) meant profile B's seed silently
+    // rewrote profile A's row into profile B.
+    let mut profile_a = voc_lane("3a44f35e-9c81-4e2f-b8b4-8d4f66c3e7a1", "bootstrapping");
+    profile_a.label = "VOC lane (bootstrapping)".into();
+    let mut profile_b = voc_lane("f7d2a1c8-5b3e-4d9a-9c41-6a2f8e7d5b04", "project:alpha");
+    profile_b.label = "VOC lane (project:alpha)".into();
+
+    let saved_a = upsert_geography_edge_at(&db_path_str, profile_a).expect("upsert A");
+    let saved_b = upsert_geography_edge_at(&db_path_str, profile_b).expect("upsert B");
+
+    // Each profile keeps its own row and its own label — no clobbering.
+    assert_eq!(saved_a.profile_scope, "bootstrapping");
+    assert_eq!(saved_a.label, "VOC lane (bootstrapping)");
+    assert_eq!(saved_b.profile_scope, "project:alpha");
+    assert_eq!(saved_b.label, "VOC lane (project:alpha)");
+
+    let db = Database::open(&db_path).unwrap();
+    let repo = GeographyEdgeRepository::new(db.connection());
+    let list_a = repo.list_for_profile("bootstrapping").unwrap();
+    let list_b = repo.list_for_profile("project:alpha").unwrap();
+    assert_eq!(list_a.len(), 1, "profile A keeps exactly one row");
+    assert_eq!(list_b.len(), 1, "profile B gets its own row");
+    assert_eq!(list_a[0].seed_key, list_b[0].seed_key);
+    assert_ne!(list_a[0].id, list_b[0].id);
+    assert_eq!(list_a[0].profile_scope, "bootstrapping");
+    assert_eq!(list_b[0].profile_scope, "project:alpha");
+
+    // Re-upserting profile A's lane updates it in place, preserving its id
+    // (the UUIDv4 minted at first create) rather than minting a new row.
+    let mut profile_a_again = voc_lane(
+        "3a44f35e-9c81-4e2f-b8b4-8d4f66c3e7a1",
+        "bootstrapping",
+    );
+    profile_a_again.label = "VOC nutmeg route (bootstrapping)".into();
+    let reupserted = upsert_geography_edge_at(&db_path_str, profile_a_again).expect("re-upsert A");
+    assert_eq!(reupserted.label, "VOC nutmeg route (bootstrapping)");
+    assert_eq!(reupserted.id, "3a44f35e-9c81-4e2f-b8b4-8d4f66c3e7a1");
+    let list_a = repo.list_for_profile("bootstrapping").unwrap();
+    assert_eq!(list_a.len(), 1, "re-upsert does not duplicate the row");
+    assert_eq!(list_a[0].id, "3a44f35e-9c81-4e2f-b8b4-8d4f66c3e7a1");
 }

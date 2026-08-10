@@ -8,6 +8,12 @@ import {
 
 const now = "2026-08-10T10:00:00.000Z";
 
+/** App-minted UUIDv4 ids — the contract requires `id` to be a UUIDv4, never a
+ * per-profile deterministic string (a shared `geo:{seedKey}` id would collide
+ * across profiles and clobber rows, since `id` is the SQLite PRIMARY KEY). */
+const UUID = "b3f2c1a4-5d6e-4f80-9abc-1234567890ab";
+const UUID_2 = "c4a3d2b5-6e7f-4a91-8bcd-23456789abcd";
+
 /** Real corpus anchors (Report3.md / Report8.md) with real heading slugs. */
 const VOC_LANE_PASSAGE = {
   artifactId:
@@ -21,7 +27,7 @@ const VOC_LANE_PASSAGE = {
 
 const REAL_LANES: GeographyEdge[] = [
   {
-    id: "geo:voc-amsterdam-banda",
+    id: UUID,
     profileScope: "bootstrapping",
     mode: "shipping",
     sourcePlaceId: "place-amsterdam",
@@ -41,7 +47,7 @@ const REAL_LANES: GeographyEdge[] = [
     updatedAt: now,
   },
   {
-    id: "geo:rhodes-oxford-kimberley",
+    id: UUID_2,
     profileScope: "bootstrapping",
     mode: "overland",
     sourcePlaceId: "place-oxford",
@@ -69,7 +75,7 @@ const REAL_LANES: GeographyEdge[] = [
     updatedAt: now,
   },
   {
-    id: "geo:rudolf-vienna-prague",
+    id: "d5b4e3c6-7f8a-4ba2-9cde-3456789abcde",
     profileScope: "bootstrapping",
     mode: "overland",
     sourcePlaceId: "place-vienna",
@@ -89,7 +95,7 @@ const REAL_LANES: GeographyEdge[] = [
     updatedAt: now,
   },
   {
-    id: "geo:cult-of-reason-paris",
+    id: "e6c5f4d7-8a9b-4cb3-adef-456789abcdef",
     profileScope: "bootstrapping",
     mode: "overland",
     sourcePlaceId: "place-paris",
@@ -207,6 +213,15 @@ describe("geographyEdgeSchema", () => {
     ).toBe(false);
     expect(
       geographyEdgeSchema.safeParse({ ...REAL_LANES[0], seedKey: "" }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a non-UUIDv4 id (per-profile deterministic ids collide across profiles)", () => {
+    expect(
+      geographyEdgeSchema.safeParse({
+        ...REAL_LANES[0],
+        id: "geo:voc-amsterdam-to-banda",
+      }).success,
     ).toBe(false);
   });
 });

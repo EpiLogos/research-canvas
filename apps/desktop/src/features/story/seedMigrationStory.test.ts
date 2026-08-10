@@ -99,6 +99,10 @@ describe("ensureMigrationStorySeed", () => {
     });
 
     expect(result.seeded).toBe(true);
+    // Intended consequence of the Task-3 gazetteer enrichment: the Banda
+    // Islands now resolve in the bundled offline pack, so the migration story
+    // journey grew from 3 to 4 gazetteer-resolved scenes (Banda Islands sits
+    // between Amsterdam and Paris, matching the VOC's historical route).
     expect(result.sequence?.sceneIds).toHaveLength(4);
     // Chronological distinct gazetteer-resolved places: Prague, Amsterdam,
     // Banda Islands, Paris.

@@ -37,34 +37,34 @@ export function timelineView(): TimelineView {
         id: "r-prague",
         relType: "LOCATED_AT",
         sourceGraphNodeId: "event-rudolf-prague",
-        targetGraphNodeId: "place-prague",
+        targetGraphNodeId: "root-archetypal-field:place-prague",
         properties: {},
       },
       {
         id: "r-amsterdam",
         relType: "LOCATED_AT",
         sourceGraphNodeId: "institution-voc",
-        targetGraphNodeId: "place-amsterdam",
+        targetGraphNodeId: "root-archetypal-field:place-amsterdam",
         properties: {},
       },
       {
         id: "r-paris",
         relType: "LOCATED_AT",
         sourceGraphNodeId: "event-cult-of-reason",
-        targetGraphNodeId: "place-paris",
+        targetGraphNodeId: "root-archetypal-field:place-paris",
         properties: {},
       },
       {
         id: "r-banda",
         relType: "LOCATED_AT",
         sourceGraphNodeId: "event-banda-genocide",
-        targetGraphNodeId: "place-banda-islands",
+        targetGraphNodeId: "root-archetypal-field:place-banda-islands",
         properties: {},
       },
     ],
     nodes: [
       {
-        node: graphNode("place-prague", "Prague", "Place", {
+        node: graphNode("root-archetypal-field:place-prague", "Prague", "Place", {
           isTemporal: false,
           validFrom: null,
           validTo: null,
@@ -101,7 +101,7 @@ export function timelineView(): TimelineView {
         },
       },
       {
-        node: graphNode("place-amsterdam", "Amsterdam", "Place", {
+        node: graphNode("root-archetypal-field:place-amsterdam", "Amsterdam", "Place", {
           isTemporal: false,
           validFrom: null,
           validTo: null,
@@ -138,7 +138,7 @@ export function timelineView(): TimelineView {
         },
       },
       {
-        node: graphNode("place-paris", "Paris", "Place", {
+        node: graphNode("root-archetypal-field:place-paris", "Paris", "Place", {
           isTemporal: false,
           validFrom: null,
           validTo: null,
@@ -175,7 +175,7 @@ export function timelineView(): TimelineView {
         },
       },
       {
-        node: graphNode("place-banda-islands", "Banda Islands", "Place", {
+        node: graphNode("root-archetypal-field:place-banda-islands", "Banda Islands", "Place", {
           isTemporal: false,
           validFrom: null,
           validTo: null,

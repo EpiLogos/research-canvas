@@ -202,10 +202,25 @@ export async function buildGeographyEdge(
     longitude: targetEntry.longitude,
   };
   const coordinates = greatCircleArc(from, to, 64, lane.controlPoints ?? []);
-  const passage = await corpusPassageForLane(lane.corpus, deps.corpusRoot, deps.readFile);
+  const passage = await corpusPassageForLane(
+    lane.corpus,
+    deps.corpusRoot,
+    deps.readFile,
+  ).catch((error: unknown) => {
+    throw new Error(
+      `geography-edge seed "${lane.seedKey}": ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  });
 
   const edge: GeographyEdge = {
-    id: `geo:${lane.seedKey}`,
+    // App-minted UUIDv4: `id` is the SQLite PRIMARY KEY, so it must be
+    // globally unique. A per-profile deterministic id (`geo:{seedKey}`) would
+    // collide across profiles — profile B's seed would silently UPDATE profile
+    // A's lane (the id-based upsert path). Seeding idempotency is keyed on
+    // (profileScope, seedKey), never on `id`.
+    id: crypto.randomUUID(),
     profileScope: deps.profileScope,
     mode: lane.mode,
     sourcePlaceId: source.graphNodeId,
@@ -274,7 +289,11 @@ interface Section {
 }
 
 function findSection(content: string, anchor: string | null): Section | null {
-  const headingIndex = anchor ? findSluggedHeading(content, anchor) : -1;
+  const headingIndex = anchor ? findSluggedHeading(content, anchor) : 0;
+  // A lane always cites a heading. When the anchor is missing the corpus does
+  // not document this movement — the seed must fail loudly, never silently
+  // fall back to the first paragraph of the file.
+  if (anchor && headingIndex < 0) return null;
   const searchStart = headingIndex >= 0 ? headingIndex : 0;
   const paragraphStart = content.indexOf("\n\n", searchStart);
   const start = paragraphStart >= 0 ? paragraphStart + 2 : Math.max(0, searchStart);

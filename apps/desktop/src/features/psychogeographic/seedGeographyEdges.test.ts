@@ -48,7 +48,10 @@ function slugify(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/** The real timeline view plus the movement-stream places the seed resolves. */
+/** The real timeline view plus the movement-stream places the seed resolves.
+ * Graph node ids mirror the real `root_archetypal_seed` ids exactly
+ * (`root-archetypal-field:place-…`), so place resolution in the unit test
+ * matches the ids the real graph seed produces. */
 function movementView(): TimelineView {
   const base = timelineView();
   return {
@@ -124,18 +127,40 @@ function transportFixture(view: TimelineView): {
     async loadTimelineView() {
       return view;
     },
-    async listGeographyEdges() {
-      return savedEdges;
+    // DB-faithful: list scopes to the requested profile, mirroring
+    // list_for_profile(profile_scope).
+    async listGeographyEdges({ profileScope }: { profileScope?: string }) {
+      const scope = profileScope ?? "bootstrapping";
+      return savedEdges.filter((edge) => edge.profileScope === scope);
     },
+    // DB-faithful upsert mirroring upsert_geography_edge_at: idempotency is
+    // keyed on (profile_scope, seed_key) — re-upserting the same lane updates
+    // it in place, preserving the id minted at first create. `id` is the
+    // PRIMARY KEY, so a second row with the same id is a hard conflict (the
+    // cross-profile regression this test guards against).
     async upsertGeographyEdge({ edge }: { edge: GeographyEdge }) {
-      const existing = savedEdges.findIndex((candidate) => candidate.id === edge.id);
-      if (existing >= 0) savedEdges[existing] = edge;
-      else savedEdges.push(edge);
+      const existing = savedEdges.find(
+        (candidate) =>
+          candidate.profileScope === edge.profileScope &&
+          candidate.seedKey === edge.seedKey,
+      );
+      if (existing) {
+        const index = savedEdges.indexOf(existing);
+        savedEdges[index] = { ...edge, id: existing.id };
+        return savedEdges[index];
+      }
+      if (savedEdges.some((candidate) => candidate.id === edge.id)) {
+        throw new Error(`geography edge id ${edge.id} already exists (PK conflict)`);
+      }
+      savedEdges.push(edge);
       return edge;
     },
   } as unknown as WorkspaceTransport;
   return { transport, savedEdges };
 }
+
+const UUID_V4 =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 describe("ensureGeographyEdgeSeed", () => {
   test("seeds all four real movement lanes against real places, gazetteer, and corpus", async () => {
@@ -154,6 +179,12 @@ describe("ensureGeographyEdgeSeed", () => {
 
     expect(result.seededCount).toBe(4);
     expect(savedEdges).toHaveLength(4);
+
+    // Every record carries an app-minted UUIDv4 id (the locked contract): the
+    // SQLite PRIMARY KEY must be globally unique so profiles never clobber.
+    for (const edge of savedEdges) {
+      expect(edge.id).toMatch(UUID_V4);
+    }
 
     for (const lane of GEOGRAPHY_EDGE_LANES) {
       const edge = savedEdges.find((candidate) => candidate.seedKey === lane.seedKey);
@@ -277,6 +308,66 @@ describe("ensureGeographyEdgeSeed", () => {
     for (const edge of savedEdges) {
       expect(edge.profileScope).toBe("project:alpha-field");
     }
+  });
+
+  test("two profiles seeding the same lane each keep their own row", async () => {
+    const { transport, savedEdges } = transportFixture(movementView());
+    const pack = loadBundledGeographyPack();
+    const base = {
+      transport,
+      databasePath: "/tmp/ws.sqlite",
+      workspaceId: "sqlite:/tmp/ws",
+      corpusRoot: REPO_ROOT,
+      gazetteer: pack.gazetteer,
+      readFile: readRealCorpus,
+    };
+
+    const profileA = await ensureGeographyEdgeSeed({
+      ...base,
+      profileScope: "bootstrapping",
+    });
+    expect(profileA.seededCount).toBe(4);
+    const profileARows = savedEdges.map((edge) => ({ ...edge }));
+
+    const profileB = await ensureGeographyEdgeSeed({
+      ...base,
+      profileScope: "project:alpha",
+    });
+    expect(profileB.seededCount).toBe(4);
+
+    // Profile A's rows are untouched — same ids, same content.
+    const aRows = savedEdges.filter((edge) => edge.profileScope === "bootstrapping");
+    expect(aRows).toHaveLength(4);
+    expect(aRows.map((edge) => edge.id)).toEqual(profileARows.map((edge) => edge.id));
+    expect(aRows).toEqual(profileARows);
+
+    // Profile B gets its own rows with distinct UUIDv4 ids.
+    const bRows = savedEdges.filter((edge) => edge.profileScope === "project:alpha");
+    expect(bRows).toHaveLength(4);
+    for (const row of bRows) {
+      expect(row.id).toMatch(UUID_V4);
+      expect(aRows.some((a) => a.id === row.id)).toBe(false);
+      expect(row.profileScope).toBe("project:alpha");
+    }
+  });
+
+  test("fails loudly when the corpus section is missing", async () => {
+    const pack = loadBundledGeographyPack();
+    const rhodes = GEOGRAPHY_EDGE_LANES.find(
+      (lane) => lane.seedKey === "rhodes:oxford-to-kimberley",
+    );
+    await expect(
+      buildGeographyEdge(rhodes!, {
+        view: movementView(),
+        gazetteer: pack.gazetteer,
+        corpusRoot: REPO_ROOT,
+        profileScope: "bootstrapping",
+        now: new Date().toISOString(),
+        // A real corpus read whose section the lane cites is absent.
+        readFile: async () =>
+          "# Unrelated heading\n\nThis file never contains the Rhodes section.",
+      }),
+    ).rejects.toThrow("rhodes:oxford-to-kimberley");
   });
 
   test("fails loudly when a lane's graph place is missing", async () => {

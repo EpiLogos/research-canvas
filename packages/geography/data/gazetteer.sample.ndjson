@@ -15,5 +15,5 @@
 {"id":"pleiades:422665","source":"pleiades","names":[{"language":"la","name":"Florentia"},{"language":"en","name":"Florence"}],"latitude":43.7714,"longitude":11.254,"precision":"approximate"}
 {"id":"pleiades:540705","source":"pleiades","names":[{"language":"en","name":"Unlocated place (sample)"}],"precision":"unlocated"}
 {"id":"wikidata:Q152","source":"wikidata","names":[{"language":"en","name":"Oxford"}],"latitude":51.752,"longitude":-1.2577,"precision":"approximate"}
-{"id":"wikidata:Q1741","source":"wikidata","names":[{"language":"de","name":"Wien"},{"language":"en","name":"Vienna"}],"latitude":48.2082,"longitude":16.3738,"precision":"approximate"}
+{"id":"wikidata:Q1741","source":"wikidata","names":[{"language":"en","name":"Vienna"},{"language":"de","name":"Wien"}],"latitude":48.2082,"longitude":16.3738,"precision":"approximate"}
 {"id":"wikidata:Q806249","source":"wikidata","names":[{"language":"en","name":"Banda Islands"}],"latitude":-4.55,"longitude":129.9,"precision":"approximate"}

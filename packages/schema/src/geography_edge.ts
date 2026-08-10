@@ -68,7 +68,12 @@ export const geographyEdgeProvenanceSchema = z.object({
  */
 export const geographyEdgeSchema = z
   .object({
-    id: z.string().trim().min(1),
+    /** App-minted UUIDv4 (locked by ticket #19 step 1 / D2): `id` is the
+     * SQLite PRIMARY KEY, so it must be globally unique — a per-profile
+     * deterministic id like `geo:{seedKey}` would collide across profiles and
+     * let one profile's seed silently overwrite another's lane. Seeding
+     * idempotency is keyed on `(profileScope, seedKey)`, never on `id`. */
+    id: z.string().trim().uuid(),
     profileScope: z.string().trim().min(1),
     mode: geographyEdgeModeSchema,
     /** Graph node ids of the source/target Temporal Places. */

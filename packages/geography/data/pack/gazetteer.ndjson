@@ -8,7 +8,7 @@
 {"id":"pleiades:893951","source":"pleiades","names":[{"language":"akk","name":"Bābilim"},{"language":"en","name":"Babylon"}],"latitude":32.5364,"longitude":44.4207,"precision":"approximate"}
 {"id":"wikidata:Q1085","source":"wikidata","names":[{"language":"cs","name":"Praha"},{"language":"en","name":"Prague"}],"latitude":50.0875,"longitude":14.4214,"precision":"approximate","parentIds":["wikidata:Q193612"]}
 {"id":"wikidata:Q152","source":"wikidata","names":[{"language":"en","name":"Oxford"}],"latitude":51.752,"longitude":-1.2577,"precision":"approximate"}
-{"id":"wikidata:Q1741","source":"wikidata","names":[{"language":"de","name":"Wien"},{"language":"en","name":"Vienna"}],"latitude":48.2082,"longitude":16.3738,"precision":"approximate"}
+{"id":"wikidata:Q1741","source":"wikidata","names":[{"language":"en","name":"Vienna"},{"language":"de","name":"Wien"}],"latitude":48.2082,"longitude":16.3738,"precision":"approximate"}
 {"id":"wikidata:Q727","source":"wikidata","names":[{"language":"nl","name":"Amsterdam"},{"language":"en","name":"Amsterdam"}],"latitude":52.3728,"longitude":4.8936,"precision":"approximate","parentIds":["wikidata:Q1092552"]}
 {"id":"wikidata:Q806249","source":"wikidata","names":[{"language":"en","name":"Banda Islands"}],"latitude":-4.55,"longitude":129.9,"precision":"approximate"}
 {"id":"wikidata:Q84","source":"wikidata","names":[{"language":"en","name":"London"}],"latitude":51.5074,"longitude":-0.1278,"precision":"exact","parentIds":["wikidata:Q2625248"]}
