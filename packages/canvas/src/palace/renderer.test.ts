@@ -2,7 +2,9 @@ import { describe, expect, test } from "vitest";
 
 import type { GraphNode, GraphRelationship } from "@research-canvas/desktop-api";
 
-import { buildPalaceScene, type PalaceScene } from "./renderer";
+import { clusterChambers } from "./clustering";
+import { curateChambers } from "./curation";
+import { buildPalaceScene, fixtureRotationY, type PalaceScene } from "./renderer";
 import { QL_FACE_MAP } from "./ql";
 
 function node(id: string, over: Partial<GraphNode> = {}): GraphNode {
@@ -279,6 +281,61 @@ describe("encapsulation objectification", () => {
     expect(room).toBeDefined();
     // Two members → corridor (a passage), never a cube.
     expect(room!.form).toBe("corridor");
+  });
+});
+
+describe("wall fixtures", () => {
+  test("every room carries a title plaque and member text panels", () => {
+    const scene = baseScene(CORPUS, CORPUS_EDGES);
+    expect(scene.fixtures.length).toBeGreaterThanOrEqual(2);
+    // At least one title plaque per room.
+    for (const room of scene.rooms) {
+      const plaque = scene.fixtures.find(
+        (fixture) =>
+          fixture.roomId === room.id && fixture.kind === "titlePlaque",
+      );
+      expect(plaque).toBeDefined();
+      expect(plaque!.face).toBe(room.exteriorFace);
+      expect(plaque!.title).not.toBe("");
+    }
+    // Member text panels derive from real substance and face the room center.
+    const panels = scene.fixtures.filter(
+      (fixture) => fixture.kind === "textPanel",
+    );
+    for (const panel of panels) {
+      expect(panel.sourceGraphNodeId).toBeTruthy();
+      expect(panel.rotationY).toBe(fixtureRotationY(panel.face));
+    }
+  });
+
+  test("curated fixtures overlay the generated defaults", () => {
+    const base = baseScene(CORPUS, CORPUS_EDGES);
+    const roomId = base.rooms[0].id;
+    const candidates = clusterChambers(CORPUS, CORPUS_EDGES);
+    const nodesById = new Map(CORPUS.map((item) => [item.graphNodeId, item]));
+    const curated = curateChambers(candidates, nodesById, "bootstrapping");
+    curated.fixtures.push({
+      fixtureId: "fixture:custom",
+      roomId,
+      kind: "titlePlaque",
+      face: "south",
+      title: "Custom plaque",
+      contentRef: "note:custom",
+      sourceGraphNodeId: null,
+    });
+    const scene = buildPalaceScene({
+      nodes: CORPUS,
+      relationships: CORPUS_EDGES,
+      profileScope: "bootstrapping",
+      curation: curated,
+      encapsulationEdges: [],
+    });
+    const custom = scene.fixtures.find(
+      (fixture) => fixture.id === "fixture:custom",
+    );
+    expect(custom).toBeDefined();
+    expect(custom!.title).toBe("Custom plaque");
+    expect(custom!.face).toBe("south");
   });
 });
 

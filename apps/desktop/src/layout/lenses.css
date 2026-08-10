@@ -1345,3 +1345,133 @@
     transition: none !important;
   }
 }
+
+/* ============================================================
+   3D mind-palace surface (refinement-2 D5)
+   ============================================================ */
+.palace-surface__viewport {
+  position: relative;
+  width: 100%;
+  height: min(58vh, 540px);
+  flex: 0 0 auto;
+  border: 1px solid var(--ob-line-2);
+  border-radius: var(--ob-radius-card);
+  background:
+    linear-gradient(180deg, rgba(12, 17, 25, 0.9), rgba(9, 13, 19, 0.94)),
+    repeating-linear-gradient(0deg, var(--ob-line) 0 1px, transparent 1px 40px);
+  overflow: hidden;
+}
+
+.palace-surface__viewport canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.palace-surface__error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--ob-space-5);
+  color: #eab3a6;
+  font-family: var(--ob-mono);
+  font-size: var(--ob-text-sm);
+  text-align: center;
+}
+
+.palace-surface__panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--ob-space-4);
+  padding: var(--ob-space-4) var(--ob-space-5);
+  flex: 0 0 auto;
+}
+
+.palace-surface__panel {
+  border: 1px solid var(--ob-line-2);
+  border-radius: var(--ob-radius-card);
+  background: rgba(12, 17, 25, 0.55);
+  padding: var(--ob-space-3) var(--ob-space-4);
+}
+
+.palace-surface__panel h3 {
+  margin: 0 0 var(--ob-space-2);
+  color: var(--ob-faint);
+  font-family: var(--ob-mono);
+  font-size: var(--ob-text-xs);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.palace-surface__panel ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.palace-surface__panel li {
+  display: flex;
+  align-items: center;
+  gap: var(--ob-space-2);
+  padding: var(--ob-space-1) 0;
+  color: var(--ob-ink);
+  font-size: var(--ob-text-sm);
+}
+
+.palace-lens__chamber-title {
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--ob-ink) !important;
+  font: inherit !important;
+  text-align: left !important;
+}
+
+.palace-lens__actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.palace-lens__actions button {
+  min-height: 22px !important;
+  padding: 0 7px !important;
+  font-size: 10px !important;
+}
+
+.palace-surface__constellation,
+.palace-lens__recall {
+  display: flex;
+  align-items: center;
+  gap: var(--ob-space-3);
+  margin: 0 var(--ob-space-5);
+  padding: var(--ob-space-2) var(--ob-space-4);
+  border: 1px solid rgba(201, 168, 106, 0.4);
+  border-radius: var(--ob-radius-input);
+  background: rgba(201, 168, 106, 0.08);
+  color: var(--ob-ink);
+  font-size: var(--ob-text-sm);
+}
+
+.palace-surface__walk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ob-space-2);
+  margin: 0 var(--ob-space-5) var(--ob-space-4);
+  padding: var(--ob-space-2) var(--ob-space-4);
+  border: 1px dashed var(--ob-line-2);
+  border-radius: var(--ob-radius-input);
+  color: var(--ob-faint);
+  font-family: var(--ob-mono);
+  font-size: var(--ob-text-xs);
+}
+
+.palace-surface__walk [data-revealed="false"] {
+  opacity: 0.35;
+}

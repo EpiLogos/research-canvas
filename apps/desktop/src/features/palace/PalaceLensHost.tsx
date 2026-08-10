@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
 
 import {
-  PalaceLens,
+  buildPalaceScene,
+  clusterChambers,
+  curateChambers,
+  encapsulationEdgesFromRelationships,
+  PalaceSurface,
   type PalaceCuration,
 } from "@research-canvas/canvas";
 import type {
@@ -12,10 +16,11 @@ import type {
 import type { Scene, SceneSequence } from "@research-canvas/schema";
 
 /**
- * Mind-palace host (slice 4): feeds the palace lens with the real graph,
- * loads the persisted curation from the profile store, saves curation
- * changes, and persists palace walks as scene sequences so they surface in
- * the story and psychogeographic lenses too.
+ * Mind-palace host (slice 4 → refinement-2 D5): feeds the 3D palace surface
+ * with the real graph, loads the persisted curation from the profile store,
+ * saves curation changes, and persists palace walks as scene sequences so they
+ * surface in the story and psychogeographic lenses too. All palace layout is
+ * curation in the SQLite presentation store — never a graph write.
  */
 
 export interface PalaceLensHostProps {
@@ -33,7 +38,7 @@ export function PalaceLensHost({
 }: PalaceLensHostProps): JSX.Element {
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [relationships, setRelationships] = useState<GraphRelationship[]>([]);
-  const [curation, setCuration] = useState<PalaceCuration | null>(null);
+  const [storedCuration, setStoredCuration] = useState<PalaceCuration | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,7 +55,7 @@ export function PalaceLensHost({
         if (cancelled) return;
         setNodes(view.nodes.map((record) => record.node));
         setRelationships(view.relationships);
-        setCuration((stored.curation as PalaceCuration | null) ?? null);
+        setStoredCuration((stored.curation as PalaceCuration | null) ?? null);
       } catch (cause) {
         if (!cancelled) {
           setError(cause instanceof Error ? cause.message : String(cause));
@@ -85,6 +90,30 @@ export function PalaceLensHost({
       })();
     },
     [databasePath, transport],
+  );
+
+  const encapsulationEdges = useMemo(
+    () => encapsulationEdgesFromRelationships(relationships),
+    [relationships],
+  );
+
+  const curation = useMemo<PalaceCuration>(() => {
+    if (storedCuration) return storedCuration;
+    const candidates = clusterChambers(nodes, relationships);
+    const nodesById = new Map(nodes.map((node) => [node.graphNodeId, node]));
+    return curateChambers(candidates, nodesById, profileScope);
+  }, [storedCuration, nodes, relationships, profileScope]);
+
+  const scene = useMemo(
+    () =>
+      buildPalaceScene({
+        nodes,
+        relationships,
+        profileScope,
+        curation,
+        encapsulationEdges,
+      }),
+    [nodes, relationships, profileScope, curation, encapsulationEdges],
   );
 
   const isEmpty = useMemo(
@@ -122,10 +151,11 @@ export function PalaceLensHost({
 
   return (
     <section className="palace-host" data-testid="palace-host">
-      <PalaceLens
+      <PalaceSurface
+        scene={scene}
         nodes={nodes}
         relationships={relationships}
-        profileScope={profileScope}
+        encapsulationEdges={encapsulationEdges}
         curation={curation}
         onSaveCuration={saveCuration}
         onPersistWalk={persistWalk}

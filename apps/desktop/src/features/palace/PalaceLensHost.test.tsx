@@ -184,7 +184,7 @@ describe("PalaceLensHost", () => {
       />,
     );
 
-    await screen.findByTestId("palace-lens");
+    await screen.findByTestId("palace-surface");
     expect(screen.getAllByTestId(/palace-chamber-/).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getAllByTestId(/palace-pin-/)[0]);
@@ -212,7 +212,7 @@ describe("PalaceLensHost", () => {
       />,
     );
 
-    await screen.findByTestId("palace-lens");
+    await screen.findByTestId("palace-surface");
     fireEvent.click(screen.getByTestId("palace-persist-walk"));
 
     await waitFor(() => {

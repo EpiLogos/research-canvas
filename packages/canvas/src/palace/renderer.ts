@@ -107,6 +107,21 @@ export interface PalaceCollectionScene {
   position: { shelf: number; row: number };
 }
 
+export interface PalaceFixtureScene {
+  id: string;
+  roomId: string;
+  kind: "imageFrame" | "textPanel" | "titlePlaque";
+  face: FaceId;
+  title: string;
+  contentRef: string | null;
+  sourceGraphNodeId: string | null;
+  /** Resolved anchor point on the named face. */
+  anchor: Vec3;
+  rotationY: number;
+  width: number;
+  height: number;
+}
+
 export interface ConstellationObjectScene {
   id: string;
   roomId: string;
@@ -130,6 +145,7 @@ export interface PalaceScene {
   connections: PalaceConnectionScene[];
   objects: PalaceObjectScene[];
   collections: PalaceCollectionScene[];
+  fixtures: PalaceFixtureScene[];
   constellationObjects: ConstellationObjectScene[];
   entryRoomId: string;
   walkOrder: string[];
@@ -263,6 +279,19 @@ export function buildPalaceScene(input: PalaceSceneInput): PalaceScene {
     objects,
   );
 
+  // Wall fixtures: title plaque per room plus text/image panels derived from
+  // graph content, overlaid with curated fixtures.
+  const fixtures = buildFixtures(
+    walkable,
+    candidateById,
+    nodesById,
+    curation,
+    roomCenters,
+    roomSizes,
+    roomExteriorFaces,
+    qlShaped,
+  );
+
   // Constellation objects: each chamber hosts its subgraph laid out in 3D.
   const constellationObjects = buildConstellationObjects(
     walkable,
@@ -290,6 +319,7 @@ export function buildPalaceScene(input: PalaceSceneInput): PalaceScene {
     connections,
     objects,
     collections,
+    fixtures,
     constellationObjects,
     entryRoomId,
     walkOrder: walkable.map((chamber) => chamber.candidateId),
@@ -632,6 +662,126 @@ function buildCollections(
     });
   }
   return collections;
+}
+
+/** The rotation (radians) a wall-mounted plane needs to face the room center
+ * from the given named face. */
+export function fixtureRotationY(face: FaceId): number {
+  switch (face) {
+    case "north":
+      return 0;
+    case "south":
+      return Math.PI;
+    case "east":
+      return Math.PI / 2;
+    case "west":
+      return -Math.PI / 2;
+    case "floor":
+      return 0;
+    case "ceiling":
+      return 0;
+  }
+}
+
+function buildFixtures(
+  walkable: Array<{ candidateId: string }>,
+  candidateById: Map<string, ChamberCandidate>,
+  nodesById: Map<string, GraphNode>,
+  curation: PalaceCuration,
+  roomCenters: Map<string, Vec3>,
+  roomSizes: Map<string, BoxSize>,
+  roomExteriorFaces: Map<string, FaceId>,
+  qlShaped: boolean,
+): PalaceFixtureScene[] {
+  const fixtures: PalaceFixtureScene[] = [];
+  const fixtureIds = new Set<string>();
+
+  for (const chamber of walkable) {
+    const candidate = candidateById.get(chamber.candidateId);
+    const center = roomCenters.get(chamber.candidateId);
+    const size = roomSizes.get(chamber.candidateId);
+    if (!candidate || !center || !size) continue;
+    const exteriorFace = roomExteriorFaces.get(chamber.candidateId) ?? "north";
+    const anchor = nodesById.get(candidate.anchorGraphNodeId);
+
+    // Title plaque: the chamber's name mounted on the portal face.
+    const plaqueFace: FaceId = exteriorFace;
+    fixtures.push({
+      id: `fixture:${chamber.candidateId}:plaque`,
+      roomId: chamber.candidateId,
+      kind: "titlePlaque",
+      face: plaqueFace,
+      title: anchor?.title ?? chamber.candidateId,
+      contentRef: null,
+      sourceGraphNodeId: candidate.anchorGraphNodeId,
+      anchor: faceAnchorPoint(plaqueFace, 0, 1, center, size, 0.4),
+      rotationY: fixtureRotationY(plaqueFace),
+      width: 1.6,
+      height: 0.55,
+    });
+    fixtureIds.add(`fixture:${chamber.candidateId}:plaque`);
+
+    // Text panels: one per member with substance (a real summary), spread over
+    // the wall faces opposite the plaque.
+    const members = candidate.memberNodeIds
+      .map((id) => nodesById.get(id))
+      .filter((node): node is GraphNode =>
+        node !== undefined && node !== null && node.summary.length > 0,
+      );
+    const slotByFace = new Map<FaceId, number>();
+    const wallFaces: FaceId[] = qlShaped
+      ? ["south", "east", "north", "west"]
+      : ["north", "south", "east", "west"];
+    members.forEach((member, index) => {
+      const face = wallFaces[index % wallFaces.length];
+      const slot = slotByFace.get(face) ?? 0;
+      slotByFace.set(face, slot + 1);
+      fixtures.push({
+        id: `fixture:${chamber.candidateId}:${member.graphNodeId}`,
+        roomId: chamber.candidateId,
+        kind: member.sourceKind === "image" ? "imageFrame" : "textPanel",
+        face,
+        title: member.title,
+        contentRef: null,
+        sourceGraphNodeId: member.graphNodeId,
+        anchor: faceAnchorPoint(face, slot, Math.max(members.length, 2), center, size, 0.35),
+        rotationY: fixtureRotationY(face),
+        width: 1.1,
+        height: 0.7,
+      });
+    });
+  }
+
+  // Curated fixtures overlay the generated defaults (upsert by fixtureId).
+  for (const curated of curation.fixtures) {
+    const existingIndex = fixtures.findIndex(
+      (fixture) => fixture.id === curated.fixtureId && fixture.roomId === curated.roomId,
+    );
+    const center = roomCenters.get(curated.roomId);
+    const size = roomSizes.get(curated.roomId);
+    if (!center || !size) continue;
+    const anchor = faceAnchorPoint(curated.face, 0, 1, center, size, 0.35);
+    const scene: PalaceFixtureScene = {
+      id: curated.fixtureId,
+      roomId: curated.roomId,
+      kind: curated.kind,
+      face: curated.face,
+      title: curated.title,
+      contentRef: curated.contentRef,
+      sourceGraphNodeId: curated.sourceGraphNodeId,
+      anchor,
+      rotationY: fixtureRotationY(curated.face),
+      width: curated.kind === "titlePlaque" ? 1.6 : 1.1,
+      height: curated.kind === "titlePlaque" ? 0.55 : 0.7,
+    };
+    if (existingIndex === -1) {
+      fixtures.push(scene);
+    } else {
+      fixtures[existingIndex] = scene;
+    }
+  }
+
+  return fixtures;
 }
 
 function buildConstellationObjects(
