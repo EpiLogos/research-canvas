@@ -428,7 +428,8 @@ fn handle_request(
             input.database_path = session_database.to_string_lossy().to_string();
         }
         let payload = ingest_fetched_asset_at(&input)?;
-        let status = if payload.validation.all_ok() {
+        let accepted = payload.validation.all_ok() && !payload.artifact_path.is_empty();
+        let status = if accepted {
             StatusCode(201)
         } else {
             StatusCode(422)

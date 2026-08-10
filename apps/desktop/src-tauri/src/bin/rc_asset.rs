@@ -3,11 +3,10 @@ use std::process;
 
 use research_canvas_desktop_lib::{
     commands::fetch_asset::{
-        content_addressed_import, ingest_fetched_asset_at, list_fetch_records_at,
-        sniff_image_mime, DEFAULT_CAP_BYTES, IngestFetchedAssetRequest, LICENSE_ALLOW_LIST,
-        SOURCE_ALLOW_LIST,
+        ingest_fetched_asset_at, list_fetch_records_at, DEFAULT_CAP_BYTES,
+        IngestFetchedAssetRequest, LICENSE_ALLOW_LIST,
     },
-    db::repositories::{FetchRecord, StreetViewRegion},
+    db::repositories::StreetViewRegion,
 };
 use serde::Serialize;
 
@@ -72,7 +71,10 @@ fn dispatch(command: &str, options: &Options) -> Result<Outcome, String> {
         "ingest" => {
             let request = ingest_request(options)?;
             let record = ingest_fetched_asset_at(&request)?;
-            let accepted = record.validation.all_ok();
+            // Accepted = the gate passed AND the bytes actually landed in the
+            // store. A failed-redaction attempt writes an errored record with an
+            // empty artifact path; that must exit non-zero too.
+            let accepted = record.validation.all_ok() && !record.artifact_path.is_empty();
             let value = serde_json::to_value(&record).map_err(|error| error.to_string())?;
             Ok(Outcome { value, accepted })
         }
@@ -275,15 +277,6 @@ fn print_json<T: Serialize>(value: &T) {
     );
 }
 
-#[allow(dead_code)]
-fn _reference_allow_lists() {
-    // Keep the allow-lists import alive for `--help` documentation clarity;
-    // the gate itself lives in the lib and is what actually enforces them.
-    let _ = (LICENSE_ALLOW_LIST, SOURCE_ALLOW_LIST, DEFAULT_CAP_BYTES);
-    let _ = (content_addressed_import as fn(&std::path::Path, &[u8], &str) -> Result<String, String>,);
-    let _ = sniff_image_mime as fn(&[u8]) -> Option<&'static str>;
-}
-
 fn print_help() {
     println!(
         "rc-asset <command> [options]\n\n\
@@ -313,8 +306,3 @@ fn print_help() {
         DEFAULT_CAP_BYTES,
     );
 }
-
-// Keep the concrete record type in the binary's type-checked surface so
-// serialization shape changes fail the build here too.
-#[allow(dead_code)]
-fn _typecheck(_record: &FetchRecord) {}

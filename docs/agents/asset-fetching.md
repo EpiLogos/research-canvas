@@ -151,8 +151,17 @@ reason). The agent must read the FAIL flag(s) and correct course:
 
 Do **not** re-run with `--json` and ignore the exit code: the fetch record is
 the audit trail, and an accepted record is idempotent (re-ingesting the same
-session + source URL + byte hash returns the existing record instead of
-duplicating bytes).
+profile + session + source URL + byte hash returns the existing record instead
+of duplicating bytes).
+
+**M1 — dedup returns the stale accepted record.** Re-ingesting an accepted
+record returns it **unchanged**: a corrected `--license`, a different
+`--place` / `--walk` / `--scene`, or added `--redaction-region` values are
+**silently discarded**. An accepted record's provenance/association/regions can
+only be changed by deleting the fetch record row (and its linked
+`street_view_images` row) and re-ingesting. Rejected attempts (empty
+`artifact_path`) are never deduped, so a corrected re-ingest after a rejection
+always writes a fresh record.
 
 ---
 

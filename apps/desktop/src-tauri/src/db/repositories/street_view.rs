@@ -254,6 +254,15 @@ impl<'conn> StreetViewRepository<'conn> {
         Ok(record)
     }
 
+    /// Deletes a street-view row. Used by the fetch-asset gate to roll back a
+    /// registration whose redaction failed, so no orphaned row survives without
+    /// its fetch record.
+    pub fn delete(&self, id: &str) -> RepositoryResult<()> {
+        self.connection
+            .execute("DELETE FROM street_view_images WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
     fn replace_regions(&self, record: &StreetViewImageRecord) -> RepositoryResult<StreetViewImageRecord> {
         Self::validate(record)?;
         let now = current_timestamp();

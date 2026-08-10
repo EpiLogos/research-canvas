@@ -87,11 +87,6 @@ impl<'conn> FetchRecordRepository<'conn> {
                 "fetch record byteSize must not be negative".into(),
             ));
         }
-        if record.content_hash.trim().is_empty() {
-            return Err(RepositoryError::Validation(
-                "fetch record contentHash must not be blank".into(),
-            ));
-        }
         if ![
             "pending",
             "redacted",
@@ -104,11 +99,12 @@ impl<'conn> FetchRecordRepository<'conn> {
                 record.redaction_status
             )));
         }
-        // Accepted records must carry full provenance (source URL + license) and
-        // a portable relative artifact path inside the media root. Rejected
-        // attempts keep an empty artifact path and may hold a blank field that
-        // failed the gate (e.g. a missing license) — that blank is the audit
-        // trail, so it must still persist.
+        // Accepted records must carry full provenance (source URL + license), a
+        // content hash, and a portable relative artifact path inside the media
+        // root. Rejected attempts keep an empty artifact path and may hold blank
+        // fields that failed the gate (a missing license, an oversize file that
+        // was never read so never hashed) — that blank is the audit trail, so it
+        // must still persist.
         if !record.artifact_path.is_empty() {
             if record.source_url.trim().is_empty() {
                 return Err(RepositoryError::Validation(
@@ -118,6 +114,11 @@ impl<'conn> FetchRecordRepository<'conn> {
             if record.license.trim().is_empty() {
                 return Err(RepositoryError::Validation(
                     "accepted fetch record license must not be blank".into(),
+                ));
+            }
+            if record.content_hash.trim().is_empty() {
+                return Err(RepositoryError::Validation(
+                    "accepted fetch record contentHash must not be blank".into(),
                 ));
             }
             assert_portable_path(&record.artifact_path, "fetch record artifact")?;
@@ -181,13 +182,14 @@ impl<'conn> FetchRecordRepository<'conn> {
             .map_err(Into::into)
     }
 
-    /// Idempotency lookup for accepted re-ingests: the same agent session, the
-    /// same source URL, and the same byte hash already landed, so the gate
+    /// Idempotency lookup for accepted re-ingests (M2): the same profile scope,
+    /// agent session, source URL, and byte hash already landed, so the gate
     /// returns the existing record instead of importing the bytes twice.
     /// Rejected rows (`artifact_path = ''`) never match, so a corrected
     /// re-ingest can still proceed.
     pub fn find_accepted_by_dedup_key(
         &self,
+        profile_scope: &str,
         agent_session_id: &str,
         source_url: &str,
         content_hash: &str,
@@ -196,10 +198,11 @@ impl<'conn> FetchRecordRepository<'conn> {
             .query_row(
                 &format!(
                     "SELECT {COLUMNS} FROM fetch_records
-                     WHERE agent_session_id = ?1 AND source_url = ?2 AND content_hash = ?3
+                     WHERE profile_scope = ?1 AND agent_session_id = ?2
+                       AND source_url = ?3 AND content_hash = ?4
                        AND artifact_path <> ''"
                 ),
-                params![agent_session_id, source_url, content_hash],
+                params![profile_scope, agent_session_id, source_url, content_hash],
                 record_from_row,
             )
             .optional()

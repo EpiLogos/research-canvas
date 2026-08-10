@@ -454,6 +454,185 @@ fn rejected_attempt_then_corrected_reingest_lands() {
 }
 
 #[test]
+fn gif_with_redaction_regions_writes_one_fetch_record_and_no_orphans() {
+    let dir = fixture_dir();
+    let media_root = dir.path().join("media");
+    let staging = dir.path().join("staging");
+    let source = staging.join("map.gif");
+    write_real_gif(&source);
+    let database_path = dir.path().join("rc-asset.sqlite").to_string_lossy().to_string();
+    let media_root_str = media_root.to_string_lossy().to_string();
+
+    let mut req = request(
+        &database_path,
+        &media_root_str,
+        "bootstrapping",
+        source.to_string_lossy().as_ref(),
+    );
+    req.redaction_regions = vec![StreetViewRegion {
+        x: 0.0,
+        y: 0.0,
+        width: 0.25,
+        height: 0.25,
+        reason: "face".into(),
+        source: "manual".into(),
+    }];
+
+    // The gate accepts GIF by magic bytes, but the local redaction codecs only
+    // decode PNG/JPEG. I1: this must be an audited rejection, not a hard error,
+    // and must not orphan media or a street-view row.
+    let record = ingest_fetched_asset_at(&req).expect("errored attempt is a fetch record");
+    assert!(!record.validation.all_ok());
+    assert!(!record.validation.mime_ok, "decode failure marks mime FAIL");
+    assert!(record.artifact_path.is_empty(), "no bytes imported");
+    assert!(record.street_view_image_id.is_none());
+
+    let db = Database::open(&database_path).unwrap();
+    let listed = list_fetch_records_at(&database_path, "bootstrapping").unwrap();
+    assert_eq!(listed.len(), 1, "exactly one fetch record per attempt");
+    assert_eq!(listed[0].id, record.id);
+    assert!(StreetViewRepository::new(db.connection())
+        .list_for_profile("bootstrapping")
+        .unwrap()
+        .is_empty(), "no orphaned street-view row");
+    assert!(
+        !media_root.join("street-view").exists(),
+        "no imported file remains (import never ran)"
+    );
+}
+
+#[test]
+fn corrupt_png_with_regions_writes_one_fetch_record_and_no_orphans() {
+    let dir = fixture_dir();
+    let media_root = dir.path().join("media");
+    let staging = dir.path().join("staging");
+    let source = staging.join("corrupt.png");
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
+    bytes.extend_from_slice(b"this is not a real png body");
+    std::fs::write(&source, &bytes).unwrap();
+    let database_path = dir.path().join("rc-asset.sqlite").to_string_lossy().to_string();
+    let media_root_str = media_root.to_string_lossy().to_string();
+
+    let mut req = request(
+        &database_path,
+        &media_root_str,
+        "bootstrapping",
+        source.to_string_lossy().as_ref(),
+    );
+    req.redaction_regions = vec![StreetViewRegion {
+        x: 0.0,
+        y: 0.0,
+        width: 0.25,
+        height: 0.25,
+        reason: "face".into(),
+        source: "detected".into(),
+    }];
+
+    // Magic bytes match PNG, so the mime gate passes — but decode fails. I1:
+    // this must be an audited rejection with no orphaned media or street-view row.
+    let record = ingest_fetched_asset_at(&req).expect("errored attempt is a fetch record");
+    assert!(!record.validation.all_ok());
+    assert!(!record.validation.mime_ok);
+    assert!(record.artifact_path.is_empty());
+    assert!(record.street_view_image_id.is_none());
+
+    let db = Database::open(&database_path).unwrap();
+    assert_eq!(list_fetch_records_at(&database_path, "bootstrapping").unwrap().len(), 1);
+    assert!(StreetViewRepository::new(db.connection())
+        .list_for_profile("bootstrapping")
+        .unwrap()
+        .is_empty());
+    assert!(!media_root.join("street-view").exists());
+
+    // Retrying the same corrupt bytes does NOT compound the leak: each retry is
+    // its own rejected record, still with no street-view rows or imported files.
+    ingest_fetched_asset_at(&req).expect("second errored attempt");
+    assert_eq!(list_fetch_records_at(&database_path, "bootstrapping").unwrap().len(), 2);
+    assert!(StreetViewRepository::new(db.connection())
+        .list_for_profile("bootstrapping")
+        .unwrap()
+        .is_empty());
+    assert!(!media_root.join("street-view").exists());
+}
+
+#[test]
+fn accepted_dedup_is_scoped_to_profile_scope() {
+    let dir = fixture_dir();
+    let media_root = dir.path().join("media");
+    let staging = dir.path().join("staging");
+    let source = staging.join("photo.png");
+    write_real_png(&source);
+    let database_path = dir.path().join("rc-asset.sqlite").to_string_lossy().to_string();
+    let media_root_str = media_root.to_string_lossy().to_string();
+
+    let req_a = request(
+        &database_path,
+        &media_root_str,
+        "bootstrapping",
+        source.to_string_lossy().as_ref(),
+    );
+    let req_b = request(
+        &database_path,
+        &media_root_str,
+        "migration",
+        source.to_string_lossy().as_ref(),
+    );
+
+    let first = ingest_fetched_asset_at(&req_a).expect("ingest under bootstrapping");
+    assert!(first.validation.all_ok());
+    let second = ingest_fetched_asset_at(&req_b).expect("ingest under migration");
+    assert!(second.validation.all_ok());
+
+    // M2: the same session + source URL + bytes under a second profile writes
+    // its own record instead of returning the first profile's record.
+    assert_ne!(first.id, second.id);
+    assert_ne!(first.profile_scope, second.profile_scope);
+    let db = Database::open(&database_path).unwrap();
+    assert_eq!(list_fetch_records_at(&database_path, "bootstrapping").unwrap().len(), 1);
+    assert_eq!(list_fetch_records_at(&database_path, "migration").unwrap().len(), 1);
+    assert_eq!(
+        StreetViewRepository::new(db.connection())
+            .list_for_profile("bootstrapping")
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        StreetViewRepository::new(db.connection())
+            .list_for_profile("migration")
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn source_url_host_accepts_uppercase_schemes() {
+    // M4: the scheme strip is case-insensitive.
+    assert_eq!(
+        research_canvas_desktop_lib::commands::fetch_asset::source_url_host(
+            "HTTPS://UPLOAD.WIKIMEDIA.ORG/x.png"
+        ),
+        Some("upload.wikimedia.org".into())
+    );
+    assert_eq!(
+        research_canvas_desktop_lib::commands::fetch_asset::source_url_host(
+            "http://Commons.Wikimedia.org/wiki/File:x.jpg"
+        ),
+        Some("commons.wikimedia.org".into())
+    );
+    assert_eq!(
+        research_canvas_desktop_lib::commands::fetch_asset::source_url_host("file:///etc/passwd"),
+        None
+    );
+    assert_eq!(
+        research_canvas_desktop_lib::commands::fetch_asset::source_url_host("not-a-url"),
+        None
+    );
+}
+
+#[test]
 fn gate_requires_profile_scope_media_root_and_agent_session() {
     let dir = fixture_dir();
     let media_root = dir.path().join("media");

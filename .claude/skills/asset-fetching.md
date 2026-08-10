@@ -79,7 +79,12 @@ Read the FAIL flag(s) from the report:
 | `license` | Pick an allowed license; never relabel a restricted image |
 | `source` | Use an allowed source host; never spoof a URL |
 
-Re-run after correcting. Re-ingesting an accepted record is idempotent.
+Re-run after correcting. Re-ingesting an accepted record is idempotent — it
+returns the existing record unchanged, so a corrected license, association, or
+redaction region on an already-accepted record is **silently discarded**. To
+change an accepted record, delete its fetch record row (and its linked
+street-view image) and re-ingest. Rejected attempts are never deduped, so a
+corrected re-ingest after a rejection always writes a fresh record.
 
 ### 6. Announce the report back into the session
 

@@ -33,10 +33,11 @@ CREATE INDEX IF NOT EXISTS idx_fetch_records_agent_session
     ON fetch_records(agent_session_id);
 CREATE INDEX IF NOT EXISTS idx_fetch_records_place
     ON fetch_records(place_id);
--- Idempotent re-ingest for ACCEPTED records: the same agent session ingesting
--- the same source bytes under the same URL never writes a second row or a
--- second street-view image. Rejected attempts (`artifact_path = ''`) stay
--- unique-per-retry so a corrected re-ingest can still land.
+-- Idempotent re-ingest for ACCEPTED records: the same profile scope + agent
+-- session ingesting the same source bytes under the same URL never writes a
+-- second row or a second street-view image (M2 includes profile_scope in the
+-- key). Rejected attempts (`artifact_path = ''`) stay unique-per-retry so a
+-- corrected re-ingest can still land.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_fetch_records_accepted_dedup
-    ON fetch_records(agent_session_id, source_url, content_hash)
+    ON fetch_records(profile_scope, agent_session_id, source_url, content_hash)
     WHERE artifact_path <> '';
