@@ -6,21 +6,33 @@ import type { GraphExportBundle } from "@research-canvas/exporter";
 import { App } from "./App";
 import { GraphApp } from "./GraphApp";
 import { readBootstrappedGraphBundle } from "./OfflineBootstrap";
+import { validatePalaceBundle } from "@research-canvas/canvas";
+import type { PalaceBundle } from "@research-canvas/canvas";
+import { PalaceApp, readBootstrappedPalaceBundle } from "./palace/PalaceApp";
 
 type Choice =
   | { kind: "pending" }
   | { kind: "graph"; bundle: GraphExportBundle }
+  | { kind: "palace"; bundle: PalaceBundle }
   | { kind: "legacy" };
 
 /**
- * Chooses the web entry: the two-lens GraphApp when a graph bundle is present
- * (an inlined window.__RESEARCH_CANVAS_GRAPH_BUNDLE__ or a fetchable
- * graph-bundle.json), otherwise the legacy ExportBundle App. GraphApp is the
- * canonical web viewer — it renders the SHARED TimelineLens/CanvasView. The
- * legacy App is only a fallback for bundles that predate the graph export.
+ * Chooses the web entry:
+ * 1. `/palace` routes to the 3D mind-palace viewer (PalaceApp) when a palace
+ *    bundle is present (inlined window.__RESEARCH_CANVAS_PALACE_BUNDLE__ or a
+ *    fetchable palace-bundle.json).
+ * 2. Otherwise the two-lens GraphApp wins when a graph bundle is present.
+ * 3. The legacy ExportBundle App is the fallback for bundles that predate the
+ *    graph export.
+ * GraphApp is the canonical web viewer for the two-lens surfaces; PalaceApp
+ * renders the shared PalaceSurface read-only.
  */
 export function EntryChooser() {
   const [choice, setChoice] = useState<Choice>(() => {
+    if (isPalaceRoute()) {
+      const bootstrapped = readBootstrappedPalaceBundle();
+      return bootstrapped ? { kind: "palace", bundle: bootstrapped } : { kind: "pending" };
+    }
     const bootstrapped = readBootstrappedGraphBundle();
     return bootstrapped ? { kind: "graph", bundle: bootstrapped } : { kind: "pending" };
   });
@@ -31,6 +43,27 @@ export function EntryChooser() {
     }
 
     let cancelled = false;
+    const preferPalace = isPalaceRoute();
+
+    if (preferPalace) {
+      fetchPalaceBundle()
+        .then((bundle) => {
+          if (!cancelled && bundle) {
+            setChoice({ kind: "palace", bundle });
+          } else if (!cancelled) {
+            setChoice({ kind: "legacy" });
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setChoice({ kind: "legacy" });
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     void fetch("graph-bundle.json")
       .then(async (response) => {
         if (!response.ok) {
@@ -43,8 +76,13 @@ export function EntryChooser() {
           setChoice({ kind: "graph", bundle });
         }
       })
-      .catch(() => {
-        if (!cancelled) {
+      .catch(async () => {
+        // No graph bundle: a palace-only export still renders — fall through
+        // to the 3D mind palace before giving up on the legacy bundle.
+        const palace = await fetchPalaceBundle();
+        if (!cancelled && palace) {
+          setChoice({ kind: "palace", bundle: palace });
+        } else if (!cancelled) {
           setChoice({ kind: "legacy" });
         }
       });
@@ -58,6 +96,10 @@ export function EntryChooser() {
     return <GraphApp bundle={choice.bundle} />;
   }
 
+  if (choice.kind === "palace") {
+    return <PalaceApp bundle={choice.bundle} />;
+  }
+
   if (choice.kind === "legacy") {
     return <App />;
   }
@@ -67,4 +109,24 @@ export function EntryChooser() {
       <p>Loading export…</p>
     </main>
   );
+}
+
+function isPalaceRoute() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const path = window.location.pathname.replace(/\/+$/, "");
+  return path === "/palace" || path.startsWith("/palace/");
+}
+
+async function fetchPalaceBundle(): Promise<PalaceBundle | null> {
+  const bootstrapped = readBootstrappedPalaceBundle();
+  if (bootstrapped) {
+    return bootstrapped;
+  }
+  const response = await fetch("palace-bundle.json");
+  if (!response.ok) {
+    return null;
+  }
+  return validatePalaceBundle(await response.json());
 }
