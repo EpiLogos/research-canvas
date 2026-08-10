@@ -1,6 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const port = 4173;
+// The public-viewer dev server serves the offline palace bundle e2e
+// (palace-viewer.spec.ts): it mounts the shared PalaceSurface read-only.
+const publicViewerPort = 4174;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -19,11 +22,18 @@ export default defineConfig({
       args: ["--enable-webgl", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"]
     }
   },
-  webServer: {
-    command: `pnpm --filter @research-canvas/desktop dev --host 127.0.0.1 --port ${port}`,
-    port,
-    reuseExistingServer: !process.env.CI
-  },
+  webServer: [
+    {
+      command: `pnpm --filter @research-canvas/desktop dev --host 127.0.0.1 --port ${port}`,
+      port,
+      reuseExistingServer: !process.env.CI
+    },
+    {
+      command: `pnpm --filter @research-canvas/public-viewer dev --host 127.0.0.1 --port ${publicViewerPort}`,
+      port: publicViewerPort,
+      reuseExistingServer: !process.env.CI
+    }
+  ],
   projects: [
     {
       name: "chromium",
