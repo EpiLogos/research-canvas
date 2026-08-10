@@ -55,15 +55,6 @@ pub fn list_geography_edges_command(
 }
 
 #[tauri::command]
-pub fn get_geography_edge_command(
-    request: GeographyEdgeIdRequest,
-) -> Result<Option<GeographyEdgeRecord>, String> {
-    let db = open_database(&request.database_path)?;
-    let repo = GeographyEdgeRepository::new(db.connection());
-    repo.get_by_id(&request.id).map_err(|error| error.to_string())
-}
-
-#[tauri::command]
 pub fn upsert_geography_edge_command(
     request: UpsertGeographyEdgeRequest,
 ) -> Result<GeographyEdgeRecord, String> {
@@ -114,15 +105,6 @@ pub fn list_geography_edges_at(
     let repo = GeographyEdgeRepository::new(db.connection());
     repo.list_for_profile(profile_scope)
         .map_err(|error| error.to_string())
-}
-
-pub fn get_geography_edge_at(
-    database_path: &str,
-    id: &str,
-) -> Result<Option<GeographyEdgeRecord>, String> {
-    let db = open_database(database_path)?;
-    let repo = GeographyEdgeRepository::new(db.connection());
-    repo.get_by_id(id).map_err(|error| error.to_string())
 }
 
 pub fn delete_geography_edge_at(database_path: &str, id: &str) -> Result<(), String> {

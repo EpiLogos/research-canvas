@@ -290,7 +290,17 @@ fn derive_passage_refs(source_path: &str, content: &str, limit: usize) -> Vec<Va
     let mut offset = 0usize;
     for line in content.lines() {
         let line_start = offset;
-        offset += line.len() + 1; // + newline (assume \n; offsets stay byte-accurate for reads)
+        // Rust's `lines()` splits on `\n` and strips a trailing `\r`, so a
+        // CRLF line ending costs 2 bytes in the byte-offset arithmetic and a
+        // bare LF costs 1. The final line may carry no terminator at all. The
+        // offsets must stay byte-accurate so the refs are readable back from
+        // the real file.
+        offset += line.len();
+        if content[offset..].starts_with("\r\n") {
+            offset += 2;
+        } else if content[offset..].starts_with('\n') {
+            offset += 1;
+        }
         if line.trim().is_empty() || refs.len() >= limit {
             continue;
         }
@@ -349,4 +359,38 @@ pub async fn ingest_constellation(
     let graph_report = persist_constellation_graph(graph_repo, &derived, &sqlite_report.constellation_id)
         .await?;
     Ok(graph_report)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::derive_passage_refs;
+
+    #[test]
+    fn passage_ref_offsets_are_byte_accurate_for_crlf_and_lf() {
+        let content = "alpha\r\nbeta\ngamma";
+        let refs = derive_passage_refs("source.md", content, 8);
+        let offsets: Vec<(u64, u64)> = refs
+            .iter()
+            .map(|entry| {
+                let unit = entry.get("unit").unwrap();
+                (
+                    unit.get("startOffset").unwrap().as_u64().unwrap(),
+                    unit.get("endOffset").unwrap().as_u64().unwrap(),
+                )
+            })
+            .collect();
+        // alpha spans [0,5), beta follows the CRLF at byte 7, gamma follows
+        // the LF at byte 12. A naive +1 newline assumption would shift beta.
+        assert_eq!(offsets, vec![(0, 5), (7, 11), (12, 17)]);
+        assert!(refs.iter().all(|entry| entry.get("artifactId").unwrap() == "source.md"));
+    }
+
+    #[test]
+    fn passage_ref_offsets_are_byte_accurate_for_a_lone_crlf_terminated_line() {
+        let content = "only\r\n";
+        let refs = derive_passage_refs("source.md", content, 8);
+        let unit = refs[0].get("unit").unwrap();
+        assert_eq!(unit.get("startOffset").unwrap().as_u64().unwrap(), 0);
+        assert_eq!(unit.get("endOffset").unwrap().as_u64().unwrap(), 4);
+    }
 }

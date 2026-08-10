@@ -154,7 +154,6 @@ pub fn run() {
             commands::scenes::delete_scene_command,
             commands::scenes::delete_scene_sequence_command,
             commands::geography_edges::list_geography_edges_command,
-            commands::geography_edges::get_geography_edge_command,
             commands::geography_edges::upsert_geography_edge_command,
             commands::geography_edges::delete_geography_edge_command,
             commands::street_view::list_street_view_images_command,

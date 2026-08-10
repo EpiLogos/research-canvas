@@ -129,7 +129,3 @@ fn collect_media_paths(manifest: &KeepsakeManifestWire) -> Result<Vec<String>, S
     paths.sort();
     Ok(paths)
 }
-
-pub fn parse_keepsake_manifest(manifest_json: &str) -> Result<KeepsakeManifestWire, String> {
-    serde_json::from_str(manifest_json).map_err(|error| error.to_string())
-}

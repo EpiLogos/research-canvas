@@ -770,8 +770,14 @@ fn pending_sync_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PendingNod
     let metadata_revision: i64 = row.get(32)?;
     let metadata_body_sources: Vec<String> = string_vec(row, 33)?;
     let sync_state: String = row.get(30)?;
+    // A metadata revision AHEAD of the document is the legitimate-advance
+    // signal (e.g. the pipeline dates an atemporal seed via the metadata
+    // seam without touching the body): the structural projection is the
+    // authoritative register and the pending sync must use it. Genuine
+    // corruption — diverged content fields, or metadata BEHIND the
+    // document — still rejects loudly.
     if metadata_origin != document.content_origin.as_str()
-        || metadata_revision != document.content_revision
+        || metadata_revision < document.content_revision
         || metadata_body_sources != document.body_source_coordinates
         || !matches!(sync_state.as_str(), "pending" | "synced")
     {
@@ -909,5 +915,59 @@ mod tests {
             )
             .unwrap();
         assert_eq!(projection_count, 0);
+    }
+
+    #[test]
+    fn pending_sync_listing_tolerates_legitimately_advanced_metadata_and_rejects_stale_metadata() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("pending-coherence.db");
+        let db = Database::open(path.to_str().unwrap()).expect("open db");
+        let repo = NodeDocumentRepository::new(db.connection());
+
+        let mut document = input("advanced", "body", ContentOrigin::Seed, 1);
+        document.body_source_coordinates = vec!["canon.md#body".into()];
+        repo.apply_reconciliation_with_projection(
+            &document,
+            None,
+            Some(&DocumentMetadataProjection {
+                entity_type: "Work".into(),
+                title: "Advanced".into(),
+                schema_version: 1,
+            }),
+        )
+        .unwrap();
+
+        // Legitimate advance: the pipeline dates the seed via the metadata
+        // seam, bumping only the metadata revision (body untouched). The
+        // pending row must remain coherent and surface the advanced metadata.
+        db.connection()
+            .execute(
+                "UPDATE graph_node_metadata SET content_revision=content_revision+1,
+                    is_temporal=1, valid_from='1600', temporal_precision='year'
+                 WHERE graph_node_id='advanced'",
+                [],
+            )
+            .unwrap();
+
+        let rows = repo.list_pending_syncs().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].document.content_revision, 1);
+        assert!(rows[0].structure.is_temporal);
+        assert_eq!(rows[0].structure.valid_from.as_deref(), Some("1600"));
+
+        // Genuine corruption: a document write that left the metadata behind —
+        // the structural projection can never legitimately lag the body.
+        db.connection()
+            .execute(
+                "UPDATE node_document SET content_revision=content_revision+2
+                 WHERE graph_node_id='advanced'",
+                [],
+            )
+            .unwrap();
+        let error = repo.list_pending_syncs().unwrap_err();
+        assert!(
+            error.to_string().contains("not coherent"),
+            "unexpected error: {error}"
+        );
     }
 }
