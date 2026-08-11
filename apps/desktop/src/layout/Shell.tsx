@@ -44,7 +44,7 @@ export function Shell() {
   const workspace = useCanvasWorkspace();
   const [fullScreenMode, setFullScreenMode] = useState<"closed" | "node" | "sequence">("closed");
   const [fullScreenRecord, setFullScreenRecord] = useState<ReaderRecord | null>(null);
-  const [leftMode, setLeftMode] = useState<"files" | "search" | "annotations">("files");
+  const [leftMode, setLeftMode] = useState<"projects" | "files" | "search" | "annotations">("projects");
   const [sequencesOpen, setSequencesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -130,7 +130,7 @@ export function Shell() {
   );
 
   const setBrowserMode = useCallback(
-    (mode: "files" | "search" | "annotations") => {
+    (mode: "projects" | "files" | "search" | "annotations") => {
       setLeftMode(mode);
       layout.setBrowserOpen(true);
     },
@@ -216,7 +216,7 @@ export function Shell() {
     }, 260);
   }, [cancelBrowserClose, closeBrowser]);
 
-  const previewBrowserMode = useCallback((mode: "files" | "search" | "annotations") => {
+  const previewBrowserMode = useCallback((mode: "projects" | "files" | "search" | "annotations") => {
     cancelBrowserClose();
     setLeftMode(mode);
     layout.setBrowserOpen(true);

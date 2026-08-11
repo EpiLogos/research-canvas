@@ -3,10 +3,11 @@ import { FuzzyFilePicker } from "@research-canvas/canvas";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { SearchPanel } from "../features/search/SearchPanel";
 import { AnnotationsPanel } from "../features/annotations/AnnotationsPanel";
+import { ProjectTree } from "../features/projects/ProjectTree";
 
 interface LeftOverlayProps {
   open: boolean;
-  mode: "files" | "search" | "annotations";
+  mode: "projects" | "files" | "search" | "annotations";
   onResizeStart: (e: React.PointerEvent) => void;
   onInteractionStart?: () => void;
   onInteractionEnd?: () => void;
@@ -121,6 +122,7 @@ export function LeftOverlay({ open, mode, onResizeStart, onInteractionStart, onI
           </div>
         ) : (
           <>
+        {mode === "projects" && <ProjectTree />}
         {mode === "files" && (
           <>
             <header className="explorer-heading">

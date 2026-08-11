@@ -159,7 +159,7 @@ export function ProjectsLayer() {
         className="icon-strip__btn projects-layer__trigger"
         data-testid="projects-trigger"
         aria-expanded={open ? "true" : "false"}
-        aria-label="Projects"
+        aria-label="Project switcher"
         title={activeProjectName ? `Project: ${activeProjectName}` : "No project selected"}
         onClick={() => setOpen((value) => !value)}
         dangerouslySetInnerHTML={{

@@ -71,7 +71,7 @@ describe("IconStrip rail", () => {
     setup();
     await waitFor(() => expect(resolveOrCreateHome).toHaveBeenCalled());
     expect(screen.getByTestId("projects-trigger")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Projects" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Project switcher" })).toBeInTheDocument();
   });
 
   it("opens the projects picker and lists home projects", async () => {
