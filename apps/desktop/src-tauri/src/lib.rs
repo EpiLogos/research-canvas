@@ -26,6 +26,7 @@ pub mod export;
 pub mod fs;
 pub mod pty;
 pub mod workspace;
+pub mod workspace_state;
 
 use std::sync::{Arc, Mutex};
 
