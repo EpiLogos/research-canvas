@@ -19,6 +19,7 @@ export interface ArchetypeRepository {
     projectId: string,
     placeGraphNodeId: string,
   ): Promise<ArchetypalExpression[]>;
+  getArchetypeHeatmap(projectId: string): Promise<ArchetypeHeatmapEntry[]>;
 }
 
 export type { ArchetypalExpression, ArchetypeHeatmapEntry };

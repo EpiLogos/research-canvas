@@ -6,7 +6,6 @@ import {
   type GraphNodeContract,
 } from "@research-canvas/schema";
 import type { ArchetypeRepository, NodeRepository } from "@research-canvas/domain";
-
 class FakeArchetypeAdapter
   implements ArchetypeRepository, Pick<NodeRepository, "getArchetypeHeatmap">
 {
@@ -249,5 +248,22 @@ describe("ArchetypeRepository heatmap", () => {
     const lawEntry = heatmap.find((h) => h.archetypeId === law.graphNodeId)!;
     expect(lawEntry.expressions).toHaveLength(1);
     expect(lawEntry.temporalSpan.end).toBeNull();
+  });
+});
+
+describe("ArchetypeRepository port contract", () => {
+  test("exposes all four ticket-required methods on the adapter", () => {
+    const adapter = new FakeArchetypeAdapter();
+    const methods = [
+      "listExpressions",
+      "listExpressionsForTimeWindow",
+      "listExpressionsForPlace",
+      "getArchetypeHeatmap",
+    ] as const;
+    for (const method of methods) {
+      expect(typeof (adapter as unknown as Record<string, unknown>)[method]).toBe(
+        "function",
+      );
+    }
   });
 });
