@@ -454,6 +454,7 @@ fn metadata_record(seed: &SeedGraphNode) -> Result<GraphNodeMetadataRecord, Stri
         schema_version: 1,
         sync_state: SyncState::Pending,
         remote_revision: None,
+        is_archetype: false,
     })
 }
 

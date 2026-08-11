@@ -970,3 +970,57 @@ fn db_migrations_re_migrating_a_real_workspace_never_replays_or_drops_data() {
     assert_eq!(preserved.1, "ENCAPSULATES");
     assert_eq!(preserved.2, 0);
 }
+
+#[test]
+fn db_migrations_0036_adds_colour_tag_columns_to_canvas_nodes() {
+    let dir = tempdir().expect("temp dir");
+    let path = dir.path().join("colour-tags.sqlite");
+    let connection = Connection::open(&path).expect("fixture database");
+    MigrationRunner::migrate_through(&connection, "0035_project_persistence")
+        .expect("apply through pre-colour-tag schema");
+
+    connection
+        .execute_batch(
+            "INSERT INTO projects(id, display_name, slug, root_path) VALUES ('project-a', 'Project A', 'project-a', '/project-a');
+             INSERT INTO canvases(id, project_id, name) VALUES ('canvas-a', 'project-a', 'Canvas A');
+             INSERT INTO canvas_nodes(id, canvas_id, type, title, position_x, position_y, width, height)
+                VALUES ('node-a', 'canvas-a', 'note', 'A', 0, 0, 100, 100);",
+        )
+        .expect("insert pre-colour-tag row with old columns only");
+
+    MigrationRunner::migrate(&connection).expect("apply colour-tag migration");
+
+    let columns: Vec<String> = connection
+        .prepare("PRAGMA table_info(canvas_nodes)")
+        .expect("table info")
+        .query_map([], |row| row.get::<_, String>(1))
+        .expect("column rows")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("decode columns");
+    for column in ["colour_tag", "custom_dot_colour", "custom_bg_colour", "custom_text_colour"] {
+        assert!(
+            columns.iter().any(|c| c == column),
+            "canvas_nodes should gain {column}"
+        );
+    }
+
+    let migrated: (Option<String>, Option<String>, Option<String>, Option<String>) = connection
+        .query_row(
+            "SELECT colour_tag, custom_dot_colour, custom_bg_colour, custom_text_colour
+             FROM canvas_nodes WHERE id='node-a'",
+            [],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                ))
+            },
+        )
+        .expect("read migrated row");
+    assert_eq!(migrated.0, None);
+    assert_eq!(migrated.1, None);
+    assert_eq!(migrated.2, None);
+    assert_eq!(migrated.3, None);
+}

@@ -147,8 +147,16 @@ const MIGRATIONS: &[Migration] = &[
         sql: include_str!("../../migrations/0033_constellation_encapsulation.sql"),
     },
     Migration {
+        version: "0034_is_archetype",
+        sql: include_str!("../../migrations/0034_is_archetype.sql"),
+    },
+    Migration {
         version: "0035_project_persistence",
         sql: include_str!("../../migrations/0035_project_persistence.sql"),
+    },
+    Migration {
+        version: "0036_colour_tags",
+        sql: include_str!("../../migrations/0036_colour_tags.sql"),
     },
 ];
 

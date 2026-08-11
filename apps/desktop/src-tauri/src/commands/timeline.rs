@@ -1258,6 +1258,7 @@ mod local_relationship_projection_tests {
             schema_version: 1,
             sync_state: SyncState::Pending,
             remote_revision: None,
+            is_archetype: false,
         }
     }
 

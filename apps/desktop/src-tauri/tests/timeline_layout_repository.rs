@@ -44,6 +44,7 @@ fn metadata() -> GraphNodeMetadataRecord {
         schema_version: 1,
         sync_state: SyncState::Pending,
         remote_revision: None,
+        is_archetype: false,
     }
 }
 
