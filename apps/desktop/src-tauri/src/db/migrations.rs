@@ -146,6 +146,10 @@ const MIGRATIONS: &[Migration] = &[
         version: "0033_constellation_encapsulation",
         sql: include_str!("../../migrations/0033_constellation_encapsulation.sql"),
     },
+    Migration {
+        version: "0035_project_persistence",
+        sql: include_str!("../../migrations/0035_project_persistence.sql"),
+    },
 ];
 
 impl MigrationRunner {

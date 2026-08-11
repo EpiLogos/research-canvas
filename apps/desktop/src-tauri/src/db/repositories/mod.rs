@@ -13,6 +13,7 @@ pub mod node_attachment;
 pub mod node_document;
 pub mod node_relationship;
 pub mod palace;
+pub mod project_repository;
 pub mod relationship_vocabulary;
 pub mod resource_roots;
 pub mod saved_sequences;
