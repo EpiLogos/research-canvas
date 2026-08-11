@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type {
   FetchRecord,
   StreetViewImageRecord,
-  WorkspaceTransport,
+  WorkspaceServices,
 } from "@research-canvas/desktop-api";
 import type { Scene, SceneSequence } from "@research-canvas/schema";
 
@@ -99,7 +99,7 @@ function makeTransport(
     images?: StreetViewImageRecord[];
     fetchRecords?: FetchRecord[];
   } = {},
-): WorkspaceTransport {
+): WorkspaceServices {
   return {
     async listSceneSequences() {
       return scenes.length > 0 ? [sequence(scenes)] : [];
@@ -129,7 +129,7 @@ function makeTransport(
       throw new Error("unexpected seed write");
     },
     writeKeepsakeBundle: writeKeepsake,
-  } as unknown as WorkspaceTransport;
+  } as unknown as WorkspaceServices;
 }
 
 function redactedStreetImage(

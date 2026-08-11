@@ -4,7 +4,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import type {
   MapSurfaceRenderer,
 } from "@research-canvas/canvas";
-import type { GeographyEdge, TimelineView, WorkspaceTransport } from "@research-canvas/desktop-api";
+import type { GeographyEdge, TimelineView, WorkspaceServices } from "@research-canvas/desktop-api";
 import type { Scene, SceneSequence } from "@research-canvas/schema";
 
 import { PsychogeographicLens } from "./PsychogeographicLens";
@@ -38,7 +38,7 @@ function makeRenderer(): {
 function makeTransport(
   view: TimelineView,
   lanes: GeographyEdge[] = [],
-): WorkspaceTransport {
+): WorkspaceServices {
   const savedScenes: Scene[] = [];
   const savedSequences: SceneSequence[] = [];
   return {
@@ -80,7 +80,7 @@ function makeTransport(
         },
       ];
     },
-  } as unknown as WorkspaceTransport;
+  } as unknown as WorkspaceServices;
 }
 
 const vocLane: GeographyEdge = {

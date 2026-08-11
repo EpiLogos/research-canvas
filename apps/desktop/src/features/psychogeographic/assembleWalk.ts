@@ -1,6 +1,6 @@
 import type {
   GraphNode,
-  WorkspaceTransport,
+  WorkspaceServices,
 } from "@research-canvas/desktop-api";
 import type { GazetteerIndex } from "@research-canvas/geography";
 import type { Scene, SceneSequence } from "@research-canvas/schema";
@@ -15,7 +15,7 @@ import { assembleWalk, type WalkStop } from "@research-canvas/canvas";
  */
 
 export interface AssembleWalkInput {
-  transport: WorkspaceTransport;
+  transport: WorkspaceServices;
   databasePath: string;
   workspaceId: string;
   profileScope: string;

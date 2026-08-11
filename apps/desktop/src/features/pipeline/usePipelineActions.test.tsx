@@ -6,7 +6,7 @@ import type {
   GraphNode,
   GraphRelationship,
   TimelineView,
-  WorkspaceTransport,
+  WorkspaceServices,
 } from "@research-canvas/desktop-api";
 import type { Scene } from "@research-canvas/schema";
 
@@ -113,7 +113,7 @@ function makeFakeTransport(overrides: {
         diagnostics: [],
       };
     },
-    async updateGraphNode(input: Parameters<WorkspaceTransport["updateGraphNode"]>[0]) {
+    async updateGraphNode(input: Parameters<WorkspaceServices["updateGraphNode"]>[0]) {
       const { graphNodeId, patch } = input;
       calls.push({ kind: "updateGraphNode", graphNodeId, patch });
       return makeGraphNode(graphNodeId, "Banda genocide", "Event", {
@@ -123,7 +123,7 @@ function makeFakeTransport(overrides: {
       });
     },
     async upsertTimelineLayout(
-      input: Parameters<WorkspaceTransport["upsertTimelineLayout"]>[0],
+      input: Parameters<WorkspaceServices["upsertTimelineLayout"]>[0],
     ) {
       calls.push({ kind: "upsertTimelineLayout", ...input });
       return {
@@ -139,7 +139,7 @@ function makeFakeTransport(overrides: {
       };
     },
     async connectGraphNodes(
-      input: Parameters<WorkspaceTransport["connectGraphNodes"]>[0],
+      input: Parameters<WorkspaceServices["connectGraphNodes"]>[0],
     ) {
       calls.push({ kind: "connectGraphNodes", ...input });
       return {
@@ -159,7 +159,7 @@ function makeFakeTransport(overrides: {
         curation: overrides.curation ?? null,
       };
     },
-    async loadPalaceGraph(input: Parameters<WorkspaceTransport["loadPalaceGraph"]>[0]) {
+    async loadPalaceGraph(input: Parameters<WorkspaceServices["loadPalaceGraph"]>[0]) {
       return {
         workspaceId: input.workspaceId,
         nodes: [
@@ -180,16 +180,16 @@ function makeFakeTransport(overrides: {
       };
     },
     async savePalaceCuration(
-      input: Parameters<WorkspaceTransport["savePalaceCuration"]>[0],
+      input: Parameters<WorkspaceServices["savePalaceCuration"]>[0],
     ) {
       calls.push({ kind: "savePalaceCuration", curation: input.curation });
       return { profileScope: "bootstrapping", curation: input.curation };
     },
-    async upsertScene(input: Parameters<WorkspaceTransport["upsertScene"]>[0]) {
+    async upsertScene(input: Parameters<WorkspaceServices["upsertScene"]>[0]) {
       calls.push({ kind: "upsertScene", scene: input.scene });
       return input.scene;
     },
-  } as unknown as WorkspaceTransport;
+  } as unknown as WorkspaceServices;
 
   return { transport, calls };
 }
@@ -202,7 +202,7 @@ const node = {
 };
 
 const HOOK_ARGS = {
-  transport: null as WorkspaceTransport | null,
+  transport: null as WorkspaceServices | null,
   workspaceId: "sqlite:/canonical/workspace.sqlite",
   databasePath: "/canonical/workspace.sqlite",
   profileScope: "bootstrapping",

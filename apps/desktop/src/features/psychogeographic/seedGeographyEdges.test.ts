@@ -5,7 +5,7 @@ import { describe, expect, test } from "vitest";
 
 import type {
   TimelineView,
-  WorkspaceTransport,
+  WorkspaceServices,
 } from "@research-canvas/desktop-api";
 import { GazetteerIndex } from "@research-canvas/geography";
 import type { GeographyEdge } from "@research-canvas/schema";
@@ -119,7 +119,7 @@ function movementView(): TimelineView {
 }
 
 function transportFixture(view: TimelineView): {
-  transport: WorkspaceTransport;
+  transport: WorkspaceServices;
   savedEdges: GeographyEdge[];
 } {
   const savedEdges: GeographyEdge[] = [];
@@ -154,7 +154,7 @@ function transportFixture(view: TimelineView): {
       savedEdges.push(edge);
       return edge;
     },
-  } as unknown as WorkspaceTransport;
+  } as unknown as WorkspaceServices;
   return { transport, savedEdges };
 }
 

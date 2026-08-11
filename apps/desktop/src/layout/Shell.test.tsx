@@ -28,8 +28,8 @@ vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@research-canvas/desktop-api")>();
   return {
     ...actual,
-    createWorkspaceTransport: () => ({
-      ...actual.createWorkspaceTransport(),
+    createWorkspaceServices: () => ({
+      ...actual.createWorkspaceServices(),
       bootstrapWorkspace: async () => ({
         activeConstellationId: "root",
         activeProjectId: "root",

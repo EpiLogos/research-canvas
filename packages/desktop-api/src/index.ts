@@ -661,6 +661,8 @@ export function mapAgentActivityRow(row: RawAgentActivityRow): AgentActivity {
   };
 }
 
+export type WorkspaceServices = WorkspaceTransport;
+
 export interface WorkspaceTransport {
   attachConstellationResourceRoot(
     request: ResourceRootMutationRequest
@@ -850,6 +852,10 @@ export function createWorkspaceTransport(): WorkspaceTransport {
   return isTauriRuntime()
     ? createTauriWorkspaceTransport()
     : createBrowserBridgeTransport();
+}
+
+export function createWorkspaceServices(): WorkspaceServices {
+  return createWorkspaceTransport();
 }
 
 export function createReadLayerTransport(

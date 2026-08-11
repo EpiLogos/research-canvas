@@ -1,4 +1,5 @@
 import type {
+  ArchetypeRepository,
   Canvas,
   CanvasRepository,
   CanvasView,
@@ -27,8 +28,33 @@ import type {
   UpdateNodePatch,
   Viewport,
 } from "@research-canvas/domain";
-import type { ArchetypeHeatmapEntry } from "@research-canvas/schema";
-import type { WorkspaceTransport, CreateProjectInput, SavedSequence } from "./index";
+import type { ArchetypeHeatmapEntry, ArchetypalExpression } from "@research-canvas/schema";
+import type { WorkspaceTransport, CreateProjectInput, SavedSequence, CreatableEntityType, GraphNodePatch, TemporalPrecision } from "./index";
+
+export class DesktopArchetypeRepository implements ArchetypeRepository {
+  async listExpressions(_archetypeId: string): Promise<ArchetypalExpression[]> {
+    notImplemented("ArchetypeRepository.listExpressions");
+  }
+
+  async listExpressionsForTimeWindow(
+    _projectId: string,
+    _start: string,
+    _end: string,
+  ): Promise<ArchetypalExpression[]> {
+    notImplemented("ArchetypeRepository.listExpressionsForTimeWindow");
+  }
+
+  async listExpressionsForPlace(
+    _projectId: string,
+    _placeGraphNodeId: string,
+  ): Promise<ArchetypalExpression[]> {
+    notImplemented("ArchetypeRepository.listExpressionsForPlace");
+  }
+
+  async getArchetypeHeatmap(_projectId: string): Promise<ArchetypeHeatmapEntry[]> {
+    notImplemented("ArchetypeRepository.getArchetypeHeatmap");
+  }
+}
 
 function notImplemented(method: string): never {
   throw new Error(`Not yet implemented: ${method}`);
@@ -84,38 +110,70 @@ export class DesktopConstellationRepository implements ConstellationRepository {
 }
 
 export class DesktopCanvasRepository implements CanvasRepository {
+  constructor(private readonly transport: WorkspaceTransport) {}
+
   async listCanvases(_constellationId: string): Promise<Canvas[]> {
     notImplemented("CanvasRepository.listCanvases");
   }
 
-  async getCanvasView(_input: { canvasId: string; lens?: "canvas" | "timeline" }): Promise<CanvasView> {
-    notImplemented("CanvasRepository.getCanvasView");
+  async getCanvasView(input: { canvasId: string; lens?: "canvas" | "timeline" }): Promise<CanvasView> {
+    return this.transport.loadCanvasView({
+      canvasId: input.canvasId,
+      lens: input.lens ?? "canvas",
+    }) as unknown as CanvasView;
   }
 
-  async persistCanvasView(_input: PersistCanvasViewInput): Promise<void> {
-    notImplemented("CanvasRepository.persistCanvasView");
+  async persistCanvasView(input: PersistCanvasViewInput): Promise<void> {
+    await this.transport.upsertCanvasAppState({
+      canvasId: input.canvas.id,
+      viewport: input.viewport ?? { x: 0, y: 0, zoom: 1 },
+      appState: input.appState ?? {},
+    });
   }
 }
 
 export class DesktopNodeRepository implements NodeRepository {
+  constructor(private readonly transport: WorkspaceTransport) {}
+
   async listNodes(_projectId: string, _filters?: NodeFilter): Promise<Node[]> {
     notImplemented("NodeRepository.listNodes");
   }
 
-  async getNode(_id: string): Promise<Node | null> {
-    notImplemented("NodeRepository.getNode");
+  async getNode(id: string): Promise<Node | null> {
+    try {
+      const node = await this.transport.readGraphNode({ graphNodeId: id });
+      return node as unknown as Node;
+    } catch {
+      return null;
+    }
   }
 
-  async createNode(_input: CreateNodeInput): Promise<Node> {
-    notImplemented("NodeRepository.createNode");
+  async createNode(input: CreateNodeInput): Promise<Node> {
+    const node = await this.transport.createGraphNode({
+      entityType: input.entityType as CreatableEntityType,
+      title: input.title,
+      body: input.body ?? "",
+      summary: input.summary,
+      isTemporal: input.isTemporal ?? false,
+      validFrom: input.validFrom ?? undefined,
+      validTo: input.validTo ?? undefined,
+      temporalPrecision: input.temporalPrecision
+        ? (input.temporalPrecision as TemporalPrecision)
+        : undefined,
+    });
+    return node as unknown as Node;
   }
 
-  async updateNode(_id: string, _patch: UpdateNodePatch): Promise<Node> {
-    notImplemented("NodeRepository.updateNode");
+  async updateNode(id: string, patch: UpdateNodePatch): Promise<Node> {
+    const node = await this.transport.updateGraphNode({
+      graphNodeId: id,
+      patch: patch as GraphNodePatch,
+    });
+    return node as unknown as Node;
   }
 
-  async deleteNode(_id: string): Promise<void> {
-    notImplemented("NodeRepository.deleteNode");
+  async deleteNode(id: string): Promise<void> {
+    await this.transport.deleteGraphNode({ graphNodeId: id });
   }
 
   async getArchetypeHeatmap(_projectId: string): Promise<ArchetypeHeatmapEntry[]> {
@@ -124,20 +182,34 @@ export class DesktopNodeRepository implements NodeRepository {
 }
 
 export class DesktopEdgeRepository implements EdgeRepository {
+  constructor(private readonly transport: WorkspaceTransport) {}
+
   async listEdges(_projectId: string, _filters?: EdgeFilter): Promise<Edge[]> {
     notImplemented("EdgeRepository.listEdges");
   }
 
-  async createEdge(_input: CreateEdgeInput): Promise<Edge> {
-    notImplemented("EdgeRepository.createEdge");
+  async createEdge(input: CreateEdgeInput): Promise<Edge> {
+    const relationship = await this.transport.connectGraphNodes({
+      sourceGraphNodeId: input.sourceGraphNodeId,
+      targetGraphNodeId: input.targetGraphNodeId,
+      relType: input.relType,
+      properties: input.properties ?? {},
+    });
+    return {
+      id: relationship.id,
+      relType: relationship.relType,
+      sourceGraphNodeId: relationship.sourceGraphNodeId,
+      targetGraphNodeId: relationship.targetGraphNodeId,
+      properties: relationship.properties as Record<string, unknown>,
+    };
   }
 
   async updateEdge(_id: string, _patch: UpdateEdgePatch): Promise<Edge> {
     notImplemented("EdgeRepository.updateEdge");
   }
 
-  async deleteEdge(_id: string): Promise<void> {
-    notImplemented("EdgeRepository.deleteEdge");
+  async deleteEdge(id: string): Promise<void> {
+    await this.transport.disconnectGraphNodes({ relationshipId: id });
   }
 }
 

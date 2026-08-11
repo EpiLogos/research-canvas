@@ -6,7 +6,7 @@ import type {
   GraphRelationship,
   PalaceGraphView,
   TimelineViewNode,
-  WorkspaceTransport,
+  WorkspaceServices,
 } from "@research-canvas/desktop-api";
 import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 import type { Scene, SceneSequence } from "@research-canvas/schema";
@@ -173,7 +173,7 @@ function encapsulatedPalaceGraphView(): PalaceGraphView {
 }
 
 function makeTransport(): {
-  transport: WorkspaceTransport;
+  transport: WorkspaceServices;
   store: { curation: unknown };
   savedScenes: Scene[];
   savedSequences: SceneSequence[];
@@ -200,7 +200,7 @@ function makeTransport(): {
       savedSequences.push(sequence);
       return sequence;
     },
-  } as unknown as WorkspaceTransport;
+  } as unknown as WorkspaceServices;
   return { transport, store, savedScenes, savedSequences };
 }
 
@@ -218,7 +218,7 @@ describe("PalaceLensHost", () => {
       ...transport,
       loadPalaceGraph: async () => palaceGraphView(),
       savePalaceCuration: saveSpy,
-    } as unknown as WorkspaceTransport;
+    } as unknown as WorkspaceServices;
 
     render(
       <PalaceLensHost
@@ -251,7 +251,7 @@ describe("PalaceLensHost", () => {
     const hostTransport = {
       ...transport,
       loadPalaceGraph: loadSpy,
-    } as unknown as WorkspaceTransport;
+    } as unknown as WorkspaceServices;
 
     render(
       <PalaceLensHost
@@ -284,7 +284,7 @@ describe("PalaceLensHost", () => {
     const viewTransport = {
       ...transport,
       loadPalaceGraph: async () => palaceGraphView(),
-    } as unknown as WorkspaceTransport;
+    } as unknown as WorkspaceServices;
     render(
       <PalaceLensHost
         transport={viewTransport}
@@ -321,7 +321,7 @@ describe("PalaceLensHost", () => {
       async loadPalaceCuration() {
         return { profileScope: "bootstrapping", curation: null };
       },
-    } as unknown as WorkspaceTransport;
+    } as unknown as WorkspaceServices;
     render(
       <PalaceLensHost
         transport={transport}
@@ -343,7 +343,7 @@ describe("PalaceLensHost", () => {
       ...transport,
       loadPalaceGraph: async () => palaceGraphView(),
       writePalaceBundle: writeSpy,
-    } as unknown as WorkspaceTransport;
+    } as unknown as WorkspaceServices;
 
     render(
       <PalaceLensHost

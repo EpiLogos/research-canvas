@@ -20,7 +20,7 @@ import {
   type PalaceCuration,
   type PalaceObjectKind,
 } from "@research-canvas/canvas";
-import type { WorkspaceTransport } from "@research-canvas/desktop-api";
+import type { WorkspaceServices } from "@research-canvas/desktop-api";
 import type { Scene } from "@research-canvas/schema";
 
 import type { PipelineStageId } from "./pipelineStages";
@@ -35,7 +35,7 @@ export interface PipelineObject {
 }
 
 export interface UsePipelineActionsInput {
-  transport: WorkspaceTransport | null;
+  transport: WorkspaceServices | null;
   workspaceId: string | null;
   databasePath: string | null;
   profileScope: string | null;

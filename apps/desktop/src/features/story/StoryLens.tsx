@@ -12,7 +12,7 @@ import {
 import type {
   FetchRecord,
   StreetViewImageRecord,
-  WorkspaceTransport,
+  WorkspaceServices,
 } from "@research-canvas/desktop-api";
 import { buildKeepsakeManifest } from "@research-canvas/exporter";
 import type { GazetteerIndex } from "@research-canvas/geography";
@@ -30,7 +30,7 @@ import { ensureMigrationStorySeed } from "./seedMigrationStory";
  */
 
 export interface StoryLensProps {
-  transport: WorkspaceTransport;
+  transport: WorkspaceServices;
   databasePath: string;
   workspaceId: string;
   repoRoot: string;

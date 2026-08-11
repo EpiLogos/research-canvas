@@ -91,7 +91,7 @@ vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@research-canvas/desktop-api")>();
   return {
     ...actual,
-    createWorkspaceTransport: () => ({
+    createWorkspaceServices: () => ({
       loadTimelineView,
       upsertTimelineLayout,
       readLocalNodeDocument: async () => ({

@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { PalaceCuration } from "@research-canvas/canvas";
-import type { WorkspaceTransport, TimelineView } from "@research-canvas/desktop-api";
+import type { WorkspaceServices, TimelineView } from "@research-canvas/desktop-api";
 import type { Scene } from "@research-canvas/schema";
 
 import {
@@ -26,7 +26,7 @@ export interface StageInputObject {
 }
 
 interface UsePipelineStagesInput {
-  transport: WorkspaceTransport | null;
+  transport: WorkspaceServices | null;
   workspaceId: string | null;
   databasePath: string | null;
   profileScope: string | null;

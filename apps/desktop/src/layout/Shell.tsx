@@ -28,7 +28,7 @@ import { SequencesManager } from "../features/sequences/SequencesManager";
 import { SettingsOverlay } from "../features/settings/SettingsOverlay";
 import { CommandPalette } from "../features/search/CommandPalette";
 import { TimelineLens } from "@research-canvas/canvas";
-import { createWorkspaceTransport, type GraphNode, type TimelineRelationField } from "@research-canvas/desktop-api";
+import { createWorkspaceServices, type GraphNode, type TimelineRelationField } from "@research-canvas/desktop-api";
 import { createTimelineDataSource } from "../features/timeline/createTimelineDataSource";
 import { PsychogeographicLens } from "../features/psychogeographic/PsychogeographicLens";
 import { StoryLens } from "../features/story/StoryLens";
@@ -66,7 +66,7 @@ export function Shell() {
   const timelineDataSource = useMemo(
     () => workspace.workspaceId ?
       createTimelineDataSource({
-        transport: createWorkspaceTransport(),
+        transport: createWorkspaceServices(),
         workspaceId: workspace.workspaceId,
       }) : null,
     [workspace.workspaceId],

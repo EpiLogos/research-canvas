@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import type { WorkspaceTransport } from "@research-canvas/desktop-api";
+import type { WorkspaceServices } from "@research-canvas/desktop-api";
 
 import { StreetViewImportDialog } from "./StreetViewImportDialog";
 
@@ -38,7 +38,7 @@ function makeTransport() {
       calls.noneNeeded.push(input);
       return { id: "sv-1", redactionStatus: "none_needed" };
     },
-  } as unknown as WorkspaceTransport;
+  } as unknown as WorkspaceServices;
   return { transport, calls };
 }
 
@@ -191,7 +191,7 @@ describe("StreetViewImportDialog", () => {
       async stageStreetViewImage() {
         throw new Error("media root is not writable");
       },
-    } as unknown as WorkspaceTransport;
+    } as unknown as WorkspaceServices;
     render(
       <StreetViewImportDialog
         transport={transport}

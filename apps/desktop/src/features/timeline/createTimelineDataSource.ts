@@ -5,16 +5,16 @@ import type {
   TimelineFilters,
   TimelineView,
   TimelineYearRange,
-  WorkspaceTransport,
+  WorkspaceServices,
 } from "@research-canvas/desktop-api";
 
 type TimelineTransport = Pick<
-  WorkspaceTransport,
+  WorkspaceServices,
   "loadTimelineView" | "loadTimelineRelationField" | "upsertTimelineLayout" | "archetypalLighting" | "resonancesForInstance"
-> & Partial<Pick<WorkspaceTransport, "readGraphNode" | "expandTimelineNode">>;
+> & Partial<Pick<WorkspaceServices, "readGraphNode" | "expandTimelineNode">>;
 
 /**
- * Adapt the WS0 §5.2 WorkspaceTransport to the narrow TimelineDataSource port
+ * Adapt the WS0 §5.2 WorkspaceServices to the narrow TimelineDataSource port
  * the TimelineLens needs. Timeline membership is workspace-scoped temporal
  * graph metadata and never derives from an active constellation canvas.
  */

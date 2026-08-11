@@ -10,7 +10,7 @@ import {
 import type {
   GeographyEdge,
   StreetViewImageRecord,
-  WorkspaceTransport,
+  WorkspaceServices,
 } from "@research-canvas/desktop-api";
 import {
   createLiveServicePolicy,
@@ -33,7 +33,7 @@ import { ensureGeographyEdgeSeed } from "./seedGeographyEdges";
  */
 
 export interface PsychogeographicLensProps {
-  transport: WorkspaceTransport;
+  transport: WorkspaceServices;
   databasePath: string;
   workspaceId: string;
   profileScope: string;

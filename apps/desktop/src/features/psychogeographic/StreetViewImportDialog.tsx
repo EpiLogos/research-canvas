@@ -10,7 +10,7 @@ import type {
   StreetViewImageRecord,
   StreetViewRedactionReason,
   StreetViewRegion,
-  WorkspaceTransport,
+  WorkspaceServices,
 } from "@research-canvas/desktop-api";
 
 /**
@@ -22,7 +22,7 @@ import type {
  */
 
 export interface StreetViewImportDialogProps {
-  transport: WorkspaceTransport;
+  transport: WorkspaceServices;
   databasePath: string;
   mediaRoot: string;
   profileScope: string;

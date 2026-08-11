@@ -2,7 +2,7 @@ import { readWorkspaceTextFile } from "@research-canvas/desktop-api";
 import type {
   GraphNode,
   TimelineView,
-  WorkspaceTransport,
+  WorkspaceServices,
 } from "@research-canvas/desktop-api";
 import type { GazetteerIndex } from "@research-canvas/geography";
 import {
@@ -106,7 +106,7 @@ export const GEOGRAPHY_EDGE_LANES: GeographyEdgeLane[] = [
 ];
 
 export interface GeographyEdgeSeedInput {
-  transport: WorkspaceTransport;
+  transport: WorkspaceServices;
   databasePath: string;
   workspaceId: string;
   /** Monorepo root; corpus source coordinates are relative to it. */

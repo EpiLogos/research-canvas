@@ -3,7 +3,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createAnnotationStore, createCanvasStore } from "@research-canvas/canvas";
-import { createWorkspaceTransport, type GraphNode } from "@research-canvas/desktop-api";
+import { createWorkspaceServices, type GraphNode } from "@research-canvas/desktop-api";
 
 import { CanvasWorkspaceContext } from "../features/canvas/CanvasWorkspaceContext";
 import { readerRecordFromGraphNode } from "../features/viewer/readerRecord";
@@ -159,7 +159,7 @@ function nativeCommandHarness({
 }
 
 function readerWorkspace() {
-  const transport = createWorkspaceTransport();
+  const transport = createWorkspaceServices();
   return {
     store: createCanvasStore({ canvasId: "reader-native-drop-canvas" }),
     annotationStore: createAnnotationStore({ canvasId: "reader-native-drop-canvas" }),

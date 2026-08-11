@@ -33,7 +33,7 @@ import { canvasViewToCanvasNodes } from "./canvasViewToNodes";
 import { selectLegacyNodesNeedingImport, importLegacyCanvasNodes } from "./legacyNodeImport";
 import type { CanvasNode, CanvasEdge, Viewport } from "@research-canvas/schema";
 import {
-  createWorkspaceTransport,
+  createWorkspaceServices,
   type DirectoryEntry,
   type IndexedEntry,
   type ConstellationDocument,
@@ -47,7 +47,7 @@ import {
   type ResolveHomeResult,
   type CreateProjectInput
 } from "@research-canvas/desktop-api";
-type WorkspaceTransport = ReturnType<typeof createWorkspaceTransport>;
+type WorkspaceServices = import("@research-canvas/desktop-api").WorkspaceServices;
 import {
   deriveResourceImportPlan,
   toAssetUrl,
@@ -164,7 +164,7 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   registerFlyToEdge: (fn: (edgeId: string, viewport?: { x: number; y: number; zoom: number }) => void) => void;
   captureViewport: () => Viewport;
   registerCaptureViewport: (fn: () => Viewport) => void;
-  transport: WorkspaceTransport;
+  transport: WorkspaceServices;
   contentLinkingActions: ContentLinkingActions;
 }
 
@@ -179,7 +179,7 @@ export function CanvasWorkspaceProvider({
 }: {
   children: ReactNode;
 }) {
-  const transport = useMemo(() => createWorkspaceTransport(), []);
+  const transport = useMemo(() => createWorkspaceServices(), []);
   const [stores, setStores] = useState<WorkspaceStores>(() =>
     createWorkspaceStores(EMPTY_CANVAS_ID, EMPTY_CONSTELLATION_ID)
   );

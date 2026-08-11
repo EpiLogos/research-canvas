@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
 import type {
-  WorkspaceTransport,
+  WorkspaceServices,
 } from "@research-canvas/desktop-api";
 import type { Scene, SceneSequence } from "@research-canvas/schema";
 import { assembleWalk, loadBundledGeographyPack } from "@research-canvas/canvas";
@@ -51,7 +51,7 @@ vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
 });
 
 function transportFixture(): {
-  transport: WorkspaceTransport;
+  transport: WorkspaceServices;
   savedScenes: Scene[];
   savedSequences: SceneSequence[];
 } {
@@ -81,7 +81,7 @@ function transportFixture(): {
       else savedSequences.push(sequence);
       return sequence;
     },
-  } as unknown as WorkspaceTransport;
+  } as unknown as WorkspaceServices;
   return { transport, savedScenes, savedSequences };
 }
 

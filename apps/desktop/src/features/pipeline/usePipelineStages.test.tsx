@@ -6,7 +6,7 @@ import type {
   GraphNode,
   GraphRelationship,
   TimelineView,
-  WorkspaceTransport,
+  WorkspaceServices,
 } from "@research-canvas/desktop-api";
 import type { Scene } from "@research-canvas/schema";
 
@@ -164,7 +164,7 @@ function makeTransport(overrides: {
         curation: overrides.curation ?? palaceCuration,
       };
     },
-  } as unknown as WorkspaceTransport;
+  } as unknown as WorkspaceServices;
   return transport;
 }
 
@@ -225,7 +225,7 @@ describe("usePipelineStages", () => {
   });
 
   it("keeps stages quiet when the transport has no pipeline seams", async () => {
-    const transport = {} as unknown as WorkspaceTransport;
+    const transport = {} as unknown as WorkspaceServices;
     const { result } = renderHook(() =>
       usePipelineStages({
         transport,

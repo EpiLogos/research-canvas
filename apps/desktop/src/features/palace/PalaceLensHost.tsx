@@ -12,7 +12,7 @@ import {
 import type {
   GraphNode,
   GraphRelationship,
-  WorkspaceTransport,
+  WorkspaceServices,
 } from "@research-canvas/desktop-api";
 import type { Scene, SceneSequence } from "@research-canvas/schema";
 
@@ -25,7 +25,7 @@ import type { Scene, SceneSequence } from "@research-canvas/schema";
  */
 
 export interface PalaceLensHostProps {
-  transport: WorkspaceTransport;
+  transport: WorkspaceServices;
   databasePath: string;
   workspaceId: string;
   profileScope: string;

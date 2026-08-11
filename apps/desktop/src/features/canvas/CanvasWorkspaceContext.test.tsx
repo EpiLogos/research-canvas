@@ -19,7 +19,7 @@ const transport = vi.hoisted(() => ({
 
 vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@research-canvas/desktop-api")>();
-  return { ...actual, createWorkspaceTransport: () => transport };
+  return { ...actual, createWorkspaceServices: () => transport };
 });
 
 import {
