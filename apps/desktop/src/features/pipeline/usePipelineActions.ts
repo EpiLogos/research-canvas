@@ -135,6 +135,7 @@ export function usePipelineActions(
     ) => {
       if (!transport) throw new Error("no transport");
       if (!databasePath) throw new Error("no database");
+      if (!profileScope) throw new Error("no profile scope");
 
       // Derive the object's temporal anchor + located place from the real
       // timeline view when the caller did not supply them, so the scene is
@@ -175,7 +176,7 @@ export function usePipelineActions(
       const now = new Date().toISOString();
       const scene: Scene = {
         id: `pipeline:${slugifyGraphNodeId(node.graphNodeId)}`,
-        profileScope: profileScope ?? "bootstrapping",
+        profileScope,
         placeFrame: {
           placeId,
           validAt: { instant: validFrom },
@@ -204,10 +205,11 @@ export function usePipelineActions(
       if (!transport) throw new Error("no transport");
       if (!databasePath) throw new Error("no database");
       if (!workspaceId) throw new Error("no workspace");
+      if (!profileScope) throw new Error("no profile scope");
 
       const loaded = await transport.loadPalaceCuration({
         databasePath,
-        profileScope: profileScope ?? undefined,
+        profileScope,
       });
       let curation =
         (loaded.curation as PalaceCuration | null) ?? null;
@@ -224,7 +226,7 @@ export function usePipelineActions(
         curation = curateChambers(
           candidates,
           nodesById,
-          profileScope ?? "bootstrapping",
+          profileScope,
         );
       }
 
@@ -263,7 +265,7 @@ export function usePipelineActions(
 
       await transport.savePalaceCuration({
         databasePath,
-        profileScope: profileScope ?? undefined,
+        profileScope,
         curation: next,
       });
       onSettled?.();

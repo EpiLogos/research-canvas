@@ -61,7 +61,7 @@ export function useProjectTree(): UseProjectTreeResult {
   useEffect(() => {
     setSequences([]);
     setScenes([]);
-    if (!activeConstellationId || !databasePath) return;
+    if (!activeConstellationId || !databasePath || !profileScope) return;
 
     let cancelled = false;
     setIsLoading(true);
@@ -77,7 +77,7 @@ export function useProjectTree(): UseProjectTreeResult {
           }) ?? Promise.resolve([]),
           transport?.listScenes?.({
             databasePath,
-            profileScope: profileScope ?? "bootstrapping",
+            profileScope,
           }) ?? Promise.resolve([]),
         ]);
         if (cancelled) return;

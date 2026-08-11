@@ -112,8 +112,8 @@ export interface GeographyEdgeSeedInput {
   /** Monorepo root; corpus source coordinates are relative to it. */
   corpusRoot: string;
   gazetteer: GazetteerIndex;
-  /** Falls back to the bootstrapping Places lens scope when omitted. */
-  profileScope?: string;
+  /** Active project/namespace profile scope. Required; no fallback. */
+  profileScope: string;
   /**
    * Injectable file reader so tests can read the real corpus with node:fs.
    * Defaults to the workspace transport's file reader.
@@ -138,7 +138,10 @@ export interface BuildGeographyEdgeDeps {
 export async function ensureGeographyEdgeSeed(
   input: GeographyEdgeSeedInput,
 ): Promise<GeographyEdgeSeedResult> {
-  const profileScope = input.profileScope?.trim() || "bootstrapping";
+  const profileScope = input.profileScope?.trim();
+  if (!profileScope) {
+    throw new Error("ensureGeographyEdgeSeed requires a non-empty profileScope");
+  }
   const readFile =
     input.readFile ?? ((absolutePath) => readWorkspaceTextFile(absolutePath));
   const existing = await input.transport.listGeographyEdges({

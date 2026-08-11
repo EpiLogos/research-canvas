@@ -65,8 +65,8 @@ export function usePipelineStages(
 
   useEffect(() => {
     const canReadTimeline = Boolean(transport?.loadTimelineView && workspaceId);
-    const canReadScenes = Boolean(transport?.listScenes && databasePath);
-    const canReadCuration = Boolean(transport?.loadPalaceCuration && databasePath);
+    const canReadScenes = Boolean(transport?.listScenes && databasePath && profileScope);
+    const canReadCuration = Boolean(transport?.loadPalaceCuration && databasePath && profileScope);
 
     // Nothing to track until there are canvas objects: rail counts and the
     // flow view are derived from the tracked objects, and a selected object
@@ -80,6 +80,13 @@ export function usePipelineStages(
     }
 
     if (!canReadTimeline && !canReadScenes && !canReadCuration) {
+      setTimeline(null);
+      setScenes([]);
+      setCuration(null);
+      return;
+    }
+
+    if (!profileScope) {
       setTimeline(null);
       setScenes([]);
       setCuration(null);
@@ -101,7 +108,7 @@ export function usePipelineStages(
           ? transport
               .listScenes({
                 databasePath,
-                profileScope: profileScope ?? undefined,
+                profileScope,
               })
               .catch(() => [] as Scene[])
           : Promise.resolve([] as Scene[]);
@@ -110,7 +117,7 @@ export function usePipelineStages(
           ? transport
               .loadPalaceCuration({
                 databasePath,
-                profileScope: profileScope ?? undefined,
+                profileScope,
               })
               .then((result) => (result.curation as PalaceCuration) ?? null)
               .catch(() => null)

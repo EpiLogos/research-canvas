@@ -129,9 +129,8 @@ function transportFixture(view: TimelineView): {
     },
     // DB-faithful: list scopes to the requested profile, mirroring
     // list_for_profile(profile_scope).
-    async listGeographyEdges({ profileScope }: { profileScope?: string }) {
-      const scope = profileScope ?? "bootstrapping";
-      return savedEdges.filter((edge) => edge.profileScope === scope);
+    async listGeographyEdges({ profileScope }: { profileScope: string }) {
+      return savedEdges.filter((edge) => edge.profileScope === profileScope);
     },
     // DB-faithful upsert mirroring upsert_geography_edge_at: idempotency is
     // keyed on (profile_scope, seed_key) — re-upserting the same lane updates

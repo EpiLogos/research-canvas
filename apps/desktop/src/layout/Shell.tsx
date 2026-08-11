@@ -412,39 +412,39 @@ export function Shell() {
             <section className="canvas-pane" data-testid="timeline-workspace-loading">Loading timeline workspace…</section>
           )}
 
-          {lens === "psychogeographic" && workspace.transport && workspace.databasePath && workspace.workspaceId && (
+          {lens === "psychogeographic" && workspace.transport && workspace.databasePath && workspace.workspaceId && workspace.activeProfileScope && (
             <section className="canvas-pane" data-testid="psychogeographic-pane" style={{ position: "absolute", inset: 0 }}>
               <PsychogeographicLens
                 transport={workspace.transport}
                 databasePath={workspace.databasePath}
                 workspaceId={workspace.workspaceId}
-                profileScope={workspace.activeProfileScope ?? "bootstrapping"}
+                profileScope={workspace.activeProfileScope}
                 mediaRoot={workspace.workingRoot ?? ""}
                 repoRoot={workspace.repoRoot ?? ""}
               />
             </section>
           )}
 
-          {lens === "story" && workspace.transport && workspace.databasePath && workspace.workspaceId && (
+          {lens === "story" && workspace.transport && workspace.databasePath && workspace.workspaceId && workspace.activeProfileScope && (
             <section className="canvas-pane" data-testid="story-pane" style={{ position: "absolute", inset: 0 }}>
               <StoryLens
                 transport={workspace.transport}
                 databasePath={workspace.databasePath}
                 workspaceId={workspace.workspaceId}
                 repoRoot={workspace.repoRoot ?? ""}
-                profileScope={workspace.activeProfileScope ?? "migration"}
+                profileScope={workspace.activeProfileScope}
                 workingRoot={workspace.workingRoot ?? ""}
               />
             </section>
           )}
 
-          {lens === "palace" && workspace.transport && workspace.databasePath && workspace.workspaceId && (
+          {lens === "palace" && workspace.transport && workspace.databasePath && workspace.workspaceId && workspace.activeProfileScope && (
             <section className="canvas-pane" data-testid="palace-pane" style={{ position: "absolute", inset: 0 }}>
               <PalaceLensHost
                 transport={workspace.transport}
                 databasePath={workspace.databasePath}
                 workspaceId={workspace.workspaceId}
-                profileScope={workspace.activeProfileScope ?? "bootstrapping"}
+                profileScope={workspace.activeProfileScope}
                 workingRoot={workspace.workingRoot ?? ""}
               />
             </section>

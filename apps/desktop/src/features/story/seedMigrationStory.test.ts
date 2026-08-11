@@ -96,6 +96,7 @@ describe("ensureMigrationStorySeed", () => {
       workspaceId: "sqlite:/tmp/ws",
       corpusRoot: "/tmp/ws",
       gazetteer: pack.gazetteer,
+      profileScope: "migration",
     });
 
     expect(result.seeded).toBe(true);
@@ -184,6 +185,7 @@ describe("ensureMigrationStorySeed", () => {
       workspaceId: "sqlite:/tmp/ws",
       corpusRoot: "/tmp/ws",
       gazetteer: pack.gazetteer,
+      profileScope: "migration",
     });
 
     expect(result.seeded).toBe(true);
@@ -214,6 +216,7 @@ describe("ensureMigrationStorySeed", () => {
       workspaceId: "sqlite:/tmp/ws",
       corpusRoot: "/tmp/ws",
       gazetteer: pack.gazetteer,
+      profileScope: "migration",
     };
 
     const first = await ensureMigrationStorySeed(input);
@@ -250,6 +253,7 @@ describe("ensureMigrationStorySeed", () => {
       workspaceId: "sqlite:/tmp/ws",
       corpusRoot: "/tmp/ws",
       gazetteer: pack.gazetteer,
+      profileScope: "migration",
     });
 
     expect(result.seeded).toBe(false);
@@ -278,23 +282,30 @@ describe("ensureMigrationStorySeed", () => {
     expect(savedSequences[0]?.profileScope).toBe("project:alpha-field");
   });
 
-  test("falls back to the internal migration scope when no profile scope is provided", async () => {
-    const { transport, savedScenes, savedSequences } = transportFixture();
+  test("throws when profileScope is omitted or only whitespace", async () => {
+    const { transport } = transportFixture();
     const pack = loadBundledGeographyPack();
 
-    const result = await ensureMigrationStorySeed({
+    const base = {
       transport,
       databasePath: "/tmp/ws.sqlite",
       workspaceId: "sqlite:/tmp/ws",
       corpusRoot: "/tmp/ws",
       gazetteer: pack.gazetteer,
-      profileScope: "   ",
-    });
+    };
 
-    expect(result.seeded).toBe(true);
-    for (const scene of savedScenes) {
-      expect(scene.profileScope).toBe("migration");
-    }
-    expect(savedSequences[0]?.profileScope).toBe("migration");
+    await expect(
+      ensureMigrationStorySeed({
+        ...base,
+        profileScope: undefined as unknown as string,
+      }),
+    ).rejects.toThrow("ensureMigrationStorySeed requires a non-empty profileScope");
+
+    await expect(
+      ensureMigrationStorySeed({
+        ...base,
+        profileScope: "   ",
+      }),
+    ).rejects.toThrow("ensureMigrationStorySeed requires a non-empty profileScope");
   });
 });

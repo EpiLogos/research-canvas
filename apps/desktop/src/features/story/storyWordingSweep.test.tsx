@@ -107,6 +107,7 @@ describe("story wording sweep", () => {
       workspaceId: "sqlite:/tmp/ws",
       corpusRoot: "/tmp/ws",
       gazetteer: pack.gazetteer,
+      profileScope: "migration",
     });
 
     expect(result.seeded).toBe(true);

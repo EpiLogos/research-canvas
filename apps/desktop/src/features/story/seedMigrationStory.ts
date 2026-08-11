@@ -35,10 +35,9 @@ export interface MigrationStorySeedInput {
   corpusRoot: string;
   gazetteer: GazetteerIndex;
   /**
-   * The active project's profile scope. Seeding stays on the active project;
-   * falls back to the internal `migration` key when omitted.
+   * The active project's profile scope. Required; no fallback.
    */
-  profileScope?: string;
+  profileScope: string;
 }
 
 export interface MigrationStorySeedResult {
@@ -54,7 +53,10 @@ export async function ensureMigrationStorySeed(
   input: MigrationStorySeedInput,
 ): Promise<MigrationStorySeedResult> {
   const { transport, databasePath } = input;
-  const profileScope = input.profileScope?.trim() || "migration";
+  const profileScope = input.profileScope?.trim();
+  if (!profileScope) {
+    throw new Error("ensureMigrationStorySeed requires a non-empty profileScope");
+  }
   const [existingSequences, existingScenes] = await Promise.all([
     transport.listSceneSequences({ databasePath, profileScope }),
     transport.listScenes({ databasePath, profileScope }),
