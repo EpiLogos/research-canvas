@@ -10,10 +10,16 @@ const workspace = vi.hoisted(() => {
   const selectProject = vi.fn().mockImplementation((id: string) => {
     workspace.activeProjectId = id;
     workspace.activeConstellationId = id;
-    workspace.activeConstellation =
-      workspace.constellations.find(
-        (constellation: { id: string }) => constellation.id === id,
-      ) ?? null;
+    const constellation = workspace.constellations.find(
+      (item: { id: string }) => item.id === id,
+    );
+    workspace.activeConstellation = constellation
+      ? {
+          id: constellation.id,
+          displayName: constellation.name,
+          primaryCanvasId: id,
+        }
+      : null;
     return Promise.resolve();
   });
   const openConstellationTab = vi.fn().mockResolvedValue(undefined);
@@ -29,7 +35,7 @@ const workspace = vi.hoisted(() => {
       id: "proj-a",
       displayName: "Project A",
       primaryCanvasId: "canvas-a",
-    },
+    } as { id: string; displayName: string; primaryCanvasId: string } | null,
     constellations: [
       {
         id: "proj-a",

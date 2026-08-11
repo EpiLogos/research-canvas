@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCanvasWorkspace } from "../canvas/CanvasWorkspaceContext";
 import { useProjectTabs } from "./ProjectTabContext";
 import { useProjectTree } from "./useProjectTree";
@@ -498,11 +498,18 @@ export function ProjectTree() {
     [tree],
   );
 
+  const hasUserToggled = useRef(false);
+
   useEffect(() => {
+    // Seed the default expanded state only until the user starts toggling.
+    // Without this guard, async load settling recomputes defaultExpanded with
+    // a fresh identity and clobbers the user's collapse/expand choices.
+    if (hasUserToggled.current) return;
     setExpandedIds(defaultExpanded);
   }, [defaultExpanded]);
 
   const toggleExpanded = useCallback((id: string) => {
+    hasUserToggled.current = true;
     setExpandedIds((previous) => {
       const next = new Set(previous);
       if (next.has(id)) {
@@ -514,7 +521,7 @@ export function ProjectTree() {
     });
   }, []);
 
-  if (!tree) {
+  if (!tree?.root) {
     return (
       <section className="tree-section" data-testid="left-mode-projects" aria-label="Project tree">
         <div className="lo-empty">No project selected</div>
