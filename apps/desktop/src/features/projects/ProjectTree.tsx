@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 import { useCanvasWorkspace } from "../canvas/CanvasWorkspaceContext";
-import { useProjectTabs } from "./ProjectTabContext";
 import { useProjectTree } from "./useProjectTree";
 import type {
   ProjectTreeCanvas,
@@ -9,6 +9,14 @@ import type {
   ProjectTreeScene,
   ProjectTreeSequence,
 } from "./types";
+import type { SurfaceId, SurfaceTabState } from "@research-canvas/schema";
+
+const CONTEXT_MENU_SURFACES: { surfaceId: Exclude<SurfaceId, "projects" | "canvas">; label: string }[] = [
+  { surfaceId: "timeline", label: "Open in Timeline" },
+  { surfaceId: "places", label: "Open in Places" },
+  { surfaceId: "story", label: "Open in Story" },
+  { surfaceId: "palace", label: "Open in Palace" },
+];
 
 interface TreeRowProps {
   id: string;
@@ -18,6 +26,7 @@ interface TreeRowProps {
   onToggle: (id: string) => void;
   selectedId: string | null;
   onClick: () => void;
+  onContextMenu?: (event: React.MouseEvent) => void;
   testId: string;
   children?: React.ReactNode;
 }
@@ -30,6 +39,7 @@ function TreeRow({
   onToggle,
   selectedId,
   onClick,
+  onContextMenu,
   testId,
   children,
 }: TreeRowProps) {
@@ -68,6 +78,7 @@ function TreeRow({
           onClick={() => {
             onClick();
           }}
+          onContextMenu={onContextMenu}
         >
           <span className="tree__name">{label}</span>
         </button>
@@ -88,6 +99,7 @@ interface ConstellationItemProps {
   onToggle: (id: string) => void;
   selectedId: string | null;
   onSelectNode: (id: string) => void;
+  onOpenContextMenu: (constellation: ProjectTreeConstellation, event: React.MouseEvent) => void;
 }
 
 function ConstellationItem({
@@ -97,8 +109,9 @@ function ConstellationItem({
   onToggle,
   selectedId,
   onSelectNode,
+  onOpenContextMenu,
 }: ConstellationItemProps) {
-  const tabs = useProjectTabs();
+  const workspace = useCanvasWorkspace();
   const expanded = expandedIds.has(constellation.id);
   const hasNestedChildren = constellation.children.length > 0;
   const hasContentGroups =
@@ -110,8 +123,16 @@ function ConstellationItem({
 
   const handleSelect = useCallback(() => {
     onSelectNode(constellation.id);
-    tabs.openConstellation(constellation.id);
-  }, [constellation.id, onSelectNode, tabs]);
+    void workspace.openConstellationTab(constellation.id);
+  }, [constellation.id, onSelectNode, workspace]);
+
+  const handleContextMenu = useCallback(
+    (event: React.MouseEvent) => {
+      event.preventDefault();
+      onOpenContextMenu(constellation, event);
+    },
+    [constellation, onOpenContextMenu],
+  );
 
   return (
     <li
@@ -142,6 +163,8 @@ function ConstellationItem({
           data-testid={`constellation-node-${constellation.id}`}
           data-selected={selectedId === constellation.id ? "true" : undefined}
           onClick={handleSelect}
+          onContextMenu={handleContextMenu}
+          title="Right-click to open in another surface"
         >
           <span className="tree__name">{constellation.name}</span>
         </button>
@@ -157,6 +180,7 @@ function ConstellationItem({
               onToggle={onToggle}
               selectedId={selectedId}
               onSelectNode={onSelectNode}
+              onOpenContextMenu={onOpenContextMenu}
             />
           ))}
           {constellation.canvases.length > 0 && (
@@ -230,7 +254,7 @@ function CanvasGroup({
   selectedId,
   onSelectNode,
 }: CanvasGroupProps) {
-  const tabs = useProjectTabs();
+  const workspace = useCanvasWorkspace();
   const groupId = `${parentId}-canvases`;
 
   return (
@@ -259,7 +283,7 @@ function CanvasGroup({
             data-selected={selectedId === canvas.id ? "true" : undefined}
             onClick={() => {
               onSelectNode(canvas.id);
-              tabs.openCanvas(canvas.id);
+              void workspace.openCanvas(canvas.id);
             }}
           >
             <span className="tree__name">{canvas.name}</span>
@@ -289,7 +313,7 @@ function SequenceGroup({
   selectedId,
   onSelectNode,
 }: SequenceGroupProps) {
-  const tabs = useProjectTabs();
+  const workspace = useCanvasWorkspace();
   const groupId = `${parentId}-sequences`;
 
   return (
@@ -318,7 +342,7 @@ function SequenceGroup({
             data-selected={selectedId === sequence.id ? "true" : undefined}
             onClick={() => {
               onSelectNode(sequence.id);
-              tabs.openSequence(sequence.id);
+              void workspace.openCanvas(sequence.canvasId);
             }}
           >
             <span className="tree__name">{sequence.name}</span>
@@ -348,8 +372,23 @@ function SceneGroup({
   selectedId,
   onSelectNode,
 }: SceneGroupProps) {
-  const tabs = useProjectTabs();
+  const workspace = useCanvasWorkspace();
   const groupId = `${parentId}-scenes`;
+
+  const openScene = useCallback(
+    (scene: ProjectTreeScene) => {
+      onSelectNode(scene.id);
+      const state: { surfaceId: "story" } = { surfaceId: "story" };
+      workspace.openTab({
+        id: crypto.randomUUID(),
+        surfaceId: "story",
+        title: scene.name,
+        pinned: false,
+        state,
+      });
+    },
+    [onSelectNode, workspace],
+  );
 
   return (
     <TreeRow
@@ -375,10 +414,7 @@ function SceneGroup({
             className="tree__button"
             data-testid={`scene-node-${scene.id}`}
             data-selected={selectedId === scene.id ? "true" : undefined}
-            onClick={() => {
-              onSelectNode(scene.id);
-              tabs.openScene(scene.id);
-            }}
+            onClick={() => openScene(scene)}
           >
             <span className="tree__name">{scene.name}</span>
           </button>
@@ -409,7 +445,7 @@ function GraphNodeGroup({
   selectedId,
   onSelectNode,
 }: GraphNodeGroupProps) {
-  const tabs = useProjectTabs();
+  const workspace = useCanvasWorkspace();
   const groupId = `${parentId}-nodes-${entityType}`;
 
   return (
@@ -438,7 +474,7 @@ function GraphNodeGroup({
             data-selected={selectedId === node.id ? "true" : undefined}
             onClick={() => {
               onSelectNode(node.id);
-              tabs.selectNode(node.id);
+              workspace.selectNode(node.id);
             }}
           >
             <span className="tree__name">{node.name}</span>
@@ -482,22 +518,34 @@ function collectDefaultExpanded(
   return ids;
 }
 
+function surfaceTabState(surfaceId: Exclude<SurfaceId, "projects" | "canvas">): SurfaceTabState {
+  switch (surfaceId) {
+    case "timeline":
+      return { surfaceId, centerYear: 0, pixelsPerYear: 20 };
+    case "places":
+      return { surfaceId, viewport: { x: 0, y: 0, zoom: 1 } };
+    case "story":
+      return { surfaceId };
+    case "palace":
+      return { surfaceId };
+  }
+}
+
 export function ProjectTree() {
   const workspace = useCanvasWorkspace();
-  const { tree, isLoading, error, selectedId, selectNode } = useProjectTree();
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const { tree, isLoading, error, selectedId, selectNode, refresh } = useProjectTree();
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-
-  const rootProjects = useMemo(
-    () => workspace.constellations.filter((constellation) => constellation.parentId === null),
-    [workspace.constellations],
-  );
+  const [contextMenu, setContextMenu] = useState<{
+    constellation: ProjectTreeConstellation;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [dialogError, setDialogError] = useState<string | null>(null);
 
   const defaultExpanded = useMemo(
     () => (tree ? collectDefaultExpanded(tree.constellations) : new Set<string>()),
     [tree],
   );
-
   const hasUserToggled = useRef(false);
 
   useEffect(() => {
@@ -521,6 +569,65 @@ export function ProjectTree() {
     });
   }, []);
 
+  const handleOpenProjectRoot = useCallback(async () => {
+    setDialogError(null);
+    try {
+      if (!workspace.databasePath) {
+        throw new Error("Workspace is not bootstrapped yet");
+      }
+      const home = await workspace.resolveOrCreateHome({
+        databasePath: workspace.databasePath,
+      });
+      const selected = await open({ directory: true });
+      if (selected === null || Array.isArray(selected)) {
+        return;
+      }
+      const name = selected.split(/[/\\]/).pop() || "New project";
+      const project = await workspace.createProject({
+        databasePath: workspace.databasePath,
+        homePath: home.homePath,
+        name,
+        rootType: "directory",
+        sourcePath: selected,
+      });
+      await workspace.selectProject(project.id);
+      await refresh();
+    } catch (err) {
+      setDialogError(err instanceof Error ? err.message : String(err));
+    }
+  }, [refresh, workspace]);
+
+  const handleOpenContextMenu = useCallback(
+    (constellation: ProjectTreeConstellation, event: React.MouseEvent) => {
+      setContextMenu({ constellation, x: event.clientX, y: event.clientY });
+    },
+    [],
+  );
+
+  const handleOpenConstellationSurface = useCallback(
+    async (constellation: ProjectTreeConstellation, surfaceId: Exclude<SurfaceId, "projects" | "canvas">) => {
+      setContextMenu(null);
+      if (workspace.activeConstellationId !== constellation.id) {
+        await workspace.openConstellationTab(constellation.id);
+      }
+      workspace.openTab({
+        id: crypto.randomUUID(),
+        surfaceId,
+        title: constellation.name,
+        pinned: false,
+        state: surfaceTabState(surfaceId),
+      });
+    },
+    [workspace],
+  );
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handler = () => setContextMenu(null);
+    window.addEventListener("click", handler, { once: true });
+    return () => window.removeEventListener("click", handler);
+  }, [contextMenu]);
+
   if (!tree?.root) {
     return (
       <section className="tree-section" data-testid="left-mode-projects" aria-label="Project tree">
@@ -541,41 +648,16 @@ export function ProjectTree() {
           type="button"
           className="project-tree__root-picker"
           data-testid="project-root-picker"
-          aria-expanded={pickerOpen}
-          aria-label="Project root picker"
-          onClick={() => setPickerOpen((open) => !open)}
+          aria-label="Open project root"
+          onClick={() => {
+            void handleOpenProjectRoot();
+          }}
         >
-          <span>{tree.root.displayName}</span>
-          <span aria-hidden="true">{pickerOpen ? "▲" : "▼"}</span>
+          <span>Open project root…</span>
         </button>
-        {pickerOpen && (
-          <ul className="project-tree__root-menu" role="menu">
-            {rootProjects.map((project) => (
-              <li key={project.id} role="none">
-                <button
-                  type="button"
-                  className="project-tree__root-option"
-                  role="menuitem"
-                  data-testid={`project-node-${project.id}`}
-                  data-active={project.id === workspace.activeProjectId ? "true" : undefined}
-                  onClick={() => {
-                    setPickerOpen(false);
-                    void workspace.selectProject(project.id);
-                  }}
-                >
-                  {project.name}
-                </button>
-              </li>
-            ))}
-            {rootProjects.length === 0 && (
-              <li className="lo-empty" role="none">
-                No projects available
-              </li>
-            )}
-          </ul>
-        )}
       </div>
 
+      {dialogError && <div className="lo-folder-input__error" data-testid="project-root-error">{dialogError}</div>}
       {isLoading && <div className="lo-empty">Loading project tree…</div>}
       {error && <div className="lo-folder-input__error">{error}</div>}
 
@@ -589,9 +671,32 @@ export function ProjectTree() {
             onToggle={toggleExpanded}
             selectedId={selectedId}
             onSelectNode={selectNode}
+            onOpenContextMenu={handleOpenContextMenu}
           />
         ))}
       </ul>
+
+      {contextMenu && (
+        <div
+          className="project-tree__context-menu"
+          role="menu"
+          data-testid="project-tree-context-menu"
+          style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y }}
+        >
+          {CONTEXT_MENU_SURFACES.map(({ surfaceId, label }) => (
+            <button
+              key={surfaceId}
+              type="button"
+              role="menuitem"
+              className="project-tree__context-menu-item"
+              data-testid={`open-constellation-${surfaceId}`}
+              onClick={() => handleOpenConstellationSurface(contextMenu.constellation, surfaceId)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

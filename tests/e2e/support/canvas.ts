@@ -27,6 +27,19 @@ export async function openConstellation(page: Page, name: string) {
   await waitForWorkspace(page);
 }
 
+export async function openProjectsBrowserView(page: Page) {
+  const overlay = page.getByTestId("left-overlay");
+  if (
+    (await overlay.getAttribute("data-open")) !== "true" ||
+    (await overlay.getAttribute("data-left-mode")) !== "projects"
+  ) {
+    await page.getByRole("button", { name: "Projects" }).dispatchEvent("click");
+  }
+  await expect(overlay).toHaveAttribute("data-open", "true");
+  await expect(overlay).toHaveAttribute("data-left-mode", "projects");
+  await overlay.dispatchEvent("pointerenter");
+}
+
 export async function openFilesBrowserView(page: Page) {
   const overlay = page.getByTestId("left-overlay");
   if ((await overlay.getAttribute("data-open")) !== "true") {

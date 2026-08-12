@@ -938,7 +938,25 @@ export function CanvasWorkspaceProvider({
   );
 
   const createProject = useCallback(
-    (input: CreateProjectInput) => transport.createProject(input),
+    async (input: CreateProjectInput) => {
+      const project = await transport.createProject(input);
+      const treeNode: ConstellationTreeNode = {
+        id: project.id,
+        name: project.displayName,
+        slug: project.slug,
+        rootPath: project.rootPath,
+        rootType: project.rootType,
+        profileScope: project.profileScope,
+        summary: project.summary,
+        parentId: project.parentConstellationId,
+        children: [],
+      };
+      setConstellations((current) => {
+        if (current.some((c) => c.id === treeNode.id)) return current;
+        return [...current, treeNode];
+      });
+      return project;
+    },
     [transport],
   );
 

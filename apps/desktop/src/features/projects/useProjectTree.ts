@@ -82,7 +82,7 @@ export function useProjectTree(): UseProjectTreeResult {
         ]);
         if (cancelled) return;
         setSequences(
-          seqResult.map((s) => ({ id: s.id, name: s.name })),
+          seqResult.map((s) => ({ id: s.id, name: s.name, canvasId: s.canvasId })),
         );
         setScenes(
           sceneResult.map((s) => ({ id: s.id, name: (s as { name?: string }).name ?? s.id })),

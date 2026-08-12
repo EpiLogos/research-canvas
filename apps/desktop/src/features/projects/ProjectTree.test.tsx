@@ -2,11 +2,39 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectTree } from "./ProjectTree";
-import { ProjectTabProvider } from "./ProjectTabContext";
+import type { AppTab } from "@research-canvas/schema";
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: vi.fn(),
+}));
+
+import { open } from "@tauri-apps/plugin-dialog";
+
+const tabManager = vi.hoisted(() => ({
+  tabs: [] as AppTab[],
+  activeTabId: null as string | null,
+  open: vi.fn((tab: AppTab) => {
+    const existing = tabManager.tabs.find((t) => t.id === tab.id);
+    if (existing) {
+      tabManager.tabs = tabManager.tabs.map((t) => (t.id === tab.id ? tab : t));
+    } else {
+      tabManager.tabs.push(tab);
+    }
+    tabManager.activeTabId = tab.id;
+  }),
+  activate: vi.fn((tabId: string) => {
+    tabManager.activeTabId = tabId;
+  }),
+  close: vi.fn(),
+}));
 
 const workspace = vi.hoisted(() => {
-  const listSavedSequences = vi.fn().mockResolvedValue([]);
-  const listScenes = vi.fn().mockResolvedValue([]);
+  const listSavedSequences = vi.fn().mockResolvedValue([
+    { id: "seq-a", name: "Sequence A", canvasId: "canvas-a", constellationId: "proj-a" },
+  ]);
+  const listScenes = vi.fn().mockResolvedValue([
+    { id: "scene-a", name: "Scene A" },
+  ]);
   const selectProject = vi.fn().mockImplementation((id: string) => {
     workspace.activeProjectId = id;
     workspace.activeConstellationId = id;
@@ -22,9 +50,43 @@ const workspace = vi.hoisted(() => {
       : null;
     return Promise.resolve();
   });
-  const openConstellationTab = vi.fn().mockResolvedValue(undefined);
+  const openConstellationTab = vi.fn().mockImplementation(async (id: string) => {
+    workspace.activeConstellationId = id;
+    workspace.activeProjectId = id;
+    const constellation = workspace.constellations.find(
+      (item: { id: string }) => item.id === id,
+    );
+    workspace.activeConstellation = constellation
+      ? {
+          id: constellation.id,
+          displayName: constellation.name,
+          primaryCanvasId: id,
+        }
+      : null;
+  });
   const openCanvas = vi.fn().mockResolvedValue(undefined);
   const selectNode = vi.fn();
+  const openTab = vi.fn().mockImplementation((tab: AppTab) => tabManager.open(tab));
+  const activateTab = vi.fn().mockImplementation((tabId: string) => tabManager.activate(tabId));
+  const resolveOrCreateHome = vi.fn().mockResolvedValue({ homePath: "/home", projects: [] });
+  const createProject = vi.fn().mockImplementation(
+    async (input: { databasePath: string; homePath: string; name: string; rootType: string; sourcePath?: string }) => ({
+      id: `proj-${input.name}`,
+      displayName: input.name,
+      name: input.name,
+      slug: input.name.toLowerCase(),
+      rootPath: input.sourcePath ?? `/home/${input.name}`,
+      rootType: input.rootType,
+      profileScope: `project:${input.name}`,
+      primaryCanvasId: `canvas-${input.name}`,
+      parentConstellationId: null,
+      summary: "",
+      coverAssetPath: null,
+      publishSettings: {},
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    }),
+  );
 
   return {
     databasePath: "/workspace.sqlite",
@@ -96,9 +158,14 @@ const workspace = vi.hoisted(() => {
     openConstellationTab,
     openCanvas,
     selectNode,
+    openTab,
+    activateTab,
+    closeTab: tabManager.close,
     listSavedSequences,
     listScenes,
     transport: { listSavedSequences, listScenes },
+    resolveOrCreateHome,
+    createProject,
   };
 });
 
@@ -107,11 +174,7 @@ vi.mock("../canvas/CanvasWorkspaceContext", () => ({
 }));
 
 function renderTree() {
-  return render(
-    <ProjectTabProvider>
-      <ProjectTree />
-    </ProjectTabProvider>,
-  );
+  return render(<ProjectTree />);
 }
 
 describe("ProjectTree", () => {
@@ -123,10 +186,20 @@ describe("ProjectTree", () => {
       displayName: "Project A",
       primaryCanvasId: "canvas-a",
     };
+    tabManager.tabs = [];
+    tabManager.activeTabId = null;
+    vi.mocked(open).mockReset();
     workspace.openConstellationTab.mockClear();
     workspace.openCanvas.mockClear();
     workspace.selectNode.mockClear();
     workspace.selectProject.mockClear();
+    workspace.openTab.mockClear();
+    workspace.activateTab.mockClear();
+    workspace.resolveOrCreateHome.mockClear();
+    workspace.createProject.mockClear();
+    tabManager.open.mockClear();
+    tabManager.activate.mockClear();
+    tabManager.close.mockClear();
   });
 
   it("renders the project tree with root picker and constellation nodes", async () => {
@@ -135,7 +208,7 @@ describe("ProjectTree", () => {
       expect(screen.getByTestId("left-mode-projects")).toBeInTheDocument(),
     );
     expect(screen.getByTestId("project-root-picker")).toHaveTextContent(
-      "Project A",
+      "Open project root…",
     );
     expect(
       screen.getByTestId("constellation-node-c1"),
@@ -145,34 +218,7 @@ describe("ProjectTree", () => {
     );
   });
 
-  it("opens the root picker and routes selection through the workspace seam", async () => {
-    const { rerender } = renderTree();
-    await waitFor(() =>
-      expect(screen.getByTestId("project-root-picker")).toBeInTheDocument(),
-    );
-
-    fireEvent.click(screen.getByTestId("project-root-picker"));
-    await waitFor(() =>
-      expect(screen.getByTestId("project-node-proj-b")).toBeInTheDocument(),
-    );
-
-    fireEvent.click(screen.getByTestId("project-node-proj-b"));
-    expect(workspace.selectProject).toHaveBeenCalledWith("proj-b");
-
-    // Simulate the re-render that follows the workspace state update.
-    rerender(
-      <ProjectTabProvider>
-        <ProjectTree />
-      </ProjectTabProvider>,
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId("project-root-picker")).toHaveTextContent(
-        "Project B",
-      ),
-    );
-  });
-
-  it("calls the global tab API when a constellation is clicked", async () => {
+  it("opens the constellation primary canvas when a constellation is clicked", async () => {
     renderTree();
     await waitFor(() =>
       expect(screen.getByTestId("constellation-node-c1")).toBeInTheDocument(),
@@ -183,7 +229,7 @@ describe("ProjectTree", () => {
     );
   });
 
-  it("calls the global tab API when a canvas is clicked", async () => {
+  it("opens a canvas when a canvas node is clicked", async () => {
     renderTree();
     await waitFor(() =>
       expect(screen.getByTestId("canvas-node-canvas-a")).toBeInTheDocument(),
@@ -192,6 +238,42 @@ describe("ProjectTree", () => {
     await waitFor(() =>
       expect(workspace.openCanvas).toHaveBeenCalledWith("canvas-a"),
     );
+  });
+
+  it("opens a canvas when a sequence is clicked", async () => {
+    renderTree();
+    await waitFor(() =>
+      expect(screen.getByTestId("sequence-node-seq-a")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTestId("sequence-node-seq-a"));
+    await waitFor(() =>
+      expect(workspace.openCanvas).toHaveBeenCalledWith("canvas-a"),
+    );
+  });
+
+  it("opens a story tab when a scene is clicked", async () => {
+    renderTree();
+    await waitFor(() =>
+      expect(screen.getByTestId("scene-node-scene-a")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTestId("scene-node-scene-a"));
+    await waitFor(() =>
+      expect(workspace.openTab).toHaveBeenCalledWith(
+        expect.objectContaining({
+          surfaceId: "story",
+          title: "Scene A",
+        }),
+      ),
+    );
+  });
+
+  it("selects a graph node when a graph node is clicked", async () => {
+    renderTree();
+    await waitFor(() =>
+      expect(screen.getByTestId("graph-node-n1")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTestId("graph-node-n1"));
+    expect(workspace.selectNode).toHaveBeenCalledWith("n1");
   });
 
   it("toggles nested constellations via disclosure triangles", async () => {
@@ -211,6 +293,73 @@ describe("ProjectTree", () => {
     fireEvent.click(screen.getByTestId("tree-disclosure-c1"));
     await waitFor(() =>
       expect(screen.getByTestId("constellation-node-c2")).toBeInTheDocument(),
+    );
+  });
+
+  it("shows a context menu and opens the constellation in a chosen surface", async () => {
+    renderTree();
+    await waitFor(() =>
+      expect(screen.getByTestId("constellation-node-c1")).toBeInTheDocument(),
+    );
+
+    fireEvent.contextMenu(screen.getByTestId("constellation-node-c1"));
+    await waitFor(() =>
+      expect(screen.getByTestId("project-tree-context-menu")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByTestId("open-constellation-timeline"));
+    await waitFor(() =>
+      expect(workspace.openConstellationTab).toHaveBeenCalledWith("c1"),
+    );
+    expect(workspace.openTab).toHaveBeenCalledWith(
+      expect.objectContaining({
+        surfaceId: "timeline",
+        title: "Child One",
+      }),
+    );
+  });
+
+  it("creates a project from the selected directory and selects it", async () => {
+    vi.mocked(open).mockResolvedValue("/home/new-project");
+    renderTree();
+    await waitFor(() =>
+      expect(screen.getByTestId("project-root-picker")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByTestId("project-root-picker"));
+    await waitFor(() =>
+      expect(workspace.resolveOrCreateHome).toHaveBeenCalledWith({
+        databasePath: "/workspace.sqlite",
+      }),
+    );
+    await waitFor(() =>
+      expect(workspace.createProject).toHaveBeenCalledWith(
+        expect.objectContaining({
+          databasePath: "/workspace.sqlite",
+          homePath: "/home",
+          name: "new-project",
+          rootType: "directory",
+          sourcePath: "/home/new-project",
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(workspace.selectProject).toHaveBeenCalledWith("proj-new-project"),
+    );
+  });
+
+  it("shows an error when the file dialog fails", async () => {
+    vi.mocked(open).mockRejectedValue(new Error("dialog unavailable"));
+    renderTree();
+    await waitFor(() =>
+      expect(screen.getByTestId("project-root-picker")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByTestId("project-root-picker"));
+    await waitFor(() =>
+      expect(screen.getByTestId("project-root-error")).toHaveTextContent(
+        "dialog unavailable",
+      ),
     );
   });
 });

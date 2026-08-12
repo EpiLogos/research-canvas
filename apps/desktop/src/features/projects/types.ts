@@ -16,6 +16,7 @@ export interface ProjectTreeCanvas {
 export interface ProjectTreeSequence {
   id: string;
   name: string;
+  canvasId: string;
 }
 
 /** A scene listed under a constellation. */
