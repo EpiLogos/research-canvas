@@ -1,43 +1,37 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CanvasPane } from "./CanvasPane";
+import { useParams } from "react-router-dom";
+import {
+  createWorkspaceServices,
+  type GraphNode,
+  type TimelineRelationField,
+} from "@research-canvas/desktop-api";
+import type { SurfaceId, SurfaceTabState } from "@research-canvas/schema";
+
 import { FullScreenReader } from "./FullScreenReader";
-import { IconStrip } from "./IconStrip";
-import { LeftOverlay } from "./LeftOverlay";
-import { BottomDock } from "./BottomDock";
-import { InspectorOverlay } from "./InspectorOverlay";
 import { StatusStrip } from "./StatusStrip";
+import { TopBar } from "./TopBar";
 import { PipelineRail } from "./PipelineRail";
-import { ReadingLens } from "./ReadingLens";
+import { LeftSidebar } from "./LeftSidebar";
+import { Stage } from "./Stage";
+import { RightInspector } from "./RightInspector";
 import { FlowView } from "../features/pipeline/FlowView";
-import {
-  usePipelineActions,
-} from "../features/pipeline/usePipelineActions";
-import {
-  usePipelineStages,
-} from "../features/pipeline/usePipelineStages";
+import { usePipelineActions } from "../features/pipeline/usePipelineActions";
+import { usePipelineStages } from "../features/pipeline/usePipelineStages";
 import {
   PIPELINE_STAGES,
   type PipelineStageId,
 } from "../features/pipeline/pipelineStages";
-import { InspectorTab } from "../features/inspector/InspectorTab";
-import { TerminalPane } from "../features/terminal/TerminalPane";
+import { readerRecordFromGraphNode } from "../features/viewer/readerRecord";
+
 import { useShellLayout } from "./useShellLayout";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { SequencesManager } from "../features/sequences/SequencesManager";
 import { SettingsOverlay } from "../features/settings/SettingsOverlay";
 import { CommandPalette } from "../features/search/CommandPalette";
-import { TimelineLens } from "@research-canvas/canvas";
-import { createWorkspaceServices, type GraphNode, type TimelineRelationField } from "@research-canvas/desktop-api";
 import { createTimelineDataSource } from "../features/timeline/createTimelineDataSource";
-import { PsychogeographicLens } from "../features/psychogeographic/PsychogeographicLens";
-import { StoryLens } from "../features/story/StoryLens";
-import { PalaceLensHost } from "../features/palace/PalaceLensHost";
-import type { SurfaceId, SurfaceTabState } from "@research-canvas/schema";
-import { TabBar } from "./TabBar";
 import { useLensMode } from "./useLensMode";
 import {
   readerRecordFromCanvasNode,
-  readerRecordFromGraphNode,
   type ReaderRecord,
 } from "../features/viewer/readerRecord";
 
@@ -78,20 +72,22 @@ function defaultTabState(surfaceId: SurfaceId): SurfaceTabState {
 export function Shell() {
   const layout = useShellLayout();
   const workspace = useCanvasWorkspace();
+  const { projectId, surfaceId, constellationId, detailId } = useParams();
   const [fullScreenMode, setFullScreenMode] = useState<"closed" | "node" | "sequence">("closed");
   const [fullScreenRecord, setFullScreenRecord] = useState<ReaderRecord | null>(null);
   const [leftMode, setLeftMode] = useState<"projects" | "files" | "search" | "annotations">("projects");
   const [sequencesOpen, setSequencesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [readingOverlayOpen, setReadingOverlayOpen] = useState(false);
-  const [readingRecord, setReadingRecord] = useState<ReaderRecord | null>(null);
-  const [readingRelationField, setReadingRelationField] = useState<TimelineRelationField | null>(null);
-  const readingRelationRequestVersion = useRef(0);
+  const [readerOpen, setReaderOpen] = useState(false);
+  const [readerRecord, setReaderRecord] = useState<ReaderRecord | null>(null);
+  const [readerRelationField, setReaderRelationField] = useState<TimelineRelationField | null>(null);
+  const readerRelationRequestVersion = useRef(0);
   const [drawingMode, setDrawingMode] = useState(false);
   const [strokeColour, setStrokeColour] = useState("#f97316");
   const timelineViewports = useRef(new Map<string, { centerYear: number; pixelsPerYear: number }>());
   const browserCloseTimer = useRef<number | null>(null);
+  const appliedRouteRef = useRef<string | null>(null);
 
   const { lens, setLens } = useLensMode();
   useEffect(() => {
@@ -101,17 +97,64 @@ export function Shell() {
     }
   }, [workspace.activeSurfaceId, lens, setLens]);
 
+  // Route-driven workspace activation: when the URL changes, select the
+  // matching project and open/activate the requested surface/tab.
+  const applyingRouteRef = useRef(false);
+  useEffect(() => {
+    const routeKey = `${projectId ?? ""}:${surfaceId ?? ""}:${constellationId ?? ""}:${detailId ?? ""}`;
+    if (!workspace.isHydrated || applyingRouteRef.current || routeKey === appliedRouteRef.current) return;
+    applyingRouteRef.current = true;
+
+    const applyRoute = async () => {
+      if (projectId && projectId !== workspace.activeProjectId) {
+        await workspace.selectProject(projectId);
+      }
+
+      if (surfaceId) {
+        if (surfaceId === "canvas" && constellationId) {
+          await workspace.selectConstellation(constellationId);
+        } else {
+          const existing = workspace.tabs.find((tab) => tab.surfaceId === surfaceId);
+          if (existing) {
+            workspace.activateTab(existing.id);
+          } else {
+            const title = workspace.activeConstellation?.displayName ?? "Untitled";
+            workspace.openTab({
+              id: crypto.randomUUID(),
+              surfaceId: surfaceId as SurfaceId,
+              title,
+              pinned: false,
+              state: defaultTabState(surfaceId as SurfaceId),
+            });
+          }
+        }
+      }
+
+      if (detailId) {
+        workspace.selectNode(detailId);
+      }
+    };
+
+    void applyRoute().finally(() => {
+      applyingRouteRef.current = false;
+      appliedRouteRef.current = routeKey;
+    });
+  }, [projectId, surfaceId, constellationId, detailId, workspace]);
+
   const closeFullScreen = useCallback(() => {
     setFullScreenMode("closed");
     setFullScreenRecord(null);
-    setReadingRelationField(null);
+    setReaderRelationField(null);
   }, []);
+
   const timelineDataSource = useMemo(
-    () => workspace.workspaceId ?
-      createTimelineDataSource({
-        transport: createWorkspaceServices(),
-        workspaceId: workspace.workspaceId,
-      }) : null,
+    () =>
+      workspace.workspaceId
+        ? createTimelineDataSource({
+            transport: createWorkspaceServices(),
+            workspaceId: workspace.workspaceId,
+          })
+        : null,
     [workspace.workspaceId],
   );
   const rememberedTimelineViewport = workspace.workspaceId
@@ -129,44 +172,41 @@ export function Shell() {
   const openNodeDocument = useCallback(
     (graphNodeId: string, timelineNode?: GraphNode, relationField?: TimelineRelationField) => {
       workspace.selectNode(graphNodeId);
-      const requestVersion = readingRelationRequestVersion.current + 1;
-      readingRelationRequestVersion.current = requestVersion;
-      setReadingRelationField(relationField ?? null);
+      const requestVersion = readerRelationRequestVersion.current + 1;
+      readerRelationRequestVersion.current = requestVersion;
+      setReaderRelationField(relationField ?? null);
       const loadRelationField = workspace.transport?.loadTimelineRelationField;
-      const shouldLoadRelationField = timelineNode !== undefined
-        || readingOverlayOpen
-        || readingRelationField !== null;
+      const shouldLoadRelationField = timelineNode !== undefined || readerOpen || readerRelationField !== null;
       if (!relationField && shouldLoadRelationField && workspace.workspaceId && loadRelationField) {
         void loadRelationField({
           workspaceId: workspace.workspaceId,
           graphNodeId,
-        }).then((field) => {
-          if (readingRelationRequestVersion.current === requestVersion) setReadingRelationField(field);
-        }).catch(() => {
-          // Relation context is supplementary; the reader remains usable.
-        });
+        })
+          .then((field) => {
+            if (readerRelationRequestVersion.current === requestVersion) setReaderRelationField(field);
+          })
+          .catch(() => {
+            // Relation context is supplementary; the reader remains usable.
+          });
       }
       const canvasNode = workspace.nodes.find((node) => node.id === graphNodeId) ?? null;
-      setReadingRecord(
+      setReaderRecord(
         timelineNode
-          ? readerRecordFromGraphNode(timelineNode)
+          ? readerRecordFromGraphNode(timelineNode as unknown as import("@research-canvas/schema").GraphNodeContract)
           : canvasNode
             ? readerRecordFromCanvasNode(canvasNode)
             : null,
       );
-      setReadingOverlayOpen(true);
+      setReaderOpen(true);
     },
-    [readingOverlayOpen, readingRelationField, workspace],
+    [readerOpen, readerRelationField, workspace],
   );
 
   const setShellLens = useCallback(
-    (mode: "canvas" | "timeline" | "psychogeographic" | "story" | "palace" | "reading") => {
-      if (mode === "reading") {
-        setReadingOverlayOpen(true);
-        return;
-      }
-      setReadingOverlayOpen(false);
-      setReadingRecord(null);
+    (mode: "canvas" | "timeline" | "psychogeographic" | "story" | "palace") => {
+      setReaderOpen(false);
+      setReaderRecord(null);
+      setReaderRelationField(null);
       setLens(mode);
       const surfaceId: SurfaceId = mode === "psychogeographic" ? "places" : mode;
       const existing = workspace.tabs.find((tab) => tab.surfaceId === surfaceId);
@@ -195,20 +235,20 @@ export function Shell() {
     [layout],
   );
 
-  // The full-screen/modal layers (palette, sequences manager, settings,
-  // fullscreen reader) are mutually exclusive top layers — only one may be
-  // open at a time. closeOverlays() clears all of them; each open handler
-  // calls it first, then opens just its own layer.
+  const closeReader = useCallback(() => {
+    setReaderOpen(false);
+    setReaderRecord(null);
+    setReaderRelationField(null);
+  }, []);
+
   const closeOverlays = useCallback(() => {
     setPaletteOpen(false);
     setSequencesOpen(false);
     setSettingsOpen(false);
     setFullScreenMode("closed");
     setFullScreenRecord(null);
-    setReadingOverlayOpen(false);
-    setReadingRecord(null);
-    setReadingRelationField(null);
-  }, []);
+    closeReader();
+  }, [closeReader]);
 
   const openPalette = useCallback(() => {
     closeOverlays();
@@ -229,22 +269,23 @@ export function Shell() {
     (
       mode: "node" | "sequence",
       record: ReaderRecord | null = null,
-      relationField: TimelineRelationField | null = readingRelationField,
+      relationField: TimelineRelationField | null = readerRelationField,
     ) => {
       closeOverlays();
       setFullScreenRecord(record);
-      setReadingRelationField(relationField);
+      setReaderRelationField(relationField);
       setFullScreenMode(mode);
     },
-    [closeOverlays, readingRelationField],
+    [closeOverlays, readerRelationField],
   );
 
-  // Leaving the annotations mode, or closing the browser panel entirely,
-  // must turn drawing mode off — otherwise the canvas can be left stuck in
-  // a draw cursor with no visible way to exit it. This only ever turns
-  // drawingMode OFF: the annotations toggle (onToggleDrawing) is what turns
-  // it on while leftMode === "annotations" && browserOpen, and this effect's
-  // condition is false in exactly that state, so it never fights the toggle.
+  const handleReaderFullScreen = useCallback(
+    (record: ReaderRecord, relationField?: TimelineRelationField | null) => {
+      enterFullScreen("node", record, relationField ?? null);
+    },
+    [enterFullScreen],
+  );
+
   useEffect(() => {
     if (leftMode !== "annotations" || !layout.browserOpen) {
       setDrawingMode(false);
@@ -274,11 +315,14 @@ export function Shell() {
     }, 260);
   }, [cancelBrowserClose, closeBrowser]);
 
-  const previewBrowserMode = useCallback((mode: "projects" | "files" | "search" | "annotations") => {
-    cancelBrowserClose();
-    setLeftMode(mode);
-    layout.setBrowserOpen(true);
-  }, [cancelBrowserClose, layout]);
+  const previewBrowserMode = useCallback(
+    (mode: "projects" | "files" | "search" | "annotations") => {
+      cancelBrowserClose();
+      setLeftMode(mode);
+      layout.setBrowserOpen(true);
+    },
+    [cancelBrowserClose, layout],
+  );
 
   useEffect(() => () => cancelBrowserClose(), [cancelBrowserClose]);
 
@@ -289,26 +333,49 @@ export function Shell() {
         e.preventDefault();
         openPalette();
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === "j") { e.preventDefault(); layout.toggleDock(); }
-      if ((e.metaKey || e.ctrlKey) && e.key === "i") { e.preventDefault(); layout.toggleInspector(); }
-      if ((e.metaKey || e.ctrlKey) && e.key === "b") { e.preventDefault(); layout.toggleBrowser(); }
-      if ((e.metaKey || e.ctrlKey) && e.key === "1") { e.preventDefault(); setShellLens("canvas"); }
-      if ((e.metaKey || e.ctrlKey) && e.key === "2") { e.preventDefault(); setShellLens("timeline"); }
-      if ((e.metaKey || e.ctrlKey) && e.key === "3") { e.preventDefault(); setShellLens("reading"); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "j") {
+        e.preventDefault();
+        layout.toggleDock();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "i") {
+        e.preventDefault();
+        layout.toggleInspector();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "b") {
+        e.preventDefault();
+        layout.toggleBrowser();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "1") {
+        e.preventDefault();
+        setShellLens("canvas");
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "2") {
+        e.preventDefault();
+        setShellLens("timeline");
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "3") {
+        e.preventDefault();
+        setShellLens("psychogeographic");
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "4") {
+        e.preventDefault();
+        setShellLens("story");
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "5") {
+        e.preventDefault();
+        setShellLens("palace");
+      }
       if (e.key === "Escape" && layout.browserOpen) {
         closeBrowser();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [layout, setShellLens, openPalette]);
+  }, [layout, setShellLens, openPalette, closeBrowser]);
 
   const handleNodeSelect = useCallback(
     (nodeId: string) => {
       workspace.selectNode(nodeId);
-      // Once the user has explicitly closed the inspector, selecting nodes
-      // must not reopen it — closing it needs to stick until the user
-      // reopens it (via the rail, pin, or Cmd+I) themselves.
       if (!layout.inspectorPinned && !layout.inspectorUserClosed) {
         layout.setInspectorOpen(true);
       }
@@ -320,26 +387,21 @@ export function Shell() {
     (nodeId: string) => {
       const node = workspace.nodes.find((candidate) => candidate.id === nodeId);
       if (!node) return;
-      if (node?.type === "portal") {
-        setReadingOverlayOpen(false);
-        setReadingRecord(null);
+      if (node.type === "portal") {
+        closeReader();
         void workspace.openCanvas(node.targetCanvasId);
         return;
       }
 
       workspace.selectNode(nodeId);
-      setReadingRecord(readerRecordFromCanvasNode(node));
-      setReadingOverlayOpen(true);
+      setReaderRecord(readerRecordFromCanvasNode(node));
+      setReaderOpen(true);
     },
-    [workspace],
+    [workspace, closeReader],
   );
 
   const handlePlaySequence = useCallback(() => enterFullScreen("sequence"), [enterFullScreen]);
 
-  // ---- Canvas pipeline (task-9): one visible sequence --------------------
-  // Stage state is derived from the real stores (timeline view + scenes +
-  // palace curation); the rail and the flow view are navigation + action
-  // surfaces over that derived state — no new ledger.
   const pipelineObjects = useMemo(
     () =>
       workspace.nodes.map((node) => ({
@@ -365,65 +427,67 @@ export function Shell() {
   const stageCounts = useMemo(
     () =>
       Object.fromEntries(
-        PIPELINE_STAGES.map((stage) => [
-          stage.id,
-          pipelineStages.countAt(stage.id),
-        ]),
+        PIPELINE_STAGES.map((stage) => [stage.id, pipelineStages.countAt(stage.id)]),
       ) as Record<PipelineStageId, number>,
     [pipelineStages.countAt],
   );
 
-  const selectedTitle = workspace.nodes.find((n) => n.id === workspace.selectedNodeId)?.title;
-  // The inspector is a canvas/graph affordance — it must never float over
-  // the immersive reading lens's stage content (its ⤢ fullscreen / "Back to
-  // canvas" controls have no z-index of their own to defend against it), so
-  // it is gated out entirely while lens === "reading". Selection and
-  // inspectorOpen/pinned state are left untouched, so switching back to
-  // canvas/timeline restores it exactly as it was.
   const inspectorVisible =
     layout.inspectorOpen &&
     (Boolean(workspace.selectedNodeId) || layout.inspectorPinned) &&
-    lens !== "reading" &&
-    !readingOverlayOpen;
+    !readerOpen;
 
-  const flowNode =
-    (() => {
-      const selected = workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
-      if (!selected?.graphNodeId) return null;
-      return {
-        graphNodeId: selected.graphNodeId,
-        title: selected.title,
-        canvasNodeType: selected.type,
-        entityType: selected.graph?.entityType,
-      };
-    })();
-  const flowStageState = flowNode
-    ? pipelineStages.byGraphNodeId.get(flowNode.graphNodeId) ?? null
-    : null;
+  const flowNode = (() => {
+    const selected = workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
+    if (!selected?.graphNodeId) return null;
+    return {
+      graphNodeId: selected.graphNodeId,
+      title: selected.title,
+      canvasNodeType: selected.type,
+      entityType: selected.graph?.entityType,
+    };
+  })();
+  const flowStageState = flowNode ? pipelineStages.byGraphNodeId.get(flowNode.graphNodeId) ?? null : null;
+
+  const projectName =
+    workspace.activeProjectId && workspace.activeProjectId !== ""
+      ? workspace.activeConstellation?.displayName ?? workspace.activeProjectId
+      : null;
+
+  const shellStyle = {
+    "--shell-left-sidebar-width": `${layout.browserOpen ? layout.browserWidth : 44}px`,
+    "--shell-right-inspector-width": `${inspectorVisible ? layout.inspectorWidth : 0}px`,
+    "--shell-bottom-dock-height": `${layout.dockHeight}px`,
+    "--shell-bottom-dock-width": `${layout.dockWidth}px`,
+  } as React.CSSProperties;
 
   return (
-    <div className="ishell" data-lens={lens} ref={layout.shellRef} style={{ "--browser-width": `${layout.browserWidth}px` } as React.CSSProperties}>
-      <TabBar
+    <div className="ishell" data-lens={lens} ref={layout.shellRef} style={shellStyle}>
+      <TopBar
+        projectName={projectName}
         tabs={workspace.tabs}
         activeTabId={workspace.activeTabId}
-        onActivate={(tabId) => workspace.activateTab(tabId)}
-        onClose={(tabId) => workspace.closeTab(tabId)}
+        onActivateTab={workspace.activateTab}
+        onCloseTab={workspace.closeTab}
+        onOpenPalette={openPalette}
+        onOpenSettings={openSettings}
+        onToggleTerminal={layout.toggleDock}
+        terminalActive={layout.dockOpen}
       />
+
       <PipelineRail
-        lens={readingOverlayOpen ? "reading" : lens}
+        lens={lens}
         onSetLens={setShellLens}
-        breadcrumb={selectedTitle}
+        breadcrumb={projectName ?? undefined}
         onOpenPalette={openPalette}
         stageCounts={stageCounts}
       />
 
       <div className="ishell-body">
-        {/* The rail stays reachable in every lens (including reading) —
-            panels must never become unreachable just because the reading
-            lens is active. Reading can still recede other chrome via CSS. */}
-        <IconStrip
+        <LeftSidebar
+          open={layout.browserOpen}
+          leftMode={leftMode}
           browserActive={layout.browserOpen}
-          activeLeftMode={leftMode}
           onToggleBrowser={layout.toggleBrowser}
           onSetBrowserMode={setBrowserMode}
           onPreviewBrowserMode={previewBrowserMode}
@@ -435,159 +499,68 @@ export function Shell() {
           onToggleInspector={layout.toggleInspector}
           terminalActive={layout.dockOpen}
           onToggleTerminal={layout.toggleDock}
+          onResizeStart={layout.beginBrowserResize}
+          drawingMode={drawingMode}
+          onToggleDrawing={() => setDrawingMode((v) => !v)}
+          strokeColour={strokeColour}
+          onSetStrokeColour={setStrokeColour}
         />
 
-        <div className="ishell-stage">
-          <LeftOverlay
-            open={layout.browserOpen}
-            mode={leftMode}
-            onResizeStart={layout.beginBrowserResize}
-            onInteractionStart={cancelBrowserClose}
-            onInteractionEnd={scheduleBrowserClose}
-            drawingMode={drawingMode}
-            onToggleDrawing={() => setDrawingMode((v) => !v)}
-            strokeColour={strokeColour}
-            onSetStrokeColour={setStrokeColour}
-          />
+        <Stage
+          lens={lens}
+          workspaceTransport={workspace.transport}
+          databasePath={workspace.databasePath}
+          workspaceId={workspace.workspaceId}
+          activeProfileScope={workspace.activeProfileScope}
+          workingRoot={workspace.workingRoot}
+          repoRoot={workspace.repoRoot}
+          timelineDataSource={timelineDataSource}
+          rememberedTimelineViewport={rememberedTimelineViewport}
+          onTimelineViewportChange={rememberTimelineViewport}
+          onOpenNodeDocument={openNodeDocument}
+          onNodeSelect={handleNodeSelect}
+          onNodeDoubleClick={handleNodeDoubleClick}
+          onPlaySequence={handlePlaySequence}
+          leftPanelOpen={layout.browserOpen}
+          rightPanelOpen={inspectorVisible}
+          drawingMode={drawingMode}
+          strokeColour={strokeColour}
+          readerOpen={readerOpen}
+          readerRecord={readerRecord}
+          readerRelationField={readerRelationField}
+          onReaderFullScreen={handleReaderFullScreen}
+          onReaderExit={closeReader}
+          dockOpen={layout.dockOpen}
+          dockHeight={layout.dockHeight}
+          dockWidth={layout.dockWidth}
+          onDockClose={() => layout.setDockOpen(false)}
+          onDockResizeStart={layout.beginDockResize}
+          onDockWidthResizeStart={layout.beginDockWidthResize}
+        />
 
-          {lens === "canvas" && (
-            <CanvasPane
-              onNodeSelect={handleNodeSelect}
-              onNodeDoubleClick={handleNodeDoubleClick}
-              onPlaySequence={handlePlaySequence}
-              leftPanelOpen={layout.browserOpen}
-              rightPanelOpen={inspectorVisible}
-              drawingMode={drawingMode}
-              strokeColour={strokeColour}
+        <RightInspector
+          open={inspectorVisible}
+          pinned={layout.inspectorPinned}
+          onTogglePin={layout.toggleInspectorPin}
+          onClose={layout.closeInspector}
+          onResizeStart={layout.beginInspectorResize}
+          flowView={
+            <FlowView
+              node={flowNode}
+              stageState={flowStageState}
+              candidatePlaces={pipelineStages.candidatePlaces}
+              actions={pipelineActions}
+              onJump={(lens) => setShellLens(lens)}
             />
-          )}
-
-          {lens === "timeline" && timelineDataSource && (
-            <section className="canvas-pane" data-testid="timeline-pane" style={{ position: "absolute", inset: 0 }}>
-              <TimelineLens
-                dataSource={timelineDataSource}
-                onOpenNode={openNodeDocument}
-                initialViewport={rememberedTimelineViewport}
-                onViewportChange={rememberTimelineViewport}
-              />
-            </section>
-          )}
-          {lens === "timeline" && !timelineDataSource && (
-            <section className="canvas-pane" data-testid="timeline-workspace-loading">Loading timeline workspace…</section>
-          )}
-
-          {lens === "psychogeographic" && workspace.transport && workspace.databasePath && workspace.workspaceId && workspace.activeProfileScope && (
-            <section className="canvas-pane" data-testid="psychogeographic-pane" style={{ position: "absolute", inset: 0 }}>
-              <PsychogeographicLens
-                transport={workspace.transport}
-                databasePath={workspace.databasePath}
-                workspaceId={workspace.workspaceId}
-                profileScope={workspace.activeProfileScope}
-                mediaRoot={workspace.workingRoot ?? ""}
-                repoRoot={workspace.repoRoot ?? ""}
-              />
-            </section>
-          )}
-
-          {lens === "story" && workspace.transport && workspace.databasePath && workspace.workspaceId && workspace.activeProfileScope && (
-            <section className="canvas-pane" data-testid="story-pane" style={{ position: "absolute", inset: 0 }}>
-              <StoryLens
-                transport={workspace.transport}
-                databasePath={workspace.databasePath}
-                workspaceId={workspace.workspaceId}
-                repoRoot={workspace.repoRoot ?? ""}
-                profileScope={workspace.activeProfileScope}
-                workingRoot={workspace.workingRoot ?? ""}
-              />
-            </section>
-          )}
-
-          {lens === "palace" && workspace.transport && workspace.databasePath && workspace.workspaceId && workspace.activeProfileScope && (
-            <section className="canvas-pane" data-testid="palace-pane" style={{ position: "absolute", inset: 0 }}>
-              <PalaceLensHost
-                transport={workspace.transport}
-                databasePath={workspace.databasePath}
-                workspaceId={workspace.workspaceId}
-                profileScope={workspace.activeProfileScope}
-                workingRoot={workspace.workingRoot ?? ""}
-              />
-            </section>
-          )}
-
-          {lens === "reading" && (
-            <ReadingLens
-              onFullScreen={(record, relationField) => enterFullScreen("node", record, relationField)}
-              onExitToCanvas={() => setShellLens("canvas")}
-              relationField={readingRelationField}
-              onOpenRelatedNode={openNodeDocument}
-            />
-          )}
-
-          {readingOverlayOpen && (
-            <ReadingLens
-              variant="overlay"
-              onFullScreen={(record, relationField) => enterFullScreen("node", record, relationField)}
-              onExitToCanvas={() => {
-                setReadingOverlayOpen(false);
-                setReadingRecord(null);
-                setReadingRelationField(null);
-              }}
-              recordOverride={readingRecord}
-              relationField={readingRelationField}
-              onOpenRelatedNode={openNodeDocument}
-            />
-          )}
-
-          <InspectorOverlay
-            open={inspectorVisible}
-            pinned={layout.inspectorPinned}
-            width={layout.inspectorWidth}
-            onTogglePin={layout.toggleInspectorPin}
-            onClose={layout.closeInspector}
-            onResizeStart={layout.beginInspectorResize}
-          >
-            <InspectorTab
-            flowView={
-              <FlowView
-                node={flowNode}
-                stageState={flowStageState}
-                candidatePlaces={pipelineStages.candidatePlaces}
-                actions={pipelineActions}
-                onJump={(lens) => setShellLens(lens)}
-              />
-            }
-          />
-          </InspectorOverlay>
-
-          <BottomDock
-            open={layout.dockOpen}
-            height={layout.dockHeight}
-            width={layout.dockWidth}
-            label="Terminal · antichrist"
-            onClose={() => layout.setDockOpen(false)}
-            onResizeStart={layout.beginDockResize}
-            onWidthResizeStart={layout.beginDockWidthResize}
-          >
-            <TerminalPane />
-          </BottomDock>
-
-          {fullScreenMode !== "closed" && (
-            <FullScreenReader
-              mode={fullScreenMode}
-              record={fullScreenRecord}
-              relationField={readingRelationField}
-              onOpenRelatedNode={openNodeDocument}
-              onClose={closeFullScreen}
-            />
-          )}
-        </div>
+          }
+        />
       </div>
 
       <StatusStrip
         synced
         nodeCount={workspace.nodes.length}
         relationCount={workspace.edges.length}
-        lens={readingOverlayOpen ? "reading" : lens}
+        lens={readerOpen ? "reading" : lens}
       />
 
       {sequencesOpen && (
@@ -605,6 +578,16 @@ export function Shell() {
         onSetLens={setShellLens}
         onToggleTerminal={layout.toggleDock}
       />
+
+      {fullScreenMode !== "closed" && (
+        <FullScreenReader
+          mode={fullScreenMode}
+          record={fullScreenRecord}
+          relationField={readerRelationField}
+          onOpenRelatedNode={openNodeDocument}
+          onClose={closeFullScreen}
+        />
+      )}
     </div>
   );
 }

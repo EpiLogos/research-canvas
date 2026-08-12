@@ -13,13 +13,13 @@ export function useShellLayout() {
   const shellRef = useRef<HTMLDivElement>(null);
 
   const [browserOpen, setBrowserOpen] = useState(false);
-  const [browserWidth, setBrowserWidth] = useState(300);
+  const [browserWidth, setBrowserWidth] = useState(280);
   const toggleBrowser = useCallback(() => setBrowserOpen((v) => !v), []);
 
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [inspectorPinned, setInspectorPinned] = useState(false);
   const [inspectorUserClosed, setInspectorUserClosed] = useState(false);
-  const [inspectorWidth, setInspectorWidth] = useState(260);
+  const [inspectorWidth, setInspectorWidth] = useState(320);
   const openInspector = useCallback(() => {
     setInspectorOpen(true);
     setInspectorUserClosed(false);

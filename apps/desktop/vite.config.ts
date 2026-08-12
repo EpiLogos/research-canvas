@@ -19,6 +19,9 @@ export default defineConfig({
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: {
+      "@research-canvas/canvas/styles/shell.css": fileURLToPath(
+        new URL("../../packages/canvas/src/styles/shell.css", import.meta.url),
+      ),
       "@research-canvas/canvas": fileURLToPath(
         new URL("../../packages/canvas/src/index.ts", import.meta.url),
       ),

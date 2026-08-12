@@ -4,7 +4,7 @@ interface StatusStripProps {
   synced: boolean;
   nodeCount: number;
   relationCount: number;
-  lens: LensMode;
+  lens: LensMode | "reading";
 }
 
 export function StatusStrip({ synced, nodeCount, relationCount, lens }: StatusStripProps) {

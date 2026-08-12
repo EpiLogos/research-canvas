@@ -1,0 +1,253 @@
+/* Shell layout tokens — shared by the desktop and any canvas consumer.
+   All shell chrome dimensions/z-indexes live here so component files can
+   reference custom properties instead of hard-coding numbers. */
+
+:root {
+  /* Chrome heights. */
+  --shell-top-bar-height: 44px;
+  --shell-status-height: 26px;
+
+  /* Sidebar / rail. */
+  --shell-left-rail-width: 44px;
+  --shell-left-sidebar-width: 280px;
+  --shell-left-sidebar-min: 240px;
+  --shell-left-sidebar-max: 460px;
+
+  /* Right inspector. */
+  --shell-right-inspector-width: 320px;
+  --shell-right-inspector-min: 220px;
+  --shell-right-inspector-max: 380px;
+
+  /* Bottom dock. */
+  --shell-bottom-dock-height: 240px;
+  --shell-bottom-dock-min: 120px;
+  --shell-bottom-dock-max: 560px;
+  --shell-bottom-dock-width: 720px;
+  --shell-bottom-dock-width-min: 420px;
+  --shell-bottom-dock-width-max: 1100px;
+
+  /* Stacking order. */
+  --shell-z-stage: 1;
+  --shell-z-reading-bar: 6;
+  --shell-z-panel: 7;
+  --shell-z-dock: 8;
+  --shell-z-modal: 500;
+}
+
+/* Layout rules for the T8 shell components. These intentionally override the
+   older observatory.css flex layout with a persistent grid. */
+
+.ishell {
+  grid-template-rows:
+    var(--shell-top-bar-height)
+    auto
+    1fr
+    var(--shell-status-height);
+}
+
+.ishell-body {
+  display: grid;
+  grid-template-columns:
+    var(--shell-left-sidebar-width)
+    1fr
+    var(--shell-right-inspector-width);
+  overflow: hidden;
+}
+
+.shell-top-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--ob-line);
+  background: var(--ob-bg-2);
+}
+
+.shell-top-bar__project {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.shell-top-bar__tabs {
+  flex: 1;
+  min-width: 0;
+}
+
+.shell-top-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.shell-top-bar__action {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ob-faint);
+  cursor: pointer;
+}
+
+.shell-top-bar__action:hover,
+.shell-top-bar__action[data-active="true"] {
+  color: var(--ob-ink);
+  background: var(--ob-line);
+}
+
+.shell-top-bar__action svg {
+  width: 16px;
+  height: 16px;
+}
+
+.shell-left-sidebar {
+  display: flex;
+  flex-direction: row;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ob-panel);
+  border-right: 1px solid var(--ob-line);
+}
+
+.shell-left-sidebar__rail {
+  width: var(--shell-left-rail-width);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell-left-sidebar__panel {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+/* The overlay component was designed to float over the stage. When it lives
+   inside the persistent sidebar, it must fill the panel instead. */
+.shell-left-sidebar__panel .left-overlay {
+  position: static;
+  transform: none;
+  opacity: 1;
+  pointer-events: auto;
+  width: 100% !important;
+  height: 100%;
+}
+
+.shell-left-sidebar__panel .left-overlay__inner {
+  height: 100%;
+}
+
+.shell-left-sidebar__panel .left-overlay__resize-handle {
+  display: none;
+}
+
+.shell-stage {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.shell-right-inspector {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--ob-panel);
+  border-left: 1px solid var(--ob-line);
+}
+
+.shell-right-inspector__resize {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  cursor: ew-resize;
+  z-index: 1;
+}
+
+.shell-right-inspector__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  border-bottom: 1px solid var(--ob-line);
+}
+
+.shell-right-inspector__title {
+  font-family: var(--ob-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ob-dim);
+}
+
+.shell-right-inspector__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.shell-right-inspector__action {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ob-faint);
+  cursor: pointer;
+}
+
+.shell-right-inspector__action:hover {
+  color: var(--ob-ink);
+  background: var(--ob-line);
+}
+
+.shell-right-inspector__action[data-pinned="true"] {
+  color: var(--ob-accent);
+}
+
+.shell-right-inspector__action svg {
+  width: 14px;
+  height: 14px;
+}
+
+.shell-right-inspector__body {
+  flex: 1;
+  overflow: auto;
+}
+
+.shell-reader-pane {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(560px, 60%);
+  background: rgba(9, 13, 19, 0.98);
+  border-left: 1px solid var(--ob-line-2);
+  z-index: var(--shell-z-panel);
+  display: flex;
+  flex-direction: column;
+}
+
+.shell-reader-pane .reader-surface {
+  position: static;
+  inset: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell-reader-pane .reader-surface__body {
+  flex: 1;
+  overflow: auto;
+}

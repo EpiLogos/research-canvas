@@ -5,8 +5,7 @@ export type LensMode =
   | "timeline"
   | "psychogeographic"
   | "story"
-  | "palace"
-  | "reading";
+  | "palace";
 
 const ORDER: LensMode[] = [
   "canvas",
@@ -14,7 +13,6 @@ const ORDER: LensMode[] = [
   "psychogeographic",
   "story",
   "palace",
-  "reading",
 ];
 
 export function useLensMode(initial: LensMode = "canvas"): {
