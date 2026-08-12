@@ -1,5 +1,6 @@
 pub mod agent_activity;
 pub mod annotations;
+pub mod app_tabs;
 pub mod canvas;
 pub mod constellation_meta;
 pub mod constellations;
@@ -34,6 +35,7 @@ pub use constellation_meta::{
 pub use constellations::{Constellation, ConstellationRepository};
 pub use error::{RepositoryError, RepositoryResult};
 pub use fetch_record::{FetchRecord, FetchRecordRepository, FetchValidation};
+pub use app_tabs::{AppTabRecord, AppTabRepository};
 pub use graph::{
     ArchetypalLightingResult, GraphNode, GraphNodePatch, GraphRelationship, GraphRepository,
     LitInstance, NewGraphNode, OperatorSeed, ENCAPSULATES, ENCAPSULATES_MODE_INGOING,

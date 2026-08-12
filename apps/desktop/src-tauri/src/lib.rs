@@ -2,6 +2,7 @@ pub mod agent;
 pub mod api;
 pub mod commands {
     pub mod agent_activity;
+    pub mod app_tabs;
     pub mod assets;
     pub mod constellations;
     pub mod export;
@@ -180,6 +181,8 @@ pub fn run() {
             commands::node_document::upsert_local_node_document_command,
             commands::node_document::reconcile_local_node_documents_command,
             commands::node_document::acknowledge_local_node_document_sync_command,
+            commands::app_tabs::load_app_tabs_command,
+            commands::app_tabs::save_app_tabs_command,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Research Canvas");

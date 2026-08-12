@@ -1,6 +1,9 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
+import { createTabManagerStore } from "@research-canvas/canvas";
+import type { AppTab, SurfaceTabState } from "@research-canvas/schema";
+
 // Stub the workspace context so the Shell mounts without a live backend.
 // The brief's baseline mock only supplies {selectNode, canvasId, activeConstellationId};
 // Shell's descendants (LeftOverlay, CanvasScreen, StatusStrip, FullScreenReader) read
@@ -26,39 +29,57 @@ const createProject = vi.fn(async () => ({
   createdAt: "2026-01-01T00:00:00Z",
   updatedAt: "2026-01-01T00:00:00Z",
 }));
+
+const tabManager = createTabManagerStore({ tabs: [], activeTabId: null });
 let workspaceId: string | null = "sqlite:/server-canonical/workspace.sqlite";
 vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
-  useCanvasWorkspace: () => ({
-    selectNode,
-    resizeNode,
-    updateNodeTimelineCard,
-    updateNodeStyle: vi.fn(),
-    canvasId: "c1",
-    databasePath: "/canonical/workspace.sqlite",
-    workingRoot: "/canonical",
-    workspaceId,
-    activeConstellationId: "p1",
-    activeProjectId: "p1",
-    activeProfileScope: "bootstrapping",
-    activeConstellation: null,
-    isHydrated: false,
-    errorMessage: null,
-    constellations: [],
-    selectProject,
-    resolveOrCreateHome,
-    createProject,
-    resourceRoots: [],
-    entries: [],
-    selectedEntryId: null,
-    selectedEdgeId: null,
-    selectedNodeId: null,
-    nodes: [{
-      id: "root-portal", graphNodeId: "root-portal", type: "portal", title: "QL Portal",
-      content: "", tags: [], position: { x: 0, y: 0 }, size: { width: 240, height: 120 },
-      style: {}, targetConstellationId: "nested-ql",
-    }],
-    edges: [],
-  }),
+  useCanvasWorkspace: () => {
+    const state = tabManager.getState();
+    const activeTab = state.getActiveTab();
+    return {
+      tabManager,
+      activeSurfaceId: activeTab?.surfaceId ?? "canvas",
+      tabs: state.tabs,
+      activeTabId: state.activeTabId,
+      activeTab,
+      openTab: (tab: AppTab) => tabManager.getState().open(tab),
+      activateTab: (tabId: string) => tabManager.getState().activate(tabId),
+      closeTab: (tabId: string) => tabManager.getState().close(tabId),
+      updateTabState: (state: SurfaceTabState) => {
+        const activeId = tabManager.getState().activeTabId;
+        if (activeId) tabManager.getState().updateState(activeId, state);
+      },
+      selectNode,
+      resizeNode,
+      updateNodeTimelineCard,
+      updateNodeStyle: vi.fn(),
+      canvasId: "c1",
+      databasePath: "/canonical/workspace.sqlite",
+      workingRoot: "/canonical",
+      workspaceId,
+      activeConstellationId: "p1",
+      activeProjectId: "p1",
+      activeProfileScope: "bootstrapping",
+      activeConstellation: null,
+      isHydrated: false,
+      errorMessage: null,
+      constellations: [],
+      selectProject,
+      resolveOrCreateHome,
+      createProject,
+      resourceRoots: [],
+      entries: [],
+      selectedEntryId: null,
+      selectedEdgeId: null,
+      selectedNodeId: null,
+      nodes: [{
+        id: "root-portal", graphNodeId: "root-portal", type: "portal", title: "QL Portal",
+        content: "", tags: [], position: { x: 0, y: 0 }, size: { width: 240, height: 120 },
+        style: {}, targetConstellationId: "nested-ql",
+      }],
+      edges: [],
+    };
+  },
 }));
 
 const loadTimelineView = vi.fn(async () => ({

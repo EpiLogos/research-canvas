@@ -1,5 +1,6 @@
 import type {
   Annotation,
+  AppTab,
   CanvasEdge,
   CanvasNode,
   ExportAsset,
@@ -838,6 +839,10 @@ export interface WorkspaceTransport {
     expectedRevision: number;
     expectedOrigin: ContentOrigin;
   }): Promise<SyncAcknowledgementMutation>;
+
+  // ---- Global tabs (T7) ----
+  loadAppTabs(input: { databasePath?: string }): Promise<{ tabs: AppTab[]; activeTabId: string | null }>;
+  saveAppTabs(input: { databasePath?: string; tabs: AppTab[]; activeTabId: string | null }): Promise<void>;
 }
 
 const DEFAULT_BRIDGE_PORT = 4789;
@@ -1187,6 +1192,24 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     },
     async upsertCanvasAppState(input) {
       await invokeTauri<void>("upsert_canvas_app_state_command", { request: input });
+    },
+    async loadAppTabs(input) {
+      const databasePath = input.databasePath ?? activeDatabasePath;
+      if (!databasePath) {
+        throw new Error("loadAppTabs: no database path in input or context");
+      }
+      return invokeTauri<{ tabs: AppTab[]; activeTabId: string | null }>("load_app_tabs_command", {
+        request: { databasePath },
+      });
+    },
+    async saveAppTabs(input) {
+      const databasePath = input.databasePath ?? activeDatabasePath;
+      if (!databasePath) {
+        throw new Error("saveAppTabs: no database path in input or context");
+      }
+      await invokeTauri<void>("save_app_tabs_command", {
+        request: { databasePath, tabs: input.tabs, activeTabId: input.activeTabId },
+      });
     },
     async loadCanvasView(input) {
       return invokeTauri<CanvasView>("load_canvas_view_command", { request: input });
@@ -1673,6 +1696,12 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     async listPendingNodeDocumentSyncs() { throw new Error("read-only web build"); },
     async upsertLocalNodeDocument() { throw new Error("read-only web build"); },
     async acknowledgeLocalNodeDocumentSync() { throw new Error("read-only web build"); },
+    async loadAppTabs() {
+      return { tabs: [], activeTabId: null };
+    },
+    async saveAppTabs() {
+      // Tabs are local-only; the web bridge has no persistence endpoint.
+    },
   };
 }
 
@@ -2002,6 +2031,8 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
   const readOnlyThrow = (): never => {
     throw new Error(READ_ONLY_MESSAGE);
   };
+  const readOnlyEmptyTabs = (): Promise<{ tabs: AppTab[]; activeTabId: null }> =>
+    Promise.resolve({ tabs: [], activeTabId: null });
 
   return {
     // ---- existing constellation/file/annotation methods: not served by the static bundle ----
@@ -2237,7 +2268,11 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
     readLocalNodeDocument: readOnlyReject,
     listPendingNodeDocumentSyncs: readOnlyReject,
     upsertLocalNodeDocument: readOnlyReject,
-    acknowledgeLocalNodeDocumentSync: readOnlyReject
+    acknowledgeLocalNodeDocumentSync: readOnlyReject,
+
+    // ---- global tabs: not persisted in the static bundle ----
+    loadAppTabs: readOnlyEmptyTabs,
+    saveAppTabs: readOnlyReject,
   };
 }
 

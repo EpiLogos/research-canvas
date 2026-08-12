@@ -3,9 +3,10 @@ import { useCallback, useMemo, useState } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
+import { useStore } from "zustand";
 
-import { createAnnotationStore, createCanvasStore } from "@research-canvas/canvas";
-import type { CanvasNode } from "@research-canvas/schema";
+import { createAnnotationStore, createCanvasStore, createTabManagerStore } from "@research-canvas/canvas";
+import type { AppTab, CanvasNode, SurfaceTabState } from "@research-canvas/schema";
 
 import { CanvasWorkspaceContext, CanvasWorkspaceProvider } from "../features/canvas/CanvasWorkspaceContext";
 
@@ -292,6 +293,11 @@ function FakeWorkspaceProvider({
     [canvases, store],
   );
 
+  const tabManager = useMemo(() => createTabManagerStore({ tabs: [], activeTabId: null }), []);
+  const tabs = useStore(tabManager, (state) => state.tabs);
+  const activeTabId = useStore(tabManager, (state) => state.activeTabId);
+  const activeTab = activeTabId ? tabs.find((tab) => tab.id === activeTabId) ?? null : null;
+
   const value = useMemo(
     () => ({
       store,
@@ -300,6 +306,22 @@ function FakeWorkspaceProvider({
       errorMessage: null,
       canvasId: CANVAS_ID,
       workspaceId: "sqlite:/canonical/workspace.sqlite",
+      tabManager,
+      activeSurfaceId: activeTab?.surfaceId ?? "canvas",
+      tabs,
+      activeTabId,
+      activeTab,
+      openTab: (tab: AppTab) => tabManager.getState().open(tab),
+      activateTab: (tabId: string) => tabManager.getState().activate(tabId),
+      closeTab: (tabId: string) => tabManager.getState().close(tabId),
+      updateTabState: (state: SurfaceTabState) => {
+        if (activeTabId) {
+          tabManager.getState().updateState(activeTabId, state);
+        }
+      },
+      canvasTabs: [],
+      activeCanvasTabId: null,
+      activeCanvasViewport: null,
       constellationId: "11111111-1111-4111-8111-111111111111",
       databasePath: "/canonical/workspace.sqlite",
       activeConstellation: null,
@@ -352,7 +374,7 @@ function FakeWorkspaceProvider({
       transport: {},
       contentLinkingActions: {},
     }) as unknown as ComponentProps<typeof CanvasWorkspaceContext.Provider>["value"],
-    [store, annotationStore, selectedEntryId, selectedEdgeId, selectedNodeId, selectNode, openCanvas],
+    [store, annotationStore, selectedEntryId, selectedEdgeId, selectedNodeId, selectNode, openCanvas, tabManager, tabs, activeTabId, activeTab],
   );
 
   return <CanvasWorkspaceContext.Provider value={value}>{children}</CanvasWorkspaceContext.Provider>;

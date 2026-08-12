@@ -5,6 +5,7 @@ export * from "./presentation/cardPresentation";
 export * from "./sequences/SequencePresenter";
 export * from "./sequences/walkSequenceGraph";
 export * from "./state/canvasStore";
+export * from "./state/tabManager";
 export { serializeLayoutSnapshot, type LayoutSnapshot } from "./state/layoutSnapshot";
 export * from "./content";
 export * from "./geography/bundledPack";

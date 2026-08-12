@@ -419,6 +419,75 @@
 .canvas-tabs__close:focus-visible { background: var(--ob-tint); color: var(--ob-accent); outline: none; }
 .canvas-tabs__close svg { fill: none; stroke: currentColor; stroke-linecap: round; stroke-width: 1.8; }
 
+/* Global surface tabs rendered by the shell transport. */
+.app-tabbar {
+  display: flex;
+  min-width: 0;
+  gap: 4px;
+  padding: 3px 14px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--ob-line);
+  background: var(--ob-bg-2);
+}
+.app-tabbar::-webkit-scrollbar { display: none; }
+.app-tabbar__item {
+  display: flex;
+  min-width: 0;
+  max-width: 230px;
+  border: 1px solid var(--ob-line-2);
+  border-radius: var(--ob-radius-input);
+  background: rgba(12, 17, 25, 0.9);
+}
+.app-tabbar__item[data-active="true"] {
+  border-color: var(--ob-accent-deep);
+  background: var(--ob-panel-2);
+  box-shadow: 0 8px 22px -16px rgba(0, 0, 0, 0.9);
+}
+.app-tabbar__tab {
+  display: flex;
+  min-width: 0;
+  min-height: var(--ob-hit-sm);
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: calc(var(--ob-radius-input) - 2px);
+  background: transparent;
+  color: var(--ob-dim);
+  cursor: pointer;
+  font: 12px var(--ob-sans);
+  padding: 0 8px 0 11px;
+}
+.app-tabbar__tab:focus-visible {
+  outline: 2px solid var(--ob-accent);
+  outline-offset: -2px;
+}
+.app-tabbar__item[data-active="true"] .app-tabbar__tab { color: var(--ob-ink); }
+.app-tabbar__surface {
+  flex: 0 0 auto;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ob-accent);
+}
+.app-tabbar__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-tabbar__pin { color: var(--ob-accent); font-size: 8px; }
+.app-tabbar__close {
+  display: grid;
+  width: var(--ob-hit-sm);
+  flex: 0 0 var(--ob-hit-sm);
+  place-items: center;
+  border: 0;
+  border-left: 1px solid var(--ob-line);
+  border-radius: 0 calc(var(--ob-radius-input) - 2px) calc(var(--ob-radius-input) - 2px) 0;
+  background: transparent;
+  color: var(--ob-faint);
+  cursor: pointer;
+}
+.app-tabbar__close:hover,
+.app-tabbar__close:focus-visible { background: var(--ob-tint); color: var(--ob-accent); outline: none; }
+.app-tabbar__close svg { fill: none; stroke: currentColor; stroke-linecap: round; stroke-width: 1.8; }
+
 /* ===== Reader surface: one frame for canvas, timeline and full-screen ===== */
 .reader-surface {
   position: absolute;

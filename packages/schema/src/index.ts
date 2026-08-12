@@ -14,4 +14,5 @@ export * from "./scene";
 export * from "./project";
 export * from "./sequence";
 export * from "./surface";
+export * from "./tab";
 export * from "./time";

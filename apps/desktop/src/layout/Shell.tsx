@@ -22,7 +22,6 @@ import {
 import { InspectorTab } from "../features/inspector/InspectorTab";
 import { TerminalPane } from "../features/terminal/TerminalPane";
 import { useShellLayout } from "./useShellLayout";
-import { useLensMode } from "./useLensMode";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import { SequencesManager } from "../features/sequences/SequencesManager";
 import { SettingsOverlay } from "../features/settings/SettingsOverlay";
@@ -33,11 +32,48 @@ import { createTimelineDataSource } from "../features/timeline/createTimelineDat
 import { PsychogeographicLens } from "../features/psychogeographic/PsychogeographicLens";
 import { StoryLens } from "../features/story/StoryLens";
 import { PalaceLensHost } from "../features/palace/PalaceLensHost";
+import type { SurfaceId, SurfaceTabState } from "@research-canvas/schema";
+import { TabBar } from "./TabBar";
+import { useLensMode } from "./useLensMode";
 import {
   readerRecordFromCanvasNode,
   readerRecordFromGraphNode,
   type ReaderRecord,
 } from "../features/viewer/readerRecord";
+
+function surfaceToLens(surfaceId: SurfaceId): "canvas" | "timeline" | "psychogeographic" | "story" | "palace" {
+  switch (surfaceId) {
+    case "places":
+      return "psychogeographic";
+    case "timeline":
+      return "timeline";
+    case "story":
+      return "story";
+    case "palace":
+      return "palace";
+    default:
+      return "canvas";
+  }
+}
+
+function defaultTabState(surfaceId: SurfaceId): SurfaceTabState {
+  switch (surfaceId) {
+    case "projects":
+      return { surfaceId: "projects" };
+    case "canvas":
+      return { surfaceId: "canvas", canvasId: "", constellationId: "", viewport: { x: 0, y: 0, zoom: 1 } };
+    case "timeline":
+      return { surfaceId: "timeline", centerYear: 0, pixelsPerYear: 20 };
+    case "places":
+      return { surfaceId: "places", viewport: { x: 0, y: 0, zoom: 1 } };
+    case "story":
+      return { surfaceId: "story" };
+    case "palace":
+      return { surfaceId: "palace" };
+    default:
+      return { surfaceId: "projects" };
+  }
+}
 
 export function Shell() {
   const layout = useShellLayout();
@@ -58,6 +94,13 @@ export function Shell() {
   const browserCloseTimer = useRef<number | null>(null);
 
   const { lens, setLens } = useLensMode();
+  useEffect(() => {
+    const derived = surfaceToLens(workspace.activeSurfaceId);
+    if (derived !== lens) {
+      setLens(derived);
+    }
+  }, [workspace.activeSurfaceId, lens, setLens]);
+
   const closeFullScreen = useCallback(() => {
     setFullScreenMode("closed");
     setFullScreenRecord(null);
@@ -125,8 +168,23 @@ export function Shell() {
       setReadingOverlayOpen(false);
       setReadingRecord(null);
       setLens(mode);
+      const surfaceId: SurfaceId = mode === "psychogeographic" ? "places" : mode;
+      const existing = workspace.tabs.find((tab) => tab.surfaceId === surfaceId);
+      if (existing) {
+        workspace.activateTab(existing.id);
+        return;
+      }
+      if (surfaceId !== "canvas") {
+        workspace.openTab({
+          id: crypto.randomUUID(),
+          surfaceId,
+          title: workspace.activeConstellation?.displayName ?? "Untitled",
+          pinned: false,
+          state: defaultTabState(surfaceId),
+        });
+      }
     },
-    [setLens],
+    [setLens, workspace],
   );
 
   const setBrowserMode = useCallback(
@@ -345,6 +403,12 @@ export function Shell() {
 
   return (
     <div className="ishell" data-lens={lens} ref={layout.shellRef} style={{ "--browser-width": `${layout.browserWidth}px` } as React.CSSProperties}>
+      <TabBar
+        tabs={workspace.tabs}
+        activeTabId={workspace.activeTabId}
+        onActivate={(tabId) => workspace.activateTab(tabId)}
+        onClose={(tabId) => workspace.closeTab(tabId)}
+      />
       <PipelineRail
         lens={readingOverlayOpen ? "reading" : lens}
         onSetLens={setShellLens}
@@ -453,7 +517,7 @@ export function Shell() {
           {lens === "reading" && (
             <ReadingLens
               onFullScreen={(record, relationField) => enterFullScreen("node", record, relationField)}
-              onExitToCanvas={() => setLens("canvas")}
+              onExitToCanvas={() => setShellLens("canvas")}
               relationField={readingRelationField}
               onOpenRelatedNode={openNodeDocument}
             />

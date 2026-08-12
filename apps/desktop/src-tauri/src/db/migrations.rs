@@ -158,6 +158,10 @@ const MIGRATIONS: &[Migration] = &[
         version: "0036_colour_tags",
         sql: include_str!("../../migrations/0036_colour_tags.sql"),
     },
+    Migration {
+        version: "0037_app_tabs",
+        sql: include_str!("../../migrations/0037_app_tabs.sql"),
+    },
 ];
 
 impl MigrationRunner {
