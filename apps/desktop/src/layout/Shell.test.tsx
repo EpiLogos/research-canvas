@@ -15,6 +15,14 @@ const projectSpies = vi.hoisted(() => ({
   resolveOrCreateHome: vi.fn(),
 }));
 
+vi.mock("../features/terminal/useTerminal", () => ({
+  useTerminal: vi.fn().mockReturnValue({
+    terminalContainerRef: { current: null },
+    status: "connected",
+    session: { id: "session-1", workdir: "/workspace" },
+  }),
+}));
+
 vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@research-canvas/desktop-api")>();
   return {
@@ -332,6 +340,7 @@ function FakeWorkspaceProvider({
       entries: [],
       resourceRoots: [],
       workingRoot: null,
+      repoRoot: "/workspace",
       selectedEntryId,
       selectedEdgeId,
       selectedNodeId,
@@ -406,17 +415,17 @@ describe("Shell frame", () => {
 
   it("summoned panels are closed by default", () => {
     renderShell();
-    expect(screen.queryByTestId("bottom-dock")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("terminal-modal")).not.toBeInTheDocument();
     expect(screen.queryByTestId("shell-right-inspector")).not.toBeInTheDocument();
     expect(screen.queryByTestId("reader-pane")).not.toBeInTheDocument();
     expect(screen.getByTestId("left-overlay")).toHaveAttribute("data-open", "false");
     expect(screen.getByTestId("left-overlay")).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("summons the terminal dock via the rail Terminal verb", () => {
+  it("summons the terminal modal via the rail Terminal verb", () => {
     renderShell();
     fireEvent.click(within(screen.getByTestId("left-rail")).getByRole("button", { name: "Terminal" }));
-    expect(screen.getByTestId("bottom-dock")).toBeVisible();
+    expect(screen.getByTestId("terminal-modal")).toBeVisible();
   });
 
   it("switches the stage surface when a lens is chosen", async () => {

@@ -4,6 +4,14 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createTabManagerStore } from "@research-canvas/canvas";
 import type { AppTab, SurfaceTabState } from "@research-canvas/schema";
 
+vi.mock("../features/terminal/useTerminal", () => ({
+  useTerminal: vi.fn().mockReturnValue({
+    terminalContainerRef: { current: null },
+    status: "connected",
+    session: { id: "session-1", workdir: "/workspace" },
+  }),
+}));
+
 // Stub the workspace context so the Shell mounts without a live backend.
 // The brief's baseline mock only supplies {selectNode, canvasId, activeConstellationId};
 // Shell's descendants (LeftOverlay, CanvasScreen, StatusStrip, FullScreenReader) read
@@ -56,6 +64,7 @@ vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
       canvasId: "c1",
       databasePath: "/canonical/workspace.sqlite",
       workingRoot: "/canonical",
+      repoRoot: "/canonical",
       workspaceId,
       activeConstellationId: "p1",
       activeProjectId: "p1",
@@ -176,14 +185,14 @@ describe("Shell timeline lens", () => {
     const node = await screen.findByTestId("timeline-node-banda");
     fireEvent.doubleClick(node);
     expect(selectNode).toHaveBeenCalledWith("banda");
-    expect(await screen.findByTestId("reading-overlay")).toHaveTextContent("Banda genocide");
+    expect(await screen.findByTestId("reading-pane")).toHaveTextContent("Banda genocide");
     expect(screen.getByTestId("reader-cover")).toHaveAttribute(
       "src",
       "asset://localhost/%2Fcanonical%2Fassets%2Fbanda%2Fship.png",
     );
-    expect(screen.getByTestId("reading-overlay")).toHaveTextContent("A documented Company-state violence event.");
-    fireEvent.click(screen.getByRole("button", { name: "Close reading" }));
-    expect(screen.queryByTestId("reading-overlay")).not.toBeInTheDocument();
+    expect(screen.getByTestId("reading-pane")).toHaveTextContent("A documented Company-state violence event.");
+    fireEvent.click(screen.getByRole("button", { name: "Back to canvas" }));
+    expect(screen.queryByTestId("reading-pane")).not.toBeInTheDocument();
   });
 
   test("takes the same timeline reader record into full-screen reading", async () => {

@@ -2,12 +2,10 @@ import type { TimelineDataSource } from "@research-canvas/canvas";
 import type { GraphNode, TimelineRelationField, WorkspaceServices } from "@research-canvas/desktop-api";
 import { TimelineLens } from "@research-canvas/canvas";
 import { CanvasPane } from "./CanvasPane";
-import { BottomDock } from "./BottomDock";
 import { ReaderPane } from "./ReaderPane";
 import { PsychogeographicLens } from "../features/psychogeographic/PsychogeographicLens";
 import { StoryLens } from "../features/story/StoryLens";
 import { PalaceLensHost } from "../features/palace/PalaceLensHost";
-import { TerminalPane } from "../features/terminal/TerminalPane";
 import type { ReaderRecord } from "../features/viewer/readerRecord";
 import type { LensMode } from "./useLensMode";
 
@@ -35,12 +33,6 @@ interface StageProps {
   readerRelationField: TimelineRelationField | null;
   onReaderFullScreen: (record: ReaderRecord, relationField?: TimelineRelationField | null) => void;
   onReaderExit: () => void;
-  dockOpen: boolean;
-  dockHeight: number;
-  dockWidth: number;
-  onDockClose: () => void;
-  onDockResizeStart: (e: React.PointerEvent) => void;
-  onDockWidthResizeStart: (e: React.PointerEvent) => void;
 }
 
 export function Stage({
@@ -67,12 +59,6 @@ export function Stage({
   readerRelationField,
   onReaderFullScreen,
   onReaderExit,
-  dockOpen,
-  dockHeight,
-  dockWidth,
-  onDockClose,
-  onDockResizeStart,
-  onDockWidthResizeStart,
 }: StageProps) {
   const commonStageSurfaceStyle: React.CSSProperties = { position: "absolute", inset: 0 };
 
@@ -150,18 +136,6 @@ export function Stage({
           onExit={onReaderExit}
         />
       )}
-
-      <BottomDock
-        open={dockOpen}
-        height={dockHeight}
-        width={dockWidth}
-        label="Terminal · antichrist"
-        onClose={onDockClose}
-        onResizeStart={onDockResizeStart}
-        onWidthResizeStart={onDockWidthResizeStart}
-      >
-        <TerminalPane />
-      </BottomDock>
     </div>
   );
 }

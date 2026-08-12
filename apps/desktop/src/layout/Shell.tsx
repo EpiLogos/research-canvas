@@ -14,6 +14,8 @@ import { PipelineRail } from "./PipelineRail";
 import { LeftSidebar } from "./LeftSidebar";
 import { Stage } from "./Stage";
 import { RightInspector } from "./RightInspector";
+import { TerminalModal } from "../features/terminal/TerminalModal";
+import { useTerminalManager } from "../features/terminal/useTerminalManager";
 import { FlowView } from "../features/pipeline/FlowView";
 import { usePipelineActions } from "../features/pipeline/usePipelineActions";
 import { usePipelineStages } from "../features/pipeline/usePipelineStages";
@@ -71,6 +73,7 @@ function defaultTabState(surfaceId: SurfaceId): SurfaceTabState {
 
 export function Shell() {
   const layout = useShellLayout();
+  const terminalManager = useTerminalManager();
   const workspace = useCanvasWorkspace();
   const { projectId, surfaceId, constellationId, detailId } = useParams();
   const [fullScreenMode, setFullScreenMode] = useState<"closed" | "node" | "sequence">("closed");
@@ -335,7 +338,7 @@ export function Shell() {
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "j") {
         e.preventDefault();
-        layout.toggleDock();
+        terminalManager.toggle();
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "i") {
         e.preventDefault();
@@ -371,7 +374,7 @@ export function Shell() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [layout, setShellLens, openPalette, closeBrowser]);
+  }, [layout, terminalManager, setShellLens, openPalette, closeBrowser]);
 
   const handleNodeSelect = useCallback(
     (nodeId: string) => {
@@ -457,8 +460,6 @@ export function Shell() {
   const shellStyle = {
     "--shell-left-sidebar-width": `${layout.browserOpen ? layout.browserWidth : 44}px`,
     "--shell-right-inspector-width": `${inspectorVisible ? layout.inspectorWidth : 0}px`,
-    "--shell-bottom-dock-height": `${layout.dockHeight}px`,
-    "--shell-bottom-dock-width": `${layout.dockWidth}px`,
   } as React.CSSProperties;
 
   return (
@@ -471,8 +472,8 @@ export function Shell() {
         onCloseTab={workspace.closeTab}
         onOpenPalette={openPalette}
         onOpenSettings={openSettings}
-        onToggleTerminal={layout.toggleDock}
-        terminalActive={layout.dockOpen}
+        onToggleTerminal={terminalManager.toggle}
+        terminalActive={terminalManager.isOpen}
       />
 
       <PipelineRail
@@ -497,8 +498,8 @@ export function Shell() {
           onOpenSettings={openSettings}
           inspectorActive={inspectorVisible}
           onToggleInspector={layout.toggleInspector}
-          terminalActive={layout.dockOpen}
-          onToggleTerminal={layout.toggleDock}
+          terminalActive={terminalManager.isOpen}
+          onToggleTerminal={terminalManager.toggle}
           onResizeStart={layout.beginBrowserResize}
           drawingMode={drawingMode}
           onToggleDrawing={() => setDrawingMode((v) => !v)}
@@ -530,12 +531,6 @@ export function Shell() {
           readerRelationField={readerRelationField}
           onReaderFullScreen={handleReaderFullScreen}
           onReaderExit={closeReader}
-          dockOpen={layout.dockOpen}
-          dockHeight={layout.dockHeight}
-          dockWidth={layout.dockWidth}
-          onDockClose={() => layout.setDockOpen(false)}
-          onDockResizeStart={layout.beginDockResize}
-          onDockWidthResizeStart={layout.beginDockWidthResize}
         />
 
         <RightInspector
@@ -561,6 +556,7 @@ export function Shell() {
         nodeCount={workspace.nodes.length}
         relationCount={workspace.edges.length}
         lens={readerOpen ? "reading" : lens}
+        terminalActive={terminalManager.isOpen}
       />
 
       {sequencesOpen && (
@@ -576,8 +572,10 @@ export function Shell() {
         isOpen={paletteOpen}
         onClose={() => setPaletteOpen(false)}
         onSetLens={setShellLens}
-        onToggleTerminal={layout.toggleDock}
+        onToggleTerminal={terminalManager.toggle}
       />
+
+      <TerminalModal manager={terminalManager} />
 
       {fullScreenMode !== "closed" && (
         <FullScreenReader

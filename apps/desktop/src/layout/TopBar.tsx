@@ -71,6 +71,7 @@ export function TopBar({
           className="shell-top-bar__action"
           aria-label="Terminal"
           title="Terminal (⌘J)"
+          data-testid="top-bar-terminal-toggle"
           data-active={terminalActive ? "true" : undefined}
           onClick={onToggleTerminal}
         >
