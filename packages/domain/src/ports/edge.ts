@@ -1,14 +1,15 @@
+import type { RelationshipKind } from "@research-canvas/schema";
 import type { Edge } from "../types";
 
 export interface EdgeFilter {
   canvasId?: string;
-  relationKind?: string;
+  relationKind?: RelationshipKind;
 }
 
 export interface CreateEdgeInput {
   sourceGraphNodeId: string;
   targetGraphNodeId: string;
-  relType: string;
+  relType: RelationshipKind;
   properties?: Record<string, unknown>;
 }
 

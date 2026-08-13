@@ -452,9 +452,9 @@ describe("domain repository ports (fake adapter)", () => {
     const edge = await adapter.createEdge({
       sourceGraphNodeId: node.graphNodeId,
       targetGraphNodeId: `gn-target-${Date.now()}`,
-      relType: "PRECEDED",
+      relType: "CAUSES",
     });
-    expect(edge.relType).toBe("PRECEDED");
+    expect(edge.relType).toBe("CAUSES");
 
     const view = await adapter.getCanvasView({ canvasId: canvas.id });
     expect(view.canvasId).toBe(canvas.id);

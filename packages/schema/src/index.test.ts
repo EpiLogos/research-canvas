@@ -216,7 +216,7 @@ const now = "2026-03-30T20:00:00.000Z";
       updatedAt: now
     });
 
-    expect(parsed.content).toBe("");
+    expect(parsed.content).toBe("[]");
   });
 
   it("accepts nullable node style fields and nullable edge handles from persisted payloads", () => {

@@ -162,6 +162,10 @@ const MIGRATIONS: &[Migration] = &[
         version: "0037_app_tabs",
         sql: include_str!("../../migrations/0037_app_tabs.sql"),
     },
+    Migration {
+        version: "0038_relationship_vocabulary_t10",
+        sql: include_str!("../../migrations/0038_relationship_vocabulary_t10.sql"),
+    },
 ];
 
 impl MigrationRunner {
@@ -225,6 +229,7 @@ fn migration_sql(migration: &Migration) -> Cow<'static, str> {
         migration.version,
         "0016_graph_relationship_structural_vocabulary_repair"
             | "0033_constellation_encapsulation"
+            | "0038_relationship_vocabulary_t10"
     ) {
         return Cow::Owned(migration.sql.replace(
             "__RELATIONSHIP_TYPES__",

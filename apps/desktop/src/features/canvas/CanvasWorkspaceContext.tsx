@@ -36,6 +36,8 @@ import { selectLegacyNodesNeedingImport, importLegacyCanvasNodes } from "./legac
 import type { AppTab, CanvasNode, CanvasEdge, SurfaceId, Viewport } from "@research-canvas/schema";
 import {
   createWorkspaceServices,
+  DesktopEdgeRepository,
+  DesktopNodeRepository,
   type DirectoryEntry,
   type IndexedEntry,
   type ConstellationDocument,
@@ -135,6 +137,7 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   attachResourceRoot: (rootPath: string, displayName?: string) => Promise<void>;
   createNoteNode: (position?: { x: number; y: number }) => Promise<void>;
   createGroupNode: (position?: { x: number; y: number }) => Promise<void>;
+  createImageNode: (entry: { id?: string; name: string; absolutePath?: string; relativePath?: string }, position: { x: number; y: number }) => Promise<void>;
   addResourceNode: (entry: { id?: string; name: string; path?: string; absolutePath?: string; relativePath?: string; kind?: string }, position: { x: number; y: number }) => Promise<void>;
   addResourceNodeFromAbsolutePath: (absolutePath: string, position: { x: number; y: number }) => Promise<void>;
   deleteEdge: (edgeId: string) => Promise<void>;
@@ -229,6 +232,8 @@ export function CanvasWorkspaceProvider({
   children: ReactNode;
 }) {
   const transport = useMemo(() => createWorkspaceServices(), []);
+  const nodeRepository = useMemo(() => new DesktopNodeRepository(transport), [transport]);
+  const edgeRepository = useMemo(() => new DesktopEdgeRepository(transport), [transport]);
   const [stores, setStores] = useState<WorkspaceStores>(() =>
     createWorkspaceStores(EMPTY_CANVAS_ID, EMPTY_CONSTELLATION_ID)
   );
@@ -1124,7 +1129,7 @@ export function CanvasWorkspaceProvider({
         }
 
         try {
-          const relationship = await transport.connectGraphNodes({
+          const relationship = await edgeRepository.createEdge({
             sourceGraphNodeId: source.graphNodeId,
             targetGraphNodeId: target.graphNodeId,
             relType: input.relationKind,
@@ -1136,33 +1141,44 @@ export function CanvasWorkspaceProvider({
           });
           setErrorMessage(null);
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Could not create graph relationship.";
-          setErrorMessage(message);
-          throw error;
+          console.warn("addEdge: graph relationship creation failed; falling back to local-only edge", error);
+          stores.store.getState().connectNodes({
+            ...input,
+            id: crypto.randomUUID(),
+            relationKind: input.relationKind,
+          });
+          setErrorMessage(null);
         }
       },
       async createNoteNode(position) {
         const graphNodeId = crypto.randomUUID();
-        await createPreparedNoteNode({
-          graphNodeId,
-          title: "Untitled note",
-          databasePath,
-          upsertLocalNodeDocument: (input) => transport.upsertLocalNodeDocument(input),
-          publishCanvasNode: () => {
-            const node = stores.store.getState().createNoteNode({
-              title: "Untitled note", content: "", id: graphNodeId, graphNodeId,
-            });
-            if (position) {
-              stores.store.getState().updateNodePosition(node.id, position);
-            }
-          },
-          createGraphNode: (input) =>
-            transport.createGraphNode(
-              input as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string }
-            ),
-          acknowledgeLocalNodeDocumentSync: (input) =>
-            transport.acknowledgeLocalNodeDocumentSync(input),
-        });
+        const publishCanvasNode = () => {
+          const node = stores.store.getState().createNoteNode({
+            title: "Untitled note", content: "", id: graphNodeId, graphNodeId,
+          });
+          if (position) {
+            stores.store.getState().updateNodePosition(node.id, position);
+          }
+        };
+
+        try {
+          await createPreparedNoteNode({
+            graphNodeId,
+            title: "Untitled note",
+            databasePath,
+            upsertLocalNodeDocument: (input) => transport.upsertLocalNodeDocument(input),
+            publishCanvasNode,
+            createGraphNode: (input) =>
+              transport.createGraphNode(
+                input as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string }
+              ),
+            acknowledgeLocalNodeDocumentSync: (input) =>
+              transport.acknowledgeLocalNodeDocumentSync(input),
+          });
+        } catch (error) {
+          console.warn("createNoteNode: authoritative creation failed; falling back to local-only note", error);
+          publishCanvasNode();
+        }
       },
       async createGroupNode(position) {
         const graphNodeId = crypto.randomUUID();
@@ -1239,13 +1255,31 @@ export function CanvasWorkspaceProvider({
           } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string })
           .catch((error) => console.warn("createGraphNode sync failed; node kept locally", error));
       },
+      async createImageNode(entry, position) {
+        const graphNodeId = crypto.randomUUID();
+        const absolutePath = entry.absolutePath ?? "";
+        const node = stores.store.getState().createImageNode({
+          title: entry.name,
+          src: absolutePath,
+          caption: undefined,
+          id: graphNodeId,
+          graphNodeId,
+        });
+        stores.store.getState().updateNodePosition(node.id, position);
+        void transport
+          .createGraphNode({
+            ...buildNewGraphNodeInput({ nodeType: "resource", title: entry.name }),
+            graphNodeId,
+          } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string })
+          .catch((error) => console.warn("createGraphNode sync failed for image; node kept locally", error));
+      },
       async deleteEdge(edgeId) {
         const edge = stores.store.getState().edges.find((candidate) => candidate.id === edgeId);
         if (!edge) return;
         const relationshipId = relationshipIdFromCanvasEdge(edgeId);
         try {
           if (relationshipId) {
-            await transport.disconnectGraphNodes({ relationshipId });
+            await edgeRepository.deleteEdge(relationshipId);
           }
           stores.store.getState().deleteEdge(edgeId);
           setErrorMessage(null);
@@ -1287,8 +1321,8 @@ export function CanvasWorkspaceProvider({
               original.type as "note" | "group" | "resource" | "portal"
             );
             if (original.graphNodeId) {
-              const sourceNode = await transport.readGraphNode({ graphNodeId: original.graphNodeId });
-              body = sourceNode.body;
+              const sourceNode = await nodeRepository.getNode(original.graphNodeId);
+              body = sourceNode?.body ?? "[]";
             }
             await transport.createGraphNode({
               entityType,
@@ -1363,16 +1397,16 @@ export function CanvasWorkspaceProvider({
           // the create fails the original relationship and visual link remain
           // intact; if deletion fails, remove the replacement again rather
           // than leave two competing assertions in the graph.
-          const replacement = await transport.connectGraphNodes({
+          const replacement = await edgeRepository.createEdge({
             sourceGraphNodeId: edge.sourceNodeId,
             targetGraphNodeId: edge.targetNodeId,
             relType: relationKind,
           });
           try {
-            await transport.disconnectGraphNodes({ relationshipId: oldRelationshipId });
+            await edgeRepository.deleteEdge(oldRelationshipId);
           } catch (disconnectError) {
             try {
-              await transport.disconnectGraphNodes({ relationshipId: replacement.id });
+              await edgeRepository.deleteEdge(replacement.id);
             } catch {
               // The primary failure is more actionable; the workspace error
               // surface reports it, while the two relationships remain explicit

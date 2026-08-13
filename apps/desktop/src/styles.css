@@ -3063,6 +3063,9 @@ body[data-shell-dragging="true"] {
   transform: scale(0.85);
   transition: opacity 150ms ease, transform 150ms ease, box-shadow 150ms ease;
   box-shadow: 0 0 0 2px rgba(12, 12, 24, 0.9);
+  /* Handles must paint above the node card so pointer events reach them
+     regardless of whether they are rendered before/after the card. */
+  z-index: 1;
 }
 
 .react-flow__node:hover .flow-handle,

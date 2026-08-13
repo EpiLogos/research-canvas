@@ -31,7 +31,9 @@ import { SequenceMap } from "./sequences/SequenceMap";
 import { walkSequenceGraph } from "./sequences/walkSequenceGraph";
 import { ContextMenu } from "./components/ContextMenu";
 import { FuzzyFilePicker, type FileEntry } from "./components/FuzzyFilePicker";
+import { defaultRelationshipKind } from "./state/canvasStore";
 import { GroupNode } from "./nodes/GroupNode";
+import { ImageNode } from "./nodes/ImageNode";
 import { NoteNode } from "./nodes/NoteNode";
 import { ResourceNode } from "./nodes/ResourceNode";
 import { defaultSourceHandleId, defaultTargetHandleId } from "./nodes/nodeHandles";
@@ -53,7 +55,9 @@ interface CanvasViewProps {
   onCreateNote?: (position?: { x: number; y: number }) => void;
   onCreateGroup?: (position?: { x: number; y: number }) => void;
   onCreateResourceFromFile?: (entry: FileEntry, position: { x: number; y: number }) => void;
+  onCreateImageFromFile?: (entry: FileEntry, position: { x: number; y: number }) => void;
   fileEntries?: FileEntry[];
+  onUpdateImageCaption?: (nodeId: string, caption: string) => void;
   onNodeDoubleClick?: (nodeId: string) => void;
   onConnectNodes?: (input: {
     sourceNodeId: string;
@@ -97,6 +101,7 @@ interface CanvasViewProps {
 
 const nodeTypes: NodeTypes = {
   group: GroupNode,
+  image: ImageNode,
   note: NoteNode,
   resource: ResourceNode
 };
@@ -128,7 +133,9 @@ function CanvasViewInner({
   onCreateNote,
   onCreateGroup,
   onCreateResourceFromFile,
+  onCreateImageFromFile,
   fileEntries,
+  onUpdateImageCaption,
   onNodeDoubleClick,
   onConnectNodes,
   onReconnectEdge,
@@ -148,7 +155,7 @@ function CanvasViewInner({
   assetUrlForPath,
   resolveAssetUrl,
 }: CanvasViewProps) {
-  const { fitView, getViewport, getZoom, screenToFlowPosition, setCenter, setViewport } =
+  const { fitView, getViewport, getZoom, screenToFlowPosition, setCenter, setViewport, zoomIn, zoomOut } =
     useReactFlow();
 
   const getViewportCenter = useCallback(() => {
@@ -292,7 +299,7 @@ function CanvasViewInner({
       onConnectNodes?.({
         sourceNodeId: connection.source,
         targetNodeId: connection.target,
-        relationKind: "UNCLASSIFIED_RESEARCH_CONNECTION",
+        relationKind: defaultRelationshipKind(),
         sourceHandleId: connection.sourceHandle ?? undefined,
         targetHandleId: connection.targetHandle ?? undefined,
         directionality: "forward",
@@ -369,6 +376,12 @@ function CanvasViewInner({
       title: node.title,
       graph: node.graph,
       content: node.type === "note" ? node.content : node.type === "resource" ? node.relativePath : undefined,
+      src: node.type === "image" ? node.src : undefined,
+      caption: node.type === "image" ? node.caption ?? undefined : undefined,
+      onCaptionChange:
+        node.type === "image"
+          ? (caption: string) => onUpdateImageCaption?.(node.id, caption)
+          : undefined,
       tags: node.type === "note" ? node.tags : undefined,
       resourceKind: node.type === "resource" ? node.resourceKind : undefined,
       absolutePath: node.type === "resource" ? node.absolutePath : undefined,
@@ -474,12 +487,18 @@ function CanvasViewInner({
     onDeleteNode,
     onSelectEdge,
     onSelectNode,
-  ]);
+  ],);
 
   return (
-    <div
-      className="canvas-flow"
-    >
+    <div className="canvas-flow" data-testid="canvas-flow">
+      <div className="canvas-toolbar" data-testid="canvas-toolbar">
+        <button type="button" aria-label="Zoom in" onClick={() => zoomIn?.()}>+</button>
+        <button type="button" aria-label="Zoom out" onClick={() => zoomOut?.()}>-</button>
+        <button type="button" aria-label="Fit view" onClick={() => fitView({ padding: 0.15 })}>Fit</button>
+        {edges.some((e) => e.sequencing) && (
+          <button type="button" aria-label="Play sequence" onClick={() => onPlaySequence?.()}>Play</button>
+        )}
+      </div>
       <ReactFlow
         defaultViewport={{ x: 0, y: 0, zoom: 1 }}
         edgeTypes={edgeTypes}
@@ -511,6 +530,20 @@ function CanvasViewInner({
             };
             if (!entry.id || !entry.name || !entry.relativePath) return;
             const canvasPos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+            if (entry.kind === "image" && onCreateImageFromFile) {
+              onCreateImageFromFile(
+                {
+                  absolutePath: entry.absolutePath,
+                  id: entry.id,
+                  kind: entry.kind,
+                  name: entry.name,
+                  path: entry.relativePath,
+                  relativePath: entry.relativePath,
+                },
+                canvasPos
+              );
+              return;
+            }
             onCreateResourceFromFile?.(
               {
                 absolutePath: entry.absolutePath,
@@ -566,7 +599,8 @@ function CanvasViewInner({
         }}
         reconnectRadius={20}
         connectionMode={ConnectionMode.Loose}
-        onContextMenu={(e) => {
+        connectOnClick={true}
+        onPaneContextMenu={(e) => {
           e.preventDefault();
           setContextMenu({ x: e.clientX, y: e.clientY, kind: "canvas" });
         }}
@@ -580,7 +614,7 @@ function CanvasViewInner({
           e.stopPropagation();
           setContextMenu({ x: e.clientX, y: e.clientY, kind: "edge", edgeId: edge.id });
         }}
-        panOnDrag
+        panOnDrag={true}
       >
         <Background color="rgba(244, 232, 208, 0.08)" gap={24} />
         <Controls showInteractive={false} />
@@ -604,7 +638,8 @@ function CanvasViewInner({
           y={contextMenu.y}
           onClose={closeContextMenu}
           items={[
-            { type: "item", label: "Add note", shortcut: "N", onClick: () => onCreateNote?.(getViewportCenter()) },
+            { type: "item", label: "Add note", shortcut: "N", onClick: () => onCreateNote?.(screenToFlowPosition({ x: contextMenu.x, y: contextMenu.y })) },
+            { type: "item", label: "Add image", shortcut: "I", onClick: () => setShowFilePicker({ x: contextMenu.x, y: contextMenu.y }) },
             {
               type: "item",
               label: "Add resource from file…",
@@ -615,24 +650,24 @@ function CanvasViewInner({
               },
             },
             { type: "item", label: "Add group", shortcut: "G", onClick: () => onCreateGroup?.(getViewportCenter()) },
-            { type: "item", label: "Paste", shortcut: "⌘V", onClick: () => {} },
-            { type: "item", label: "Select all", shortcut: "⌘A", onClick: () => {} },
-            ...(edges.some((e) => e.sequencing)
-              ? [
-                  { type: "separator" as const },
-                  {
-                    type: "item" as const,
-                    label: "Play sequence",
-                    shortcut: "P",
-                    onClick: () => {
-                      onPlaySequence?.();
-                      closeContextMenu();
-                    },
+          { type: "item", label: "Paste", shortcut: "⌘V", onClick: () => {} },
+          { type: "item", label: "Select all", shortcut: "⌘A", onClick: () => {} },
+          ...(edges.some((e) => e.sequencing)
+            ? [
+                { type: "separator" as const },
+                {
+                  type: "item" as const,
+                  label: "Play sequence",
+                  shortcut: "P",
+                  onClick: () => {
+                    onPlaySequence?.();
+                    closeContextMenu();
                   },
-                ]
-              : []),
-          ]}
-        />
+                },
+              ]
+            : []),
+        ]}
+      />
       )}
 
       {contextMenu?.nodeId && (
@@ -691,7 +726,11 @@ function CanvasViewInner({
           entries={fileEntries ?? []}
           onSelect={(entry) => {
             const canvasPos = screenToFlowPosition({ x: showFilePicker.x, y: showFilePicker.y });
-            onCreateResourceFromFile?.(entry, canvasPos);
+            if (entry.kind === "image" && onCreateImageFromFile) {
+              onCreateImageFromFile(entry, canvasPos);
+            } else {
+              onCreateResourceFromFile?.(entry, canvasPos);
+            }
             setShowFilePicker(null);
           }}
           onClose={closeFilePicker}

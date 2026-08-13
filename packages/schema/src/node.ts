@@ -240,8 +240,16 @@ export const resourceNodeSchema = baseNodeSchema.extend({
 
 export const noteNodeSchema = baseNodeSchema.extend({
   type: z.literal("note"),
-  content: nullToUndefined(z.string().default("")),
+  /** BlockNote JSON block array serialized as a string. Legacy plain-text values
+   * are migrated to a single paragraph block at the canvas/UI boundary. */
+  content: nullToUndefined(z.string().default("[]")),
   tags: z.array(z.string()).default([])
+});
+
+export const imageNodeSchema = baseNodeSchema.extend({
+  type: z.literal("image"),
+  src: z.string().min(1),
+  caption: nullToUndefined(z.string().optional()),
 });
 
 export const groupNodeSchema = baseNodeSchema.extend({
@@ -259,6 +267,7 @@ export const portalNodeSchema = baseNodeSchema.extend({
 export const nodeSchema = z.discriminatedUnion("type", [
   resourceNodeSchema,
   noteNodeSchema,
+  imageNodeSchema,
   groupNodeSchema,
   portalNodeSchema
 ]);
@@ -267,6 +276,7 @@ export type Position = z.infer<typeof positionSchema>;
 export type Size = z.infer<typeof sizeSchema>;
 export type ResourceNode = z.infer<typeof resourceNodeSchema>;
 export type NoteNode = z.infer<typeof noteNodeSchema>;
+export type ImageNode = z.infer<typeof imageNodeSchema>;
 export type GroupNode = z.infer<typeof groupNodeSchema>;
 export type PortalNode = z.infer<typeof portalNodeSchema>;
 export type CanvasNode = z.infer<typeof nodeSchema>;

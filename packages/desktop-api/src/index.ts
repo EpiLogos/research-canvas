@@ -505,6 +505,13 @@ export function nodeLayoutFromCanvasNode(node: CanvasNode): NodeLayout {
       targetCanvasId: node.targetCanvasId,
       constellationKind: node.constellationKind,
     };
+  } else if (node.type === "image") {
+    canvasNode = {
+      type: "image",
+      title: node.title,
+      src: node.src,
+      caption: node.caption,
+    };
   } else {
     canvasNode = {
       type: "note",
@@ -1671,12 +1678,7 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     },
     async compareAndSwapGraphNodeContent() { throw new Error("read-only web build"); },
     async deleteGraphNode() { throw new Error("read-only web build"); },
-    async connectGraphNodes(input) {
-      return requestJsonWithRetry<GraphRelationship>("/graph/connect", {
-        method: "POST",
-        body: input,
-      });
-    },
+    async connectGraphNodes() { throw new Error("read-only web build"); },
     async disconnectGraphNodes() { throw new Error("read-only web build"); },
     async upsertNodeLayout() { throw new Error("read-only web build"); },
     async upsertNodeLayouts() { throw new Error("read-only web build"); },

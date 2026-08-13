@@ -68,6 +68,19 @@ export function NodeDetailBody({ node }: NodeDetailBodyProps) {
     );
   }
 
+  if (node.type === "image") {
+    return (
+      <section className="node-detail-body">
+        <header>
+          <p className="eyebrow">Image</p>
+          <h1>{node.title}</h1>
+        </header>
+        <ImageViewer source={toAssetUrl(node.src)} title={node.title} />
+        {node.caption ? <p>{node.caption}</p> : null}
+      </section>
+    );
+  }
+
   return (
     <section className="node-detail-body">
       <header>

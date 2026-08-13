@@ -5,6 +5,7 @@ use sha2::{Digest, Sha256};
 /// SQLite projection. The migration runner materialises this exact list in
 /// the SQLite CHECK constraint so the three boundaries cannot drift.
 pub const RELATIONSHIP_TYPES: &[&str] = &[
+    "RELATES_TO",
     "CONTAINS",
     "PART_OF",
     "NESTS",
@@ -20,7 +21,10 @@ pub const RELATIONSHIP_TYPES: &[&str] = &[
     "SUPPORTS",
     "QUALIFIES",
     "CONTESTS",
+    "CONTRADICTS",
+    "ARCHETYPE_EXPRESSES_AT",
     "RESONATES_WITH",
+    "SEQUENCE_NEXT",
     "UNCLASSIFIED_RESEARCH_CONNECTION",
     // The ONE deliberate substrate-relation addition (refinement-2 D12,
     // ticket #27): encapsulation is the processual backbone of the system, not

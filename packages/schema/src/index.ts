@@ -12,6 +12,7 @@ export * from "./passage";
 export * from "./place";
 export * from "./scene";
 export * from "./project";
+export * from "./relationship";
 export * from "./sequence";
 export * from "./surface";
 export * from "./tab";

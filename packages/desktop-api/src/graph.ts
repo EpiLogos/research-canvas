@@ -55,6 +55,7 @@ export interface GraphRelationship {
 export type CanvasNodeSidecar =
   | { type: "note"; title: string; content: string; tags: string[] }
   | { type: "resource"; title: string; resourceKind: string; absolutePath: string; relativePath: string; mimeType: string; fileFingerprint: string }
+  | { type: "image"; title: string; src: string; caption?: string }
   | { type: "group"; title: string; color: string; childNodeIds: string[] }
   | { type: "portal"; title: string; targetCanvasId: string; constellationKind?: "standard" | "ql-unit" };
 

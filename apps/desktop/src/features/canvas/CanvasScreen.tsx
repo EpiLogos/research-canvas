@@ -115,6 +115,12 @@ export function CanvasScreen({ onNodeSelect, onNodeDoubleClick, onPlaySequence, 
             onCreateResourceFromFile={(entry, position) => {
               void workspace.addResourceNode(entry, position);
             }}
+            onCreateImageFromFile={(entry, position) => {
+              void workspace.createImageNode(entry, position);
+            }}
+            onUpdateImageCaption={(nodeId, caption) => {
+              workspace.store.getState().updateImageCaption(nodeId, caption);
+            }}
             fileEntries={fileEntries}
             leftPanelOpen={leftPanelOpen}
             rightPanelOpen={rightPanelOpen}
