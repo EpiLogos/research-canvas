@@ -1,0 +1,1641 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<title>High Dream — Experience &amp; Intent</title>
+<meta name="description" content="A full aspirational design-intent account for a local-first, agent-native knowledge-work environment." />
+<style>
+:root{
+  --left-w:298px;
+  --right-w:326px;
+  --top-h:56px;
+
+  --paper:#f5f8fb;
+  --sheet:#ffffff;
+  --sheet-2:#eef4f8;
+  --ink:#132235;
+  --muted:#5e6d7f;
+  --faint:#8c98a7;
+  --line:#d8e1e9;
+  --line-strong:#bdcad6;
+  --blue:#1f5f9d;
+  --blue-deep:#184c7c;
+  --blue-soft:#e7f0fa;
+  --teal:#197f82;
+  --teal-soft:#e6f4f3;
+  --orange:#a45c2e;
+  --orange-soft:#f5ece6;
+  --danger:#9b4e50;
+  --success:#477a5e;
+  --focus:#2a78c5;
+  --shadow:0 12px 34px rgba(22,43,68,.08);
+
+  --radius:14px;
+  --reading:78ch;
+  --wide:1120px;
+  --full:1400px;
+
+  --ui:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --serif:Georgia,"Times New Roman",Times,serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+
+html[data-theme="dark"]{
+  --paper:#071320;
+  --sheet:#0c1b2c;
+  --sheet-2:#10243a;
+  --ink:#e7edf5;
+  --muted:#a7b4c4;
+  --faint:#7c8ba0;
+  --line:#21364d;
+  --line-strong:#35536f;
+  --blue:#77abe5;
+  --blue-deep:#9bc5ef;
+  --blue-soft:#102e4d;
+  --teal:#5ab5b3;
+  --teal-soft:#103536;
+  --orange:#c57a45;
+  --orange-soft:#3b281d;
+  --danger:#ce8587;
+  --success:#80ad92;
+  --focus:#8ec3ff;
+  --shadow:0 18px 42px rgba(0,0,0,.3);
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;background:var(--paper)}
+body{
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--serif);
+  font-size:16.5px;
+  line-height:1.7;
+  text-rendering:optimizeLegibility;
+}
+button,input,textarea,select{font:inherit}
+a{color:var(--blue);text-decoration-thickness:.08em;text-underline-offset:.16em}
+a:hover{color:var(--teal)}
+button{color:inherit}
+::selection{background:var(--blue-soft)}
+
+:focus-visible{
+  outline:3px solid color-mix(in srgb,var(--focus) 65%,transparent);
+  outline-offset:2px;
+}
+
+/* ---------- shell ---------- */
+.app{
+  min-height:100vh;
+  display:grid;
+  grid-template-columns:var(--left-w) minmax(0,1fr) var(--right-w);
+  grid-template-rows:var(--top-h) 1fr;
+  grid-template-areas:
+    "top top top"
+    "left main right";
+  transition:grid-template-columns .18s ease;
+}
+body.left-closed .app{grid-template-columns:0 minmax(0,1fr) var(--right-w)}
+body.right-closed .app{grid-template-columns:var(--left-w) minmax(0,1fr) 0}
+body.left-closed.right-closed .app{grid-template-columns:0 minmax(0,1fr) 0}
+
+.topbar{
+  grid-area:top;
+  position:sticky;
+  top:0;
+  z-index:80;
+  height:var(--top-h);
+  display:flex;
+  align-items:center;
+  gap:9px;
+  padding:0 12px;
+  border-bottom:1px solid var(--line);
+  background:color-mix(in srgb,var(--sheet) 94%,transparent);
+  backdrop-filter:blur(14px);
+}
+.brand{
+  min-width:0;
+  margin-right:auto;
+  display:flex;
+  align-items:baseline;
+  gap:10px;
+  font-family:var(--ui);
+}
+.brand strong{
+  font-size:12px;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+.brand span{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:var(--muted);
+  font-size:11.5px;
+}
+.icon-btn{
+  width:34px;
+  height:34px;
+  display:grid;
+  place-items:center;
+  padding:0;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--sheet);
+  cursor:pointer;
+  font:700 13px/1 var(--ui);
+}
+.icon-btn:hover{background:var(--blue-soft);border-color:var(--line-strong)}
+.route-chip{
+  max-width:230px;
+  height:32px;
+  display:flex;
+  align-items:center;
+  gap:7px;
+  padding:0 10px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:var(--sheet);
+  color:var(--muted);
+  font:600 10.5px/1 var(--ui);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.route-chip code{color:var(--teal);font:800 10px/1 var(--mono)}
+
+.left-rail,.right-rail{
+  position:sticky;
+  top:var(--top-h);
+  height:calc(100vh - var(--top-h));
+  overflow:auto;
+  background:var(--sheet);
+  z-index:50;
+  transition:transform .18s ease,opacity .18s ease;
+}
+.left-rail{grid-area:left;border-right:1px solid var(--line);padding:18px 13px 34px}
+.right-rail{grid-area:right;border-left:1px solid var(--line);padding:18px 16px 34px}
+body.left-closed .left-rail{transform:translateX(-100%);opacity:0;pointer-events:none}
+body.right-closed .right-rail{transform:translateX(100%);opacity:0;pointer-events:none}
+
+.main{
+  grid-area:main;
+  min-width:0;
+  background:var(--paper);
+  container-type:inline-size;
+  container-name:account-main;
+}
+
+.rail-label{
+  margin:4px 7px 10px;
+  color:var(--faint);
+  font:750 9.5px/1.2 var(--ui);
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+
+/* ---------- generated contents ---------- */
+.surface-nav{display:grid;gap:5px}
+.nav-group{border-radius:10px}
+.nav-head{display:grid;grid-template-columns:minmax(0,1fr) 30px;align-items:stretch}
+.nav-select,.nav-toggle{
+  border:0;
+  background:transparent;
+  cursor:pointer;
+}
+.nav-select{
+  display:grid;
+  grid-template-columns:36px minmax(0,1fr);
+  gap:7px;
+  text-align:left;
+  padding:9px 7px;
+  border-radius:9px 0 0 9px;
+}
+.nav-toggle{border-radius:0 9px 9px 0;font:800 11px/1 var(--ui);color:var(--muted)}
+.nav-head:hover .nav-select,.nav-head:hover .nav-toggle{background:var(--blue-soft)}
+.nav-group.active>.nav-head .nav-select,.nav-group.active>.nav-head .nav-toggle{background:var(--blue-soft)}
+.nav-group.active>.nav-head .nav-select{box-shadow:inset 3px 0 0 var(--blue)}
+.nav-q{font:800 10.5px/1.5 var(--mono);color:var(--blue)}
+.nav-name{font:700 11.5px/1.3 var(--ui);color:var(--ink)}
+.nav-gloss{display:block;margin-top:2px;color:var(--muted);font:400 10px/1.35 var(--ui)}
+.nav-toggle span{display:inline-block;transition:transform .15s ease}
+.nav-group.expanded .nav-toggle span{transform:rotate(90deg)}
+.subnav{display:none;margin:2px 0 5px 35px;padding:2px 0 5px 7px;border-left:1px solid var(--line)}
+.nav-group.expanded .subnav{display:grid;gap:1px}
+.subnav a{
+  display:grid;
+  grid-template-columns:32px minmax(0,1fr);
+  gap:5px;
+  padding:6px 8px;
+  border-radius:7px;
+  color:var(--muted);
+  text-decoration:none;
+  font:10.5px/1.35 var(--ui);
+}
+.subnav a:hover{background:var(--sheet-2);color:var(--ink)}
+.subnav a.active{background:var(--teal-soft);color:var(--ink)}
+.subnav code{font:800 9.5px/1.35 var(--mono);color:var(--teal)}
+
+/* ---------- right rail ---------- */
+.context-head{padding-bottom:15px;margin-bottom:14px;border-bottom:1px solid var(--line)}
+.context-kicker{margin-bottom:7px;color:var(--faint);font:750 9.5px/1 var(--ui);letter-spacing:.11em;text-transform:uppercase}
+.context-head h3{margin:0 0 5px;font:600 17px/1.25 var(--serif)}
+.context-head p{margin:0;color:var(--muted);font:11.5px/1.5 var(--ui)}
+
+.note-field{margin-top:15px}
+body[data-notes="false"] .note-field{display:none}
+.note-field label{display:block;margin-bottom:7px;color:var(--muted);font:700 10.5px/1.35 var(--ui)}
+.note-field textarea{
+  width:100%;
+  min-height:128px;
+  resize:vertical;
+  padding:10px 11px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--paper);
+  color:var(--ink);
+  outline:none;
+  font:12.5px/1.55 var(--ui);
+}
+.note-field textarea:focus{border-color:var(--blue)}
+.save-state{margin-top:5px;color:var(--faint);font:9.5px/1.3 var(--ui)}
+
+.context-slot{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+.context-slot:empty{display:none}
+.context-slot h4{margin:0 0 8px;font:750 10px/1.3 var(--ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+
+.right-details{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.right-details summary{cursor:pointer;color:var(--muted);font:700 10.5px/1.4 var(--ui)}
+.meta-list{display:grid;gap:7px;margin:10px 0 0}
+.meta-row{display:grid;grid-template-columns:72px 1fr;gap:8px;font:10px/1.45 var(--ui)}
+.meta-row dt{color:var(--faint)}
+.meta-row dd{margin:0;color:var(--muted);overflow-wrap:anywhere}
+.source-list{display:grid;gap:8px;margin-top:10px}
+.source-list a{
+  display:block;
+  padding:8px 9px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:var(--paper);
+  text-decoration:none;
+  color:var(--ink);
+  font:10.5px/1.4 var(--ui);
+}
+.source-list a:hover{border-color:var(--blue)}
+.source-empty{margin-top:9px;color:var(--faint);font:10px/1.4 var(--ui)}
+
+/* ---------- surfaces ---------- */
+.surface{
+  display:none;
+  min-height:calc(100vh - var(--top-h));
+  padding:clamp(34px,4vw,68px) clamp(22px,5vw,84px) 112px;
+}
+.surface.active{display:block}
+.surface-inner{width:min(100%,var(--surface-max,var(--full)));margin:0 auto}
+
+.hero{
+  margin-bottom:clamp(70px,8vw,118px);
+  padding-bottom:clamp(34px,5vw,58px);
+  border-bottom:1px solid var(--line);
+}
+.hero-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:18px;font-family:var(--ui)}
+.ql-badge{
+  display:inline-flex;
+  align-items:center;
+  height:27px;
+  padding:0 9px;
+  border-radius:999px;
+  background:var(--blue-soft);
+  color:var(--blue);
+  font:800 10.5px/1 var(--mono);
+}
+.hero-label{color:var(--muted);font:750 10px/1 var(--ui);letter-spacing:.09em;text-transform:uppercase}
+h1{
+  max-width:18ch;
+  margin:0;
+  font-family:var(--serif);
+  font-size:clamp(40px,5vw,66px);
+  font-weight:500;
+  line-height:1.02;
+  letter-spacing:-.03em;
+}
+.hero-deck{
+  max-width:var(--reading);
+  margin:20px 0 0;
+  color:var(--muted);
+  font-size:clamp(18px,1.8vw,22px);
+  line-height:1.5;
+}
+.hero-meta{display:flex;gap:10px 16px;flex-wrap:wrap;margin-top:22px;color:var(--faint);font:10.5px/1.4 var(--ui)}
+
+.ql-node{
+  scroll-margin-top:calc(var(--top-h) + 26px);
+  margin:0 0 clamp(76px,9vw,126px);
+}
+.node-head{margin-bottom:clamp(28px,3.4vw,40px)}
+.node-eyebrow{margin-bottom:10px;color:var(--teal);font:750 9.5px/1.2 var(--ui);letter-spacing:.1em;text-transform:uppercase}
+.ql-node h2{
+  max-width:25ch;
+  margin:0;
+  font-family:var(--serif);
+  font-size:clamp(26px,3vw,40px);
+  font-weight:500;
+  line-height:1.12;
+  letter-spacing:-.018em;
+}
+.node-deck{max-width:var(--reading);margin:13px 0 0;color:var(--muted);font-size:17.5px;line-height:1.58}
+
+/* ---------- prose ---------- */
+.prose{max-width:var(--reading);font-size:16.5px;line-height:1.72}
+.prose p{margin:0 0 1em}
+.prose p:last-child{margin-bottom:0}
+.prose h3{margin:2.2em 0 .7em;font:600 22px/1.25 var(--serif)}
+.prose h4{margin:1.8em 0 .55em;font:750 12px/1.35 var(--ui);letter-spacing:.03em}
+.prose ul,.prose ol{margin:.9em 0 1.2em;padding-left:1.35em}
+.prose li{margin:.32em 0}
+.prose blockquote{margin:28px 0;padding:0 0 0 18px;border-left:3px solid var(--teal);color:var(--muted);font-size:18px;line-height:1.6}
+.prose code{font:90%/1 var(--mono);background:var(--sheet-2);padding:.12em .28em;border-radius:4px}
+
+.reading{width:min(100%,var(--reading))}
+.wide{width:min(100%,var(--wide))}
+.full{width:min(100%,var(--full))}
+.centered{margin-left:auto;margin-right:auto}
+
+/* ---------- composable primitives ---------- */
+.definition,.claim,.note,.warning,.evidence{
+  max-width:var(--reading);
+  margin:28px 0;
+  padding:18px 20px;
+  border-radius:0 12px 12px 0;
+  background:var(--sheet);
+  border:1px solid var(--line);
+  border-left:4px solid var(--blue);
+}
+.definition{background:var(--blue-soft)}
+.claim{border-left-color:var(--teal);background:var(--teal-soft)}
+.note{border-left-color:var(--line-strong)}
+.warning{border-left-color:var(--orange);background:var(--orange-soft)}
+.evidence{border-left-color:var(--success)}
+.block-label{margin-bottom:7px;color:var(--muted);font:800 9.5px/1.3 var(--ui);letter-spacing:.08em;text-transform:uppercase}
+.definition p,.claim p,.note p,.warning p,.evidence p{margin:0;font-size:15.5px;line-height:1.6}
+
+.figure{
+  margin:34px 0;
+  overflow:hidden;
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  background:var(--sheet);
+  box-shadow:var(--shadow);
+}
+.figure-head{display:flex;justify-content:space-between;gap:14px;align-items:start;padding:14px 16px;border-bottom:1px solid var(--line);font-family:var(--ui)}
+.figure-head strong{font-size:11.5px;line-height:1.35}
+.figure-head span{color:var(--muted);font-size:10px;line-height:1.4;text-align:right}
+.figure-body{padding:clamp(14px,2vw,24px);overflow:auto}
+.figure figcaption{padding:12px 16px 14px;border-top:1px solid var(--line);color:var(--muted);font:10.8px/1.55 var(--ui)}
+.svg-wrap svg{display:block;width:100%;height:auto}
+.svg-wrap.scroll-x svg{min-width:720px}
+
+.table-wrap{margin:28px 0;overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--sheet)}
+table{width:100%;border-collapse:collapse;font:12.5px/1.5 var(--ui)}
+th,td{padding:11px 13px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
+th{background:var(--sheet-2);color:var(--muted);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase}
+tr:last-child td{border-bottom:0}
+
+.code-block,.equation{
+  margin:28px 0;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--sheet);
+  overflow:auto;
+}
+.code-block pre{margin:0;padding:18px 20px;font:12.5px/1.6 var(--mono)}
+.equation{padding:20px 22px;font:500 clamp(20px,2.6vw,30px)/1.4 var(--serif)}
+
+.source-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:28px 0}
+.source-card{display:block;padding:14px 15px;border:1px solid var(--line);border-radius:12px;background:var(--sheet);text-decoration:none;color:var(--ink)}
+.source-card:hover{border-color:var(--blue);box-shadow:var(--shadow)}
+.source-card strong{display:block;font:700 11.5px/1.4 var(--ui)}
+.source-card span{display:block;margin-top:4px;color:var(--muted);font:10.5px/1.5 var(--ui)}
+
+.two-col{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(24px,4vw,54px);align-items:start}
+.three-col{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+
+.mockup-frame{margin:32px 0;border:1px solid var(--line-strong);border-radius:16px;background:var(--sheet);overflow:hidden;box-shadow:var(--shadow)}
+.mockup-toolbar{height:38px;display:flex;align-items:center;gap:6px;padding:0 12px;border-bottom:1px solid var(--line);background:var(--sheet-2)}
+.mockup-dot{width:8px;height:8px;border-radius:50%;background:var(--line-strong)}
+.mockup-body{min-height:260px;padding:20px}
+
+.controls{display:grid;gap:18px;padding:18px;border:1px solid var(--line);border-radius:12px;background:var(--sheet)}
+.control-row{display:grid;grid-template-columns:minmax(150px,.5fr) minmax(0,1fr) auto;gap:14px;align-items:center;font-family:var(--ui)}
+.control-row label{font-size:11.5px;font-weight:700}
+.control-row output{min-width:64px;text-align:right;color:var(--teal);font:800 11px/1 var(--mono)}
+input[type="range"]{width:100%;accent-color:var(--teal)}
+.toggle-row{display:flex;gap:7px;flex-wrap:wrap}
+.toggle-row button{padding:8px 11px;border:1px solid var(--line);border-radius:9px;background:var(--paper);cursor:pointer;font:700 10.5px/1.2 var(--ui)}
+.toggle-row button[aria-pressed="true"]{border-color:var(--blue);background:var(--blue);color:#fff}
+
+.timeline{position:relative;display:grid;gap:18px;margin:28px 0;padding-left:26px}
+.timeline:before{content:"";position:absolute;left:7px;top:5px;bottom:5px;width:1px;background:var(--line-strong)}
+.timeline-item{position:relative}
+.timeline-item:before{content:"";position:absolute;left:-23px;top:.55em;width:8px;height:8px;border-radius:50%;background:var(--teal);box-shadow:0 0 0 4px var(--paper)}
+.timeline-item time{display:block;margin-bottom:3px;color:var(--faint);font:700 9.5px/1.3 var(--ui)}
+.timeline-item h4{margin:0 0 4px;font:650 16px/1.3 var(--serif)}
+.timeline-item p{margin:0;color:var(--muted);font:11.5px/1.5 var(--ui)}
+
+/* ---------- responsive ---------- */
+@media (max-width:1319px){
+  .app{
+    grid-template-columns:var(--left-w) minmax(0,1fr);
+    grid-template-areas:"top top" "left main";
+  }
+  body.left-closed .app,body.left-closed.right-closed .app{grid-template-columns:0 minmax(0,1fr)}
+  body.right-closed .app{grid-template-columns:var(--left-w) minmax(0,1fr)}
+  .right-rail{
+    position:fixed;
+    top:var(--top-h);
+    right:0;
+    width:var(--right-w);
+    height:calc(100vh - var(--top-h));
+    border-left:1px solid var(--line);
+    box-shadow:-18px 0 40px rgba(16,35,56,.14);
+  }
+  body.right-closed .right-rail{transform:translateX(100%);opacity:0;pointer-events:none}
+}
+
+@media (max-width:979px){
+  .app{grid-template-columns:minmax(0,1fr);grid-template-areas:"top" "main"}
+  body.left-closed .app,body.right-closed .app,body.left-closed.right-closed .app{grid-template-columns:minmax(0,1fr)}
+  .left-rail{
+    position:fixed;
+    top:var(--top-h);
+    left:0;
+    width:min(var(--left-w),88vw);
+    height:calc(100vh - var(--top-h));
+    box-shadow:18px 0 40px rgba(16,35,56,.14);
+  }
+  .right-rail{width:min(var(--right-w),90vw)}
+  .route-chip{display:none}
+  .surface{padding-left:clamp(18px,5vw,42px);padding-right:clamp(18px,5vw,42px)}
+}
+
+@container account-main (max-width:880px){
+  .two-col,.three-col,.source-grid{grid-template-columns:1fr}
+  .control-row{grid-template-columns:1fr}
+  .control-row output{text-align:left}
+}
+
+@container account-main (max-width:620px){
+  .hero{margin-bottom:66px}
+  .ql-node{margin-bottom:78px}
+  .node-head{margin-bottom:26px}
+  .figure-head{display:block}
+  .figure-head span{display:block;margin-top:4px;text-align:left}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{scroll-behavior:auto!important;transition:none!important;animation:none!important}
+}
+
+@media print{
+  :root{--paper:#fff;--sheet:#fff;--ink:#000;--muted:#444;--line:#bbb;--line-strong:#888}
+  .topbar,.left-rail,.right-rail{display:none!important}
+  .app{display:block}
+  .main{display:block}
+  .surface{display:block!important;padding:24mm 18mm;min-height:auto;break-before:page}
+  .surface:first-child{break-before:auto}
+  .hero{margin-bottom:18mm}
+  .ql-node{break-inside:avoid-page}
+  .figure,.table-wrap,.code-block,.equation{box-shadow:none;break-inside:avoid}
+  a{color:#000;text-decoration:none}
+  a[href^="http"]:after{content:" (" attr(href) ")";font-size:8pt;overflow-wrap:anywhere}
+}
+
+/* ---------- product-intent additions ---------- */
+.intent-kicker{display:inline-flex;align-items:center;gap:8px;padding:6px 9px;border:1px solid var(--line);border-radius:999px;background:var(--sheet);color:var(--muted);font:700 9.5px/1 var(--ui);letter-spacing:.04em;text-transform:uppercase}
+.intent-kicker:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--teal)}
+.big-thesis{max-width:1000px;margin:28px 0 0;padding:24px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);font:500 clamp(22px,2.7vw,34px)/1.38 var(--serif);letter-spacing:-.012em}
+.smallcaps{font:800 9.5px/1.3 var(--ui);letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+
+.intent-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:28px 0}
+.intent-card{padding:16px 16px 18px;border:1px solid var(--line);border-radius:12px;background:var(--sheet)}
+.intent-card strong{display:block;margin-bottom:6px;font:700 12px/1.35 var(--ui)}
+.intent-card p{margin:0;color:var(--muted);font:11.5px/1.5 var(--ui)}
+.intent-card code{font:800 10px/1 var(--mono);color:var(--teal)}
+
+.product-map{position:relative;min-height:520px;padding:22px;border-radius:14px;background:linear-gradient(180deg,var(--sheet),var(--paper));overflow:hidden}
+.product-map .substrate{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:170px;height:170px;border-radius:50%;display:grid;place-items:center;text-align:center;padding:22px;background:var(--sheet);border:1px solid var(--line-strong);box-shadow:0 18px 50px rgba(22,43,68,.10);font:700 12px/1.35 var(--ui)}
+.product-map .substrate span{display:block;margin-top:5px;color:var(--muted);font:400 10px/1.4 var(--ui)}
+.product-map .orbit{position:absolute;width:150px;padding:13px 14px;border:1px solid var(--line);border-radius:12px;background:color-mix(in srgb,var(--sheet) 92%,transparent);box-shadow:var(--shadow)}
+.product-map .orbit strong{display:block;font:750 11px/1.2 var(--ui)}
+.product-map .orbit span{display:block;margin-top:4px;color:var(--muted);font:10px/1.4 var(--ui)}
+.product-map .p0{left:50%;top:18px;transform:translateX(-50%)}
+.product-map .p1{right:34px;top:118px}.product-map .p2{right:34px;bottom:74px}
+.product-map .p3{left:50%;bottom:18px;transform:translateX(-50%)}
+.product-map .p4{left:34px;bottom:74px}.product-map .p5{left:34px;top:118px}
+.product-map svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+
+.prototype{margin:34px 0;border:1px solid var(--line-strong);border-radius:16px;background:var(--sheet);overflow:hidden;box-shadow:var(--shadow);font-family:var(--ui)}
+.proto-top{height:36px;display:flex;align-items:center;gap:12px;padding:0 12px;border-bottom:1px solid var(--line);background:var(--sheet-2);color:var(--muted);font:700 9.5px/1 var(--ui)}
+.proto-top .grow{flex:1}.proto-dot{width:7px;height:7px;border-radius:50%;background:var(--line-strong)}
+.proto-shell{display:grid;grid-template-columns:180px minmax(0,1fr) 190px;min-height:420px}
+.proto-sidebar{padding:12px;border-right:1px solid var(--line);background:var(--sheet)}
+.proto-inspector{padding:12px;border-left:1px solid var(--line);background:var(--sheet)}
+.proto-stage{position:relative;min-width:0;background:var(--paper);overflow:hidden}
+.proto-label{margin:8px 0;color:var(--faint);font:800 8.5px/1.2 var(--ui);letter-spacing:.1em;text-transform:uppercase}
+.proto-tree{display:grid;gap:3px}.proto-tree div{padding:7px 8px;border-radius:7px;color:var(--muted);font:10px/1.3 var(--ui)}
+.proto-tree .active{background:var(--blue-soft);color:var(--ink);font-weight:700}
+.proto-tabs{height:36px;display:flex;align-items:end;padding:0 8px;border-bottom:1px solid var(--line);background:var(--sheet)}
+.proto-tab{height:30px;padding:8px 11px;border:1px solid transparent;border-bottom:0;border-radius:7px 7px 0 0;color:var(--muted);font:700 9.5px/1 var(--ui)}
+.proto-tab.active{border-color:var(--line);background:var(--paper);color:var(--ink)}
+.proto-agent{position:absolute;left:18px;right:18px;bottom:16px;display:flex;align-items:center;gap:9px;padding:10px 12px;border:1px solid var(--line-strong);border-radius:11px;background:color-mix(in srgb,var(--sheet) 94%,transparent);box-shadow:0 14px 40px rgba(16,35,56,.16);backdrop-filter:blur(10px)}
+.proto-agent span{color:var(--muted);font:10px/1.3 var(--ui)}
+.proto-agent b{font:800 9px/1 var(--mono);color:var(--teal)}
+.proto-field{height:7px;border-radius:999px;background:var(--sheet-2);margin:7px 0}.proto-field.w70{width:70%}.proto-field.w45{width:45%}
+
+.canvas-stage{position:relative;height:420px;background-image:radial-gradient(circle at 1px 1px,var(--line) 1px,transparent 1px);background-size:18px 18px}
+.canvas-node{position:absolute;width:145px;min-height:74px;padding:12px;border:1px solid var(--line-strong);border-radius:11px;background:var(--sheet);box-shadow:0 8px 22px rgba(17,38,62,.10)}
+.canvas-node strong{display:block;font:700 10.5px/1.25 var(--ui)}.canvas-node span{display:block;margin-top:5px;color:var(--muted);font:9.5px/1.35 var(--ui)}
+.canvas-node.media:before{content:"";display:block;height:54px;margin:-3px -3px 9px;border-radius:7px;background:linear-gradient(135deg,var(--blue-soft),var(--teal-soft))}
+.canvas-node.n1{left:9%;top:16%}.canvas-node.n2{left:39%;top:33%}.canvas-node.n3{right:9%;top:14%}.canvas-node.n4{right:18%;bottom:12%}.canvas-node.n5{left:13%;bottom:11%}
+.canvas-edge{position:absolute;height:1px;background:var(--teal);transform-origin:left center;opacity:.7}.e1{left:23%;top:30%;width:170px;transform:rotate(12deg)}.e2{left:52%;top:43%;width:165px;transform:rotate(-20deg)}.e3{left:51%;top:49%;width:180px;transform:rotate(24deg)}.e4{left:25%;top:69%;width:185px;transform:rotate(-14deg)}
+.canvas-pencil{position:absolute;right:14px;top:14px;padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:var(--sheet);font:800 9px/1 var(--ui);color:var(--muted)}
+
+.timeline-proto{padding:18px 18px 24px;background:var(--paper)}
+.timeline-tools{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:18px}
+.filter-chip{border:1px solid var(--line);border-radius:999px;background:var(--sheet);padding:7px 9px;cursor:pointer;color:var(--muted);font:700 9px/1 var(--ui)}
+.filter-chip[aria-pressed="true"]{background:var(--blue-soft);border-color:var(--blue);color:var(--ink)}
+.time-field{position:relative;height:290px;border:1px solid var(--line);border-radius:12px;background:var(--sheet);overflow:hidden}
+.time-axis{position:absolute;left:5%;right:4%;bottom:52px;height:1px;background:var(--line-strong)}
+.tick{position:absolute;bottom:44px;width:1px;height:17px;background:var(--line-strong)}.tick span{position:absolute;top:18px;left:50%;transform:translateX(-50%);white-space:nowrap;color:var(--faint);font:8.5px/1 var(--mono)}
+.ev{position:absolute;bottom:53px;width:9px;height:9px;margin-left:-4px;border-radius:50%;background:var(--teal);box-shadow:0 0 0 4px var(--teal-soft)}
+.ev:after{content:attr(data-label);position:absolute;left:50%;bottom:16px;transform:translateX(-50%);width:110px;text-align:center;color:var(--muted);font:9px/1.3 var(--ui)}
+.ev[data-kind="archetype"]{bottom:190px;background:var(--orange);box-shadow:0 0 0 5px var(--orange-soft),0 0 38px color-mix(in srgb,var(--orange) 28%,transparent)}
+.ev[data-kind="source"]{bottom:120px;background:var(--blue);box-shadow:0 0 0 4px var(--blue-soft)}
+.time-context{position:absolute;left:44%;top:20px;width:220px;padding:10px 12px;border:1px dashed var(--line-strong);border-radius:11px;background:color-mix(in srgb,var(--sheet) 78%,transparent);color:var(--muted);font:9.5px/1.4 var(--ui)}
+
+.globe-proto{position:relative;height:440px;background:radial-gradient(circle at 50% 46%,#183f63 0 24%,#0f2943 25% 42%,#091827 43% 100%);overflow:hidden}
+.globe{position:absolute;left:50%;top:50%;width:310px;height:310px;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle at 38% 32%,rgba(255,255,255,.18),transparent 24%),radial-gradient(ellipse at 46% 44%,#5c856f 0 16%,transparent 17%),radial-gradient(ellipse at 64% 58%,#557b68 0 10%,transparent 11%),radial-gradient(circle at 50% 50%,#1d5f7a 0 64%,#123d5c 65% 100%);box-shadow:inset -30px -24px 48px rgba(0,0,0,.25),0 30px 70px rgba(0,0,0,.34)}
+.globe:after{content:"";position:absolute;inset:12%;border:1px solid rgba(255,255,255,.16);border-radius:50%;transform:rotate(18deg)}
+.map-pin{position:absolute;width:10px;height:10px;border-radius:50%;background:#f3d18a;box-shadow:0 0 0 5px rgba(243,209,138,.18)}
+.mp1{left:39%;top:41%}.mp2{left:53%;top:34%}.mp3{left:58%;top:56%}.mp4{left:44%;top:64%}
+.route-line{position:absolute;height:1px;background:rgba(243,209,138,.7);transform-origin:left center}.rl1{left:39%;top:42%;width:135px;transform:rotate(-19deg)}.rl2{left:53%;top:35%;width:113px;transform:rotate(62deg)}.rl3{left:58%;top:57%;width:115px;transform:rotate(153deg)}
+.map-hud{position:absolute;left:16px;top:16px;width:180px;padding:12px;border:1px solid rgba(255,255,255,.14);border-radius:11px;background:rgba(7,19,32,.72);backdrop-filter:blur(8px);color:#dbe8f3}.map-hud strong{font:700 10px/1.3 var(--ui)}.map-hud p{margin:6px 0 0;color:#9fb3c7;font:9px/1.45 var(--ui)}
+.layer-strip{position:absolute;right:16px;top:16px;display:grid;gap:6px}.layer-pill{padding:7px 9px;border:1px solid rgba(255,255,255,.14);border-radius:999px;background:rgba(7,19,32,.72);color:#b9c9d8;font:700 8.5px/1 var(--ui)}
+
+.journey-proto{display:grid;grid-template-rows:260px 170px;background:var(--paper)}
+.journey-preview{display:grid;place-items:center;position:relative;background:linear-gradient(135deg,#0d263e,#173d55 60%,#1b4a50);color:#e5edf4}
+.journey-preview .caption{position:absolute;left:22px;bottom:22px;max-width:360px;font:500 20px/1.25 var(--serif)}
+.journey-preview .sub{position:absolute;left:23px;bottom:10px;color:#9fb4c4;font:8.5px/1 var(--ui)}
+.journey-tracks{padding:12px;background:var(--sheet);border-top:1px solid var(--line)}
+.track{display:grid;grid-template-columns:70px minmax(0,1fr);gap:8px;align-items:center;margin-bottom:8px}.track label{color:var(--muted);font:800 8.5px/1 var(--ui)}
+.trackline{display:flex;gap:4px;height:30px}.clip{min-width:0;border-radius:6px;background:var(--blue-soft);border:1px solid var(--line);padding:8px;color:var(--muted);font:700 8px/1 var(--ui);overflow:hidden;white-space:nowrap}.clip.audio{background:var(--teal-soft)}.clip.live{box-shadow:inset 0 -3px 0 var(--teal)}
+
+.palace-proto{position:relative;height:470px;background:linear-gradient(180deg,#0b1725,#102b3c 55%,#152334);overflow:hidden;perspective:900px}
+.palace-floor{position:absolute;left:50%;bottom:-130px;width:720px;height:520px;transform:translateX(-50%) rotateX(68deg);background:repeating-linear-gradient(90deg,rgba(255,255,255,.055) 0 1px,transparent 1px 64px),repeating-linear-gradient(0deg,rgba(255,255,255,.055) 0 1px,transparent 1px 64px);border:1px solid rgba(255,255,255,.08)}
+.p-room{position:absolute;border:1px solid rgba(255,255,255,.18);background:linear-gradient(135deg,rgba(116,168,204,.18),rgba(28,65,89,.34));box-shadow:0 24px 50px rgba(0,0,0,.28)}
+.p-room:after{content:attr(data-name);position:absolute;left:10px;bottom:8px;color:#c8d8e6;font:700 8.5px/1 var(--ui)}
+.pr1{left:14%;top:20%;width:190px;height:160px;clip-path:polygon(8% 12%,100% 0,100% 84%,16% 100%,0 74%,0 22%)}
+.pr2{right:12%;top:16%;width:210px;height:180px;clip-path:polygon(0 4%,88% 15%,100% 88%,12% 100%,0 72%)}
+.pr3{left:38%;bottom:56px;width:220px;height:145px;clip-path:polygon(10% 0,100% 12%,92% 100%,0 86%,0 18%)}
+.p-object{position:absolute;width:38px;height:54px;border:1px solid rgba(255,255,255,.25);background:linear-gradient(180deg,#b58d59,#65482d);box-shadow:0 12px 26px rgba(0,0,0,.25)}.po1{left:27%;top:43%}.po2{right:25%;top:39%}.po3{left:52%;bottom:22%}
+.palace-hud{position:absolute;left:16px;bottom:16px;display:flex;gap:7px}.palace-hud span{padding:7px 9px;border:1px solid rgba(255,255,255,.14);border-radius:8px;background:rgba(7,19,32,.64);color:#aebfcd;font:700 8px/1 var(--ui)}
+
+.recursion-diagram{display:grid;grid-template-columns:1fr 70px 1fr;align-items:center;gap:16px;padding:28px}
+.rec-card{padding:20px;border:1px solid var(--line);border-radius:14px;background:var(--sheet);text-align:center}.rec-card strong{display:block;font:700 13px/1.3 var(--ui)}.rec-card span{display:block;margin-top:6px;color:var(--muted);font:10.5px/1.5 var(--ui)}
+.rec-arrow{text-align:center;color:var(--teal);font:800 24px/1 var(--ui)}
+
+.action-loop{display:grid;grid-template-columns:1fr 80px 1fr 80px 1fr;align-items:center;gap:10px;padding:24px}
+.action-box{min-height:120px;display:grid;place-items:center;text-align:center;padding:16px;border:1px solid var(--line);border-radius:13px;background:var(--sheet);font:700 11px/1.4 var(--ui)}.action-box span{display:block;margin-top:5px;color:var(--muted);font:400 9.5px/1.4 var(--ui)}
+.action-link{text-align:center;color:var(--teal);font:800 18px/1 var(--mono)}
+
+.law-list{display:grid;gap:0;margin:30px 0;border-top:1px solid var(--line)}
+.law{display:grid;grid-template-columns:minmax(200px,.42fr) minmax(0,1fr);gap:30px;padding:18px 0;border-bottom:1px solid var(--line)}
+.law strong{font:650 17px/1.3 var(--serif)}.law span{color:var(--muted);font:11.5px/1.55 var(--ui)}
+
+.primitive-table td:first-child{width:28%;font-weight:700;color:var(--ink)}
+.status-pill{display:inline-flex;padding:4px 7px;border-radius:999px;background:var(--teal-soft);color:var(--teal);font:800 8.5px/1 var(--ui)}
+
+@container account-main (max-width:920px){.intent-grid{grid-template-columns:1fr}.proto-shell{grid-template-columns:150px minmax(0,1fr)}.proto-inspector{display:none}.action-loop{grid-template-columns:1fr}.action-link{transform:rotate(90deg)}.recursion-diagram{grid-template-columns:1fr}.rec-arrow{transform:rotate(90deg)}.law{grid-template-columns:1fr;gap:7px}}
+@container account-main (max-width:660px){.product-map{min-height:720px}.product-map .substrate{top:50%;width:150px;height:150px}.product-map .orbit{width:130px}.product-map .p0{top:18px}.product-map .p1{right:8px;top:140px}.product-map .p2{right:8px;bottom:120px}.product-map .p3{bottom:18px}.product-map .p4{left:8px;bottom:120px}.product-map .p5{left:8px;top:140px}.proto-shell{grid-template-columns:1fr}.proto-sidebar{display:none}.canvas-node{width:120px}.journey-proto{grid-template-rows:220px 190px}.globe{width:250px;height:250px}.map-hud{width:150px}.layer-strip{display:none}}
+
+
+
+/* ---------- high-fidelity surface mockups ---------- */
+.ui-demo{margin:34px 0;border:1px solid var(--line-strong);border-radius:16px;background:var(--sheet);overflow:hidden;box-shadow:var(--shadow);font-family:var(--ui);font-size:10px;line-height:1.35}
+.ui-demo *{box-sizing:border-box}
+.ui-osbar{height:34px;display:flex;align-items:center;gap:7px;padding:0 10px;border-bottom:1px solid var(--line);background:var(--sheet-2);color:var(--muted)}
+.ui-osbar .traffic{width:7px;height:7px;border-radius:50%;background:var(--line-strong)}
+.ui-osbar .crumb{font:700 9px/1 var(--ui);color:var(--muted)}
+.ui-osbar .spacer{flex:1}
+.ui-osbar .cmd{padding:5px 7px;border:1px solid var(--line);border-radius:6px;background:var(--sheet);font:700 8px/1 var(--ui)}
+.ui-status{height:25px;display:flex;align-items:center;gap:11px;padding:0 10px;border-top:1px solid var(--line);background:var(--sheet-2);color:var(--faint);font:700 7.8px/1 var(--ui)}
+.ui-status .ok{color:var(--success)}
+.ui-status .spacer{flex:1}
+.ui-shell{display:grid;grid-template-columns:190px minmax(0,1fr) 218px;min-height:520px}
+.ui-left,.ui-right{background:var(--sheet);min-width:0;overflow:hidden}
+.ui-left{border-right:1px solid var(--line)}
+.ui-right{border-left:1px solid var(--line)}
+.ui-stage{min-width:0;background:var(--paper);position:relative;overflow:hidden}
+.ui-pane-head{height:31px;display:flex;align-items:center;gap:7px;padding:0 9px;border-bottom:1px solid var(--line);color:var(--muted);font:800 8px/1 var(--ui);letter-spacing:.03em}
+.ui-pane-head .spacer{flex:1}.ui-pane-head .tiny{font-size:7px;color:var(--faint)}
+.ui-section{padding:9px 9px 5px;color:var(--faint);font:800 7.4px/1 var(--ui);letter-spacing:.1em;text-transform:uppercase}
+.ui-tree,.ui-list{display:grid;gap:1px;padding:0 5px 5px}
+.ui-tree .row,.ui-list .row{display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:5px;align-items:center;padding:5px 6px;border-radius:6px;color:var(--muted)}
+.ui-tree .row.active,.ui-list .row.active{background:var(--blue-soft);color:var(--ink);font-weight:700}
+.ui-tree .row .ico,.ui-list .row .ico{font:800 7.5px/1 var(--mono);color:var(--teal)}
+.ui-tree .row .meta,.ui-list .row .meta{font:700 6.8px/1 var(--mono);color:var(--faint)}
+.ui-tree .indent{padding-left:15px}.ui-tree .indent2{padding-left:27px}
+.ui-tabs{height:34px;display:flex;align-items:end;padding:0 6px;border-bottom:1px solid var(--line);background:var(--sheet);overflow:hidden}
+.ui-tab{height:28px;max-width:190px;padding:8px 9px;border:1px solid transparent;border-bottom:0;border-radius:7px 7px 0 0;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:700 8px/1 var(--ui)}
+.ui-tab.active{background:var(--paper);border-color:var(--line);color:var(--ink)}
+.ui-toolbar{height:33px;display:flex;align-items:center;gap:5px;padding:0 7px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--sheet) 88%,var(--paper));color:var(--muted)}
+.ui-tool{padding:5px 6px;border:1px solid transparent;border-radius:6px;font:700 7.6px/1 var(--ui)}
+.ui-tool.active{border-color:var(--line);background:var(--sheet);color:var(--ink)}
+.ui-tool.sep{margin-left:5px;border-left:1px solid var(--line);border-radius:0;padding-left:10px}
+.ui-toolbar .spacer{flex:1}
+.ui-breadcrumb{padding:5px 8px;border:1px solid var(--line);border-radius:999px;background:var(--sheet);font:700 7.4px/1 var(--ui)}
+.ui-inspect{padding:9px}
+.ui-inspect h5{margin:0 0 3px;font:700 12px/1.25 var(--serif);color:var(--ink)}
+.ui-inspect .kind{margin-bottom:10px;color:var(--teal);font:800 7px/1 var(--ui);text-transform:uppercase;letter-spacing:.08em}
+.ui-kv{display:grid;grid-template-columns:62px minmax(0,1fr);gap:5px 7px;padding:7px 0;border-top:1px solid var(--line);color:var(--muted);font-size:7.8px}
+.ui-kv b{color:var(--faint);font-weight:700}.ui-kv span{color:var(--ink)}
+.ui-tags{display:flex;gap:4px;flex-wrap:wrap;margin:7px 0}.ui-tag{padding:4px 5px;border-radius:999px;background:var(--teal-soft);color:var(--teal);font:800 6.8px/1 var(--ui)}
+.ui-note{margin:7px 0;padding:7px 8px;border-left:3px solid var(--orange);background:var(--orange-soft);color:var(--muted);font:7.7px/1.45 var(--ui)}
+.ui-mini-actions{display:flex;gap:4px;flex-wrap:wrap;margin-top:7px}.ui-mini-actions span{padding:5px 6px;border:1px solid var(--line);border-radius:6px;color:var(--muted);font:700 7px/1 var(--ui)}
+.ui-search{margin:5px 6px 7px;padding:6px 7px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--faint);font:7.6px/1 var(--ui)}
+.ui-agentbar{position:absolute;left:12px;right:12px;bottom:12px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 9px;border:1px solid var(--line-strong);border-radius:10px;background:color-mix(in srgb,var(--sheet) 95%,transparent);box-shadow:0 12px 34px rgba(14,34,55,.15);backdrop-filter:blur(8px)}
+.ui-agentbar .ai{color:var(--teal);font:900 7px/1 var(--mono)}.ui-agentbar .prompt{color:var(--muted);font:7.8px/1.35 var(--ui)}.ui-agentbar .scope{color:var(--faint);font:700 6.8px/1 var(--ui)}
+
+/* workspace */
+.workspace-stage{position:relative;min-height:426px;background-image:radial-gradient(circle at 1px 1px,var(--line) .7px,transparent .8px);background-size:18px 18px}
+.ws-canvas-node{position:absolute;width:130px;padding:8px 9px;border:1px solid var(--line-strong);border-radius:8px;background:var(--sheet);box-shadow:0 7px 20px rgba(14,34,55,.08)}
+.ws-canvas-node strong{display:block;font:700 8px/1.25 var(--ui)}.ws-canvas-node span{display:block;margin-top:3px;color:var(--muted);font:7px/1.35 var(--ui)}
+.ws-a{left:9%;top:19%}.ws-b{left:38%;top:31%}.ws-c{right:8%;top:17%}.ws-d{left:49%;bottom:21%}
+.ws-line{position:absolute;height:1px;background:var(--teal);opacity:.65;transform-origin:left center}.wsl1{left:22%;top:29%;width:155px;transform:rotate(10deg)}.wsl2{left:51%;top:37%;width:145px;transform:rotate(-18deg)}.wsl3{left:49%;top:45%;width:126px;transform:rotate(56deg)}
+.ws-float{position:absolute;right:9px;top:9px;padding:6px 7px;border:1px solid var(--line);border-radius:7px;background:var(--sheet);color:var(--muted);font:700 7px/1 var(--ui)}
+
+/* canvas */
+.canvas-work{display:grid;grid-template-columns:155px minmax(0,1fr) 210px;min-height:560px}
+.canvas-lib{border-right:1px solid var(--line);background:var(--sheet)}.canvas-inspector{border-left:1px solid var(--line);background:var(--sheet)}
+.canvas-board{position:relative;min-width:0;overflow:hidden;background-color:var(--paper);background-image:radial-gradient(circle at 1px 1px,var(--line) .8px,transparent .8px);background-size:17px 17px}
+.canvas-board .board-toolbar{position:absolute;left:10px;top:9px;z-index:5;display:flex;gap:3px;padding:4px;border:1px solid var(--line);border-radius:8px;background:var(--sheet);box-shadow:0 8px 22px rgba(14,34,55,.08)}
+.canvas-board .board-toolbar span{padding:5px 6px;border-radius:5px;color:var(--muted);font:700 7px/1 var(--ui)}.canvas-board .board-toolbar span.active{background:var(--blue-soft);color:var(--ink)}
+.c-node{position:absolute;width:142px;padding:9px;border:1px solid var(--line-strong);border-radius:9px;background:var(--sheet);box-shadow:0 8px 23px rgba(14,34,55,.09)}
+.c-node.selected{border-color:var(--blue);box-shadow:0 0 0 2px var(--blue-soft),0 10px 25px rgba(14,34,55,.11)}
+.c-node strong{display:block;font:700 8.5px/1.25 var(--ui)}.c-node .sub{display:block;margin-top:4px;color:var(--muted);font:7px/1.35 var(--ui)}.c-node .mini-tags{display:flex;gap:3px;flex-wrap:wrap;margin-top:6px}.c-node .mini-tags i{font-style:normal;padding:3px 4px;border-radius:999px;background:var(--sheet-2);color:var(--faint);font:700 6px/1 var(--ui)}
+.c-node.img:before{content:"";display:block;height:48px;margin:-3px -3px 7px;border-radius:6px;background:linear-gradient(135deg,#cdbd9f,#9b7c69 45%,#466a76 46% 100%)}
+.cn1{left:7%;top:18%}.cn2{left:38%;top:31%}.cn3{right:6%;top:16%}.cn4{right:13%;bottom:15%}.cn5{left:9%;bottom:13%}.cn6{left:40%;bottom:7%}
+.c-edge{position:absolute;height:1px;background:var(--teal);transform-origin:left center;opacity:.75}.ce1{left:20%;top:28%;width:160px;transform:rotate(12deg)}.ce2{left:50%;top:39%;width:160px;transform:rotate(-17deg)}.ce3{left:50%;top:44%;width:160px;transform:rotate(22deg)}.ce4{left:21%;top:70%;width:170px;transform:rotate(-17deg)}.ce5{left:48%;top:67%;width:132px;transform:rotate(13deg)}
+.edge-label{position:absolute;padding:4px 5px;border:1px solid var(--line);border-radius:5px;background:var(--sheet);color:var(--muted);font:700 6.3px/1 var(--ui)}.el1{left:28%;top:28%}.el2{right:29%;top:29%}.el3{left:43%;bottom:23%;border-color:var(--orange);background:var(--orange-soft);color:var(--orange)}
+.canvas-selection{position:absolute;left:34%;top:25%;width:182px;height:138px;border:1px dashed var(--blue);border-radius:9px;pointer-events:none}
+.canvas-bottom{position:absolute;left:10px;bottom:10px;display:flex;gap:5px}.canvas-bottom span{padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--sheet);color:var(--muted);font:700 6.5px/1 var(--ui)}
+.node-editor{margin:7px 0;padding:8px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--ink);font:7.7px/1.55 var(--serif)}
+
+/* timeline */
+.timeline-work{display:grid;grid-template-columns:190px minmax(0,1fr) 208px;min-height:590px}
+.timeline-left{border-right:1px solid var(--line);background:var(--sheet)}.timeline-right{border-left:1px solid var(--line);background:var(--sheet)}
+.timeline-main{min-width:0;background:var(--paper);overflow:hidden}
+.aperture-group{padding:7px 8px;border-bottom:1px solid var(--line)}.aperture-title{display:flex;align-items:center;gap:6px;margin-bottom:5px;color:var(--ink);font:700 7.8px/1 var(--ui)}.aperture-title .count{margin-left:auto;color:var(--faint);font:700 6.6px/1 var(--mono)}
+.aperture-row{display:grid;grid-template-columns:12px minmax(0,1fr);gap:5px;align-items:center;padding:4px 2px;color:var(--muted);font:7.4px/1.25 var(--ui)}.aperture-row .check{width:9px;height:9px;border:1px solid var(--line-strong);border-radius:2px;background:var(--sheet)}.aperture-row.on .check{background:var(--teal);box-shadow:inset 0 0 0 2px var(--sheet)}
+.timeline-lanes{position:relative;height:490px;overflow:hidden;background:linear-gradient(180deg,var(--sheet) 0 27%,var(--paper) 27% 100%)}
+.spectral-band{position:absolute;left:0;right:0;top:0;height:132px;border-bottom:1px solid var(--line);background:radial-gradient(ellipse at 30% 65%,color-mix(in srgb,var(--orange) 16%,transparent),transparent 34%),radial-gradient(ellipse at 72% 52%,color-mix(in srgb,var(--teal) 14%,transparent),transparent 33%)}
+.spectral-band .slabel{position:absolute;left:10px;top:9px;color:var(--faint);font:800 6.8px/1 var(--ui);letter-spacing:.08em;text-transform:uppercase}.spectral-item{position:absolute;top:45px;padding:5px 6px;border:1px solid color-mix(in srgb,var(--orange) 42%,var(--line));border-radius:999px;background:var(--orange-soft);color:var(--orange);font:700 6.7px/1 var(--ui)}
+.si1{left:15%}.si2{left:55%;top:70px}.si3{right:8%;top:38px}
+.history-grid{position:absolute;inset:132px 0 0;background:repeating-linear-gradient(90deg,transparent 0 19.8%,var(--line) 20%,transparent 20.2%)}
+.hist-axis{position:absolute;left:4%;right:3%;bottom:44px;height:1px;background:var(--line-strong)}
+.hist-year{position:absolute;bottom:25px;color:var(--faint);font:6.8px/1 var(--mono)}
+.h-event{position:absolute;width:116px;padding:7px 8px;border:1px solid var(--line);border-radius:7px;background:var(--sheet);box-shadow:0 6px 18px rgba(14,34,55,.06)}.h-event strong{display:block;font:700 7.5px/1.2 var(--ui)}.h-event span{display:block;margin-top:3px;color:var(--muted);font:6.5px/1.3 var(--ui)}.h-event.selected{border-color:var(--blue);box-shadow:0 0 0 2px var(--blue-soft)}
+.he1{left:8%;top:58px}.he2{left:33%;top:166px}.he3{left:53%;top:90px}.he4{right:5%;top:185px}
+.h-source{position:absolute;width:7px;height:7px;border-radius:50%;background:var(--blue);box-shadow:0 0 0 3px var(--blue-soft)}.hs1{left:26%;top:235px}.hs2{left:68%;top:220px}
+.h-relation{position:absolute;height:1px;background:var(--teal);transform-origin:left center;opacity:.55}.hr1{left:24%;top:117px;width:165px;transform:rotate(15deg)}.hr2{left:49%;top:205px;width:145px;transform:rotate(-24deg)}
+.nested-chip{position:absolute;left:38%;bottom:64px;padding:6px 8px;border:1px dashed var(--teal);border-radius:8px;background:var(--teal-soft);color:var(--teal);font:700 6.8px/1 var(--ui)}
+.timeline-focusbar{height:34px;display:flex;align-items:center;gap:6px;padding:0 8px;border-top:1px solid var(--line);background:var(--sheet)}.timeline-focusbar span{color:var(--muted);font:700 6.8px/1 var(--ui)}.timeline-focusbar b{color:var(--ink);font:800 6.8px/1 var(--ui)}
+
+/* places */
+.places-work{position:relative;height:620px;overflow:hidden;background:#071827;color:#dce8f3}
+.earth-field{position:absolute;inset:0;background:radial-gradient(circle at 63% 48%,#2d6b85 0 12%,#1f5c79 13% 25%,#123b58 26% 38%,#091e31 39% 64%,#06131f 65% 100%)}
+.earth-field:after{content:"";position:absolute;left:42%;top:17%;width:390px;height:390px;border-radius:50%;background:radial-gradient(ellipse at 34% 34%,rgba(113,145,112,.9) 0 12%,transparent 13%),radial-gradient(ellipse at 57% 46%,rgba(104,137,102,.86) 0 9%,transparent 10%),radial-gradient(ellipse at 45% 64%,rgba(93,125,92,.86) 0 8%,transparent 9%),radial-gradient(circle at 50% 50%,rgba(37,101,130,.9) 0 62%,rgba(17,59,87,.92) 63% 100%);box-shadow:inset -38px -30px 65px rgba(0,0,0,.35),0 30px 80px rgba(0,0,0,.35)}
+.map-topbar{position:absolute;left:12px;right:12px;top:10px;z-index:5;display:flex;align-items:center;gap:7px}.map-search{width:245px;padding:8px 10px;border:1px solid rgba(255,255,255,.14);border-radius:9px;background:rgba(5,18,31,.78);backdrop-filter:blur(8px);color:#b9cad8;font:700 7.7px/1 var(--ui)}.map-mode{padding:7px 8px;border:1px solid rgba(255,255,255,.14);border-radius:8px;background:rgba(5,18,31,.72);color:#c8d7e3;font:700 7px/1 var(--ui)}
+.map-aperture{position:absolute;left:12px;top:55px;z-index:5;width:190px;border:1px solid rgba(255,255,255,.13);border-radius:10px;background:rgba(5,18,31,.78);backdrop-filter:blur(10px);overflow:hidden}.map-panel-head{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.1);font:800 7.5px/1 var(--ui)}.map-row{display:grid;grid-template-columns:12px 1fr auto;gap:5px;padding:7px 9px;border-bottom:1px solid rgba(255,255,255,.07);color:#aabccb;font:7px/1.2 var(--ui)}.map-row.active{background:rgba(76,150,173,.14);color:#e3edf5}.map-row .mico{color:#76b9bd}.map-row .mmeta{color:#748b9f;font:700 6.2px/1 var(--mono)}
+.map-layers{position:absolute;right:12px;top:55px;z-index:5;width:170px;border:1px solid rgba(255,255,255,.13);border-radius:10px;background:rgba(5,18,31,.78);backdrop-filter:blur(10px);overflow:hidden}.layer-row{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center;padding:7px 9px;border-bottom:1px solid rgba(255,255,255,.07);color:#b9c9d7;font:7px/1.2 var(--ui)}.layer-row .switch{width:20px;height:10px;border-radius:999px;background:#29475d;position:relative}.layer-row .switch.on{background:#3f8f92}.layer-row .switch:after{content:"";position:absolute;top:2px;left:2px;width:6px;height:6px;border-radius:50%;background:#d7e2ea}.layer-row .switch.on:after{left:12px}
+.geo-pin{position:absolute;z-index:4;width:9px;height:9px;border-radius:50%;background:#f0cb82;box-shadow:0 0 0 4px rgba(240,203,130,.2)}.gp1{left:51%;top:38%}.gp2{left:63%;top:32%}.gp3{left:69%;top:48%}.gp4{left:57%;top:60%}
+.geo-label{position:absolute;z-index:4;padding:4px 5px;border-radius:5px;background:rgba(5,18,31,.72);color:#dbe6ef;font:700 6.6px/1 var(--ui)}.gl1{left:48%;top:33%}.gl2{left:65%;top:27%}.gl3{left:70%;top:52%}.gl4{left:54%;top:64%}
+.geo-route{position:absolute;z-index:3;height:1px;background:#edc87f;transform-origin:left center;opacity:.7}.gr1{left:52%;top:39%;width:135px;transform:rotate(-18deg)}.gr2{left:64%;top:33%;width:105px;transform:rotate(43deg)}.gr3{left:69%;top:49%;width:105px;transform:rotate(138deg)}
+.route-card{position:absolute;left:220px;bottom:62px;z-index:5;width:220px;padding:9px 10px;border:1px solid rgba(255,255,255,.13);border-radius:9px;background:rgba(5,18,31,.78);backdrop-filter:blur(10px)}.route-card strong{display:block;font:700 8px/1.2 var(--ui)}.route-card p{margin:4px 0 0;color:#9fb3c5;font:6.8px/1.4 var(--ui)}.route-card .facts{display:flex;gap:9px;margin-top:7px;color:#76b9bd;font:700 6.4px/1 var(--ui)}
+.map-time{position:absolute;left:12px;right:12px;bottom:12px;z-index:5;display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;padding:8px 10px;border:1px solid rgba(255,255,255,.13);border-radius:9px;background:rgba(5,18,31,.8);backdrop-filter:blur(10px)}.map-time b{font:800 7px/1 var(--mono)}.time-rail{height:3px;border-radius:999px;background:#28455a;position:relative}.time-rail:before{content:"";position:absolute;left:0;top:0;width:62%;height:100%;border-radius:999px;background:#74b5b7}.time-rail:after{content:"";position:absolute;left:62%;top:50%;width:9px;height:9px;border-radius:50%;background:#dbe8f2;transform:translate(-50%,-50%)}
+
+/* journeys */
+.journey-work{display:grid;grid-template-columns:176px minmax(0,1fr) 210px;grid-template-rows:360px 218px;min-height:578px}.journey-left{grid-row:1/3;border-right:1px solid var(--line);background:var(--sheet)}.journey-right{grid-row:1/3;grid-column:3;border-left:1px solid var(--line);background:var(--sheet)}
+.journey-preview-rich{position:relative;background:linear-gradient(135deg,#0a2033,#17415a 58%,#315855);overflow:hidden}.preview-map{position:absolute;right:-45px;top:34px;width:270px;height:270px;border-radius:50%;background:radial-gradient(ellipse at 40% 36%,#6f8e72 0 15%,transparent 16%),radial-gradient(circle at 50% 50%,#2b6b83 0 62%,#173f5c 63% 100%);opacity:.82}.preview-quote{position:absolute;left:28px;bottom:58px;max-width:390px;color:#edf3f7;font:500 21px/1.28 var(--serif)}.preview-caption{position:absolute;left:29px;bottom:33px;color:#aac0cf;font:7px/1.3 var(--ui)}.preview-scene{position:absolute;left:12px;top:12px;padding:6px 7px;border:1px solid rgba(255,255,255,.15);border-radius:7px;background:rgba(7,19,32,.48);color:#cbdce7;font:700 7px/1 var(--ui)}.preview-badge{position:absolute;right:12px;bottom:12px;padding:6px 7px;border-radius:999px;background:rgba(30,127,130,.28);color:#bfe2e0;font:700 6.6px/1 var(--ui)}
+.journey-timeline{grid-column:2;grid-row:2;background:var(--sheet);border-top:1px solid var(--line);padding:8px 9px}.jt-head{height:25px;display:flex;align-items:center;gap:7px;color:var(--muted);font:700 6.8px/1 var(--ui)}.jt-head .spacer{flex:1}.jt-track{display:grid;grid-template-columns:55px minmax(0,1fr);gap:5px;align-items:center;margin-bottom:5px}.jt-track label{color:var(--faint);font:800 6.5px/1 var(--ui)}.jt-line{display:flex;gap:3px;height:30px}.jt-clip{min-width:0;padding:7px 6px;border:1px solid var(--line);border-radius:5px;background:var(--blue-soft);color:var(--muted);font:700 6.4px/1 var(--ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.jt-clip.active{border-color:var(--blue);box-shadow:inset 0 -3px 0 var(--teal);color:var(--ink)}.jt-clip.audio{background:var(--teal-soft)}.jt-clip.music{background:var(--orange-soft)}
+.asset-row{display:grid;grid-template-columns:31px minmax(0,1fr);gap:6px;align-items:center;padding:5px 7px;border-radius:6px;color:var(--muted)}.asset-thumb{height:24px;border-radius:4px;background:linear-gradient(135deg,var(--blue-soft),var(--teal-soft));border:1px solid var(--line)}.asset-row strong{display:block;color:var(--ink);font:700 6.9px/1.2 var(--ui)}.asset-row span{display:block;margin-top:2px;color:var(--faint);font:6px/1.2 var(--ui)}
+.live-ref{display:grid;grid-template-columns:10px 1fr auto;gap:5px;padding:5px 0;border-top:1px solid var(--line);color:var(--muted);font:6.8px/1.2 var(--ui)}.live-ref b{color:var(--teal);font:900 6px/1 var(--mono)}.live-ref em{font-style:normal;color:var(--faint);font:700 5.9px/1 var(--ui)}
+
+/* palace */
+.palace-work{position:relative;height:650px;overflow:hidden;background:linear-gradient(180deg,#07131f,#0b2234 50%,#111d2c);color:#dce7ef;perspective:900px}
+.palace-world{position:absolute;inset:0;transform-style:preserve-3d}.palace-ground{position:absolute;left:50%;bottom:-230px;width:920px;height:700px;transform:translateX(-50%) rotateX(70deg);background:repeating-linear-gradient(90deg,rgba(255,255,255,.045) 0 1px,transparent 1px 70px),repeating-linear-gradient(0deg,rgba(255,255,255,.045) 0 1px,transparent 1px 70px);border:1px solid rgba(255,255,255,.07)}
+.arch{position:absolute;border:1px solid rgba(196,220,236,.2);background:linear-gradient(135deg,rgba(93,145,173,.2),rgba(21,52,73,.48));box-shadow:0 24px 55px rgba(0,0,0,.3);overflow:hidden}.arch:before{content:"";position:absolute;inset:9px;border:1px solid rgba(255,255,255,.08)}.arch h6{position:absolute;left:10px;bottom:9px;margin:0;color:#d8e6ef;font:700 7.5px/1 var(--ui)}.arch span{display:block;margin-top:3px;color:#8fa9ba;font:6px/1.25 var(--ui)}
+.arch-a{left:13%;top:20%;width:220px;height:185px;clip-path:polygon(6% 9%,100% 0,100% 83%,15% 100%,0 78%,0 20%)}.arch-b{right:10%;top:14%;width:245px;height:210px;clip-path:polygon(0 4%,90% 13%,100% 88%,11% 100%,0 74%)}.arch-c{left:39%;bottom:78px;width:245px;height:170px;clip-path:polygon(10% 0,100% 11%,92% 100%,0 85%,0 18%)}
+.wall-media{position:absolute;border:2px solid rgba(218,230,238,.35);background:linear-gradient(135deg,#9a7d62,#d0b99a 48%,#526f7c 49% 100%);box-shadow:0 7px 16px rgba(0,0,0,.28)}.wm1{left:22%;top:32%;width:50px;height:38px}.wm2{right:24%;top:28%;width:62px;height:43px;background:linear-gradient(135deg,#537a80,#a4b2a0 50%,#805e51 51%)}.wm3{left:52%;bottom:132px;width:56px;height:39px;background:linear-gradient(135deg,#7d6c8b,#d0b29c 48%,#385c69 49%)}
+.pedestal{position:absolute;width:33px;height:54px;border:1px solid rgba(255,255,255,.22);background:linear-gradient(180deg,#bc9465,#604630);box-shadow:0 10px 24px rgba(0,0,0,.3)}.pd1{left:29%;top:50%}.pd2{right:28%;top:46%}.pd3{left:57%;bottom:76px}
+.palace-tree{position:absolute;left:12px;top:52px;width:188px;border:1px solid rgba(255,255,255,.13);border-radius:10px;background:rgba(4,15,27,.77);backdrop-filter:blur(10px);overflow:hidden}.pal-tree-head{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.1);font:800 7.4px/1 var(--ui)}.pal-row{display:grid;grid-template-columns:11px 1fr auto;gap:5px;padding:7px 9px;border-bottom:1px solid rgba(255,255,255,.07);color:#a9bdca;font:6.8px/1.2 var(--ui)}.pal-row.active{background:rgba(86,159,170,.13);color:#e3edf4}.pal-row .ico{color:#75b8ba}.pal-row .meta{color:#70899a;font:700 5.9px/1 var(--mono)}
+.palace-inspect{position:absolute;right:12px;top:52px;width:190px;border:1px solid rgba(255,255,255,.13);border-radius:10px;background:rgba(4,15,27,.77);backdrop-filter:blur(10px);overflow:hidden}.pal-inside{padding:10px}.pal-inside h5{margin:0;color:#e2ebf2;font:700 11px/1.2 var(--serif)}.pal-inside .kind{margin:3px 0 9px;color:#75b8ba;font:800 6px/1 var(--ui);text-transform:uppercase}.pal-kv{display:grid;grid-template-columns:56px 1fr;gap:5px;padding:5px 0;border-top:1px solid rgba(255,255,255,.08);color:#91a9ba;font:6.5px/1.3 var(--ui)}.pal-kv span{color:#ccdce7}.pal-actions{display:flex;gap:4px;flex-wrap:wrap;margin-top:7px}.pal-actions span{padding:5px 6px;border:1px solid rgba(255,255,255,.13);border-radius:6px;color:#a9bdca;font:700 6px/1 var(--ui)}
+.palace-top{position:absolute;left:12px;right:12px;top:10px;display:flex;align-items:center;gap:6px;z-index:4}.palace-top .mode{padding:7px 8px;border:1px solid rgba(255,255,255,.13);border-radius:7px;background:rgba(4,15,27,.7);color:#bfd0dc;font:700 6.7px/1 var(--ui)}.palace-top .mode.active{border-color:#75b8ba;color:#e2edf3}.palace-top .spacer{flex:1}.palace-scale{display:flex;gap:3px;padding:4px;border:1px solid rgba(255,255,255,.13);border-radius:8px;background:rgba(4,15,27,.72)}.palace-scale span{padding:4px 5px;border-radius:5px;color:#8fa7b7;font:700 6px/1 var(--ui)}.palace-scale span.active{background:rgba(87,164,170,.17);color:#dce8ef}
+.recall-path{position:absolute;left:34%;top:55%;width:280px;height:2px;background:linear-gradient(90deg,#75b8ba,rgba(117,184,186,.15));transform:rotate(-9deg);box-shadow:0 0 16px rgba(117,184,186,.45)}
+
+/* agent drawer */
+.agent-demo{display:grid;grid-template-columns:minmax(0,1fr) 260px;min-height:470px}.agent-context{background:var(--paper);padding:14px}.agent-drawer{border-left:1px solid var(--line);background:var(--sheet);display:grid;grid-template-rows:auto 1fr auto}.context-strip{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px}.context-strip span{padding:5px 6px;border:1px solid var(--line);border-radius:999px;background:var(--sheet);color:var(--muted);font:700 6.8px/1 var(--ui)}.context-strip b{color:var(--teal)}
+.agent-world-card{padding:14px;border:1px solid var(--line);border-radius:11px;background:var(--sheet);max-width:630px}.agent-world-card h5{margin:0 0 7px;font:600 17px/1.25 var(--serif)}.agent-world-card p{margin:0;color:var(--muted);font:8px/1.5 var(--ui)}.agent-world-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:12px}.agent-world-grid div{padding:9px;border:1px solid var(--line);border-radius:7px;background:var(--paper)}.agent-world-grid b{display:block;color:var(--ink);font:800 6.7px/1 var(--ui)}.agent-world-grid span{display:block;margin-top:3px;color:var(--faint);font:6.2px/1.25 var(--ui)}
+.agent-drawer-head{padding:10px;border-bottom:1px solid var(--line)}.agent-drawer-head strong{display:block;font:700 8px/1.2 var(--ui)}.agent-drawer-head span{display:block;margin-top:3px;color:var(--faint);font:6.3px/1.2 var(--ui)}
+.agent-thread{padding:10px;overflow:hidden}.msg{margin-bottom:9px;padding:8px 9px;border-radius:9px;font:7px/1.45 var(--ui)}.msg.user{margin-left:28px;background:var(--blue-soft);color:var(--ink)}.msg.ai{margin-right:18px;border:1px solid var(--line);background:var(--paper);color:var(--muted)}.msg.ai strong{color:var(--ink)}
+.agent-proposal{margin:7px 0;padding:7px;border:1px solid var(--teal);border-radius:8px;background:var(--teal-soft)}.agent-proposal b{display:block;color:var(--teal);font:800 6.3px/1 var(--ui);text-transform:uppercase;letter-spacing:.05em}.agent-proposal span{display:block;margin-top:4px;color:var(--ink);font:6.7px/1.35 var(--ui)}.agent-proposal .acts{display:flex;gap:4px;margin-top:6px}.agent-proposal .acts i{font-style:normal;padding:4px 5px;border:1px solid var(--line-strong);border-radius:5px;background:var(--sheet);color:var(--muted);font:700 5.8px/1 var(--ui)}
+.agent-compose{padding:8px;border-top:1px solid var(--line)}.agent-compose .box{padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--faint);font:6.8px/1.35 var(--ui)}.agent-compose .foot{display:flex;gap:7px;margin-top:6px;color:var(--faint);font:700 5.8px/1 var(--ui)}.agent-compose .foot .spacer{flex:1}.agent-compose .foot b{color:var(--teal)}
+
+@container account-main (max-width:1080px){.ui-shell{grid-template-columns:165px minmax(0,1fr)}.ui-shell>.ui-right{display:none}.canvas-work{grid-template-columns:145px minmax(0,1fr)}.canvas-inspector{display:none}.timeline-work{grid-template-columns:170px minmax(0,1fr)}.timeline-right{display:none}.journey-work{grid-template-columns:155px minmax(0,1fr);grid-template-rows:350px 220px}.journey-right{display:none}.agent-demo{grid-template-columns:1fr 230px}.map-aperture{width:170px}.map-layers{width:150px}.palace-tree{width:165px}.palace-inspect{width:170px}}
+@container account-main (max-width:760px){.ui-shell,.canvas-work,.timeline-work{grid-template-columns:1fr}.ui-left,.canvas-lib,.timeline-left{display:none}.journey-work{grid-template-columns:1fr;grid-template-rows:320px 220px}.journey-left{display:none}.agent-demo{grid-template-columns:1fr}.agent-drawer{border-left:0;border-top:1px solid var(--line)}.places-work{height:560px}.map-aperture,.map-layers{display:none}.earth-field:after{left:36%;width:330px;height:330px}.palace-tree,.palace-inspect{display:none}.arch-a{left:6%}.arch-b{right:4%}.arch-c{left:30%}.c-node{width:120px}.cn3{right:3%}.cn4{right:7%}}
+
+</style>
+</head>
+<body class="right-closed" data-notes="true">
+<script type="application/json" id="account-provenance">
+{
+  "uid": "account-high-dream-experience-intent-2026-08-12",
+  "kind": "html-account",
+  "title": "High Dream — Experience & Intent",
+  "project": "Knowledge-work environment · design intent",
+  "session": "2026-08-12-experiential-vision",
+  "status": "draft",
+  "ql": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "created": "2026-08-12T17:35:00+01:00",
+  "updated": "2026-08-12T21:08:00+01:00",
+  "source_basis": [
+    "User experiential specification, 2026-08-12",
+    "Repository design lineage: github.com/EpiLogos/research-canvas",
+    "QL HTML Account skill and full account template",
+    "High-fidelity surface mockup refinement, 2026-08-12"
+  ],
+  "relations": [
+    "precedes: primitive-design pass",
+    "precedes: system/program design",
+    "informs: future design-intent documentation"
+  ],
+  "generator": "GPT-5.6 Sol · QL HTML Account"
+}
+</script>
+
+<div class="app">
+  <header class="topbar">
+    <button class="icon-btn" id="leftToggle" aria-label="Toggle contents" aria-controls="leftRail" aria-expanded="true">☰</button>
+    <div class="brand">
+      <strong>High Dream</strong>
+      <span>Product experience &amp; design intent · aspirational</span>
+    </div>
+    <div class="route-chip" id="routeChip"><code>#0</code><span>Ground</span></div>
+    <button class="icon-btn" id="themeToggle" aria-label="Switch theme">◐</button>
+    <button class="icon-btn" id="rightToggle" aria-label="Toggle context" aria-controls="rightRail" aria-expanded="false">✎</button>
+  </header>
+
+  <nav class="left-rail" id="leftRail" aria-label="Account contents">
+    <div class="rail-label">Account</div>
+    <div class="surface-nav" id="surfaceNav"></div>
+  </nav>
+
+  <main class="main" id="mainContent"><article class="surface active" data-surface="q0" data-title="Ground" data-gloss="Intent, feel, governing reality" style="--surface-max:1280px">
+      <div class="surface-inner">
+        <header class="hero">
+          <div class="hero-line"><span class="ql-badge">#0</span><span class="hero-label">Ground</span></div>
+          <h1>A place to work, not an app to manage</h1>
+          <p class="hero-deck">The product should feel like a professional knowledge-work environment whose specialist surfaces remain different entrances into one living research world.</p>
+          <div class="hero-meta"><span>Design intent</span><span>Aspirational / no implementation ceiling</span><span>12 Aug 2026</span></div>
+        </header>
+        <section class="ql-node" id="q0-purpose" data-node=".0" data-route="purpose" data-nav="The intended reality" data-context="What must this account preserve before implementation choices narrow the design?">
+      <header class="node-head"><h2>The intended reality</h2><p class="node-deck">Aspirational design intent for the complete knowledge-work environment.</p></header>
+      <div class="prose"><p>This account describes the product as it should feel when it is fully itself. It treats current implementation as evidence, not as a ceiling. Its main subject is the lived work of a researcher inside one coherent environment.</p><p>The product should feel like a serious desktop instrument for long-form knowledge work. It can borrow useful interaction qualities from an IDE, a DAW, a visual canvas, a geographic cockpit, a non-linear editor, and an inhabitable spatial environment.</p><p>Those comparisons are not branding metaphors. They identify useful qualities of interaction. The software should remain one thing rather than become a bundle of borrowed applications.</p></div><div class="claim reading"><div class="block-label">Governing intent</div><p>The user should feel that they are moving around their work, not switching between unrelated research features.</p></div><div class="source-grid wide"><a class="source-card" data-source href="https://github.com/EpiLogos/research-canvas" target="_blank" rel="noopener noreferrer"><strong>Repository design lineage</strong><span>Current and historical design material used as evidence for this aspirational account.</span></a></div>
+    </section><section class="ql-node" id="q0-workspace-first" data-node=".1" data-route="workspace-first" data-nav="A workspace before a dashboard" data-context="What should the application feel like before any specialist surface is opened?">
+      <header class="node-head"><h2>A workspace before a dashboard</h2><p class="node-deck">The product earns trust by returning the user to thought with almost no ceremony.</p></header>
+      <div class="prose"><p>The application should open into useful work. It should not begin with a marketing-style home screen or feature grid when the user already has an active project.</p><p>A project is grounded in a real folder. A workspace is the active arrangement of that project: open tabs, selected constellations, views, edits, viewport positions, agent threads, and other state that matters to flow.</p><p>Last-session restore should therefore be normal. A user who stopped with a constellation, a timeline aperture, and a Journey draft open should return to those working contexts.</p><p>New project creation should remain short. The user chooses or creates a folder, sets the source horizon, and begins. The operating-system file picker remains useful because the filesystem is already part of the user’s mental model.</p></div>
+<div class="prototype wide" aria-label="Workspace prototype">
+  <div class="proto-top"><span class="proto-dot"></span><span class="proto-dot"></span><span class="proto-dot"></span><span>Project / Workspace</span><span class="grow"></span><span>⌘K</span><span>Agent</span></div>
+  <div class="proto-shell">
+    <aside class="proto-sidebar"><div class="proto-label">Project</div><div class="proto-tree"><div class="active">Current workspace</div><div>Constellations</div><div>Saved views</div><div>Journeys</div><div>Sources</div><div>Palace states</div></div><div class="proto-label">Folders</div><div class="proto-tree"><div>research/</div><div>media/</div><div>notes/</div></div></aside>
+    <section class="proto-stage"><div class="proto-tabs"><div class="proto-tab active">Constellation A</div><div class="proto-tab">Timeline: 1880–1930</div><div class="proto-tab">Journey draft</div></div><div style="padding:28px"><div class="smallcaps">Stage</div><div style="margin-top:12px;font:500 28px/1.25 var(--serif)">The work occupies the screen.</div><div style="max-width:440px;margin-top:10px;color:var(--muted);font:11px/1.55 var(--ui)">Controls appear through menus, context, commands, inspectors and direct manipulation rather than permanent button fields.</div></div><div class="proto-agent"><b>AI</b><span>Ask about the current constellation, operate this view, or reopen a research thread…</span></div></section>
+    <aside class="proto-inspector"><div class="proto-label">Inspector</div><div class="proto-field w70"></div><div class="proto-field"></div><div class="proto-field w45"></div><div class="proto-label" style="margin-top:20px">Context</div><div class="proto-field"></div><div class="proto-field w70"></div></aside>
+  </div>
+</div>
+    </section><section class="ql-node" id="q0-professional-depth" data-node=".2" data-route="professional-depth" data-nav="Simple when viewed, powerful when touched" data-context="How can deep expert capability exist without covering the work in controls?">
+      <header class="node-head"><h2>Simple when viewed, powerful when touched</h2></header>
+      <div class="prose"><p>The stage belongs to the work. Persistent chrome should stay small, stable, and legible. Advanced capability should live mainly in menus, right-click actions, keyboard shortcuts, command search, direct manipulation, and contextual inspectors.</p><p>This is the interaction grammar of mature professional software. The interface does not need to advertise every action at all times. Frequent use makes discoverability cumulative.</p><p>Modals should be rare because they interrupt spatial continuity. Use them for genuine transactional boundaries, destructive decisions, or compact focused tasks. Ordinary navigation, editing, filtering, and linking should usually happen in place.</p><p>The result should feel calm rather than sparse. There is a difference between hiding capability and placing capability where the current act makes it relevant.</p></div><div class="claim reading"><div class="block-label">Interaction law</div><p>Complexity belongs behind fluency. Expert power should emerge from context instead of occupying the screen permanently.</p></div>
+    </section><section class="ql-node" id="q0-one-world" data-node=".3" data-route="one-world" data-nav="One world, many projections" data-context="What unifies all specialist views into one product?">
+      <header class="node-head"><h2>One world, many projections</h2><p class="node-deck">The product is one research world that can be unfolded through several specialist modes.</p></header>
+      <div class="prose"><p>The deepest promise is that the research exists once. Canvas, Timeline, Places, Journeys, and Palace are transformations of a common knowledge world.</p><p>A node edited on Canvas remains the node seen in Timeline. A location added in Places enriches the same object. A Journey scene can point to live node content. A Palace fixture can represent the same constellation at another scale.</p><p>This shared identity prevents content entropy. Work becomes more articulated as it moves through the product, but it does not become a stack of incompatible copies.</p><p>The user should trust that changing perspective does not silently change ontology. Each surface reveals different relations and enables different acts, while the underlying objects remain coherent.</p></div>
+<figure class="figure full">
+  <div class="figure-head"><strong>One research world, several ways of entering it</strong><span>Product map · aspirational</span></div>
+  <div class="figure-body">
+    <div class="product-map" role="img" aria-label="A common research substrate surrounded by Project, Canvas, Timeline, Places, Journeys and Palace views.">
+      <svg viewBox="0 0 1000 520" aria-hidden="true"><g fill="none" stroke="currentColor" opacity=".18"><ellipse cx="500" cy="260" rx="350" ry="205"/><ellipse cx="500" cy="260" rx="270" ry="150"/><line x1="500" y1="260" x2="500" y2="52"/><line x1="500" y1="260" x2="820" y2="150"/><line x1="500" y1="260" x2="820" y2="390"/><line x1="500" y1="260" x2="500" y2="475"/><line x1="500" y1="260" x2="180" y2="390"/><line x1="500" y1="260" x2="180" y2="150"/></g></svg>
+      <div class="substrate">Living research world<span>sources · nodes · relations · constellations · media · provenance</span></div>
+      <div class="orbit p0"><strong>Project</strong><span>ground, scope, workspace, sources</span></div>
+      <div class="orbit p1"><strong>Canvas</strong><span>free spatial construction and diagramming</span></div>
+      <div class="orbit p2"><strong>Timeline</strong><span>historical aperture and relational lighting</span></div>
+      <div class="orbit p3"><strong>Places</strong><span>geographic world and live contextual layers</span></div>
+      <div class="orbit p4"><strong>Journeys</strong><span>curated sequence, media and expression</span></div>
+      <div class="orbit p5"><strong>Palace</strong><span>inhabitable architecture of the whole</span></div>
+    </div>
+  </div>
+  <figcaption>The surfaces do not own separate copies of the research. They expose and transform one common knowledge world.</figcaption>
+</figure>
+    </section><section class="ql-node" id="q0-safety-sovereignty" data-node=".4" data-route="safety-sovereignty" data-nav="Safety, reversibility, and sovereignty" data-context="What conditions make ambitious exploration feel safe enough for real work?">
+      <header class="node-head"><h2>Safety, reversibility, and sovereignty</h2></header>
+      <div class="prose"><p>The environment should invite provisional thought. Autosave should be quiet and reliable. History should make meaningful states recoverable without forcing manual version management after every change.</p><p>A researcher should be able to rearrange a constellation, alter a relationship, edit a View, or experiment with a Journey without wondering whether the previous useful state has vanished.</p><p>Local-first operation adds another layer of trust. Source files remain ordinary files. The research world does not depend on a hosted account.</p><p>Network use becomes an explicit membrane for search, live layers, external agents, publication, or collaboration rather than the condition of authorship.</p></div><div class="claim reading"><div class="block-label">Confidence condition</div><p>Work should feel reversible enough to encourage thought, and local enough to remain the user’s world.</p></div>
+    </section><section class="ql-node" id="q0-high-dream" data-node=".5" data-route="high-dream" data-nav="The high dream" data-context="What integrated experience should guide all later design?">
+      <header class="node-head"><h2>The high dream</h2></header>
+      <div class="prose"><p>The ideal product is a sovereign knowledge-work environment in which a body of research becomes a living, recursive world. The user can unfold that world as conceptual space, historical time, geography, narrative sequence, or inhabitable architecture.</p><p>The user can work directly in every projection and return later without losing the thread. An intelligent agent can understand the same project state, use the same meaningful actions, and help without becoming the centre of the interface.</p><p>The product becomes valuable when it lets a researcher remain inside one coherent act of understanding while changing mode, scale, and medium as the work demands.</p></div><div class="big-thesis">I have a body of work. I can enter it at different scales and through different modes, work directly upon it, and have an intelligent collaborator that understands the same world.</div>
+    </section>
+      </div>
+    </article><article class="surface " data-surface="q1" data-title="Definition" data-gloss="Objects, boundaries, durable work" style="--surface-max:1260px">
+      <div class="surface-inner">
+        <header class="hero">
+          <div class="hero-line"><span class="ql-badge">#1</span><span class="hero-label">Definition</span></div>
+          <h1>The things the user actually handles</h1>
+          <p class="hero-deck">Projects, workspaces, constellations, nodes, relationships, Views, Journeys, assets, and scope form a coherent manipulable world.</p>
+          
+        </header>
+        <section class="ql-node" id="q1-project-workspace" data-node=".0" data-route="project-workspace" data-nav="Project, workspace, and session" data-context="Which basic objects ground the user’s orientation?">
+      <header class="node-head"><h2>Project, workspace, and session</h2></header>
+      <div class="prose"><p>A project is the durable research scope. It is grounded in a folder and associated with the knowledge objects, source horizon, profiles, agent instructions, and saved work that make the project intelligible.</p><p>A workspace is a resumable arrangement of the project in use. It can contain open tabs, current surfaces, selected objects, temporary or saved Views, active agent threads, and viewport positions.</p><p>An application session is the current runtime. It should normally reopen a useful workspace rather than create a blank state.</p><p>This separation lets the filesystem remain simple while the application remembers richer flow.</p></div><div class="table-wrap wide"><table><thead><tr><th>Object</th><th>Meaning</th><th>Continuity</th></tr></thead><tbody><tr><td>Project</td><td>Durable research scope grounded in a folder.</td><td>Long-lived.</td></tr><tr><td>Workspace</td><td>Resumable arrangement of the project in active use.</td><td>Saved and reopenable.</td></tr><tr><td>Session</td><td>The current running instance.</td><td>Restores a workspace.</td></tr></tbody></table></div>
+    </section><section class="ql-node" id="q1-constellations" data-node=".1" data-route="constellations" data-nav="Constellations as recursive research objects" data-context="What is the signature object that can carry substantial meaning without becoming a whole project?">
+      <header class="node-head"><h2>Constellations as recursive research objects</h2></header>
+      <div class="prose"><p>A constellation is a bounded but living articulation of the research. It can express a concept, inquiry, episode, historical situation, argument, person, place, work, document structure, or another meaningful local world.</p><p>A constellation does not need to be complete. It can begin as a dyad, a rough cluster, or an unfinished map and gain internal structure over time.</p><p>A sufficiently rich node can be entered as a constellation, while a constellation can be compressed into a node inside a larger constellation. The same research object can therefore move between object scale and world scale without duplication.</p><p>This recursive relation gives a common basis for nested histories, project subworlds, Palace architecture, and cross-project reuse.</p></div>
+<figure class="figure wide"><div class="figure-head"><strong>Objectification and unfolding</strong><span>Recursive relation</span></div><div class="figure-body"><div class="recursion-diagram"><div class="rec-card"><strong>Constellation</strong><span>A rich interior with nodes, relations, media and local views.</span></div><div class="rec-arrow">⇄</div><div class="rec-card"><strong>Node in a larger constellation</strong><span>The same thing compressed into one manipulable object at another scale.</span></div></div></div><figcaption>The distinction between node and constellation is partly a distinction of scale and articulation. The architecture should preserve that recursion rather than duplicate content.</figcaption></figure>
+    </section><section class="ql-node" id="q1-nodes-edges-assets" data-node=".2" data-route="nodes-edges-assets" data-nav="Nodes, relationships, and assets" data-context="What material is manipulated directly across the surfaces?">
+      <header class="node-head"><h2>Nodes, relationships, and assets</h2></header>
+      <div class="prose"><p>Nodes need several depths of encounter. At the lightest level, a node can be a title, visual mark, tag, or small image. Opened further, the same node can become a substantial document with rich text, Markdown, HTML, media, source links, and structured properties.</p><p>Relationships should be equally first-class. An edge can begin as a simple line or human note and later gain type, direction, evidence, temporal bounds, provenance, uncertainty, or richer interpretation.</p><p>The system should not require formal ontology before insight. It should permit a gesture first, then let the user or agent articulate that gesture into a more exact relation when useful.</p><p>Images, audio, video, documents, generated media, and external references are research material. They should not become foreign attachments managed in an unrelated subsystem.</p></div><div class="claim reading"><div class="block-label">Authoring rule</div><p>Structured knowledge should be derivable from natural work rather than requiring natural work to resemble database administration.</p></div>
+    </section><section class="ql-node" id="q1-views-journeys" data-node=".3" data-route="views-journeys" data-nav="Views, Journeys, and durable interpretations" data-context="Which things deserve identity even when they are not canonical knowledge objects?">
+      <header class="node-head"><h2>Views, Journeys, and durable interpretations</h2></header>
+      <div class="prose"><p>A carefully composed View is meaningful work. A Timeline aperture that includes particular nodes, tags, relations, and nested contexts expresses an interpretation.</p><p>Views should therefore be savable, nameable, reopenable, and reusable. They are more than viewport state, yet they should not be mistaken for copies of the underlying graph.</p><p>Journeys are a stronger authored form. They arrange scenes through knowledge and media, but they can still reference live underlying material. Palace layouts or curated Palace states may also deserve durable identity.</p><p>Several of these objects begin to behave like subprojects because they carry intention, local state, relevant objects, agent conversations, versions, and a point of resumption.</p></div>
+    </section><section class="ql-node" id="q1-scope" data-node=".4" data-route="scope" data-nav="Strong project focus, free knowledge scope" data-context="How can projects stay intelligible without trapping reusable knowledge inside exclusive containers?">
+      <header class="node-head"><h2>Strong project focus, free knowledge scope</h2></header>
+      <div class="prose"><p>The normal user experience should be strongly project-focused. Current files, saved Views, constellations, agent threads, and surface state should make it clear what body of work is active.</p><p>The graph itself can remain freer. A constellation may be relevant to several projects. A prior structure may be brought into a new project by relation rather than copy.</p><p>This requires explicit retrieval scope. The user or agent should be able to search within the selected object, current constellation, current project, selected projects, related projects, or the wider constellation bank.</p><p>Project boundaries control attention and context. They do not need to imply exclusive ownership of every knowledge object.</p></div><div class="equation reading">strong working boundary ≠ exclusive knowledge ownership</div>
+    </section><section class="ql-node" id="q1-manipulable-world" data-node=".5" data-route="manipulable-world" data-nav="A single manipulable world" data-context="What determinate object leaves the definition surface?">
+      <header class="node-head"><h2>A single manipulable world</h2></header>
+      <div class="prose"><p>The product should expose one manipulable world built from recursive research objects, relationships, sources, media, Views, compositions, and resumable work state.</p><p>Different surfaces can privilege different parts of that world without inventing different data ownership. Project scope can remain legible while knowledge remains reusable.</p><p>Live references can remain distinct from snapshots. Derived presentation can remain distinct from canonical research.</p><p>These distinctions are technical hints, but they arise directly from the desired experience. They are therefore part of the product definition rather than implementation trivia.</p></div>
+    </section>
+      </div>
+    </article><article class="surface " data-surface="q2" data-title="Operation" data-gloss="Lived surface interaction" style="--surface-max:1400px">
+      <div class="surface-inner">
+        <header class="hero">
+          <div class="hero-line"><span class="ql-badge">#2</span><span class="hero-label">Operation</span></div>
+          <h1>Working through the surfaces</h1>
+          <p class="hero-deck">Each surface should have a distinct professional interaction grammar while preserving authorship over the same underlying research world.</p>
+          
+        </header>
+        <section class="ql-node" id="q2-shell" data-node=".0" data-route="shell" data-nav="The IDE/DAW shell" data-context="How does the user operate the environment before a specialist surface adds its own grammar?">
+      <header class="node-head"><h2>The IDE/DAW shell</h2><p class="node-deck">A calm technical workspace provides the continuity from which every surface can become more specialised.</p></header>
+      <div class="prose"><p>The shell should be familiar enough that an experienced computer user understands it without explanation. Projects live in the filesystem. Workspaces restore. Tabs preserve local contexts. Libraries expose constellations, Views, Journeys, and sources.</p><p>Menus, context menus, commands, and keybindings carry most expert actions. Inspectors appear when an object needs deeper property editing. The agent remains summonable without occupying a permanent chat column.</p><p>The shell should make specialist surfaces feel like modes of one professional instrument. Switching to Timeline or Places should recompose the available controls rather than open another application inside the application.</p></div>
+
+<div class="ui-demo full" aria-label="Detailed workspace shell mockup">
+  <div class="ui-osbar"><span class="traffic"></span><span class="traffic"></span><span class="traffic"></span><span class="crumb">~/Research/Modernity &amp; Recurrence</span><span class="spacer"></span><span class="cmd">⌘K Command</span><span class="cmd">⌥A Agent</span></div>
+  <div class="ui-shell">
+    <aside class="ui-left">
+      <div class="ui-pane-head"><span>PROJECT</span><span class="spacer"></span><span class="tiny">local folder</span></div>
+      <div class="ui-tree">
+        <div class="row active"><span class="ico">◆</span><span>Modernity &amp; Recurrence</span><span class="meta">P</span></div>
+      </div>
+      <div class="ui-section">Constellations</div><div class="ui-tree">
+        <div class="row indent active"><span class="ico">◇</span><span>Industrial religion</span><span class="meta">16</span></div>
+        <div class="row indent"><span class="ico">◇</span><span>Mass spectacle</span><span class="meta">22</span></div>
+        <div class="row indent"><span class="ico">◇</span><span>Sacrifice economy</span><span class="meta">11</span></div>
+      </div>
+      <div class="ui-section">Saved views</div><div class="ui-tree">
+        <div class="row indent"><span class="ico">T</span><span>Europe · 1789–1914</span><span class="meta">V3</span></div>
+        <div class="row indent"><span class="ico">G</span><span>Trade &amp; travel field</span><span class="meta">V1</span></div>
+      </div>
+      <div class="ui-section">Journeys</div><div class="ui-tree"><div class="row indent"><span class="ico">▶</span><span>Public myth · draft</span><span class="meta">05:42</span></div></div>
+      <div class="ui-section">Source horizon</div><div class="ui-tree">
+        <div class="row indent"><span class="ico">✓</span><span>sources/primary</span><span class="meta">128</span></div>
+        <div class="row indent"><span class="ico">✓</span><span>images/archive</span><span class="meta">64</span></div>
+        <div class="row indent"><span class="ico">×</span><span>exports/</span><span class="meta">skip</span></div>
+      </div>
+    </aside>
+    <section class="ui-stage">
+      <div class="ui-tabs"><div class="ui-tab active">Industrial religion · Canvas</div><div class="ui-tab">Europe 1789–1914 · Timeline</div><div class="ui-tab">Trade routes · Places</div><div class="ui-tab">Public myth · Journey</div></div>
+      <div class="ui-toolbar"><span class="ui-tool active">Select</span><span class="ui-tool">Node</span><span class="ui-tool">Edge</span><span class="ui-tool">Draw</span><span class="ui-tool sep">View</span><span class="ui-tool">History</span><span class="spacer"></span><span class="ui-breadcrumb">Project › Industrial religion</span></div>
+      <div class="workspace-stage">
+        <div class="ws-line wsl1"></div><div class="ws-line wsl2"></div><div class="ws-line wsl3"></div>
+        <div class="ws-canvas-node ws-a"><strong>World exhibitions</strong><span>event family · 7 sources</span></div>
+        <div class="ws-canvas-node ws-b"><strong>Industrial ritual</strong><span>working concept · selected</span></div>
+        <div class="ws-canvas-node ws-c"><strong>Mass spectacle ↗</strong><span>nested constellation · 22 nodes</span></div>
+        <div class="ws-canvas-node ws-d"><strong>Paris 1889</strong><span>event · place · 14 relations</span></div>
+        <div class="ws-float">Autosave on · history 38 states</div>
+        <div class="ui-agentbar"><span class="ai">AI</span><span class="prompt">Ask about Industrial religion, operate this Canvas, or reopen “ritual / spectacle” thread…</span><span class="scope">scope: selection + project</span></div>
+      </div>
+      <div class="ui-status"><span class="ok">● autosaved</span><span>local</span><span>Neo4j ready</span><span class="spacer"></span><span>selection 1 · zoom 92%</span></div>
+    </section>
+    <aside class="ui-right">
+      <div class="ui-pane-head"><span>INSPECTOR</span><span class="spacer"></span><span class="tiny">selected object</span></div>
+      <div class="ui-inspect"><div class="kind">Conceptual constellation</div><h5>Industrial religion</h5><div class="ui-tags"><span class="ui-tag">ritual</span><span class="ui-tag">industry</span><span class="ui-tag">interpretive</span></div><div class="ui-kv"><b>Contains</b><span>16 nodes · 24 relations</span><b>Projects</b><span>2 implicated</span><b>Sources</b><span>31 passages</span><b>Updated</b><span>today · 20:41</span><b>History</b><span>38 recoverable states</span></div><div class="ui-note">Working question: when does industrial organisation acquire ritual form rather than merely symbolic decoration?</div><div class="ui-mini-actions"><span>Open body</span><span>Enter</span><span>Timeline</span><span>History</span></div></div>
+    </aside>
+  </div>
+</div>
+    </section><section class="ql-node" id="q2-canvas" data-node=".1" data-route="canvas" data-nav="Canvas: expressive construction first" data-context="What should direct conceptual mapping feel like?">
+      <header class="node-head"><h2>Canvas: expressive construction first</h2></header>
+      <div class="prose"><p>Canvas should feel fast, safe, and playful enough for thinking in motion. The user should be able to create nodes, type, draw, connect, colour, tag, group, paste, drop assets, and introduce other constellations without leaving the spatial field.</p><p>A rough relationship can exist before it is formal. An edge can carry a note such as “possible institutional continuation.” The user or agent can later turn that note into one or more structured relationships.</p><p>Deep node content should remain close. A compact card can expand into substantial text and media. Rich properties should remain available through inspection or expert modes.</p><p>Autosave and recoverable history matter here because Canvas should encourage experimentation. The user should be able to make a mess, find the pattern, and formalise only what deserves formalisation.</p></div>
+
+<div class="ui-demo full" aria-label="Detailed Canvas surface mockup">
+  <div class="ui-osbar"><span class="crumb">Canvas · Industrial religion</span><span class="spacer"></span><span class="cmd">View: Working map</span><span class="cmd">History</span></div>
+  <div class="canvas-work">
+    <aside class="canvas-lib">
+      <div class="ui-pane-head"><span>LIBRARY</span><span class="spacer"></span><span class="tiny">drag into canvas</span></div>
+      <div class="ui-search">Search nodes, sources, constellations…</div>
+      <div class="ui-section">This constellation</div><div class="ui-list">
+        <div class="row active"><span class="ico">●</span><span>Industrial ritual</span><span class="meta">concept</span></div>
+        <div class="row"><span class="ico">●</span><span>World exhibitions</span><span class="meta">7 src</span></div>
+        <div class="row"><span class="ico">●</span><span>Paris 1889</span><span class="meta">event</span></div>
+      </div>
+      <div class="ui-section">Other constellations</div><div class="ui-list"><div class="row"><span class="ico">◇</span><span>Mass spectacle</span><span class="meta">22</span></div><div class="row"><span class="ico">◇</span><span>Sacrifice economy</span><span class="meta">11</span></div></div>
+      <div class="ui-section">Sources &amp; assets</div><div class="ui-list"><div class="row"><span class="ico">▤</span><span>Benjamin · Exposés</span><span class="meta">PDF</span></div><div class="row"><span class="ico">▧</span><span>Galerie des Machines</span><span class="meta">JPG</span></div><div class="row"><span class="ico">♫</span><span>Field narration 02</span><span class="meta">WAV</span></div></div>
+    </aside>
+    <section class="canvas-board">
+      <div class="board-toolbar"><span class="active">Pointer</span><span>Node</span><span>Edge</span><span>Text</span><span>Freehand</span><span>Media</span><span>Frame</span></div>
+      <div class="c-edge ce1"></div><div class="c-edge ce2"></div><div class="c-edge ce3"></div><div class="c-edge ce4"></div><div class="c-edge ce5"></div>
+      <div class="c-node cn1"><strong>World exhibitions</strong><span class="sub">event family · temporal</span><div class="mini-tags"><i>industry</i><i>spectacle</i></div></div>
+      <div class="c-node selected cn2"><strong>Industrial ritual</strong><span class="sub">working proposition</span><div class="mini-tags"><i>concept</i><i>interpretive</i></div></div>
+      <div class="c-node img cn3"><strong>Galerie des Machines</strong><span class="sub">image · Paris 1889</span></div>
+      <div class="c-node cn4"><strong>Mass spectacle ↗</strong><span class="sub">constellation · enter to unfold</span><div class="mini-tags"><i>22 nodes</i></div></div>
+      <div class="c-node cn5"><strong>Benjamin · Exposés</strong><span class="sub">source · passages 14–18</span><div class="mini-tags"><i>primary text</i></div></div>
+      <div class="c-node cn6"><strong>Paris 1889</strong><span class="sub">event · place · 6 May–31 Oct</span></div>
+      <div class="edge-label el1">manifests as</div><div class="edge-label el2">visual evidence</div><div class="edge-label el3">“possible institutional continuation…”</div>
+      <div class="canvas-selection"></div>
+      <div class="canvas-bottom"><span>snap off</span><span>grid 18</span><span>show relation labels</span><span>selection history</span></div>
+    </section>
+    <aside class="canvas-inspector">
+      <div class="ui-pane-head"><span>NODE</span><span class="spacer"></span><span class="tiny">Body · Relations · Properties</span></div>
+      <div class="ui-inspect"><div class="kind">Working concept · selected</div><h5>Industrial ritual</h5><div class="node-editor"><b>Body</b><br>Industrial production can acquire repeated, ceremonial forms that organise collective attention. The claim remains interpretive until linked to specific practices and sources.</div><div class="ui-tags"><span class="ui-tag">concept</span><span class="ui-tag">ritual</span><span class="ui-tag">interpretive</span></div><div class="ui-kv"><b>Relations</b><span>8 outgoing · 5 incoming</span><b>Evidence</b><span>4 supported · 2 provisional</span><b>Media</b><span>3 images · 1 clip</span><b>Version</b><span>v17 · autosaved</span></div><div class="ui-note">Edge note on selected relation is still informal. Ask the agent to propose structured relation types without replacing the note.</div><div class="ui-mini-actions"><span>Open full editor</span><span>Formalise edge</span><span>Enter as constellation</span><span>History</span></div></div>
+    </aside>
+  </div>
+</div>
+    </section><section class="ql-node" id="q2-timeline" data-node=".2" data-route="timeline" data-nav="Timeline: mapping by aperture" data-context="What should historical work allow the researcher to do, not merely see?">
+      <header class="node-head"><h2>Timeline: mapping by aperture</h2></header>
+      <div class="prose"><p>Timeline should be a working projection of the constellation. It can start from a full field or an empty field. The researcher constructs a useful historical aperture by including and excluding nodes, tags, relation types, nested contexts, historical registers, and trans-historical patterns.</p><p>Selecting a node should light its relational neighbourhood without flooding the view. The user can add another node, deepen relation depth, compare fields, or remove a branch.</p><p>Nested timelines give recursion practical force. Enter a person to inspect a life, a place to inspect local history, an event to inspect causes and consequences, or a work to inspect emergence and reception.</p><p>Saved Timeline Views become durable interpretations. As the underlying graph gains better dates, relationships, and evidence, those Views should normally benefit from the improvement.</p></div>
+
+<div class="ui-demo full" aria-label="Detailed Timeline surface mockup">
+  <div class="ui-osbar"><span class="crumb">Timeline · Europe 1789–1914</span><span class="spacer"></span><span class="cmd">Start: full field</span><span class="cmd">Save view</span></div>
+  <div class="timeline-work">
+    <aside class="timeline-left">
+      <div class="ui-pane-head"><span>APERTURE</span><span class="spacer"></span><span class="tiny">live query + curation</span></div>
+      <div class="ui-search">Find node, tag, relation, nested timeline…</div>
+      <div class="aperture-group"><div class="aperture-title">Saved views <span class="count">3</span></div><div class="aperture-row on"><span class="check"></span><span>Europe · 1789–1914</span></div><div class="aperture-row"><span class="check"></span><span>Empty historical field</span></div></div>
+      <div class="aperture-group"><div class="aperture-title">Included tags <span class="count">4</span></div><div class="aperture-row on"><span class="check"></span><span>revolution</span></div><div class="aperture-row on"><span class="check"></span><span>industry</span></div><div class="aperture-row on"><span class="check"></span><span>spectacle</span></div><div class="aperture-row"><span class="check"></span><span>religion</span></div></div>
+      <div class="aperture-group"><div class="aperture-title">Relations <span class="count">2</span></div><div class="aperture-row on"><span class="check"></span><span>CAUSES · depth 1</span></div><div class="aperture-row on"><span class="check"></span><span>ECHOES</span></div><div class="aperture-row"><span class="check"></span><span>INFLUENCES</span></div></div>
+      <div class="aperture-group"><div class="aperture-title">Nested contexts <span class="count">2</span></div><div class="aperture-row on"><span class="check"></span><span>Paris 1889 ↳ local history</span></div><div class="aperture-row on"><span class="check"></span><span>Nietzsche ↳ 1844–1900</span></div></div>
+      <div class="aperture-group" data-timeline-filters><div class="aperture-title">Registers</div><button class="filter-chip" type="button" data-filter="historical" aria-pressed="true">Historical</button> <button class="filter-chip" type="button" data-filter="archetype" aria-pressed="true">Trans-historical</button> <button class="filter-chip" type="button" data-filter="source" aria-pressed="true">Sources</button> <button class="filter-chip" type="button" data-filter="relation" aria-pressed="true">Relations</button></div>
+    </aside>
+    <section class="timeline-main">
+      <div class="ui-toolbar"><span class="ui-tool active">Pan</span><span class="ui-tool">Range</span><span class="ui-tool">Compare</span><span class="ui-tool sep">Rel depth 1</span><span class="ui-tool">Semantic zoom</span><span class="spacer"></span><span class="ui-breadcrumb">Project › Industrial religion › Europe 1789–1914</span></div>
+      <div class="timeline-lanes">
+        <div class="spectral-band"><span class="slabel">Trans-historical / archetypal register</span><span class="spectral-item si1 ev" data-kind="archetype" data-label="">sacrifice</span><span class="spectral-item si2 ev" data-kind="archetype" data-label="">spectacle</span><span class="spectral-item si3 ev" data-kind="archetype" data-label="">renewal</span></div>
+        <div class="history-grid">
+          <div class="h-relation hr1 time-context"></div><div class="h-relation hr2 time-context"></div>
+          <div class="h-event he1 ev" data-kind="historical" data-label=""><strong>French Revolution</strong><span>1789 · event · Paris</span></div>
+          <div class="h-event he2 selected ev" data-kind="historical" data-label=""><strong>Great Exhibition</strong><span>1851 · London · 12 sources</span></div>
+          <div class="h-event he3 ev" data-kind="historical" data-label=""><strong>Paris Exposition</strong><span>1889 · nested context open</span></div>
+          <div class="h-event he4 ev" data-kind="historical" data-label=""><strong>Mass politics</strong><span>1900–1914 · event family</span></div>
+          <div class="h-source hs1 ev" data-kind="source" data-label=""></div><div class="h-source hs2 ev" data-kind="source" data-label=""></div>
+          <div class="nested-chip">↳ Paris 1889 · include 7 of 19 local events</div>
+          <div class="hist-axis"></div><span class="hist-year" style="left:6%">1780</span><span class="hist-year" style="left:26%">1820</span><span class="hist-year" style="left:46%">1860</span><span class="hist-year" style="left:66%">1900</span><span class="hist-year" style="right:3%">1914</span>
+        </div>
+      </div>
+      <div class="timeline-focusbar"><b>Highlighted field:</b><span>Great Exhibition + Paris 1889</span><span>· 17 direct relations</span><span>· 6 sources</span><span>· 2 recurring-pattern matches</span></div>
+    </section>
+    <aside class="timeline-right">
+      <div class="ui-pane-head"><span>SELECTION</span><span class="spacer"></span><span class="tiny">passes through to graph</span></div>
+      <div class="ui-inspect"><div class="kind">Event · historical</div><h5>Great Exhibition</h5><div class="ui-kv"><b>Date</b><span>1 May–15 Oct 1851</span><b>Place</b><span>Hyde Park, London</span><b>Precision</b><span>day</span><b>Relations</b><span>17 visible · 29 total</span><b>Sources</b><span>12 passages · 3 images</span></div><div class="ui-tags"><span class="ui-tag">industry</span><span class="ui-tag">spectacle</span><span class="ui-tag">exhibition</span></div><div class="ui-note">Nested timeline available: planning, construction, opening, visitors, reception, dismantling.</div><div class="ui-mini-actions"><span>Enter timeline</span><span>Add relation</span><span>Open in Canvas</span><span>Show in Places</span></div></div>
+    </aside>
+  </div>
+</div>
+    </section><section class="ql-node" id="q2-places" data-node=".3" data-route="places" data-nav="Places: an immersive geographic cockpit" data-context="What does geography become when it is a full authoring surface rather than a marker layer?">
+      <header class="node-head"><h2>Places: an immersive geographic cockpit</h2></header>
+      <div class="prose"><p>Places should be visually confident enough to feel like a high-end globe application. Geography should occupy almost the whole stage. Controls should stay minimal until the user asks for layers, history, search, or authoring tools.</p><p>The current project, constellation, saved View, or Journey defines the aperture. The researcher can follow people, events, routes, institutions, sources, media, movements, and recurring patterns through changing place and time.</p><p>The map can situate research inside relevant world information. Historical boundaries, weather, trade, transport, terrain, live travel conditions, imagery, and other layers can become explanatory context when the research requires them.</p><p>This is also an authoring surface. The user can edit a place, create a route, refine a temporal location, add media, or introduce a new research object without returning to Canvas.</p></div>
+
+<div class="ui-demo full" aria-label="Detailed Places surface mockup">
+  <div class="places-work">
+    <div class="earth-field"></div>
+    <div class="map-topbar"><div class="map-search">⌕ Search place, person, route, constellation, view…</div><div class="map-mode">Globe</div><div class="map-mode">Historical map</div><div class="map-mode">Terrain</div><div style="flex:1"></div><div class="map-mode">Edit</div><div class="map-mode">Agent</div></div>
+    <aside class="map-aperture"><div class="map-panel-head">CURRENT APERTURE</div><div class="map-row active"><span class="mico">◇</span><span>Industrial religion</span><span class="mmeta">CONST</span></div><div class="map-row"><span class="mico">T</span><span>Europe 1789–1914</span><span class="mmeta">VIEW</span></div><div class="map-row"><span class="mico">▶</span><span>Public myth</span><span class="mmeta">JOURNEY</span></div><div class="map-panel-head">VISIBLE OBJECTS</div><div class="map-row"><span class="mico">●</span><span>events</span><span class="mmeta">32</span></div><div class="map-row"><span class="mico">↝</span><span>movement / routes</span><span class="mmeta">8</span></div><div class="map-row"><span class="mico">◇</span><span>trans-regional patterns</span><span class="mmeta">3</span></div></aside>
+    <aside class="map-layers"><div class="map-panel-head">WORLD LAYERS · 1895</div><div class="layer-row"><span>Historical boundaries</span><span class="switch on"></span></div><div class="layer-row"><span>Rail / shipping</span><span class="switch on"></span></div><div class="layer-row"><span>Trade intensity</span><span class="switch on"></span></div><div class="layer-row"><span>Weather reconstruction</span><span class="switch"></span></div><div class="layer-row"><span>Terrain</span><span class="switch on"></span></div><div class="layer-row"><span>Archive imagery</span><span class="switch on"></span></div><div class="layer-row"><span>Current live travel</span><span class="switch"></span></div></aside>
+    <div class="geo-route gr1"></div><div class="geo-route gr2"></div><div class="geo-route gr3"></div><div class="geo-pin gp1"></div><div class="geo-pin gp2"></div><div class="geo-pin gp3"></div><div class="geo-pin gp4"></div><div class="geo-label gl1">London · 1851</div><div class="geo-label gl2">Paris · 1889</div><div class="geo-label gl3">Vienna · 1873</div><div class="geo-label gl4">Milan · 1906</div>
+    <div class="route-card"><strong>Exhibition circulation · selected route</strong><p>Follow people, technologies, images and exhibition forms across four sites. Route geometry is provenance-backed rather than decorative.</p><div class="facts"><span>4 places</span><span>23 linked nodes</span><span>1895 aperture</span></div></div>
+    <div class="map-time"><b>1780</b><div class="time-rail"></div><b>1895 · 1914</b></div>
+  </div>
+</div>
+    </section><section class="ql-node" id="q2-journeys" data-node=".4" data-route="journeys" data-nav="Journeys: compose movement through knowledge" data-context="How does the product turn a research aperture into a communicable sequence?">
+      <header class="node-head"><h2>Journeys: compose movement through knowledge</h2></header>
+      <div class="prose"><p>Journeys should borrow the clearest grammar from non-linear editors without becoming a full video workstation. The user needs scenes, tracks, ordering, duration, preview, rearrangement, media placement, narration, music, and simple export.</p><p>A Journey can begin from a constellation, Timeline View, geographic path, selected node set, or another useful aperture. Its scenes can combine text, quotation, images, video, audio, map states, timeline states, narration, generated visuals, or other media.</p><p>The key architectural behaviour is live reference. If a scene points to the current image or selected text of a node, a later edit should normally propagate. The user can deliberately snapshot or override content when editorial stability requires it.</p><p>Rendered outputs can return to the knowledge world as media attached to the node or constellation they explain.</p></div>
+
+<div class="ui-demo full" aria-label="Detailed Journey composition surface mockup">
+  <div class="ui-osbar"><span class="crumb">Journey · Public myth / sequence 03</span><span class="spacer"></span><span class="cmd">Preview</span><span class="cmd">Export</span></div>
+  <div class="journey-work">
+    <aside class="journey-left">
+      <div class="ui-pane-head"><span>MATERIAL</span><span class="spacer"></span><span class="tiny">from live research</span></div>
+      <div class="ui-search">Search constellation, node, media, view…</div>
+      <div class="ui-section">From current view</div><div class="asset-row"><div class="asset-thumb"></div><div><strong>Paris Exposition 1889</strong><span>node · live text + 3 images</span></div></div><div class="asset-row"><div class="asset-thumb"></div><div><strong>Trade route · 1895</strong><span>Places view · live camera state</span></div></div>
+      <div class="ui-section">Constellation media</div><div class="asset-row"><div class="asset-thumb"></div><div><strong>Galerie des Machines</strong><span>image · 2800×1900</span></div></div><div class="asset-row"><div class="asset-thumb"></div><div><strong>Crowd engraving</strong><span>image · source-linked</span></div></div><div class="asset-row"><div class="asset-thumb"></div><div><strong>Narration take 04</strong><span>audio · 00:38</span></div></div>
+      <div class="ui-section">Saved views</div><div class="ui-list"><div class="row"><span class="ico">T</span><span>Europe 1789–1914</span><span class="meta">V3</span></div><div class="row"><span class="ico">G</span><span>Exhibition circulation</span><span class="meta">V1</span></div></div>
+    </aside>
+    <section class="journey-preview-rich"><div class="preview-scene">SCENE 03 · Paris 1889</div><div class="preview-map"></div><div class="preview-quote">“The exhibition becomes a temporary world in which industry presents itself as destiny.”</div><div class="preview-caption">Node text · edited in source object · narration aligned 00:42–01:05</div><div class="preview-badge">↗ 3 live references</div></section>
+    <aside class="journey-right"><div class="ui-pane-head"><span>SCENE INSPECTOR</span><span class="spacer"></span><span class="tiny">03 / 07</span></div><div class="ui-inspect"><div class="kind">Scene · live composition</div><h5>Paris 1889</h5><div class="ui-kv"><b>Duration</b><span>00:23.4</span><b>Transition</b><span>map fly → still</span><b>Narration</b><span>take 04 · trimmed</span><b>Music</b><span>bed A · −18 dB</span></div><div class="ui-section" style="padding-left:0">Live references</div><div class="live-ref"><b>↗</b><span>Paris 1889 · body excerpt</span><em>LIVE</em></div><div class="live-ref"><b>↗</b><span>Galerie des Machines · image</span><em>LIVE</em></div><div class="live-ref"><b>↗</b><span>Exhibition circulation · map view</span><em>LIVE</em></div><div class="ui-note">Freeze a reference only when the scene needs editorial stability against later research edits.</div><div class="ui-mini-actions"><span>Snapshot selected</span><span>Open source node</span><span>Attach export</span></div></div></aside>
+    <section class="journey-timeline"><div class="jt-head"><span>00:00</span><span class="spacer"></span><span>playhead 00:48</span><span>02:14</span></div><div class="jt-track"><label>Scenes</label><div class="jt-line"><div class="jt-clip" style="flex:.8">01 Prologue</div><div class="jt-clip" style="flex:1">02 London</div><div class="jt-clip active" style="flex:1.1">03 Paris 1889 ↗</div><div class="jt-clip" style="flex:.9">04 Vienna</div><div class="jt-clip" style="flex:1">05 Pattern</div></div></div><div class="jt-track"><label>Visual</label><div class="jt-line"><div class="jt-clip" style="flex:1.4">archive image</div><div class="jt-clip active" style="flex:1.2">map fly ↗</div><div class="jt-clip" style="flex:1.3">node text ↗</div></div></div><div class="jt-track"><label>Narration</label><div class="jt-line"><div class="jt-clip audio" style="flex:1.6">take 03</div><div class="jt-clip audio active" style="flex:1.2">take 04</div><div class="jt-clip audio" style="flex:1.1">take 05</div></div></div><div class="jt-track"><label>Music</label><div class="jt-line"><div class="jt-clip music" style="flex:3.9">music bed A · automation</div></div></div></section>
+  </div>
+</div>
+    </section><section class="ql-node" id="q2-palace" data-node=".5" data-route="palace" data-nav="Palace: traverse the shape of the whole" data-context="What makes a 3D knowledge environment meaningful rather than decorative?">
+      <header class="node-head"><h2>Palace: traverse the shape of the whole</h2></header>
+      <div class="prose"><p>The Palace should represent the project at a scale that other Views cannot. It should feel like an inhabitable house of knowledge whose architecture emerges from the project’s real constellation structure and curation.</p><p>A constellation should not become a room only because the renderer needs boxes. Its role and scale can justify a room, corridor, wing, stair, gallery, courtyard, tower, object, wall, library, or nested structure.</p><p>The researcher must recognise the work directly. Images, titles, diagrams, media, collections, symbols, Journey artifacts, and constellation structures should inhabit the environment.</p><p>Navigation should support several scales. The user can walk, click, inspect, enter, fly outward, and examine larger architectural relations. The Palace becomes valuable when learning its spatial form teaches something true about the project.</p></div>
+
+<div class="ui-demo full" aria-label="Detailed Palace surface mockup">
+  <div class="palace-work">
+    <div class="palace-world"><div class="palace-ground"></div><div class="arch arch-a"><h6>Industrial religion<span>gallery · conceptual constellation</span></h6></div><div class="arch arch-b"><h6>Mass spectacle<span>east wing · 22-node constellation</span></h6></div><div class="arch arch-c"><h6>Sacrifice economy<span>lower chamber · nested relation field</span></h6></div><div class="wall-media wm1"></div><div class="wall-media wm2"></div><div class="wall-media wm3"></div><div class="pedestal pd1"></div><div class="pedestal pd2"></div><div class="pedestal pd3"></div><div class="recall-path"></div></div>
+    <div class="palace-top"><span class="mode active">Walk</span><span class="mode">Fly</span><span class="mode">Recall path</span><span class="mode">Edit architecture</span><span class="spacer"></span><div class="palace-scale"><span>Object</span><span>Room</span><span class="active">Wing</span><span>Project</span></div></div>
+    <aside class="palace-tree"><div class="pal-tree-head">PROJECT AS ARCHITECTURE</div><div class="pal-row"><span class="ico">⌂</span><span>Modernity &amp; Recurrence</span><span class="meta">HOUSE</span></div><div class="pal-row active"><span class="ico">▰</span><span>Industrial religion</span><span class="meta">GALLERY</span></div><div class="pal-row"><span class="ico">▰</span><span>Mass spectacle</span><span class="meta">WING</span></div><div class="pal-row"><span class="ico">▱</span><span>Sacrifice economy</span><span class="meta">CHAMBER</span></div><div class="pal-row"><span class="ico">◇</span><span>Paris 1889</span><span class="meta">OBJECT</span></div><div class="pal-row"><span class="ico">▶</span><span>Public myth journey</span><span class="meta">PATH</span></div></aside>
+    <aside class="palace-inspect"><div class="map-panel-head">SELECTED ARCHITECTURE</div><div class="pal-inside"><div class="kind">Gallery · constellation</div><h5>Industrial religion</h5><div class="pal-kv"><b>Form</b><span>gallery + 2 alcoves</span><b>Meaning</b><span>mediates two larger wings</span><b>Contents</b><span>16 nodes · 3 media fixtures</span><b>Links</b><span>2 doors · 1 lower stair</span><b>Recall</b><span>path stop 04</span></div><div class="pal-actions"><span>Enter</span><span>Open constellation</span><span>Re-shape</span><span>Explain form</span></div></div></aside>
+  </div>
+</div>
+    </section>
+      </div>
+    </article><article class="surface " data-surface="q3" data-title="Pattern" data-gloss="Recursive structure and invariants" style="--surface-max:1380px">
+      <div class="surface-inner">
+        <header class="hero">
+          <div class="hero-line"><span class="ql-badge">#3</span><span class="hero-label">Pattern</span></div>
+          <h1>The pattern beneath the views</h1>
+          <p class="hero-deck">One object with many projections, recursive scale, authored apertures, live reference, recoverable history, and shared actions keep the product coherent.</p>
+          
+        </header>
+        <section class="ql-node" id="q3-projection-law" data-node=".0" data-route="projection-law" data-nav="Research once; transform the view" data-context="What invariant must remain true as work moves between specialist surfaces?">
+      <header class="node-head"><h2>Research once; transform the view</h2></header>
+      <div class="prose"><p>The same canonical object should be available to every surface that can make meaningful use of it. A surface may derive layout, filtering, scene composition, camera state, or display metadata, but it should not silently fork the underlying research.</p><p>The law does not forbid derived artifacts. It requires every derived artifact to know whether it references, snapshots, transforms, or exports something else.</p><p>Editing a date can improve Timeline and Places. Updating an image can improve Canvas, Journey, and Palace. Adding evidence can strengthen the same relation wherever it appears.</p></div><div class="claim reading"><div class="block-label">Product law</div><p>Research once; transform the view, not the knowledge.</p></div>
+    </section><section class="ql-node" id="q3-recursive-scale" data-node=".1" data-route="recursive-scale" data-nav="Anything can become a world" data-context="What recurring identity makes nested research, subprojects, and Palace scale coherent?">
+      <header class="node-head"><h2>Anything can become a world</h2></header>
+      <div class="prose"><p>The product wants a recursive object model. A thing can be simple enough to manipulate as one node and rich enough to enter as an interior constellation.</p><p>Entering unfolds an object into its meaningful interior. Leaving compresses that interior back into a unit that can participate in a larger structure.</p><p>The same pattern can support nested timelines, project subworlds, Palace rooms, archived conversations, and media packages without claiming that all of those things are identical.</p><p>The architectural task is to preserve recursion while allowing each domain object to retain its own role and rules.</p></div>
+<figure class="figure wide"><div class="figure-head"><strong>Objectification and unfolding</strong><span>Recursive relation</span></div><div class="figure-body"><div class="recursion-diagram"><div class="rec-card"><strong>Constellation</strong><span>A rich interior with nodes, relations, media and local views.</span></div><div class="rec-arrow">⇄</div><div class="rec-card"><strong>Node in a larger constellation</strong><span>The same thing compressed into one manipulable object at another scale.</span></div></div></div><figcaption>The distinction between node and constellation is partly a distinction of scale and articulation. The architecture should preserve that recursion rather than duplicate content.</figcaption></figure><div class="big-thesis">Anything sufficiently rich can be entered. Anything entered can be re-grounded as an object within a larger world.</div>
+    </section><section class="ql-node" id="q3-aperture" data-node=".2" data-route="aperture" data-nav="Aperture is a form of authorship" data-context="Why are inclusion, exclusion, search, and saved Views central rather than secondary filtering tools?">
+      <header class="node-head"><h2>Aperture is a form of authorship</h2></header>
+      <div class="prose"><p>Research often advances by deciding what belongs in the current field. The user may begin with everything and subtract, or begin with nothing and include only what is relevant.</p><p>This pattern appears on Timeline and Places, but it also applies to Canvas Views, agent retrieval scope, Journeys, and Palace curation.</p><p>Because an aperture can embody an interpretation, the product should let users save and name it. A saved View should be able to become the input to another surface instead of becoming a screenshot.</p><p>Aperture protects attention. The graph can remain broad while the working field stays intentionally small.</p></div><div class="equation reading">whole project − deliberate exclusions + selected context = working aperture</div>
+    </section><section class="ql-node" id="q3-live-reference" data-node=".3" data-route="live-reference" data-nav="Live reference and deliberate snapshot" data-context="How should composed artifacts stay coherent while still supporting editorial stability?">
+      <header class="node-head"><h2>Live reference and deliberate snapshot</h2></header>
+      <div class="prose"><p>The product needs an explicit distinction between a reference and a copy. A Journey scene can display current node content. A Palace object can display the current title or image. A saved View can query the current graph.</p><p>Those relationships should remain live by default when the user has chosen a semantic reference. Propagation is then a feature rather than accidental coupling.</p><p>Sometimes the user needs a fixed state. Publication, historical comparison, or deliberate editorial divergence may require a snapshot or override. That should be an explicit act with visible provenance.</p><p>For any derived presentation, the user should be able to answer a simple question: does this follow its source, or is it intentionally frozen?</p></div><div class="table-wrap wide"><table><thead><tr><th>Mode</th><th>Behaviour</th><th>Use</th></tr></thead><tbody><tr><td>Live reference</td><td>Follows the selected source field or object.</td><td>Living research compositions.</td></tr><tr><td>Snapshot</td><td>Captures a known state.</td><td>Publication, comparison, archival checkpoints.</td></tr><tr><td>Override</td><td>Forks selected presentation content while retaining provenance.</td><td>Editorial adaptation.</td></tr></tbody></table></div>
+    </section><section class="ql-node" id="q3-history" data-node=".4" data-route="history" data-nav="History without manual version ceremony" data-context="What pattern makes continuous experimentation recoverable?">
+      <header class="node-head"><h2>History without manual version ceremony</h2></header>
+      <div class="prose"><p>The user should not manage ordinary research like a software release branch. The system can maintain object history, workspace checkpoints, and meaningful version boundaries automatically.</p><p>A constellation may need to return to an earlier structure. A saved View may need comparison with a later one. A Journey may need editorial versions. Workspace restoration may need a short history of useful states.</p><p>The user-facing rule should stay consistent even if mechanisms differ by object type: important changes are recoverable, named versions are possible, and ordinary work does not demand constant version administration.</p><p>This history also makes agent work safer because automated transformations become inspectable and reversible rather than opaque mutations.</p></div>
+    </section><section class="ql-node" id="q3-shared-actions" data-node=".5" data-route="shared-actions" data-nav="Surface parity through shared actions" data-context="What structural pattern lets human and agent authorship stay coherent across every view?">
+      <header class="node-head"><h2>Surface parity through shared actions</h2></header>
+      <div class="prose"><p>Important product capabilities should exist as stable semantic actions. Create node, relate objects, add source, save View, open constellation, include in timeline, attach to scene, place geographically, and export are examples.</p><p>A human may trigger an action by drag, menu, command, keybinding, or chat. An agent may trigger the same action through an agent-native capability layer.</p><p>This avoids a split architecture in which humans use the application while agents operate a separate hidden database.</p><p>Surface parity does not mean identical controls. It means equal access to meaningful underlying acts when the current surface can support them.</p></div>
+<figure class="figure full"><div class="figure-head"><strong>Agent-native action model</strong><span>Shared world, different modes of agency</span></div><div class="figure-body"><div class="action-loop"><div class="action-box">Human intention<span>direct manipulation, commands, conversation, judgement</span></div><div class="action-link">→</div><div class="action-box">Application action<span>create, relate, query, place, compose, save, export</span></div><div class="action-link">←</div><div class="action-box">Agent intention<span>natural language, research, extraction, proposal, operation</span></div></div></div><figcaption>The agent should invoke the product's meaningful actions. It should not bypass the application and mutate hidden state through a separate ontology.</figcaption></figure>
+    </section>
+      </div>
+    </article><article class="surface " data-surface="q4" data-title="Context" data-gloss="Sources, agency, world, trust" style="--surface-max:1340px">
+      <div class="surface-inner">
+        <header class="hero">
+          <div class="hero-line"><span class="ql-badge">#4</span><span class="hero-label">Context</span></div>
+          <h1>Intelligence and context without intrusion</h1>
+          <p class="hero-deck">Filesystem grounding, live world layers, cross-project retrieval, conversations, and agent harnesses should expand the research world without dissolving its boundaries.</p>
+          
+        </header>
+        <section class="ql-node" id="q4-source-horizon" data-node=".0" data-route="source-horizon" data-nav="Filesystem-grounded source horizon" data-context="How does ordinary local material become available without being swallowed by the application?">
+      <header class="node-head"><h2>Filesystem-grounded source horizon</h2></header>
+      <div class="prose"><p>Project creation should establish a folder as the default source horizon. The application can index compatible files and subfolders automatically while leaving the originals in place.</p><p>The user should be able to include or exclude branches through a simple folder checklist. Generated directories, private material, or irrelevant archives can stay outside the active horizon without relocation.</p><p>Source acquisition should preserve provenance. Derived text, extracted metadata, embeddings, graph nodes, transcripts, thumbnails, or other working artifacts should remain distinguishable from the canonical source files that produced them.</p><p>This keeps the project compatible with Finder, shell tools, version control, backup systems, editors, and future software.</p></div><div class="table-wrap wide"><table><thead><tr><th>Layer</th><th>Responsibility</th></tr></thead><tbody><tr><td>Filesystem</td><td>Canonical local files and ordinary user ownership.</td></tr><tr><td>Source horizon</td><td>Project-relative inclusion and exclusion of material available for research.</td></tr><tr><td>Derived research state</td><td>Indexing, extraction, graph structure, provenance, curation, Views and generated artifacts.</td></tr></tbody></table></div>
+    </section><section class="ql-node" id="q4-agent-native" data-node=".1" data-route="agent-native" data-nav="An intelligent collaborator native to the app" data-context="What should the agent know and be able to do from any surface?">
+      <header class="node-head"><h2>An intelligent collaborator native to the app</h2></header>
+      <div class="prose"><p>The agent should understand the active project, workspace, surface, selected object, current constellation, current View, available actions, and relevant project instructions. The user should not need to restate that context in every prompt.</p><p>Natural language should be able to operate the product. The user can ask the agent to extract relationships from sources, research supporting material, build a Timeline aperture, place objects geographically, organise a Canvas, create a Journey draft, or explain Palace structure.</p><p>The useful model is agent-native action rather than chat-assisted software. The application exposes meaningful capabilities, and the agent uses those capabilities with the same domain semantics available to the human.</p><p>The agent should remain available without becoming visual furniture. A compact conversational surface can sit above a more open terminal or session substrate.</p></div>
+<figure class="figure full"><div class="figure-head"><strong>Agent-native action model</strong><span>Shared world, different modes of agency</span></div><div class="figure-body"><div class="action-loop"><div class="action-box">Human intention<span>direct manipulation, commands, conversation, judgement</span></div><div class="action-link">→</div><div class="action-box">Application action<span>create, relate, query, place, compose, save, export</span></div><div class="action-link">←</div><div class="action-box">Agent intention<span>natural language, research, extraction, proposal, operation</span></div></div></div><figcaption>The agent should invoke the product's meaningful actions. It should not bypass the application and mutate hidden state through a separate ontology.</figcaption></figure>
+
+<div class="ui-demo full" aria-label="Detailed agent-native interaction mockup">
+  <div class="ui-osbar"><span class="crumb">Agent · project conversation</span><span class="spacer"></span><span class="cmd">Thread: ritual / spectacle</span><span class="cmd">Harness: Pi</span></div>
+  <div class="agent-demo">
+    <section class="agent-context"><div class="context-strip"><span><b>Project</b> Modernity &amp; Recurrence</span><span><b>Surface</b> Timeline</span><span><b>Selection</b> Great Exhibition + Paris 1889</span><span><b>View</b> Europe 1789–1914</span></div><div class="agent-world-card"><h5>The agent sees the working world, not only the chat.</h5><p>Context is assembled from the active workspace and explicit project scope. The agent can operate the same semantic actions that the human reaches through direct manipulation, menus, commands, and keybindings.</p><div class="agent-world-grid"><div><b>Current constellation</b><span>Industrial religion · 16 nodes</span></div><div><b>Available actions</b><span>query · relate · place · save view · compose</span></div><div><b>Source horizon</b><span>192 indexed files · 14 excluded</span></div><div><b>Related project context</b><span>2 candidate constellations outside scope</span></div><div><b>Permissions</b><span>reversible edits allowed · external fetch ask-on-use</span></div><div><b>Project protocol</b><span>AGENTS.md + research profile + skills</span></div></div></div></section>
+    <aside class="agent-drawer"><div class="agent-drawer-head"><strong>ritual / spectacle</strong><span>reopened thread · linked to Industrial religion</span></div><div class="agent-thread"><div class="msg user">Show the strongest direct relations between the two selected exhibitions, then look for a counter-example outside this constellation.</div><div class="msg ai"><strong>I can do this in two scopes.</strong> I will first operate on the active Timeline View. I found 6 direct or one-hop relations with source support. A related constellation in another project contains a possible counter-example.</div><div class="agent-proposal"><b>Proposed application actions</b><span>1. Highlight 6 supported relations in the current View.<br>2. Add “Chicago 1893” as a provisional external candidate without importing its whole constellation.<br>3. Save the widened aperture as a new View.</span><div class="acts"><i>Preview on Timeline</i><i>Run reversible actions</i></div></div><div class="msg ai">I will preserve the project boundary. The external candidate stays explicitly cross-project until you implicate it here.</div></div><div class="agent-compose"><div class="box">Ask about the active surface or tell the agent to operate it…</div><div class="foot"><span>scope: current view + project</span><span class="spacer"></span><span>terminal-backed</span><b>Pi ▾</b></div></div></aside>
+  </div>
+</div>
+    </section><section class="ql-node" id="q4-conversations" data-node=".2" data-route="conversations" data-nav="Conversations become part of research" data-context="How can ongoing thought with an agent remain reopenable, attributable, and condensable?">
+      <header class="node-head"><h2>Conversations become part of research without becoming the ontology</h2></header>
+      <div class="prose"><p>Projects should have conversations, and conversations should attach naturally to a constellation, node, Journey, investigation, media artifact, or other working context.</p><p>A user can reopen a thread and continue thought from where it left off. The thread carries episodic metadata such as time, project, related objects, agent harness, and important actions.</p><p>Useful results can be condensed into durable objects. A conversation might produce a new constellation, several relationships, a supporting note, a saved View, or an unresolved question.</p><p>The raw conversation remains available as provenance and process trace. Chat remains a natural exploratory medium without making the knowledge world a pile of transcripts.</p></div><div class="claim reading"><div class="block-label">Conversation law</div><p>Conversation can become knowledge without pretending that conversation itself is the final knowledge object.</p></div>
+    </section><section class="ql-node" id="q4-world-context" data-node=".3" data-route="world-context" data-nav="Live world context as an opt-in layer" data-context="Where does external current information belong, and where does it not?">
+      <header class="node-head"><h2>Live world context as an opt-in research layer</h2></header>
+      <div class="prose"><p>External live information is most powerful when it is situated against a research question rather than presented as a generic feed. Places provides the clearest example because weather, transport, trade, borders, terrain, and imagery can change interpretation.</p><p>The same principle can extend elsewhere. A current source search can support a node. A live database can enrich an institution. A recent archive update can widen a source horizon.</p><p>Local-first does not mean disconnected. It means network use is a visible capability with a known purpose and trust boundary.</p><p>The user should be able to distinguish local canonical material from fetched context and generated interpretation.</p></div>
+    </section><section class="ql-node" id="q4-harnesses" data-node=".4" data-route="harnesses" data-nav="Familiar agent experience, open harness underneath" data-context="How can the product offer a coherent AI interface without binding itself to one vendor or runtime?">
+      <header class="node-head"><h2>Familiar agent experience, open harness underneath</h2></header>
+      <div class="prose"><p>The user-facing agent experience should be stable and polished. Underneath, the application should remain able to ride terminal-native or API-native harnesses such as Claude Code, Codex, Pi, local systems, or future agents.</p><p>Project-level configuration should resemble the useful parts of repository-native agent setup. A base application protocol teaches the agent what the product is, which actions exist, how provenance works, and how scope should be handled.</p><p>Project instructions then add domain vocabulary, preferred sources, research constraints, skills, and workflows.</p><p>The durable contract becomes the application action and context interface rather than one vendor protocol.</p></div><div class="code-block wide"><pre><code>application protocol
+  + project instructions
+  + skills / actions
+  + active workspace context
+  + selected agent harness
+  = project-native collaborator</code></pre></div>
+    </section><section class="ql-node" id="q4-judgement" data-node=".5" data-route="judgement" data-nav="Human judgement stays consequential" data-context="What boundary keeps agentic depth from displacing authorship?">
+      <header class="node-head"><h2>Human judgement stays consequential</h2></header>
+      <div class="prose"><p>The agent can carry broad research, extraction, organisation, transformation, and repetitive execution. The human remains the source of consequential authorship, interpretive commitment, and recognition.</p><p>This does not require constant approval prompts. Reversible operations can often proceed directly when the user has delegated them. More consequential changes should remain inspectable, attributable, and easy to refine or reverse.</p><p>The application should make agent contributions legible in the same world where human work appears. Provenance, change history, proposal state, and object-level traces can provide confidence without creating a second supervisory interface.</p><p>The desired experience is intelligence without intrusion. The agent is close when wanted, powerful when asked, and quiet when the user is directly working.</p></div><div class="claim reading"><div class="block-label">Authority boundary</div><p>Human attention belongs primarily in vision, interpretation, authorship, and judgement. The agent should carry the developmental body of delegated work.</p></div>
+    </section>
+      </div>
+    </article><article class="surface " data-surface="q5" data-title="Synthesis" data-gloss="Integrated experience and next ground" style="--surface-max:1220px">
+      <div class="surface-inner">
+        <header class="hero">
+          <div class="hero-line"><span class="ql-badge">#5</span><span class="hero-label">Synthesis</span></div>
+          <h1>The whole experience</h1>
+          <p class="hero-deck">Professional workspace behaviour, recursive knowledge, surface-specific authorship, local sovereignty, and agent-native intelligence should reinforce one another.</p>
+          
+        </header>
+        <section class="ql-node" id="q5-day-in-work" data-node=".0" data-route="day-in-work" data-nav="A day inside the environment" data-context="What does the whole experience look like when the surfaces cooperate in ordinary work?">
+      <header class="node-head"><h2>A day inside the environment</h2></header>
+      <div class="prose"><p>The application opens into the last workspace. A constellation, historical View, and unfinished Journey are already where the user left them. New source files added to the project folder are available for inspection and indexing.</p><p>The user opens Canvas and roughs out several relationships. One edge remains provisional. The agent reads a source set and proposes supporting evidence. The user keeps one relationship, rewrites another, and opens a person as a nested constellation.</p><p>Timeline reframes the same work historically. The user starts from a saved aperture, adds the person’s local timeline, and removes unrelated branches. Places shows the selected movement against changing borders and period transport context.</p><p>A focused View becomes a Journey. Existing node text, images, map states, and narration are arranged into scenes. A later node-image edit propagates to the live scene.</p><p>Before stopping, the user flies through the Palace at project scale, notices an architectural gap corresponding to an underdeveloped constellation, and starts an agent thread around it. The workspace returns next time.</p></div><div class="timeline wide"><div class="timeline-item"><time>Open</time><h4>Restore the workspace</h4><p>Tabs, Views, edits, selections and conversations return.</p></div><div class="timeline-item"><time>Build</time><h4>Manipulate the constellation</h4><p>Create, connect, write, gather and formalise.</p></div><div class="timeline-item"><time>Reframe</time><h4>Move through time and place</h4><p>Construct the useful aperture instead of rebuilding the data.</p></div><div class="timeline-item"><time>Compose</time><h4>Turn the aperture into a Journey</h4><p>Reference live research material and add authored media.</p></div><div class="timeline-item"><time>Reflect</time><h4>Read the whole as architecture</h4><p>Use the Palace to inspect higher-order shape and memory.</p></div></div>
+    </section><section class="ql-node" id="q5-laws" data-node=".1" data-route="laws" data-nav="The governing experiential laws" data-context="Which compact rules should survive every later architectural decision?">
+      <header class="node-head"><h2>The governing experiential laws</h2></header>
+      <div class="prose"><p>The product can remain coherent across considerable technical freedom if a small set of experiential laws stay stable. These are not feature requirements. They are tests for whether a feature belongs in the product in the first place.</p></div><div class="law-list wide">
+      <div class="law"><strong>The stage belongs to the work.</strong><span>Chrome recedes until the current act needs it.</span></div>
+      <div class="law"><strong>Folders ground projects; projects do not imprison knowledge.</strong><span>Filesystem familiarity and graph freedom coexist.</span></div>
+      <div class="law"><strong>Work restores.</strong><span>A workspace should reopen where thought was left.</span></div>
+      <div class="law"><strong>Manipulate first; formalise when useful.</strong><span>Structure can emerge from expressive work instead of blocking it.</span></div>
+      <div class="law"><strong>Every surface remains an authoring surface.</strong><span>Changing viewpoint does not reduce the researcher to a spectator.</span></div>
+      <div class="law"><strong>One object, many projections.</strong><span>Content does not fork merely because the mode changes.</span></div>
+      <div class="law"><strong>Views are interpretations, not screenshots.</strong><span>Apertures through the graph are meaningful, reusable work.</span></div>
+      <div class="law"><strong>Scale is traversable.</strong><span>A node may open into a world; a world may become an object.</span></div>
+      <div class="law"><strong>Agents use the application.</strong><span>They act through shared domain capabilities rather than a parallel hidden ontology.</span></div>
+      <div class="law"><strong>Complexity hides behind fluency.</strong><span>Expert depth appears through context, commands, menus, gestures and keybindings.</span></div>
+    </div>
+    </section><section class="ql-node" id="q5-feel" data-node=".2" data-route="feel" data-nav="The emotional character of expert use" data-context="What should sustained use feel like after the novelty of the software disappears?">
+      <header class="node-head"><h2>The emotional character of expert use</h2></header>
+      <div class="prose"><p>Continuity matters first. The user can leave and return without reconstructing context. The environment remembers the arrangement of work without turning that memory into ceremony.</p><p>Safety follows. Autosave, history, provenance, and reversible operations make experimentation cheap enough to support real thought. Directness means the user can usually act on the thing they can see.</p><p>Depth should remain discoverable beneath calm surfaces. Spatial confidence should make project, constellation, View, place, timeline, Journey, and Palace context legible. Scale should feel fluid rather than rigid.</p><p>Sovereignty comes from local ownership and ordinary files. Seriousness comes from expecting long-term expert use. Play remains important because mapping, traversing, composing, and discovering patterns should be enjoyable.</p><p>The agent adds a final quality: intelligence without intrusion. The user can ask for breadth and speed without losing the tactile sense of authorship.</p></div><div class="intent-grid"><div class="intent-card"><strong>Continuity</strong><p>I can leave and return.</p></div><div class="intent-card"><strong>Safety</strong><p>I can experiment without fear.</p></div><div class="intent-card"><strong>Depth</strong><p>The simple surface does not imply a shallow system.</p></div><div class="intent-card"><strong>Directness</strong><p>I can act where I am looking.</p></div><div class="intent-card"><strong>Sovereignty</strong><p>My research remains mine and locally intelligible.</p></div><div class="intent-card"><strong>Play</strong><p>Serious knowledge work can still invite discovery.</p></div></div>
+    </section><section class="ql-node" id="q5-not-this" data-node=".3" data-route="not-this" data-nav="What the product must not collapse into" data-context="Which familiar reductions would destroy the intended unity even if each delivered useful features?">
+      <header class="node-head"><h2>What the product must not collapse into</h2></header>
+      <div class="prose"><p>It is not a Miro clone with an AI sidebar. It is not a graph database browser with alternate renderers. It is not a GIS package with notes attached. It is not a timeline visualiser, a Notion clone, a 3D knowledge toy, a video editor, or an AI chat application.</p><p>Each of those categories can contribute a mature interaction pattern. None should define the whole because each would make the other surfaces secondary integrations.</p><p>The product should not become a generic everything app. Its coherence comes from one strong subject: forming, navigating, contextualising, composing, and revisiting a body of research through a common knowledge world.</p><p>The correct test is whether a new capability deepens that world or merely expands the feature inventory.</p></div><div class="claim reading"><div class="block-label">Boundary test</div><p>A feature belongs when it makes the common research world easier to form, inspect, traverse, contextualise, express, or remember.</p></div>
+    </section><section class="ql-node" id="q5-primitive-hints" data-node=".4" data-route="primitive-hints" data-nav="Technical primitives implied by the experience" data-context="Which implementation abstractions now deserve a dedicated design pass?">
+      <header class="node-head"><h2>Technical primitives implied by the experience</h2></header>
+      <div class="prose"><p>This account intentionally stops before locking the architecture. However, the experiential requirements repeatedly point toward a small set of primitives or contracts that deserve explicit contemplation next.</p><p>These are not implementation tasks yet. They are pressure points. If the architecture cannot express them cleanly, the user experience will eventually fragment even if each surface appears polished.</p></div><div class="table-wrap full"><table class="primitive-table"><thead><tr><th>Candidate primitive / contract</th><th>Why the experience requires it</th><th>Open design question</th></tr></thead><tbody>
+      <tr><td>Recursive knowledge object</td><td>Node and constellation need coherent objectification and unfolding across scales.</td><td>Which identity and relation model keeps recursion composable and inspectable?</td></tr>
+      <tr><td>Project scope</td><td>Projects must strongly focus work without exclusively owning reusable knowledge.</td><td>How is membership represented and queried across projects?</td></tr>
+      <tr><td>Workspace</td><td>Tabs, selections, viewports, edits, agent threads, and active Views must restore together.</td><td>Which state is durable, transient, shared, or per-surface?</td></tr>
+      <tr><td>View / aperture</td><td>Inclusion, exclusion, query, and framing are meaningful authored work.</td><td>When is a View first-class rather than incidental UI state?</td></tr>
+      <tr><td>Reference semantics</td><td>Journeys and Palace content should follow live research unless intentionally frozen.</td><td>How are live references, snapshots, and overrides represented?</td></tr>
+      <tr><td>History / version</td><td>Experimentation must remain recoverable without manual version ceremony.</td><td>Which objects need event history, snapshots, named versions, or all three?</td></tr>
+      <tr><td>Shared focus</td><td>Selection and aperture should carry meaning across surfaces and agents.</td><td>How much focus state is global, workspace-local, or surface-local?</td></tr>
+      <tr><td>Action model</td><td>Humans and agents must perform the same semantic operations through different interfaces.</td><td>Which actions are canonical and which remain surface adapters?</td></tr>
+      <tr><td>Agent context protocol</td><td>The agent must know project, workspace, surface, selection, and available capabilities.</td><td>How is context exposed without flooding every prompt?</td></tr>
+      <tr><td>Harness adapter</td><td>Claude, Codex, Pi, local, or future agents should fit beneath one product experience.</td><td>Which session, tool, and permission boundaries remain invariant?</td></tr>
+      <tr><td>Source / provenance contract</td><td>Filesystem sources, derived artifacts, and agent research must remain distinguishable.</td><td>What is canonical, derived, mutable, and reconstructable?</td></tr>
+      <tr><td>Media object model</td><td>Text, image, audio, video, and interactive content must move across node, Journey, and Palace contexts.</td><td>Which media are files, references, renditions, or generated derivatives?</td></tr>
+    </tbody></table></div>
+    </section><section class="ql-node" id="q5-house" data-node=".5" data-route="house" data-nav="The house of knowledge under construction" data-context="What integrated form should the next design work carry forward?">
+      <header class="node-head"><h2>The house of knowledge under construction</h2></header>
+      <div class="prose"><p>The product begins with ordinary materials and provisional ideas. Those materials become interconnected objects. Objects gather interiority. Constellations arise. Constellations become historical and geographical. Selected movements become Journeys. Developed expression returns as media. The accumulated body becomes architecture.</p><p>At every point, the human can act directly. At every point, the agent can work on the same visible world. At every point, the underlying research remains available rather than being consumed by its current presentation.</p><p>The ideal experience is not “I am switching between several research tools.” The ideal experience is “I am moving around my work.” Sometimes the user looks from above. Sometimes the user enters one thing. Sometimes the user follows it through time, crosses its geography, composes a path, or learns the structure that the whole has made.</p><p>That is the experience the later primitive design, system architecture, development program, and product HTML should protect.</p></div><div class="big-thesis">A house of knowledge under active construction: local, recursive, manipulable, traversable, expressive, and intelligent.</div>
+    </section>
+      </div>
+    </article></main>
+
+  <aside class="right-rail" id="rightRail" aria-label="Section context">
+    <div class="context-head">
+      <div class="context-kicker" id="contextCoord">#0 · .0</div>
+      <h3 id="contextTitle">[Section title]</h3>
+      <p id="contextSummary">[Section-relative context appears here.]</p>
+    </div>
+
+    <div class="note-field" id="noteField">
+      <label for="sectionNote">Section notes</label>
+      <textarea id="sectionNote" placeholder="Write a note for this section…"></textarea>
+      <div class="save-state" id="saveState">Saved locally when available.</div>
+    </div>
+
+    <div class="context-slot" id="contextSlot"></div>
+
+    <details class="right-details" open>
+      <summary>Sources in this section</summary>
+      <div class="source-list" id="sectionSources"></div>
+      <div class="source-empty" id="sourceEmpty">No section sources listed.</div>
+    </details>
+
+    <details class="right-details">
+      <summary>Provenance</summary>
+      <dl class="meta-list" id="metaList"></dl>
+    </details>
+  </aside>
+</div>
+
+<!-- =====================================================================
+     OPTIONAL SECTION-RELATIVE RIGHT-RAIL PANEL
+     Place a template like this inside any .ql-node. It is not rendered in
+     the main document. The shell clones it into the right rail when active.
+
+     <template data-context-panel>
+       <h4>Review</h4>
+       <label>...</label>
+       <input ...>
+     </template>
+     ===================================================================== -->
+
+<!-- =====================================================================
+     COMPONENT LIBRARY
+     These examples do not render. Copy only the components required by the
+     actual relation. Keep source links marked data-source when the right rail
+     should surface them for the active section.
+     ===================================================================== -->
+<template id="component-library">
+  <div class="definition reading">
+    <div class="block-label">Definition</div>
+    <p>[Exact definition. Keep terminology stable throughout the account.]</p>
+  </div>
+
+  <div class="claim reading">
+    <div class="block-label">Key distinction</div>
+    <p>[Use only when this distinction warrants visual emphasis.]</p>
+  </div>
+
+  <div class="evidence reading">
+    <div class="block-label">Evidence</div>
+    <p>[State the observation and its evidential relation.]</p>
+  </div>
+
+  <figure class="figure wide">
+    <div class="figure-head"><strong>[Figure title]</strong><span>[Figure type / state]</span></div>
+    <div class="figure-body svg-wrap scroll-x">
+      <svg viewBox="0 0 900 360" role="img" aria-labelledby="figureTitle figureDesc">
+        <title id="figureTitle">[Diagram title]</title>
+        <desc id="figureDesc">[Accessible description of the relation shown.]</desc>
+        <!-- Draw nodes, edges, labels, axes, or annotations here. -->
+      </svg>
+    </div>
+    <figcaption>[Explain what the reader should inspect and why it matters.]</figcaption>
+  </figure>
+
+  <div class="table-wrap wide">
+    <table>
+      <thead><tr><th>[Column]</th><th>[Column]</th></tr></thead>
+      <tbody><tr><td>[Exact value]</td><td>[Exact relation]</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="code-block wide"><pre><code>[CODE / SCHEMA / CONFIGURATION]</code></pre></div>
+
+  <div class="equation reading">[EQUATION OR FORMAL RELATION]</div>
+
+  <div class="source-grid wide">
+    <a class="source-card" data-source href="https://example.com" target="_blank" rel="noopener noreferrer"><strong>[Primary source title]</strong><span>[Publisher/domain · why this source matters]</span></a>
+  </div>
+
+  <div class="mockup-frame wide">
+    <div class="mockup-toolbar" aria-hidden="true"><span class="mockup-dot"></span><span class="mockup-dot"></span><span class="mockup-dot"></span></div>
+    <div class="mockup-body">[Build the real HTML component or page mockup here.]</div>
+  </div>
+
+  <div class="controls reading">
+    <div class="control-row">
+      <label for="exampleRange">[Parameter]</label>
+      <input id="exampleRange" type="range" min="0" max="100" value="50" />
+      <output for="exampleRange">50</output>
+    </div>
+    <div class="toggle-row" role="group" aria-label="[View selection]">
+      <button type="button" aria-pressed="true">[A]</button>
+      <button type="button" aria-pressed="false">[B]</button>
+    </div>
+  </div>
+
+  <div class="timeline reading">
+    <div class="timeline-item"><time>[DATE / PHASE]</time><h4>[Event]</h4><p>[Consequence or evidence.]</p></div>
+  </div>
+</template>
+
+<script>
+(() => {
+  'use strict';
+
+  const body = document.body;
+  const root = document.documentElement;
+  const surfaces = [...document.querySelectorAll('.surface')];
+  const surfaceNav = document.getElementById('surfaceNav');
+  const leftToggle = document.getElementById('leftToggle');
+  const rightToggle = document.getElementById('rightToggle');
+  const themeToggle = document.getElementById('themeToggle');
+  const routeChip = document.getElementById('routeChip');
+  const contextCoord = document.getElementById('contextCoord');
+  const contextTitle = document.getElementById('contextTitle');
+  const contextSummary = document.getElementById('contextSummary');
+  const contextSlot = document.getElementById('contextSlot');
+  const sectionSources = document.getElementById('sectionSources');
+  const sourceEmpty = document.getElementById('sourceEmpty');
+  const sectionNote = document.getElementById('sectionNote');
+  const saveState = document.getElementById('saveState');
+  const metaList = document.getElementById('metaList');
+  const provenance = readProvenance();
+
+  let activeSurface = surfaces[0];
+  let activeNode = activeSurface.querySelector('.ql-node');
+  let scrollFrame = 0;
+
+  function safeGet(key){
+    try { return localStorage.getItem(key); } catch (_) { return null; }
+  }
+  function safeSet(key,value){
+    try { localStorage.setItem(key,value); return true; } catch (_) { return false; }
+  }
+
+  function readProvenance(){
+    try { return JSON.parse(document.getElementById('account-provenance').textContent); }
+    catch (_) { return {}; }
+  }
+
+  function buildMetadata(){
+    const fields = [
+      ['UID', provenance.uid],
+      ['Project', provenance.project],
+      ['Session', provenance.session],
+      ['Status', provenance.status],
+      ['Created', provenance.created],
+      ['Updated', provenance.updated],
+      ['Generator', provenance.generator]
+    ];
+    metaList.innerHTML = '';
+    for (const [label,value] of fields){
+      if (!value) continue;
+      const row = document.createElement('div');
+      row.className = 'meta-row';
+      row.innerHTML = `<dt>${escapeHTML(label)}</dt><dd>${escapeHTML(String(value))}</dd>`;
+      metaList.appendChild(row);
+    }
+  }
+
+  function escapeHTML(value){
+    return value.replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+  }
+
+  function buildNav(){
+    surfaceNav.innerHTML = '';
+    surfaces.forEach((surface,index) => {
+      const q = surface.dataset.surface;
+      const qNumber = q.replace(/^q/,'');
+      const title = surface.dataset.title || q;
+      const gloss = surface.dataset.gloss || '';
+      const group = document.createElement('div');
+      group.className = 'nav-group';
+      group.dataset.surface = q;
+
+      const head = document.createElement('div');
+      head.className = 'nav-head';
+
+      const select = document.createElement('button');
+      select.type = 'button';
+      select.className = 'nav-select';
+      select.innerHTML = `<span class="nav-q">#${qNumber}</span><span class="nav-name">${escapeHTML(title)}<span class="nav-gloss">${escapeHTML(gloss)}</span></span>`;
+      select.addEventListener('click', () => navigate(q, null, true));
+
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'nav-toggle';
+      toggle.setAttribute('aria-label', `Toggle sections for ${title}`);
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.innerHTML = '<span>›</span>';
+      toggle.addEventListener('click', () => {
+        const open = group.classList.toggle('expanded');
+        toggle.setAttribute('aria-expanded', String(open));
+      });
+
+      head.append(select,toggle);
+      group.appendChild(head);
+
+      const subnav = document.createElement('div');
+      subnav.className = 'subnav';
+      [...surface.querySelectorAll('.ql-node')].forEach(node => {
+        const a = document.createElement('a');
+        const route = node.dataset.route || node.id;
+        a.href = `#${q}/${encodeURIComponent(route)}`;
+        a.dataset.nodeId = node.id;
+        a.innerHTML = `<code>${escapeHTML(node.dataset.node || '')}</code><span>${escapeHTML(node.dataset.nav || node.querySelector('h2')?.textContent || route)}</span>`;
+        a.addEventListener('click', event => {
+          event.preventDefault();
+          navigate(q, route, true);
+        });
+        subnav.appendChild(a);
+      });
+      group.appendChild(subnav);
+      surfaceNav.appendChild(group);
+    });
+  }
+
+  function parseHash(){
+    const raw = decodeURIComponent(location.hash.replace(/^#/,'')).trim();
+    if (!raw) return { surface:surfaces[0]?.dataset.surface || 'q0', route:null };
+    const [surface,route] = raw.split('/');
+    return { surface: surfaces.some(s => s.dataset.surface === surface) ? surface : (surfaces[0]?.dataset.surface || 'q0'), route:route || null };
+  }
+
+  function findNode(surface,route){
+    const nodes = [...surface.querySelectorAll('.ql-node')];
+    if (!route) return nodes[0] || null;
+    return nodes.find(node => node.dataset.route === route || node.id === route) || nodes[0] || null;
+  }
+
+  function navigate(surfaceId,route,push){
+    const surface = surfaces.find(item => item.dataset.surface === surfaceId) || surfaces[0];
+    const node = findNode(surface,route);
+    activateSurface(surface);
+    activeNode = node;
+    updateActiveUI();
+    if (push){
+      const hash = `#${surface.dataset.surface}${route ? '/' + encodeURIComponent(route) : ''}`;
+      history.pushState(null,'',hash);
+    }
+    requestAnimationFrame(() => {
+      if (node) node.scrollIntoView({behavior: prefersReducedMotion() ? 'auto' : 'smooth',block:'start'});
+      else window.scrollTo({top:0,behavior:'auto'});
+    });
+  }
+
+  function activateSurface(surface){
+    if (activeSurface !== surface){
+      activeSurface.classList.remove('active');
+      surface.classList.add('active');
+      activeSurface = surface;
+      window.scrollTo({top:0,behavior:'auto'});
+    }
+    document.querySelectorAll('.nav-group').forEach(group => {
+      const isActive = group.dataset.surface === surface.dataset.surface;
+      group.classList.toggle('active',isActive);
+      if (isActive){
+        group.classList.add('expanded');
+        const toggle = group.querySelector('.nav-toggle');
+        if (toggle) toggle.setAttribute('aria-expanded','true');
+      }
+    });
+  }
+
+  function updateActiveUI(){
+    if (!activeNode) return;
+    document.querySelectorAll('.subnav a').forEach(a => a.classList.toggle('active',a.dataset.nodeId === activeNode.id));
+    const qNumber = activeSurface.dataset.surface.replace(/^q/,'');
+    routeChip.innerHTML = `<code>#${qNumber} · ${escapeHTML(activeNode.dataset.node || '')}</code><span>${escapeHTML(activeNode.dataset.nav || '')}</span>`;
+    updateContext(qNumber,activeNode);
+  }
+
+  function updateContext(qNumber,node){
+    contextCoord.textContent = `#${qNumber} · ${node.dataset.node || ''}`;
+    contextTitle.textContent = node.dataset.nav || node.querySelector('h2')?.textContent || 'Section';
+    contextSummary.textContent = node.dataset.context || 'Section-relative context.';
+
+    const panel = node.querySelector('template[data-context-panel]');
+    contextSlot.innerHTML = '';
+    if (panel) contextSlot.appendChild(panel.content.cloneNode(true));
+
+    const sources = [...node.querySelectorAll('a[data-source]')];
+    sectionSources.innerHTML = '';
+    sourceEmpty.hidden = sources.length > 0;
+    sources.forEach(source => {
+      const clone = document.createElement('a');
+      clone.href = source.href;
+      clone.target = '_blank';
+      clone.rel = 'noopener noreferrer';
+      clone.textContent = source.textContent.trim() || source.href;
+      sectionSources.appendChild(clone);
+    });
+
+    const noteKey = noteStorageKey(activeSurface.dataset.surface,node.dataset.route || node.id);
+    sectionNote.value = safeGet(noteKey) || '';
+    sectionNote.dataset.storageKey = noteKey;
+  }
+
+  function noteStorageKey(surface,route){
+    return `ql-html-account:${provenance.uid || 'anonymous'}:${surface}:${route}:note`;
+  }
+
+  function updateFromScroll(){
+    scrollFrame = 0;
+    if (!activeSurface) return;
+    const nodes = [...activeSurface.querySelectorAll('.ql-node')];
+    if (!nodes.length) return;
+
+    let current = nodes[0];
+    const offset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--top-h')) + 34;
+    const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4;
+
+    if (atBottom){
+      current = nodes[nodes.length - 1];
+    } else {
+      for (const node of nodes){
+        if (node.getBoundingClientRect().top <= offset) current = node;
+        else break;
+      }
+    }
+
+    if (current !== activeNode){
+      activeNode = current;
+      updateActiveUI();
+      const route = current.dataset.route || current.id;
+      const nextHash = `#${activeSurface.dataset.surface}/${encodeURIComponent(route)}`;
+      history.replaceState(null,'',nextHash);
+    }
+  }
+
+  function scheduleScrollUpdate(){
+    if (scrollFrame) return;
+    scrollFrame = requestAnimationFrame(updateFromScroll);
+  }
+
+  function routeFromLocation(){
+    const {surface,route} = parseHash();
+    const targetSurface = surfaces.find(s => s.dataset.surface === surface) || surfaces[0];
+    const node = findNode(targetSurface,route);
+    activateSurface(targetSurface);
+    activeNode = node;
+    updateActiveUI();
+    requestAnimationFrame(() => {
+      if (route && node) node.scrollIntoView({behavior:'auto',block:'start'});
+      else window.scrollTo({top:0,behavior:'auto'});
+    });
+  }
+
+  function prefersReducedMotion(){
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  function setTheme(theme){
+    root.dataset.theme = theme;
+    safeSet('ql-html-account:theme',theme);
+  }
+
+  function applyResponsiveRailDefaults(){
+    const width = window.innerWidth;
+    if (width < 980){
+      body.classList.add('left-closed','right-closed');
+    } else if (width < 1320){
+      if (!body.dataset.userLeft) body.classList.remove('left-closed');
+      if (!body.dataset.userRight) body.classList.add('right-closed');
+    }
+    syncRailAria();
+  }
+
+  function syncRailAria(){
+    leftToggle.setAttribute('aria-expanded',String(!body.classList.contains('left-closed')));
+    rightToggle.setAttribute('aria-expanded',String(!body.classList.contains('right-closed')));
+  }
+
+  leftToggle.addEventListener('click',() => {
+    body.dataset.userLeft = '1';
+    body.classList.toggle('left-closed');
+    syncRailAria();
+  });
+
+  rightToggle.addEventListener('click',() => {
+    body.dataset.userRight = '1';
+    body.classList.toggle('right-closed');
+    syncRailAria();
+  });
+
+  themeToggle.addEventListener('click',() => {
+    setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark');
+  });
+
+  sectionNote.addEventListener('input',() => {
+    const ok = safeSet(sectionNote.dataset.storageKey || '',sectionNote.value);
+    saveState.textContent = ok ? 'Saved locally.' : 'Local persistence is unavailable. The note remains in this page until it closes.';
+  });
+
+  window.addEventListener('scroll',scheduleScrollUpdate,{passive:true});
+  window.addEventListener('popstate',routeFromLocation);
+  window.addEventListener('hashchange',routeFromLocation);
+  window.addEventListener('resize',applyResponsiveRailDefaults,{passive:true});
+
+  buildMetadata();
+  buildNav();
+  setTheme(safeGet('ql-html-account:theme') || 'light');
+  applyResponsiveRailDefaults();
+  routeFromLocation();
+})();
+</script>
+
+<script>
+(() => {
+  document.querySelectorAll('[data-timeline-filters] .filter-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const on = btn.getAttribute('aria-pressed') !== 'true';
+      btn.setAttribute('aria-pressed', String(on));
+      const kind = btn.dataset.filter;
+      const proto = btn.closest('.prototype');
+      if (!proto) return;
+      if (kind === 'relation') {
+        proto.querySelectorAll('.time-context').forEach(el => el.style.opacity = on ? '1' : '.15');
+      } else {
+        proto.querySelectorAll(`.ev[data-kind="${kind}"]`).forEach(el => {
+          el.style.opacity = on ? '1' : '.12';
+          el.style.transform = on ? 'scale(1)' : 'scale(.72)';
+        });
+      }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>
