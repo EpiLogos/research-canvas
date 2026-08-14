@@ -50,18 +50,25 @@ test("timeline surface renders the active constellation walk and canonical contr
   await expect(page.getByTestId("timeline-earthbound-track")).toBeVisible();
   await expect(page.getByTestId("timeline-axis")).toBeVisible();
   await expect(page.getByTestId("timeline-zoom-out")).toBeVisible();
-  await expect(page.getByTestId("timeline-fit")).toBeVisible();
   await expect(page.getByTestId("timeline-zoom-in")).toBeVisible();
   await expect(page.getByTestId("timeline-track")).toBeVisible();
   await expect(page.getByTestId("timeline-load-error")).toHaveCount(0, {
     timeout: 15_000,
   });
 
+  // The default global camera starts broad enough to include the historical
+  // field. Wait for the canonical repository walk to resolve before using Fit:
+  // Fit is intentionally disabled while an empty in-memory walk could still
+  // mean "loading" rather than "empty constellation".
+  const fit = page.getByTestId("timeline-fit");
+  await expect(fit).toBeEnabled({ timeout: 15_000 });
+  await expect(page.getByTestId(`timeline-node-${MEDICI}`)).toBeAttached({ timeout: 15_000 });
+
   // Exercise a real zoom from the global overview, then Fit the active
   // constellation so its ordinary card-level representation is in view.
   await page.getByTestId("timeline-zoom-in").click();
   await expect(surface).toBeVisible();
-  await page.getByTestId("timeline-fit").click();
+  await fit.click();
   await expect(surface).toBeVisible();
 
   await expect(page.getByTestId("timeline-walk")).toBeVisible();
