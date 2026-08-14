@@ -65,6 +65,14 @@ jobs:
           apps/desktop/src/features/timeline/TimelineLens.test.tsx
           packages/desktop-api/src/repositories.timeline.test.ts
 
+      - name: Prebuild browser bridge
+        # apps/desktop/scripts/dev.mjs starts Vite and the Rust bridge together.
+        # On a fresh runner Vite is ready long before Cargo's first build, so
+        # Playwright can race the workspace bootstrap and test a loading shell
+        # instead of Surface #2. Prebuilding makes the dev bridge startup
+        # deterministic without changing the product path under test.
+        run: cargo build --manifest-path apps/desktop/src-tauri/Cargo.toml --bin terminal_bridge
+
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium
 
