@@ -134,10 +134,11 @@ export function TimelineSurface({
   }, [publishState]);
 
   const fit = useCallback(() => {
-    if (walk.earthboundNodes.length === 0) {
-      setControlledViewport(0, 2);
-      return;
-    }
+    // An empty in-memory walk can mean either a genuinely empty constellation
+    // or simply that the canonical repository read has not resolved yet. Fit
+    // must never collapse a still-loading global view to an arbitrary year-0
+    // window; the control remains disabled until there is data to fit.
+    if (walk.earthboundNodes.length === 0) return;
     const years = walk.earthboundNodes.map((node) => node.x).filter(Number.isFinite);
     if (years.length === 0) return;
     const min = Math.min(...years);
@@ -204,6 +205,7 @@ export function TimelineSurface({
           type="button"
           data-testid="timeline-fit"
           aria-label="Fit timeline to active constellation"
+          disabled={walk.earthboundNodes.length === 0}
           onClick={(event) => {
             event.stopPropagation();
             fit();
