@@ -1,0 +1,68 @@
+name: Redemption T11 verification
+
+on:
+  push:
+    branches:
+      - feat/redemption-map
+    paths:
+      - ".github/workflows/redemption-t11.yml"
+      - "apps/desktop/src/features/timeline/**"
+      - "apps/desktop/src/layout/Stage.tsx"
+      - "packages/canvas/src/timeline/**"
+      - "packages/canvas/src/index.ts"
+      - "packages/desktop-api/src/repositories.ts"
+      - "packages/desktop-api/src/repositories.timeline.test.ts"
+      - "packages/domain/src/ports/timelineRepository.ts"
+      - "packages/domain/src/index.ts"
+      - "tests/e2e/timeline.spec.ts"
+  pull_request:
+    paths:
+      - ".github/workflows/redemption-t11.yml"
+      - "apps/desktop/src/features/timeline/**"
+      - "apps/desktop/src/layout/Stage.tsx"
+      - "packages/canvas/src/timeline/**"
+      - "packages/canvas/src/index.ts"
+      - "packages/desktop-api/src/repositories.ts"
+      - "packages/desktop-api/src/repositories.timeline.test.ts"
+      - "packages/domain/src/ports/timelineRepository.ts"
+      - "packages/domain/src/index.ts"
+      - "tests/e2e/timeline.spec.ts"
+  workflow_dispatch:
+
+jobs:
+  t11:
+    name: typecheck + timeline contract + e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.25.0 --activate
+
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck workspace
+        run: pnpm exec tsc -b
+
+      - name: Run T11 unit and repository contract tests
+        run: >-
+          pnpm vitest run
+          packages/canvas/src/timeline/TimelineSurface.test.tsx
+          apps/desktop/src/features/timeline/TimelineLens.test.tsx
+          packages/desktop-api/src/repositories.timeline.test.ts
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run T11 browser acceptance
+        run: pnpm playwright test tests/e2e/timeline.spec.ts
