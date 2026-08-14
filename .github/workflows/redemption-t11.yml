@@ -71,12 +71,29 @@ jobs:
         # Playwright can race the workspace bootstrap and test a loading shell
         # instead of Surface #2. Prebuilding makes the dev bridge startup
         # deterministic without changing the product path under test.
-        run: cargo build --manifest-path apps/desktop/src-tauri/Cargo.toml --bin terminal_bridge
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo build --manifest-path apps/desktop/src-tauri/Cargo.toml --bin terminal_bridge 2>&1 | tee bridge-build-output.txt
+
+      - name: Annotate bridge prebuild failure
+        if: failure() && hashFiles('bridge-build-output.txt') != ''
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text = Path("bridge-build-output.txt").read_text(errors="replace")
+          tail = "\n".join(text.splitlines()[-100:])[-12000:]
+          escaped = tail.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error file=apps/desktop/src-tauri/Cargo.toml,title=T11 bridge prebuild failure::{escaped}")
+          PY
 
       - name: Install Chromium
+        if: success()
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Run T11 browser acceptance
+        if: success()
         env:
           PLAYWRIGHT_HTML_OPEN: never
         shell: bash
@@ -85,23 +102,24 @@ jobs:
           pnpm playwright test tests/e2e/timeline.spec.ts --trace=on --reporter=line,html 2>&1 | tee playwright-output.txt
 
       - name: Annotate browser failure
-        if: failure()
+        if: failure() && hashFiles('playwright-output.txt') != ''
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          text = Path("playwright-output.txt").read_text(errors="replace") if Path("playwright-output.txt").exists() else "Playwright failed without captured output."
+          text = Path("playwright-output.txt").read_text(errors="replace")
           tail = "\n".join(text.splitlines()[-100:])[-12000:]
           escaped = tail.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
           print(f"::error file=tests/e2e/timeline.spec.ts,title=T11 Playwright failure::{escaped}")
           PY
 
-      - name: Retain browser verification evidence
+      - name: Retain verification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: redemption-t11-playwright
+          name: redemption-t11-verification
           path: |
+            bridge-build-output.txt
             playwright-output.txt
             playwright-report
             test-results
