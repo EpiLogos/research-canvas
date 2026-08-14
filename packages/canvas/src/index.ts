@@ -29,6 +29,7 @@ export * from "./story/storyPresentation";
 export * from "./streetview/StreetViewSurface";
 export * from "./timeline/TimelineLens";
 export * from "./timeline/TimelineRelationField";
+export * from "./timeline/TimelineSurface";
 export * from "./timeline/TimelineWorkingSet";
 export * from "./timeline/walk";
 export * from "./theme";

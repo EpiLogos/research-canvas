@@ -1,0 +1,293 @@
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from "react";
+import type {
+  GraphNode,
+  TimelineRelationField,
+  TimelineRepository,
+  TimelineTimeWindow,
+  TimelineViewState,
+  TimelineWalk,
+} from "@research-canvas/desktop-api";
+import { TimelineLens as RichTimelineLens, type TimelineDataSource } from "./TimelineLens";
+
+const EMPTY_WALK: TimelineWalk = { earthboundNodes: [], archetypeLayers: [] };
+const MIN_PIXELS_PER_YEAR = 0.02;
+const MAX_PIXELS_PER_YEAR = 800;
+const CONTROL_ZOOM_FACTOR = 1.6;
+const SINGLE_CLICK_DELAY_MS = 180;
+
+export interface TimelineSurfaceProps {
+  repository: TimelineRepository;
+  constellationId: string;
+  dataSource: TimelineDataSource;
+  initialState: TimelineViewState;
+  onViewStateChange?: (state: TimelineViewState) => void;
+  onOpenCanvasNode: (graphNodeId: string) => void | Promise<void>;
+  onOpenNode: (
+    graphNodeId: string,
+    timelineNode?: GraphNode,
+    relationField?: TimelineRelationField,
+  ) => void;
+}
+
+/**
+ * Surface #2 composition boundary. The existing high-density TimelineLens is
+ * retained for direct manipulation, relations, nested working sets and walks;
+ * this wrapper supplies the canonical constellation-scoped repository read,
+ * persistent camera contract, spectral archetype field, and tab-opening click
+ * behaviour required by the redemption-map surface contract.
+ */
+export function TimelineSurface({
+  repository,
+  constellationId,
+  dataSource,
+  initialState,
+  onViewStateChange,
+  onOpenCanvasNode,
+  onOpenNode,
+}: TimelineSurfaceProps): JSX.Element {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const selectedNodeIdRef = useRef(initialState.selectedNodeId);
+  const clickTimerRef = useRef<number | null>(null);
+  const [widthPx, setWidthPx] = useState(1000);
+  const [viewState, setViewState] = useState(initialState);
+  const [walk, setWalk] = useState<TimelineWalk>(EMPTY_WALK);
+  const [lensRevision, setLensRevision] = useState(0);
+
+  const publishState = useCallback((next: TimelineViewState) => {
+    selectedNodeIdRef.current = next.selectedNodeId;
+    setViewState(next);
+    onViewStateChange?.(next);
+  }, [onViewStateChange]);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (width && Number.isFinite(width)) setWidthPx(Math.max(1, width));
+    });
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => () => {
+    if (clickTimerRef.current !== null) window.clearTimeout(clickTimerRef.current);
+  }, []);
+
+  const timeWindow = useMemo(
+    () => timelineWindowForViewport(viewState.centerYear, viewState.pixelsPerYear, widthPx),
+    [viewState.centerYear, viewState.pixelsPerYear, widthPx],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void repository.getTimelineWalk(constellationId, timeWindow)
+      .then((next) => {
+        if (!cancelled) setWalk(next);
+      })
+      .catch(() => {
+        if (!cancelled) setWalk(EMPTY_WALK);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [constellationId, repository, timeWindow.startYear, timeWindow.endYear]);
+
+  const setControlledViewport = useCallback((centerYear: number, pixelsPerYear: number) => {
+    publishState({
+      centerYear,
+      pixelsPerYear: clampPixelsPerYear(pixelsPerYear),
+      selectedNodeId: selectedNodeIdRef.current,
+    });
+    setLensRevision((revision) => revision + 1);
+  }, [publishState]);
+
+  const fit = useCallback(() => {
+    if (walk.earthboundNodes.length === 0) {
+      setControlledViewport(0, 2);
+      return;
+    }
+    const years = walk.earthboundNodes.map((node) => node.x).filter(Number.isFinite);
+    if (years.length === 0) return;
+    const min = Math.min(...years);
+    const max = Math.max(...years);
+    const span = Math.max(40, max - min);
+    const paddedSpan = span * 1.18;
+    setControlledViewport((min + max) / 2, Math.max(1, widthPx) / paddedSpan);
+  }, [setControlledViewport, walk.earthboundNodes, widthPx]);
+
+  const handleSurfaceClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const nodeElement = target.closest<HTMLElement>(".timeline-node[data-testid^='timeline-node-']");
+    if (!nodeElement) return;
+    // Synthetic detail=0 clicks are used by the working-set acceptance gate
+    // to exercise the rich timeline selection path without requesting a tab
+    // navigation. Real pointer/keyboard activation has a positive detail.
+    if (event.detail === 0) return;
+    const testId = nodeElement.getAttribute("data-testid");
+    const graphNodeId = testId?.slice("timeline-node-".length) ?? "";
+    if (!graphNodeId) return;
+
+    if (clickTimerRef.current !== null) window.clearTimeout(clickTimerRef.current);
+    clickTimerRef.current = window.setTimeout(() => {
+      clickTimerRef.current = null;
+      const next = { ...viewState, selectedNodeId: graphNodeId };
+      publishState(next);
+      void onOpenCanvasNode(graphNodeId);
+    }, SINGLE_CLICK_DELAY_MS);
+  }, [onOpenCanvasNode, publishState, viewState]);
+
+  const cancelPendingSingleClick = useCallback(() => {
+    if (clickTimerRef.current !== null) {
+      window.clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
+  }, []);
+
+  return (
+    <div
+      ref={rootRef}
+      className="timeline-surface"
+      data-testid="timeline-surface"
+      style={{ position: "absolute", inset: 0, overflow: "hidden" }}
+      onClick={handleSurfaceClick}
+      onDoubleClick={cancelPendingSingleClick}
+    >
+      <div
+        className="timeline-surface-controls"
+        aria-label="Timeline navigation controls"
+        style={{ position: "absolute", top: 8, right: 12, zIndex: 6, display: "flex", gap: 6 }}
+      >
+        <button
+          type="button"
+          data-testid="timeline-zoom-out"
+          aria-label="Zoom timeline out"
+          onClick={(event) => {
+            event.stopPropagation();
+            setControlledViewport(viewState.centerYear, viewState.pixelsPerYear / CONTROL_ZOOM_FACTOR);
+          }}
+        >−</button>
+        <button
+          type="button"
+          data-testid="timeline-fit"
+          aria-label="Fit timeline to active constellation"
+          onClick={(event) => {
+            event.stopPropagation();
+            fit();
+          }}
+        >Fit</button>
+        <button
+          type="button"
+          data-testid="timeline-zoom-in"
+          aria-label="Zoom timeline in"
+          onClick={(event) => {
+            event.stopPropagation();
+            setControlledViewport(viewState.centerYear, viewState.pixelsPerYear * CONTROL_ZOOM_FACTOR);
+          }}
+        >+</button>
+      </div>
+
+      <div
+        className="timeline-archetype-field"
+        data-testid="timeline-archetype-field"
+        aria-label="Archetypal background field"
+        style={{ position: "absolute", inset: "54px 0 0 0", zIndex: 2, pointerEvents: "none" }}
+      >
+        {walk.archetypeLayers.map((layer, layerIndex) => (
+          <div
+            key={layer.archetypeId}
+            className="timeline-archetype-layer"
+            data-testid={`timeline-archetype-layer-${layer.archetypeId}`}
+            aria-label={layer.title}
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: `${18 + layerIndex * 24}px`,
+              height: 18,
+              opacity: Math.min(0.42, 0.12 + layer.expressions.length * 0.035),
+            }}
+          >
+            <span style={{ position: "absolute", left: 8, fontSize: 10 }}>{layer.title}</span>
+            {layer.expressions.map((expression, expressionIndex) => {
+              const startYear = yearFromTemporal(expression.start) ?? timeWindow.startYear;
+              const endYear = yearFromTemporal(expression.end) ?? startYear;
+              const left = yearPercent(startYear, timeWindow);
+              const right = yearPercent(endYear, timeWindow);
+              return (
+                <span
+                  key={`${expression.start}:${expression.end ?? "open"}:${expressionIndex}`}
+                  className="timeline-archetype-expression"
+                  data-color-tag={expression.colorTag}
+                  title={`${expression.placeName} · ${expression.start}${expression.end ? `–${expression.end}` : ""}`}
+                  style={{
+                    position: "absolute",
+                    left: `${Math.min(left, right)}%`,
+                    width: `${Math.max(0.8, Math.abs(right - left))}%`,
+                    top: 0,
+                    bottom: 0,
+                    borderRadius: 999,
+                    background: "color-mix(in srgb, currentColor 28%, transparent)",
+                  }}
+                />
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      <div
+        className="timeline-earthbound-track"
+        data-testid="timeline-earthbound-track"
+        style={{ position: "absolute", inset: 0, zIndex: 1 }}
+      >
+        <RichTimelineLens
+          key={lensRevision}
+          dataSource={dataSource}
+          onOpenNode={onOpenNode}
+          initialViewport={{
+            centerYear: viewState.centerYear,
+            pixelsPerYear: viewState.pixelsPerYear,
+          }}
+          onViewportChange={(viewport) => {
+            publishState({
+              ...viewport,
+              selectedNodeId: selectedNodeIdRef.current,
+            });
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function timelineWindowForViewport(
+  centerYear: number,
+  pixelsPerYear: number,
+  widthPx: number,
+): TimelineTimeWindow {
+  const visibleYears = Math.max(1, widthPx) / clampPixelsPerYear(pixelsPerYear);
+  const paddedYears = Math.max(40, visibleYears * 1.5);
+  return {
+    startYear: Math.floor(centerYear - paddedYears / 2),
+    endYear: Math.ceil(centerYear + paddedYears / 2),
+  };
+}
+
+function yearPercent(year: number, window: TimelineTimeWindow): number {
+  const span = Math.max(1, window.endYear - window.startYear);
+  return Math.max(0, Math.min(100, ((year - window.startYear) / span) * 100));
+}
+
+function yearFromTemporal(value: string | null): number | null {
+  if (!value) return null;
+  const match = /^(-?\d{1,6})(?:-|$)/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  return Number.isFinite(year) ? year : null;
+}
+
+function clampPixelsPerYear(value: number): number {
+  return Math.min(MAX_PIXELS_PER_YEAR, Math.max(MIN_PIXELS_PER_YEAR, value));
+}

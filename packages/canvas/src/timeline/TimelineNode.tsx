@@ -232,51 +232,62 @@ export function TimelineNode({
           "--timeline-edge-fade-right": String(edgeFade.right),
         } as CSSProperties}
       >
-        <span
-          className="timeline-node-category"
-          title={categoryStyle.label}
-          style={{ backgroundColor: item.presentation.style.dotColour ?? categoryStyle.color }}
-        />
-        <span className="timeline-node-date">
-          {item.relationCompanion ? "linked context" : formatItemDate(item)}
-        </span>
-        <span className="timeline-node-title">{item.node.title}</span>
-        {(lod === "detail" || lod === "label") && summary && (
-          <span
-            className="timeline-node-summary"
-            data-testid={`timeline-node-summary-${item.graphNodeId}`}
-          >
-            {summary}
-          </span>
-        )}
-        <button
-          type="button"
-          className="timeline-node-color"
-          data-testid={`timeline-node-color-${item.graphNodeId}`}
-          aria-label={`Tag ${item.node.title} as ${categoryStyle.label}`}
-          disabled={readOnly}
-          onClick={(event) => {
-            event.stopPropagation();
-            onColorTag(item.graphNodeId, {
-              dotColour: categoryStyle.color,
-              bgColour: categoryStyle.background,
-            });
-          }}
+        <div
+          className="timeline-card-contract"
+          data-testid={`timeline-card-${item.graphNodeId}`}
+          data-entity-type={item.node.entityType}
+          data-color-tag={category}
+          style={{ display: "contents" }}
         >
           <span
-            className="timeline-node-color__swatch"
-            style={{ backgroundColor: categoryStyle.color }}
+            className="timeline-node-category"
+            title={categoryStyle.label}
+            style={{ backgroundColor: item.presentation.style.dotColour ?? categoryStyle.color }}
           />
-        </button>
-        {(["nw", "ne", "sw", "se"] as const).map((corner) => (
-          <span
-            key={corner}
-            role="presentation"
-            className={`timeline-node-resize timeline-node-resize--${corner}`}
-            data-testid={`timeline-node-resize-${item.graphNodeId}-${corner}`}
-            onPointerDown={(event) => { if (!readOnly) beginDrag(event, "resize", corner); }}
-          />
-        ))}
+          <span className="timeline-node-date">
+            {item.relationCompanion ? "linked context" : formatItemDate(item)}
+          </span>
+          <span className="timeline-node-title">{item.node.title}</span>
+          {item.node.place?.names[0]?.name && (
+            <span className="timeline-node-place">{item.node.place.names[0].name}</span>
+          )}
+          {(lod === "detail" || lod === "label") && summary && (
+            <span
+              className="timeline-node-summary"
+              data-testid={`timeline-node-summary-${item.graphNodeId}`}
+            >
+              {summary}
+            </span>
+          )}
+          <button
+            type="button"
+            className="timeline-node-color"
+            data-testid={`timeline-node-color-${item.graphNodeId}`}
+            aria-label={`Tag ${item.node.title} as ${categoryStyle.label}`}
+            disabled={readOnly}
+            onClick={(event) => {
+              event.stopPropagation();
+              onColorTag(item.graphNodeId, {
+                dotColour: categoryStyle.color,
+                bgColour: categoryStyle.background,
+              });
+            }}
+          >
+            <span
+              className="timeline-node-color__swatch"
+              style={{ backgroundColor: categoryStyle.color }}
+            />
+          </button>
+          {(["nw", "ne", "sw", "se"] as const).map((corner) => (
+            <span
+              key={corner}
+              role="presentation"
+              className={`timeline-node-resize timeline-node-resize--${corner}`}
+              data-testid={`timeline-node-resize-${item.graphNodeId}-${corner}`}
+              onPointerDown={(event) => { if (!readOnly) beginDrag(event, "resize", corner); }}
+            />
+          ))}
+        </div>
       </div>
       )}
     </div>

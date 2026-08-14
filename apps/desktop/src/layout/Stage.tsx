@@ -1,11 +1,11 @@
 import type { TimelineDataSource } from "@research-canvas/canvas";
 import type { GraphNode, TimelineRelationField, WorkspaceServices } from "@research-canvas/desktop-api";
-import { TimelineLens } from "@research-canvas/canvas";
 import { CanvasPane } from "./CanvasPane";
 import { ReaderPane } from "./ReaderPane";
 import { PsychogeographicLens } from "../features/psychogeographic/PsychogeographicLens";
 import { StoryLens } from "../features/story/StoryLens";
 import { PalaceLensHost } from "../features/palace/PalaceLensHost";
+import { TimelineLens } from "../features/timeline/TimelineLens";
 import type { ReaderRecord } from "../features/viewer/readerRecord";
 import type { LensMode } from "./useLensMode";
 
@@ -17,6 +17,8 @@ interface StageProps {
   activeProfileScope: string | null;
   workingRoot: string | null;
   repoRoot: string | null;
+  /** Deprecated composition inputs retained until Shell is simplified; the
+   * feature TimelineLens now owns its canonical repository composition. */
   timelineDataSource: TimelineDataSource | null;
   rememberedTimelineViewport: { centerYear: number; pixelsPerYear: number } | undefined;
   onTimelineViewportChange: (viewport: { centerYear: number; pixelsPerYear: number }) => void;
@@ -43,9 +45,6 @@ export function Stage({
   activeProfileScope,
   workingRoot,
   repoRoot,
-  timelineDataSource,
-  rememberedTimelineViewport,
-  onTimelineViewportChange,
   onOpenNodeDocument,
   onNodeSelect,
   onNodeDoubleClick,
@@ -76,18 +75,10 @@ export function Stage({
         />
       )}
 
-      {lens === "timeline" && timelineDataSource && (
+      {lens === "timeline" && (
         <section className="canvas-pane" data-testid="timeline-pane" style={commonStageSurfaceStyle}>
-          <TimelineLens
-            dataSource={timelineDataSource}
-            onOpenNode={onOpenNodeDocument}
-            initialViewport={rememberedTimelineViewport}
-            onViewportChange={onTimelineViewportChange}
-          />
+          <TimelineLens onOpenNodeDocument={onOpenNodeDocument} />
         </section>
-      )}
-      {lens === "timeline" && !timelineDataSource && (
-        <section className="canvas-pane" data-testid="timeline-workspace-loading">Loading timeline workspace…</section>
       )}
 
       {lens === "psychogeographic" && databasePath && workspaceId && activeProfileScope && (
