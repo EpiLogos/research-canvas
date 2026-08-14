@@ -40,6 +40,20 @@ function dataSource(): TimelineDataSource {
   };
 }
 
+function emptyDataSource(): TimelineDataSource {
+  return {
+    loadTimelineView: async () => ({
+      workspaceId: "sqlite:/test",
+      nodes: [],
+      relationships: [],
+      lanes: [],
+      diagnostics: [],
+    }),
+    archetypalLighting: async () => { throw new Error("not used"); },
+    resonancesForInstance: async () => [],
+  };
+}
+
 function repository(): TimelineRepository {
   const walk: TimelineWalk = {
     earthboundNodes: [
@@ -70,6 +84,12 @@ function repository(): TimelineRepository {
     ],
   };
   return { getTimelineWalk: vi.fn(async () => walk) };
+}
+
+function emptyRepository(): TimelineRepository {
+  return {
+    getTimelineWalk: vi.fn(async () => ({ earthboundNodes: [], archetypeLayers: [] })),
+  };
 }
 
 describe("TimelineSurface", () => {
@@ -107,6 +127,23 @@ describe("TimelineSurface", () => {
     expect(expression).toHaveAttribute("data-start-year", "1900");
     expect(expression).toHaveAttribute("data-end-year", "1940");
     expect(expression).toHaveAttribute("data-color-tag", "archetype-expression");
+  });
+
+  test("renders an explicit empty-constellation zero-state and keeps Fit inert", async () => {
+    render(
+      <TimelineSurface
+        repository={emptyRepository()}
+        constellationId="empty-constellation"
+        dataSource={emptyDataSource()}
+        initialState={{ centerYear: 0, pixelsPerYear: 0.05, selectedNodeId: null }}
+        onOpenCanvasNode={() => {}}
+        onOpenNode={() => {}}
+      />,
+    );
+
+    expect(await screen.findByTestId("timeline-empty-state")).toHaveTextContent("No temporal nodes loaded");
+    expect(screen.getByTestId("timeline-fit")).toBeDisabled();
+    expect(screen.queryAllByTestId(/^timeline-card-/)).toHaveLength(0);
   });
 
   test("zoom controls publish persisted camera state", async () => {
