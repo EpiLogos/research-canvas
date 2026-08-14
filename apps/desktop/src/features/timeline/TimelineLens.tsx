@@ -11,6 +11,9 @@ import type { SurfaceTabState } from "@research-canvas/schema";
 import { useCanvasWorkspace } from "../canvas/CanvasWorkspaceContext";
 import { createTimelineDataSource } from "./createTimelineDataSource";
 
+const GLOBAL_TIMELINE_PIXELS_PER_YEAR = 0.05;
+const LEGACY_NEW_TAB_PIXELS_PER_YEAR = 20;
+
 interface TimelineLensProps {
   onOpenNodeDocument: (
     graphNodeId: string,
@@ -81,11 +84,16 @@ export function TimelineLens({ onOpenNodeDocument }: TimelineLensProps): JSX.Ele
 
 export function timelineViewStateFromTab(state: SurfaceTabState | null): TimelineViewState {
   if (state?.surfaceId !== "timeline") {
-    return { centerYear: 0, pixelsPerYear: 20, selectedNodeId: null };
+    return { centerYear: 0, pixelsPerYear: GLOBAL_TIMELINE_PIXELS_PER_YEAR, selectedNodeId: null };
   }
+  const isLegacyUnpositionedTab = state.centerYear === 0
+    && state.pixelsPerYear === LEGACY_NEW_TAB_PIXELS_PER_YEAR
+    && (state.selectedGraphNodeId ?? null) === null;
   return {
     centerYear: state.centerYear,
-    pixelsPerYear: state.pixelsPerYear,
+    pixelsPerYear: isLegacyUnpositionedTab
+      ? GLOBAL_TIMELINE_PIXELS_PER_YEAR
+      : state.pixelsPerYear,
     selectedNodeId: state.selectedGraphNodeId ?? null,
   };
 }

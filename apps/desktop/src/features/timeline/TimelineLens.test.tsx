@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { timelineViewStateFromTab } from "./TimelineLens";
 
 describe("timelineViewStateFromTab", () => {
-  test("maps the persisted timeline tab camera and selection to the domain contract", () => {
+  test("maps a persisted timeline tab camera and selection without changing it", () => {
     expect(timelineViewStateFromTab({
       surfaceId: "timeline",
       centerYear: 1917,
@@ -15,10 +15,19 @@ describe("timelineViewStateFromTab", () => {
     });
   });
 
-  test("uses the timeline zero-case when no timeline tab is active", () => {
+  test("opens an unpositioned timeline as a broad global walk", () => {
     expect(timelineViewStateFromTab(null)).toEqual({
       centerYear: 0,
+      pixelsPerYear: 0.05,
+      selectedNodeId: null,
+    });
+    expect(timelineViewStateFromTab({
+      surfaceId: "timeline",
+      centerYear: 0,
       pixelsPerYear: 20,
+    })).toEqual({
+      centerYear: 0,
+      pixelsPerYear: 0.05,
       selectedNodeId: null,
     });
   });
