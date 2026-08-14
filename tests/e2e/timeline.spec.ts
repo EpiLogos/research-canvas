@@ -26,20 +26,28 @@ test("timeline surface renders the active constellation walk and canonical contr
   const external = await collectExternalRequests(page);
 
   await page.goto("/");
-  await expect(page.getByTestId("canvas-pane")).toBeVisible({ timeout: 20_000 });
 
-  // The compact desktop shell can position the left-rail toggle outside the
-  // browser viewport even though it is mounted and keyboard/action reachable.
-  // Constellation selection is fixture setup for this ticket, not a T11
-  // interaction gate, so activate those existing controls at the DOM boundary.
+  // The compact desktop shell can render before the browser bridge finishes
+  // its first dev-mode relink and workspace bootstrap. Open the files surface
+  // at the DOM boundary, then wait for profile + constellation state that can
+  // only exist after the real project-backed workspace has resolved. A shell
+  // pane by itself is not a readiness signal.
   const rail = page.getByTestId("left-rail");
   await rail
     .getByRole("button", { name: "Files & Constellation", exact: true })
     .dispatchEvent("click");
+  await expect(page.getByTestId("lo-project-scope-profile")).toBeAttached({ timeout: 35_000 });
+  await expect(page.getByTestId("lo-constellations").getByRole("button").first()).toBeAttached({
+    timeout: 35_000,
+  });
+
+  // Constellation selection is fixture setup for this ticket, not a T11
+  // interaction gate, so activate the existing browser control at the DOM
+  // boundary. The Timeline interactions below remain real pointer actions.
   const historicalForms = page
     .getByTestId("lo-constellations")
     .getByRole("button", { name: /^Historical Forms\b/ });
-  await expect(historicalForms).toBeAttached();
+  await expect(historicalForms).toBeAttached({ timeout: 15_000 });
   await historicalForms.dispatchEvent("click");
   await expect(historicalForms).toHaveAttribute("data-active", "true", { timeout: 15_000 });
 
