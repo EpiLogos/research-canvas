@@ -71,7 +71,22 @@ jobs:
       - name: Run T11 browser acceptance
         env:
           PLAYWRIGHT_HTML_OPEN: never
-        run: pnpm playwright test tests/e2e/timeline.spec.ts --trace=on --reporter=line,html
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm playwright test tests/e2e/timeline.spec.ts --trace=on --reporter=line,html 2>&1 | tee playwright-output.txt
+
+      - name: Annotate browser failure
+        if: failure()
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text = Path("playwright-output.txt").read_text(errors="replace") if Path("playwright-output.txt").exists() else "Playwright failed without captured output."
+          tail = "\n".join(text.splitlines()[-100:])[-12000:]
+          escaped = tail.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error file=tests/e2e/timeline.spec.ts,title=T11 Playwright failure::{escaped}")
+          PY
 
       - name: Retain browser verification evidence
         if: always()
@@ -79,6 +94,7 @@ jobs:
         with:
           name: redemption-t11-playwright
           path: |
+            playwright-output.txt
             playwright-report
             test-results
           if-no-files-found: warn
