@@ -1,5 +1,5 @@
 import { useCallback, useMemo, type JSX } from "react";
-import { TimelineSurface, type TimelineDataSource } from "@research-canvas/canvas";
+import { TimelineSurface } from "@research-canvas/canvas";
 import {
   DesktopTimelineRepository,
   type GraphNode,

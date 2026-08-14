@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
-import type { TimelineRepository } from "@research-canvas/desktop-api";
+import type { TimelineRepository, TimelineWalk } from "@research-canvas/desktop-api";
 import { TimelineSurface } from "./TimelineSurface";
 import type { TimelineDataSource } from "./TimelineLens";
 
@@ -41,36 +41,35 @@ function dataSource(): TimelineDataSource {
 }
 
 function repository(): TimelineRepository {
-  return {
-    getTimelineWalk: vi.fn(async () => ({
-      earthboundNodes: [
-        {
-          graphNodeId: "event-1917",
-          title: "Historical event",
-          date: "1917-01-01",
-          precision: "year",
-          entityType: "Event",
-          placeName: "London",
-          x: 1917,
-          colorTag: "historicity-historical",
-        },
-      ],
-      archetypeLayers: [
-        {
-          archetypeId: "shadow",
-          title: "Shadow",
-          expressions: [
-            {
-              start: "1900",
-              end: "1940",
-              placeName: "Europe",
-              colorTag: "archetype-expression",
-            },
-          ],
-        },
-      ],
-    })),
+  const walk: TimelineWalk = {
+    earthboundNodes: [
+      {
+        graphNodeId: "event-1917",
+        title: "Historical event",
+        date: "1917-01-01",
+        precision: "year",
+        entityType: "Event",
+        placeName: "London",
+        x: 1917,
+        colorTag: "historicity-historical",
+      },
+    ],
+    archetypeLayers: [
+      {
+        archetypeId: "shadow",
+        title: "Shadow",
+        expressions: [
+          {
+            start: "1900",
+            end: "1940",
+            placeName: "Europe",
+            colorTag: "archetype-expression",
+          },
+        ],
+      },
+    ],
   };
+  return { getTimelineWalk: vi.fn(async () => walk) };
 }
 
 describe("TimelineSurface", () => {

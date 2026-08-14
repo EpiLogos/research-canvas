@@ -461,7 +461,11 @@ export class DesktopTimelineRepository implements TimelineRepository {
   }
 
   async relationFieldForEvent(graphNodeId: string): Promise<TimelineRelationField> {
-    return this.transport.loadTimelineRelationField({
+    const loadRelationField = this.transport.loadTimelineRelationField;
+    if (!loadRelationField) {
+      throw new Error("timeline relation fields are unavailable");
+    }
+    return loadRelationField({
       workspaceId: this.workspaceId,
       graphNodeId,
     });
