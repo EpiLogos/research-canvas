@@ -97,7 +97,12 @@ describe("TimelineSurface", () => {
     expect(card).toHaveTextContent("Historical event");
     expect(card).toHaveTextContent("1917");
     expect(within(card).getByTestId("timeline-node-color-event-1917")).toBeInTheDocument();
-    await screen.findByTestId("timeline-archetype-layer-shadow");
+
+    const layer = await screen.findByTestId("timeline-archetype-layer-shadow");
+    const expression = within(layer).getByTestId("timeline-archetype-expression-shadow-0");
+    expect(expression).toHaveAttribute("data-start-year", "1900");
+    expect(expression).toHaveAttribute("data-end-year", "1940");
+    expect(expression).toHaveAttribute("data-color-tag", "archetype-expression");
   });
 
   test("zoom controls publish persisted camera state", async () => {

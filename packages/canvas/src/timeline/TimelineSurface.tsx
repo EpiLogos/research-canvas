@@ -121,10 +121,11 @@ export function TimelineSurface({
     if (!(target instanceof HTMLElement)) return;
     const nodeElement = target.closest<HTMLElement>(".timeline-node[data-testid^='timeline-node-']");
     if (!nodeElement) return;
-    // Synthetic detail=0 clicks are used by the working-set acceptance gate
-    // to exercise the rich timeline selection path without requesting a tab
-    // navigation. Real pointer/keyboard activation has a positive detail.
-    if (event.detail === 0) return;
+    // Default click follows the T11 contract and opens the node on Canvas.
+    // Shift-click deliberately stays on Timeline so the rich working-set
+    // exploration remains available as a real user affordance rather than a
+    // test-only synthetic event path.
+    if (event.shiftKey) return;
     const testId = nodeElement.getAttribute("data-testid");
     const graphNodeId = testId?.slice("timeline-node-".length) ?? "";
     if (!graphNodeId) return;
@@ -219,7 +220,10 @@ export function TimelineSurface({
                 <span
                   key={`${expression.start}:${expression.end ?? "open"}:${expressionIndex}`}
                   className="timeline-archetype-expression"
+                  data-testid={`timeline-archetype-expression-${layer.archetypeId}-${expressionIndex}`}
                   data-color-tag={expression.colorTag}
+                  data-start-year={startYear}
+                  data-end-year={endYear}
                   title={`${expression.placeName} · ${expression.start}${expression.end ? `–${expression.end}` : ""}`}
                   style={{
                     position: "absolute",

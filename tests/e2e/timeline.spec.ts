@@ -6,7 +6,6 @@ import { expect, test, type Page } from "@playwright/test";
  * relational timeline behaviour while remaining fully offline.
  */
 
-const HISTORICAL_FORMS = "Historical Forms";
 const MEDICI = "root-archetypal-field:medici-template";
 
 async function collectExternalRequests(page: Page): Promise<string[]> {
@@ -34,17 +33,18 @@ test("timeline surface renders the active constellation walk and canonical contr
   // that actually owns the dated Medici event instead of relying on the old
   // profile/global timeline leak.
   const rail = page.getByTestId("left-rail");
-  await rail.getByRole("button", { name: "Files & Constellation", exact: true }).dispatchEvent("click");
+  await rail.getByRole("button", { name: "Files & Constellation", exact: true }).click();
   const historicalForms = page
     .getByTestId("lo-constellations")
-    .locator(".lo-constellation-item", { hasText: HISTORICAL_FORMS });
-  await expect(historicalForms).toBeAttached();
-  await historicalForms.dispatchEvent("click");
+    .getByRole("button", { name: /^Historical Forms\b/ });
+  await expect(historicalForms).toBeVisible();
+  await historicalForms.click();
   await expect(historicalForms).toHaveAttribute("data-active", "true", { timeout: 15_000 });
 
-  await page.getByTestId("lens-timeline").dispatchEvent("click");
+  await page.getByTestId("lens-timeline").click();
 
-  await expect(page.getByTestId("timeline-surface")).toBeVisible({ timeout: 20_000 });
+  const surface = page.getByTestId("timeline-surface");
+  await expect(surface).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("timeline-earthbound-track")).toBeVisible();
   await expect(page.getByTestId("timeline-axis")).toBeVisible();
   await expect(page.getByTestId("timeline-zoom-out")).toBeVisible();
@@ -54,6 +54,11 @@ test("timeline surface renders the active constellation walk and canonical contr
   await expect(page.getByTestId("timeline-load-error")).toHaveCount(0, {
     timeout: 15_000,
   });
+
+  // Exercise the ticket's zoom interaction rather than only asserting the
+  // controls exist. The surface remains mounted after the camera update.
+  await page.getByTestId("timeline-zoom-in").click();
+  await expect(surface).toBeVisible();
 
   await expect(page.getByTestId("timeline-walk")).toBeVisible();
   await expect(page.getByTestId("timeline-walk-stops").locator("li")).not.toHaveCount(0);
@@ -65,9 +70,10 @@ test("timeline surface renders the active constellation walk and canonical contr
   await expect(mediciCard).toContainText("Medici Template");
   await expect(mediciNode).toBeAttached();
 
-  // The existing rich timeline still opens its lazy real relational working
-  // set without asking the T11 wrapper to navigate away from Surface #2.
-  await mediciNode.dispatchEvent("click", { detail: 0 });
+  // Shift-click is the real timeline-local exploration affordance. It lets the
+  // mature relational working set open while default click remains T11's
+  // Canvas navigation contract.
+  await mediciNode.click({ modifiers: ["Shift"] });
 
   await expect(page.getByTestId("timeline-working-set")).toBeVisible();
   const entry = page.getByTestId(`timeline-working-set-entry-${MEDICI}`);
@@ -85,9 +91,9 @@ test("timeline surface renders the active constellation walk and canonical contr
   await expect(page.getByTestId("timeline-walk-stops").locator("li")).not.toHaveCount(0);
   expect(external).toEqual([]);
 
-  // A genuine single activation is the T11 navigation contract: it opens the
-  // selected node in the active constellation's Canvas tab by default.
-  await mediciNode.dispatchEvent("click", { detail: 1 });
+  // Default single activation opens the selected node in the active
+  // constellation's Canvas tab.
+  await mediciNode.click();
   await expect(page.getByTestId("canvas-pane")).toBeVisible({ timeout: 5_000 });
   expect(external).toEqual([]);
 });
