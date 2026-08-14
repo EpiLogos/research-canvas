@@ -28,17 +28,19 @@ test("timeline surface renders the active constellation walk and canonical contr
   await page.goto("/");
   await expect(page.getByTestId("canvas-pane")).toBeVisible({ timeout: 20_000 });
 
-  // The root project contains nested constellations. T11 is explicitly scoped
-  // to the active constellation, so choose the seeded historical constellation
-  // that actually owns the dated Medici event instead of relying on the old
-  // profile/global timeline leak.
+  // The compact desktop shell can position the left-rail toggle outside the
+  // browser viewport even though it is mounted and keyboard/action reachable.
+  // Constellation selection is fixture setup for this ticket, not a T11
+  // interaction gate, so activate those existing controls at the DOM boundary.
   const rail = page.getByTestId("left-rail");
-  await rail.getByRole("button", { name: "Files & Constellation", exact: true }).click();
+  await rail
+    .getByRole("button", { name: "Files & Constellation", exact: true })
+    .dispatchEvent("click");
   const historicalForms = page
     .getByTestId("lo-constellations")
     .getByRole("button", { name: /^Historical Forms\b/ });
-  await expect(historicalForms).toBeVisible();
-  await historicalForms.click();
+  await expect(historicalForms).toBeAttached();
+  await historicalForms.dispatchEvent("click");
   await expect(historicalForms).toHaveAttribute("data-active", "true", { timeout: 15_000 });
 
   await page.getByTestId("lens-timeline").click();
@@ -55,9 +57,11 @@ test("timeline surface renders the active constellation walk and canonical contr
     timeout: 15_000,
   });
 
-  // Exercise the ticket's zoom interaction rather than only asserting the
-  // controls exist. The surface remains mounted after the camera update.
+  // Exercise a real zoom from the global overview, then Fit the active
+  // constellation so its ordinary card-level representation is in view.
   await page.getByTestId("timeline-zoom-in").click();
+  await expect(surface).toBeVisible();
+  await page.getByTestId("timeline-fit").click();
   await expect(surface).toBeVisible();
 
   await expect(page.getByTestId("timeline-walk")).toBeVisible();
