@@ -1,6 +1,7 @@
 import type { TimelineDataSource } from "@research-canvas/canvas";
 import type {
   ArchetypalLighting,
+  DesktopTimelineRepository,
   LitInstance,
   TimelineFilters,
   TimelineView,
@@ -13,48 +14,89 @@ type TimelineTransport = Pick<
   "loadTimelineView" | "loadTimelineRelationField" | "upsertTimelineLayout" | "archetypalLighting" | "resonancesForInstance"
 > & Partial<Pick<WorkspaceServices, "readGraphNode" | "expandTimelineNode">>;
 
+type TimelineRuntimeRepository = Pick<
+  DesktopTimelineRepository,
+  "loadTimelineView" | "archetypalLighting" | "resonancesForInstance" | "saveTimelineLayout"
+> & Partial<Pick<
+  DesktopTimelineRepository,
+  "loadNode" | "relationFieldForEvent" | "expandNode"
+>>;
+
 /**
- * Adapt the WS0 §5.2 WorkspaceServices to the narrow TimelineDataSource port
- * the TimelineLens needs. Timeline membership is workspace-scoped temporal
- * graph metadata and never derives from an active constellation canvas.
+ * Adapt the canonical desktop timeline repository to the narrow view-model
+ * port used by the rich TimelineLens. The legacy input shape is retained for
+ * callers that have not yet moved composition into the feature boundary, but
+ * it is immediately wrapped as a repository-shaped adapter rather than being
+ * read by the surface itself.
  */
-export function createTimelineDataSource(input: {
-  transport: TimelineTransport;
-  workspaceId: string;
-}): TimelineDataSource {
-  const { transport, workspaceId } = input;
+export function createTimelineDataSource(input:
+  | { repository: TimelineRuntimeRepository }
+  | { transport: TimelineTransport; workspaceId: string },
+): TimelineDataSource {
+  const repository = "repository" in input
+    ? input.repository
+    : legacyRuntimeRepository(input.transport, input.workspaceId);
+
   return {
     async loadTimelineView(range?: TimelineYearRange, filters?: TimelineFilters): Promise<TimelineView> {
-      return transport.loadTimelineView({
-        workspaceId,
-        ...(range ? { range } : {}),
-        ...(filters ? { filters } : {}),
-      });
+      return repository.loadTimelineView(range, filters);
     },
-    ...(transport.readGraphNode
-      ? { async loadNode(graphNodeId: string) { return transport.readGraphNode!({ graphNodeId }); } }
+    ...(repository.loadNode
+      ? { async loadNode(graphNodeId: string) { return repository.loadNode!(graphNodeId); } }
       : {}),
     async saveTimelineLayout(layout) {
-      return transport.upsertTimelineLayout({ ...layout, workspaceId });
+      return repository.saveTimelineLayout(layout);
     },
     async archetypalLighting(operatorGraphNodeId: string): Promise<ArchetypalLighting> {
-      return transport.archetypalLighting({ operatorGraphNodeId });
+      return repository.archetypalLighting(operatorGraphNodeId);
     },
     async resonancesForInstance(graphNodeId: string): Promise<LitInstance[]> {
-      return transport.resonancesForInstance({ graphNodeId });
+      return repository.resonancesForInstance(graphNodeId);
     },
-    ...(transport.loadTimelineRelationField
+    ...(repository.relationFieldForEvent
       ? {
           async relationFieldForEvent(graphNodeId: string) {
-            return transport.loadTimelineRelationField!({ workspaceId, graphNodeId });
+            return repository.relationFieldForEvent!(graphNodeId);
           },
+        }
+      : {}),
+    ...(repository.expandNode
+      ? {
+          async expandNode(graphNodeId: string) {
+            return repository.expandNode!(graphNodeId);
+          },
+        }
+      : {}),
+  };
+}
+
+function legacyRuntimeRepository(
+  transport: TimelineTransport,
+  workspaceId: string,
+): TimelineRuntimeRepository {
+  return {
+    loadTimelineView: (range, filters) => transport.loadTimelineView({
+      workspaceId,
+      ...(range ? { range } : {}),
+      ...(filters ? { filters } : {}),
+    }),
+    ...(transport.readGraphNode
+      ? { loadNode: (graphNodeId: string) => transport.readGraphNode!({ graphNodeId }) }
+      : {}),
+    saveTimelineLayout: (layout) => transport.upsertTimelineLayout({ ...layout, workspaceId }),
+    archetypalLighting: (operatorGraphNodeId) => transport.archetypalLighting({ operatorGraphNodeId }),
+    resonancesForInstance: (graphNodeId) => transport.resonancesForInstance({ graphNodeId }),
+    ...(transport.loadTimelineRelationField
+      ? {
+          relationFieldForEvent: (graphNodeId: string) => transport.loadTimelineRelationField!({
+            workspaceId,
+            graphNodeId,
+          }),
         }
       : {}),
     ...(transport.expandTimelineNode
       ? {
-          async expandNode(graphNodeId: string) {
-            return transport.expandTimelineNode!({ workspaceId, graphNodeId });
-          },
+          expandNode: (graphNodeId: string) => transport.expandTimelineNode!({ workspaceId, graphNodeId }),
         }
       : {}),
   };

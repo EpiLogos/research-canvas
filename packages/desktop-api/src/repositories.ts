@@ -24,12 +24,34 @@ import type {
   SceneRepository,
   Sequence,
   SequenceRepository,
+  TimelineEarthboundNode,
+  TimelineRepository,
+  TimelineTimeWindow,
+  TimelineViewState,
+  TimelineWalk,
   UpdateEdgePatch,
   UpdateNodePatch,
   Viewport,
 } from "@research-canvas/domain";
 import type { ArchetypeHeatmapEntry, ArchetypalExpression } from "@research-canvas/schema";
-import type { WorkspaceTransport, CreateProjectInput, SavedSequence, CreatableEntityType, GraphNodePatch, TemporalPrecision } from "./index";
+import type {
+  ArchetypalLighting,
+  ExpandedTimelineNode,
+  GraphNode,
+  LitInstance,
+  TimelineFilters,
+  TimelineLayoutMutationResult,
+  TimelineRelationField,
+  TimelineView,
+  TimelineYearRange,
+  UpsertTimelineLayoutInput,
+  WorkspaceTransport,
+  CreateProjectInput,
+  SavedSequence,
+  CreatableEntityType,
+  GraphNodePatch,
+  TemporalPrecision,
+} from "./index";
 
 export class DesktopArchetypeRepository implements ArchetypeRepository {
   async listExpressions(_archetypeId: string): Promise<ArchetypalExpression[]> {
@@ -295,5 +317,208 @@ export class DesktopSceneRepository implements SceneRepository {
   }
 }
 
-// Keep imports referenced for future surface implementations.
-export type { EdgeLayout, JoinedCanvasNode, NodeLayout, Viewport };
+/**
+ * Desktop adapter for Surface #2. The rich TimelineLens runtime and the
+ * canonical TimelineRepository share this object, so the surface never needs
+ * a second transport-shaped data path.
+ */
+export class DesktopTimelineRepository implements TimelineRepository {
+  constructor(
+    private readonly transport: WorkspaceTransport,
+    private readonly workspaceId: string,
+    private readonly databasePath: string,
+  ) {}
+
+  async getTimelineWalk(
+    constellationId: string,
+    timeWindow: TimelineTimeWindow,
+  ): Promise<TimelineWalk> {
+    if (!constellationId.trim()) throw new Error("constellationId must not be empty");
+    if (timeWindow.startYear > timeWindow.endYear) {
+      throw new Error("timeline timeWindow startYear must not exceed endYear");
+    }
+
+    const [document, view] = await Promise.all([
+      this.transport.loadConstellationDocument({
+        databasePath: this.databasePath,
+        constellationId,
+      }),
+      this.loadTimelineView(timeWindow),
+    ]);
+    const constellationNodeIds = new Set(
+      document.nodes.map((node) => node.graphNodeId ?? node.id),
+    );
+    const nodesById = new Map(
+      view.nodes.map((record) => [record.node.graphNodeId, record.node] as const),
+    );
+
+    const earthboundNodes = view.nodes.flatMap<TimelineEarthboundNode>((record) => {
+      if (record.relationCompanion || !constellationNodeIds.has(record.node.graphNodeId)) return [];
+      const year = temporalYear(record.anchor.validFrom);
+      if (year === null) return [];
+      const location = view.relationships.find((relationship) =>
+        relationship.relType === "LOCATED_AT"
+        && (relationship.sourceGraphNodeId === record.node.graphNodeId
+          || relationship.targetGraphNodeId === record.node.graphNodeId),
+      );
+      const placeGraphNodeId = location
+        ? (location.sourceGraphNodeId === record.node.graphNodeId
+          ? location.targetGraphNodeId
+          : location.sourceGraphNodeId)
+        : null;
+      return [{
+        graphNodeId: record.node.graphNodeId,
+        title: record.node.title,
+        date: record.anchor.validFrom,
+        precision: record.anchor.precision,
+        entityType: record.node.entityType,
+        placeName: placeGraphNodeId ? nodesById.get(placeGraphNodeId)?.title ?? null : null,
+        x: year,
+        colorTag: colourTagForGraphNode(record.node),
+      }];
+    });
+
+    const archetypeLayers = [] as TimelineWalk["archetypeLayers"];
+    for (const canvasNode of document.nodes) {
+      const graphNodeId = canvasNode.graphNodeId ?? canvasNode.id;
+      let graph = canvasNode.graph ?? null;
+      if (!graph) {
+        try {
+          graph = await this.loadNode(graphNodeId);
+        } catch {
+          graph = null;
+        }
+      }
+      if (!graph || (graph.isArchetype !== true && graph.entityType !== "Archetype")) continue;
+
+      let expansion: ExpandedTimelineNode;
+      try {
+        expansion = await this.expandNode(graph.graphNodeId);
+      } catch {
+        continue;
+      }
+      const neighbourById = new Map(
+        expansion.neighbours.map((node) => [node.graphNodeId, node] as const),
+      );
+      const expressions = expansion.edges.flatMap<TimelineWalk["archetypeLayers"][number]["expressions"][number]>((relationship) => {
+        if (relationship.relType !== "ARCHETYPE_EXPRESSES_AT") return [];
+        const properties = relationship.properties as Record<string, unknown>;
+        const rawWindow = isRecord(properties.timeWindow) ? properties.timeWindow : properties;
+        const start = typeof rawWindow.start === "string" ? rawWindow.start : null;
+        const end = typeof rawWindow.end === "string" ? rawWindow.end : null;
+        if (!start || !temporalWindowOverlaps(start, end, timeWindow)) return [];
+        const placeGraphNodeId = relationship.sourceGraphNodeId === graph.graphNodeId
+          ? relationship.targetGraphNodeId
+          : relationship.sourceGraphNodeId;
+        return [{
+          start,
+          end,
+          placeName: neighbourById.get(placeGraphNodeId)?.title ?? "Unknown place",
+          colorTag: "archetype-expression",
+        }];
+      });
+      if (expressions.length > 0) {
+        archetypeLayers.push({
+          archetypeId: graph.graphNodeId,
+          title: graph.title,
+          expressions,
+        });
+      }
+    }
+
+    earthboundNodes.sort((left, right) => left.x - right.x || left.title.localeCompare(right.title));
+    archetypeLayers.sort((left, right) => left.title.localeCompare(right.title));
+    return { earthboundNodes, archetypeLayers };
+  }
+
+  async loadTimelineView(
+    range?: TimelineYearRange,
+    filters?: TimelineFilters,
+  ): Promise<TimelineView> {
+    return this.transport.loadTimelineView({
+      workspaceId: this.workspaceId,
+      ...(range ? { range } : {}),
+      ...(filters ? { filters } : {}),
+    });
+  }
+
+  async loadNode(graphNodeId: string): Promise<GraphNode> {
+    return this.transport.readGraphNode({ graphNodeId });
+  }
+
+  async saveTimelineLayout(
+    input: Omit<UpsertTimelineLayoutInput, "workspaceId">,
+  ): Promise<TimelineLayoutMutationResult> {
+    return this.transport.upsertTimelineLayout({ ...input, workspaceId: this.workspaceId });
+  }
+
+  async archetypalLighting(operatorGraphNodeId: string): Promise<ArchetypalLighting> {
+    return this.transport.archetypalLighting({ operatorGraphNodeId });
+  }
+
+  async resonancesForInstance(graphNodeId: string): Promise<LitInstance[]> {
+    return this.transport.resonancesForInstance({ graphNodeId });
+  }
+
+  async relationFieldForEvent(graphNodeId: string): Promise<TimelineRelationField> {
+    return this.transport.loadTimelineRelationField({
+      workspaceId: this.workspaceId,
+      graphNodeId,
+    });
+  }
+
+  async expandNode(graphNodeId: string): Promise<ExpandedTimelineNode> {
+    return this.transport.expandTimelineNode({
+      workspaceId: this.workspaceId,
+      graphNodeId,
+    });
+  }
+}
+
+function temporalYear(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const match = /^(-?\d{1,6})(?:-|$)/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  return Number.isFinite(year) ? year : null;
+}
+
+function temporalWindowOverlaps(
+  start: string,
+  end: string | null,
+  window: TimelineTimeWindow,
+): boolean {
+  const startYear = temporalYear(start);
+  const endYear = temporalYear(end) ?? startYear;
+  return startYear !== null
+    && endYear !== null
+    && endYear >= window.startYear
+    && startYear <= window.endYear;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function colourTagForGraphNode(node: GraphNode): TimelineEarthboundNode["colorTag"] {
+  if (node.evidenceStatus === "documented") return "evidence-documented";
+  if (node.evidenceStatus === "interpretive") return "evidence-interpretive";
+  if (node.evidenceStatus === "contested") return "evidence-contested";
+  if (node.historicity === "mythic") return "historicity-mythic";
+  if (node.historicity === "historical") return "historicity-historical";
+  if (node.entityType === "Archetype") return "archetype-expression";
+  return null;
+}
+
+// Keep imports referenced for future surface implementations and expose the
+// canonical timeline port through the desktop package's existing barrel.
+export type {
+  EdgeLayout,
+  JoinedCanvasNode,
+  NodeLayout,
+  TimelineRepository,
+  TimelineTimeWindow,
+  TimelineViewState,
+  TimelineWalk,
+  Viewport,
+};
