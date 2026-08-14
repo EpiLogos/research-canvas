@@ -65,6 +65,20 @@ jobs:
           apps/desktop/src/features/timeline/TimelineLens.test.tsx
           packages/desktop-api/src/repositories.timeline.test.ts
 
+      - name: Install Tauri Linux prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
       - name: Prebuild browser bridge
         # apps/desktop/scripts/dev.mjs starts Vite and the Rust bridge together.
         # On a fresh runner Vite is ready long before Cargo's first build, so
