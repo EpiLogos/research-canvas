@@ -69,4 +69,17 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Run T11 browser acceptance
-        run: pnpm playwright test tests/e2e/timeline.spec.ts
+        env:
+          PLAYWRIGHT_HTML_OPEN: never
+        run: pnpm playwright test tests/e2e/timeline.spec.ts --trace=on --reporter=line,html
+
+      - name: Retain browser verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redemption-t11-playwright
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: warn
+          retention-days: 7
