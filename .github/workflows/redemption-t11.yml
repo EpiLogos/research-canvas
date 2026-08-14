@@ -1,20 +1,6 @@
 name: Redemption T11 verification
 
 on:
-  push:
-    branches:
-      - feat/redemption-map
-    paths:
-      - ".github/workflows/redemption-t11.yml"
-      - "apps/desktop/src/features/timeline/**"
-      - "apps/desktop/src/layout/Stage.tsx"
-      - "packages/canvas/src/timeline/**"
-      - "packages/canvas/src/index.ts"
-      - "packages/desktop-api/src/repositories.ts"
-      - "packages/desktop-api/src/repositories.timeline.test.ts"
-      - "packages/domain/src/ports/timelineRepository.ts"
-      - "packages/domain/src/index.ts"
-      - "tests/e2e/timeline.spec.ts"
   pull_request:
     paths:
       - ".github/workflows/redemption-t11.yml"
@@ -28,6 +14,10 @@ on:
       - "packages/domain/src/index.ts"
       - "tests/e2e/timeline.spec.ts"
   workflow_dispatch:
+
+concurrency:
+  group: redemption-t11-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   t11:

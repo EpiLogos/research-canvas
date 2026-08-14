@@ -73,7 +73,7 @@ function repository(): TimelineRepository {
 }
 
 describe("TimelineSurface", () => {
-  test("renders the canonical surface, earthbound card contract and spectral archetype layer", async () => {
+  test("renders cards from the canonical walk and exact spectral expression range", async () => {
     render(
       <TimelineSurface
         repository={repository()}
@@ -96,6 +96,10 @@ describe("TimelineSurface", () => {
     expect(card).toHaveAttribute("data-entity-type", "Event");
     expect(card).toHaveTextContent("Historical event");
     expect(card).toHaveTextContent("1917");
+    await waitFor(() => expect(screen.getByTestId("timeline-card-event-1917")).toHaveTextContent("London"));
+    expect(screen.getByTestId("timeline-node-place-event-1917")).toHaveTextContent("London");
+    expect(screen.getByTestId("timeline-node-entity-icon-event-1917")).toHaveAttribute("aria-label", "Event entity");
+    expect(screen.getByTestId("timeline-card-event-1917")).toHaveAttribute("data-color-tag", "historicity-historical");
     expect(within(card).getByTestId("timeline-node-color-event-1917")).toBeInTheDocument();
 
     const layer = await screen.findByTestId("timeline-archetype-layer-shadow");

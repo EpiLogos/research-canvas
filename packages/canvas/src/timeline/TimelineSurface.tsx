@@ -93,6 +93,37 @@ export function TimelineSurface({
     };
   }, [constellationId, repository, timeWindow.startYear, timeWindow.endYear]);
 
+  const earthboundById = useMemo(
+    () => new Map(walk.earthboundNodes.map((node) => [node.graphNodeId, node] as const)),
+    [walk.earthboundNodes],
+  );
+
+  // The rich timeline remains the renderer, but card-visible canonical fields
+  // come from the repository contract. This keeps the card projection honest:
+  // if the canonical walk resolves a Place or colour tag, the rendered card
+  // carries that exact value rather than independently reconstructing it.
+  const surfaceDataSource = useMemo<TimelineDataSource>(() => ({
+    ...dataSource,
+    async loadTimelineView(range, filters) {
+      const view = await dataSource.loadTimelineView(range, filters);
+      return {
+        ...view,
+        nodes: view.nodes.map((record) => {
+          const canonical = earthboundById.get(record.node.graphNodeId);
+          if (!canonical) return record;
+          return {
+            ...record,
+            node: {
+              ...record.node,
+              timelinePlaceName: canonical.placeName,
+              timelineColorTag: canonical.colorTag,
+            } as GraphNode,
+          };
+        }),
+      };
+    },
+  }), [dataSource, earthboundById]);
+
   const setControlledViewport = useCallback((centerYear: number, pixelsPerYear: number) => {
     publishState({
       centerYear,
@@ -248,7 +279,7 @@ export function TimelineSurface({
       >
         <RichTimelineLens
           key={lensRevision}
-          dataSource={dataSource}
+          dataSource={surfaceDataSource}
           onOpenNode={onOpenNode}
           initialViewport={{
             centerYear: viewState.centerYear,

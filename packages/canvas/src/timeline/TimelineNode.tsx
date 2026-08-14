@@ -15,6 +15,11 @@ const DRAG_ACTIVATION_DISTANCE_PX = 2;
 type ResizeCorner = "nw" | "ne" | "sw" | "se";
 export type TimelineNodeLod = "marker" | "label" | "detail";
 
+type TimelineProjectedGraphNode = GraphNode & {
+  timelinePlaceName?: string | null;
+  timelineColorTag?: string | null;
+};
+
 interface TimelineCardGeometry {
   positionX: number;
   positionY: number;
@@ -54,11 +59,14 @@ export function TimelineNode({
   readOnly = false,
 }: TimelineNodeProps): JSX.Element {
   const { item, startPx, endPx } = placed;
+  const projectedNode = item.node as TimelineProjectedGraphNode;
   const spanWidth = Math.max(endPx - startPx, 0);
   const laneOffset = 68 + placed.laneIndex * 78;
   const summary = item.node.summary.trim();
   const category = deriveTimelineCategory(item.node);
   const categoryStyle = categoryDefinition(category);
+  const placeName = projectedNode.timelinePlaceName ?? item.node.place?.names[0]?.name ?? null;
+  const colorTag = projectedNode.timelineColorTag ?? category;
   const positionX = 0;
   const positionY = item.presentation.offsetY;
   const cardWidth = clampNumber(item.presentation.width || DEFAULT_TIMELINE_CARD_WIDTH_PX, MIN_CARD_WIDTH, MAX_CARD_WIDTH);
@@ -236,7 +244,7 @@ export function TimelineNode({
           className="timeline-card-contract"
           data-testid={`timeline-card-${item.graphNodeId}`}
           data-entity-type={item.node.entityType}
-          data-color-tag={category}
+          data-color-tag={colorTag}
           style={{ display: "contents" }}
         >
           <span
@@ -244,12 +252,25 @@ export function TimelineNode({
             title={categoryStyle.label}
             style={{ backgroundColor: item.presentation.style.dotColour ?? categoryStyle.color }}
           />
+          <span
+            className="timeline-node-entity-icon"
+            data-testid={`timeline-node-entity-icon-${item.graphNodeId}`}
+            aria-label={`${item.node.entityType} entity`}
+            title={item.node.entityType}
+          >
+            {entityTypeGlyph(item.node.entityType)}
+          </span>
           <span className="timeline-node-date">
             {item.relationCompanion ? "linked context" : formatItemDate(item)}
           </span>
           <span className="timeline-node-title">{item.node.title}</span>
-          {item.node.place?.names[0]?.name && (
-            <span className="timeline-node-place">{item.node.place.names[0].name}</span>
+          {placeName && (
+            <span
+              className="timeline-node-place"
+              data-testid={`timeline-node-place-${item.graphNodeId}`}
+            >
+              {placeName}
+            </span>
           )}
           {(lod === "detail" || lod === "label") && summary && (
             <span
@@ -292,6 +313,26 @@ export function TimelineNode({
       )}
     </div>
   );
+}
+
+function entityTypeGlyph(entityType: GraphNode["entityType"]): string {
+  switch (entityType) {
+    case "Event": return "◆";
+    case "Place": return "⌖";
+    case "Figure":
+    case "People": return "●";
+    case "Institution": return "▣";
+    case "Source": return "▤";
+    case "Claim": return "?";
+    case "Interpretation": return "≈";
+    case "Archetype":
+    case "Dynamic":
+    case "PsychoidOperator": return "✦";
+    case "Myth": return "◈";
+    case "Work": return "▱";
+    case "Constellation": return "⠿";
+    default: return "•";
+  }
 }
 
 function clampNumber(value: number, min: number, max: number): number {
