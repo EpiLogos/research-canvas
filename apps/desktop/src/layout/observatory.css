@@ -76,7 +76,7 @@
   position: fixed;
   inset: 0;
   display: grid;
-  grid-template-rows: 46px minmax(0, 1fr) 26px;
+  grid-template-rows: 46px 44px minmax(0, 1fr) 26px;
   background: radial-gradient(130% 90% at 50% -10%, #10161f 0%, var(--ob-bg) 58%);
   color: var(--ob-ink);
   font-family: var(--ob-sans);

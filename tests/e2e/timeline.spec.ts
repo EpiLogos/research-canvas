@@ -55,6 +55,12 @@ test("timeline surface renders the active constellation walk and canonical contr
 
   const surface = page.getByTestId("timeline-surface");
   await expect(surface).toBeVisible({ timeout: 20_000 });
+  // The shell has four vertical regions (title bar, pipeline rail, Stage,
+  // status). Guard the Stage geometry itself so a grid-row regression
+  // cannot make a technically mounted Timeline invisible below the fold.
+  const stageBox = await page.getByTestId("shell-stage").boundingBox();
+  expect(stageBox).not.toBeNull();
+  expect(stageBox!.height).toBeGreaterThan(300);
   await expect(page.getByTestId("timeline-earthbound-track")).toBeVisible();
   await expect(page.getByTestId("timeline-axis")).toBeVisible();
   await expect(page.getByTestId("timeline-zoom-out")).toBeVisible();
@@ -101,7 +107,7 @@ test("timeline surface renders the active constellation walk and canonical contr
     markerBox!.x + markerBox!.width / 2,
     markerBox!.y + markerBox!.height / 2,
   );
-  await page.mouse.wheel(0, -500);
+  await page.mouse.wheel(0, -600);
   await expect(page.getByTestId("timeline-tier")).toHaveText("century", { timeout: 15_000 });
 
   const mediciCard = page.getByTestId(`timeline-card-${MEDICI}`);
