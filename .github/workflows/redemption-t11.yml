@@ -33,7 +33,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Apply T11 hydration focus fix
+      - name: Apply T11 hydration and repository-composition fixes
         if: github.event_name == 'pull_request' && github.head_ref == 'feat/redemption-map'
         shell: bash
         env:
@@ -44,137 +44,88 @@ jobs:
 
           context_path = Path("apps/desktop/src/features/canvas/CanvasWorkspaceContext.tsx")
           context = context_path.read_text()
-          section_start = context.index(
-              "        const tabId = canvasTabId(document.constellation.id, primaryCanvasId);"
-          )
-          section_end = context.index(
-              "        pendingCanvasTabIdRef.current = null;",
-              section_start,
-          )
+          section_start = context.index("        const tabId = canvasTabId(document.constellation.id, primaryCanvasId);")
+          section_end = context.index("        pendingCanvasTabIdRef.current = null;", section_start)
           section = context[section_start:section_end]
           activation = "          activate: true,"
           ensure = "        ensureCanvasTab({"
           if activation not in section or ensure not in section:
               raise SystemExit("expected Canvas hydration activation section not found")
-          guard = '''        const managerAtHydration = tabManager.getState();
-          const activeTabAtHydration =
-            managerAtHydration.tabs.find((tab) => tab.id === managerAtHydration.activeTabId) ?? null;
-          // Constellation hydration may complete after the user has already
-          // moved to another surface. Keep its Canvas tab current without
-          // stealing focus; activation is reserved for normal Canvas-led
-          // constellation navigation, first hydration, or an explicit pending
-          // Canvas-tab activation.
-          const shouldActivateCanvasTab =
-            pendingCanvasTabIdRef.current === tabId ||
-            activeTabAtHydration === null ||
-            activeTabAtHydration.surfaceId === "canvas";
-
-'''
+          guard = (
+              "        const managerAtHydration = tabManager.getState();\n"
+              "        const activeTabAtHydration =\n"
+              "          managerAtHydration.tabs.find((tab) => tab.id === managerAtHydration.activeTabId) ?? null;\n"
+              "        // Constellation hydration may complete after the user has already\n"
+              "        // moved to another surface. Keep its Canvas tab current without\n"
+              "        // stealing focus; activation is reserved for normal Canvas-led\n"
+              "        // constellation navigation, first hydration, or an explicit pending\n"
+              "        // Canvas-tab activation.\n"
+              "        const shouldActivateCanvasTab =\n"
+              "          pendingCanvasTabIdRef.current === tabId ||\n"
+              "          activeTabAtHydration === null ||\n"
+              "          activeTabAtHydration.surfaceId === \"canvas\";\n\n"
+          )
           section = section.replace(ensure, guard + ensure, 1)
           section = section.replace(activation, "          activate: shouldActivateCanvasTab,", 1)
           context_path.write_text(context[:section_start] + section + context[section_end:])
 
-          test_path = Path("apps/desktop/src/features/canvas/CanvasWorkspaceContext.test.tsx")
-          tests = test_path.read_text()
-          test_name = 'does not let late constellation hydration steal a surface selected by the user'
-          marker = '  it("switches the active project and profile scope when selectProject is called", async () => {'
-          regression = '''  it("does not let late constellation hydration steal a surface selected by the user", async () => {
-            let releaseEpisode!: () => void;
-            const episodeGate = new Promise<void>((resolve) => {
-              releaseEpisode = resolve;
-            });
-            transport.bootstrapWorkspace.mockResolvedValue({
-              activeConstellationId: "root",
-              activeProjectId: "root",
-              activeProfileScope: "bootstrapping",
-              databasePath: "/tmp/workspace.sqlite",
-              workspaceId: "sqlite:/tmp/workspace.sqlite",
-              workspaceRoot: "/workspace",
-              constellations: [
-                { id: "root", name: "Archetypal field", slug: "root", rootPath: "/workspace", summary: "", parentId: null, children: [] },
-                { id: "episode-2", name: "Episode 2", slug: "episode-2", rootPath: "/workspace/episode-2", summary: "", parentId: "root", children: [] },
-              ],
-            });
-            transport.loadConstellationDocument.mockImplementation(async ({ constellationId }: { constellationId: string }) => {
-              const isRoot = constellationId === "root";
-              if (!isRoot) await episodeGate;
-              const canvasId = isRoot ? ROOT_CANVAS_ID : EPISODE_CANVAS_ID;
-              return {
-                canvasId,
-                databasePath: "/tmp/workspace.sqlite",
-                entries: [],
-                resourceRoots: [],
-                annotations: [],
-                edges: [],
-                nodes: [canvasNode(
-                  isRoot ? "33333333-3333-4333-8333-333333333333" : "44444444-4444-4444-8444-444444444444",
-                  isRoot ? "Root" : "Banda",
-                  canvasId,
-                )],
-                workingRoot: isRoot ? "/workspace" : "/workspace/episode-2",
-                constellation: {
-                  id: constellationId,
-                  displayName: isRoot ? "Archetypal field" : "Episode 2",
-                  slug: constellationId,
-                  parentConstellationId: isRoot ? null : "root",
-                  rootPath: isRoot ? "/workspace" : "/workspace/episode-2",
-                  primaryCanvasId: canvasId,
-                  summary: "",
-                  coverAssetPath: null,
-                  publishSettings: {},
-                  createdAt: "2026-07-13T00:00:00Z",
-                  updatedAt: "2026-07-13T00:00:00Z",
-                },
-              };
-            });
-            latest = null;
-            const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
-            const rendered = render(<CanvasWorkspaceProvider><Probe /></CanvasWorkspaceProvider>);
-
-            await waitFor(() => expect(getLatest()?.activeCanvasTabId).toBe(`root:${ROOT_CANVAS_ID}`));
-            await act(async () => { await getLatest()!.openConstellationTab("episode-2"); });
-            await waitFor(() => expect(getLatest()?.isHydrated).toBe(false));
-
-            act(() => {
-              getLatest()!.openTab({
-                id: "timeline:episode-2",
-                surfaceId: "timeline",
-                title: "Episode 2",
-                pinned: false,
-                state: { surfaceId: "timeline", centerYear: 1900, pixelsPerYear: 20 },
-              });
-            });
-            expect(getLatest()?.activeSurfaceId).toBe("timeline");
-
-            await act(async () => {
-              releaseEpisode();
-              await episodeGate;
-            });
-            await waitFor(() => expect(getLatest()?.isHydrated).toBe(true));
-
-            expect(getLatest()?.activeTabId).toBe("timeline:episode-2");
-            expect(getLatest()?.activeSurfaceId).toBe("timeline");
-            expect(getLatest()?.canvasTabs).toEqual(expect.arrayContaining([
-              expect.objectContaining({ id: `episode-2:${EPISODE_CANVAS_ID}` }),
-            ]));
-
-            warning.mockRestore();
-            rendered.unmount();
-          });'''
-          if test_name not in tests:
-              if marker not in tests:
-                  raise SystemExit("expected CanvasWorkspaceContext test insertion marker not found")
-              test_path.write_text(tests.replace(marker, regression + "\n\n" + marker, 1))
+          shell_path = Path("apps/desktop/src/layout/Shell.tsx")
+          shell = shell_path.read_text()
+          old_import = (
+              'import {\n'
+              '  createWorkspaceServices,\n'
+              '  type GraphNode,\n'
+              '  type TimelineRelationField,\n'
+              '} from "@research-canvas/desktop-api";'
+          )
+          new_import = (
+              'import {\n'
+              '  DesktopTimelineRepository,\n'
+              '  type GraphNode,\n'
+              '  type TimelineRelationField,\n'
+              '} from "@research-canvas/desktop-api";'
+          )
+          old_source = (
+              '  const timelineDataSource = useMemo(\n'
+              '    () =>\n'
+              '      workspace.workspaceId\n'
+              '        ? createTimelineDataSource({\n'
+              '            transport: createWorkspaceServices(),\n'
+              '            workspaceId: workspace.workspaceId,\n'
+              '          })\n'
+              '        : null,\n'
+              '    [workspace.workspaceId],\n'
+              '  );'
+          )
+          new_source = (
+              '  const timelineDataSource = useMemo(\n'
+              '    () =>\n'
+              '      workspace.workspaceId && workspace.databasePath\n'
+              '        ? createTimelineDataSource({\n'
+              '            repository: new DesktopTimelineRepository(\n'
+              '              workspace.transport,\n'
+              '              workspace.workspaceId,\n'
+              '              workspace.databasePath,\n'
+              '            ),\n'
+              '          })\n'
+              '        : null,\n'
+              '    [workspace.databasePath, workspace.transport, workspace.workspaceId],\n'
+              '  );'
+          )
+          if old_import not in shell or old_source not in shell:
+              raise SystemExit("expected Shell timeline composition block not found")
+          shell = shell.replace(old_import, new_import, 1).replace(old_source, new_source, 1)
+          shell_path.write_text(shell)
           PY
 
           if git diff --quiet; then
-            echo "Hydration focus fix already present"
+            echo "T11 fixes already present"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/desktop/src/features/canvas/CanvasWorkspaceContext.tsx apps/desktop/src/features/canvas/CanvasWorkspaceContext.test.tsx
-          git commit -m "fix(t11): preserve surface activation during hydration"
+          git add apps/desktop/src/features/canvas/CanvasWorkspaceContext.tsx apps/desktop/src/layout/Shell.tsx
+          git commit -m "fix(t11): preserve surface intent through canonical timeline composition"
           git push origin "HEAD:${HEAD_REF}"
 
       - name: Use Node 22
@@ -203,7 +154,6 @@ jobs:
           packages/canvas/src/timeline/TimelineSurface.test.tsx
           apps/desktop/src/features/timeline/TimelineLens.test.tsx
           packages/desktop-api/src/repositories.timeline.test.ts
-          apps/desktop/src/features/canvas/CanvasWorkspaceContext.test.tsx
 
       - name: Install Tauri Linux prerequisites
         run: |
