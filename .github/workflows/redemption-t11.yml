@@ -4,7 +4,10 @@ on:
   pull_request:
     paths:
       - ".github/workflows/redemption-t11.yml"
+      - "apps/desktop/src/features/canvas/CanvasWorkspaceContext.tsx"
+      - "apps/desktop/src/features/canvas/CanvasWorkspaceContext.test.tsx"
       - "apps/desktop/src/features/timeline/**"
+      - "apps/desktop/src/layout/Shell.tsx"
       - "apps/desktop/src/layout/Stage.tsx"
       - "packages/canvas/src/timeline/**"
       - "packages/canvas/src/index.ts"
@@ -19,9 +22,6 @@ concurrency:
   group: redemption-t11-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: write
-
 jobs:
   t11:
     name: typecheck + timeline contract + e2e
@@ -30,103 +30,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-
-      - name: Apply T11 hydration and repository-composition fixes
-        if: github.event_name == 'pull_request' && github.head_ref == 'feat/redemption-map'
-        shell: bash
-        env:
-          HEAD_REF: ${{ github.head_ref }}
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          context_path = Path("apps/desktop/src/features/canvas/CanvasWorkspaceContext.tsx")
-          context = context_path.read_text()
-          section_start = context.index("        const tabId = canvasTabId(document.constellation.id, primaryCanvasId);")
-          section_end = context.index("        pendingCanvasTabIdRef.current = null;", section_start)
-          section = context[section_start:section_end]
-          activation = "          activate: true,"
-          ensure = "        ensureCanvasTab({"
-          if activation not in section or ensure not in section:
-              raise SystemExit("expected Canvas hydration activation section not found")
-          guard = (
-              "        const managerAtHydration = tabManager.getState();\n"
-              "        const activeTabAtHydration =\n"
-              "          managerAtHydration.tabs.find((tab) => tab.id === managerAtHydration.activeTabId) ?? null;\n"
-              "        // Constellation hydration may complete after the user has already\n"
-              "        // moved to another surface. Keep its Canvas tab current without\n"
-              "        // stealing focus; activation is reserved for normal Canvas-led\n"
-              "        // constellation navigation, first hydration, or an explicit pending\n"
-              "        // Canvas-tab activation.\n"
-              "        const shouldActivateCanvasTab =\n"
-              "          pendingCanvasTabIdRef.current === tabId ||\n"
-              "          activeTabAtHydration === null ||\n"
-              "          activeTabAtHydration.surfaceId === \"canvas\";\n\n"
-          )
-          section = section.replace(ensure, guard + ensure, 1)
-          section = section.replace(activation, "          activate: shouldActivateCanvasTab,", 1)
-          context_path.write_text(context[:section_start] + section + context[section_end:])
-
-          shell_path = Path("apps/desktop/src/layout/Shell.tsx")
-          shell = shell_path.read_text()
-          old_import = (
-              'import {\n'
-              '  createWorkspaceServices,\n'
-              '  type GraphNode,\n'
-              '  type TimelineRelationField,\n'
-              '} from "@research-canvas/desktop-api";'
-          )
-          new_import = (
-              'import {\n'
-              '  DesktopTimelineRepository,\n'
-              '  type GraphNode,\n'
-              '  type TimelineRelationField,\n'
-              '} from "@research-canvas/desktop-api";'
-          )
-          old_source = (
-              '  const timelineDataSource = useMemo(\n'
-              '    () =>\n'
-              '      workspace.workspaceId\n'
-              '        ? createTimelineDataSource({\n'
-              '            transport: createWorkspaceServices(),\n'
-              '            workspaceId: workspace.workspaceId,\n'
-              '          })\n'
-              '        : null,\n'
-              '    [workspace.workspaceId],\n'
-              '  );'
-          )
-          new_source = (
-              '  const timelineDataSource = useMemo(\n'
-              '    () =>\n'
-              '      workspace.workspaceId && workspace.databasePath\n'
-              '        ? createTimelineDataSource({\n'
-              '            repository: new DesktopTimelineRepository(\n'
-              '              workspace.transport,\n'
-              '              workspace.workspaceId,\n'
-              '              workspace.databasePath,\n'
-              '            ),\n'
-              '          })\n'
-              '        : null,\n'
-              '    [workspace.databasePath, workspace.transport, workspace.workspaceId],\n'
-              '  );'
-          )
-          if old_import not in shell or old_source not in shell:
-              raise SystemExit("expected Shell timeline composition block not found")
-          shell = shell.replace(old_import, new_import, 1).replace(old_source, new_source, 1)
-          shell_path.write_text(shell)
-          PY
-
-          if git diff --quiet; then
-            echo "T11 fixes already present"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/desktop/src/features/canvas/CanvasWorkspaceContext.tsx apps/desktop/src/layout/Shell.tsx
-          git commit -m "fix(t11): preserve surface intent through canonical timeline composition"
-          git push origin "HEAD:${HEAD_REF}"
 
       - name: Use Node 22
         uses: actions/setup-node@v4
@@ -151,6 +54,7 @@ jobs:
       - name: Run T11 unit and repository contract tests
         run: >-
           pnpm vitest run
+          apps/desktop/src/features/canvas/CanvasWorkspaceContext.test.tsx
           packages/canvas/src/timeline/TimelineSurface.test.tsx
           apps/desktop/src/features/timeline/TimelineLens.test.tsx
           packages/desktop-api/src/repositories.timeline.test.ts
