@@ -44,18 +44,19 @@ jobs:
 
           context_path = Path("apps/desktop/src/features/canvas/CanvasWorkspaceContext.tsx")
           context = context_path.read_text()
-          old = '''        ensureCanvasTab({
-            id: tabId,
-            constellationId: document.constellation.id,
-            canvasId: primaryCanvasId,
-            title: document.constellation.displayName,
-            pinned: document.constellation.parentConstellationId === null,
-            viewport: persistedViewport ?? undefined,
-            selectedNodeId: rememberedTab?.selectedNodeId ?? undefined,
-            selectedEdgeId: rememberedTab?.selectedEdgeId ?? undefined,
-            activate: true,
-          });'''
-          new = '''        const managerAtHydration = tabManager.getState();
+          section_start = context.index(
+              "        const tabId = canvasTabId(document.constellation.id, primaryCanvasId);"
+          )
+          section_end = context.index(
+              "        pendingCanvasTabIdRef.current = null;",
+              section_start,
+          )
+          section = context[section_start:section_end]
+          activation = "          activate: true,"
+          ensure = "        ensureCanvasTab({"
+          if activation not in section or ensure not in section:
+              raise SystemExit("expected Canvas hydration activation section not found")
+          guard = '''        const managerAtHydration = tabManager.getState();
           const activeTabAtHydration =
             managerAtHydration.tabs.find((tab) => tab.id === managerAtHydration.activeTabId) ?? null;
           // Constellation hydration may complete after the user has already
@@ -68,20 +69,10 @@ jobs:
             activeTabAtHydration === null ||
             activeTabAtHydration.surfaceId === "canvas";
 
-          ensureCanvasTab({
-            id: tabId,
-            constellationId: document.constellation.id,
-            canvasId: primaryCanvasId,
-            title: document.constellation.displayName,
-            pinned: document.constellation.parentConstellationId === null,
-            viewport: persistedViewport ?? undefined,
-            selectedNodeId: rememberedTab?.selectedNodeId ?? undefined,
-            selectedEdgeId: rememberedTab?.selectedEdgeId ?? undefined,
-            activate: shouldActivateCanvasTab,
-          });'''
-          if old not in context:
-              raise SystemExit("expected Canvas hydration activation block not found")
-          context_path.write_text(context.replace(old, new, 1))
+'''
+          section = section.replace(ensure, guard + ensure, 1)
+          section = section.replace(activation, "          activate: shouldActivateCanvasTab,", 1)
+          context_path.write_text(context[:section_start] + section + context[section_end:])
 
           test_path = Path("apps/desktop/src/features/canvas/CanvasWorkspaceContext.test.tsx")
           tests = test_path.read_text()
