@@ -72,8 +72,8 @@ describe("DesktopTimelineRepository", () => {
     const transport = {
       loadConstellationDocument: vi.fn(async () => ({
         nodes: [
-          { id: event.graphNodeId, graphNodeId: event.graphNodeId, graph: event },
-          { id: place.graphNodeId, graphNodeId: place.graphNodeId, graph: place },
+          { id: event.graphNodeId, graphNodeId: event.graphNodeId },
+          { id: place.graphNodeId, graphNodeId: place.graphNodeId },
           { id: archetype.graphNodeId, graphNodeId: archetype.graphNodeId, graph: archetype },
         ],
       })),
@@ -118,6 +118,7 @@ describe("DesktopTimelineRepository", () => {
       }),
     ]);
     expect(walk.earthboundNodes.some((node) => node.graphNodeId === outside.graphNodeId)).toBe(false);
+    expect(transport.readGraphNode).not.toHaveBeenCalled();
     expect(walk.archetypeLayers).toEqual([
       {
         archetypeId: "archetype-shadow",

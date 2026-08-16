@@ -381,14 +381,13 @@ export class DesktopTimelineRepository implements TimelineRepository {
     const archetypeLayers = [] as TimelineWalk["archetypeLayers"];
     for (const canvasNode of document.nodes) {
       const graphNodeId = canvasNode.graphNodeId ?? canvasNode.id;
-      let graph = canvasNode.graph ?? null;
-      if (!graph) {
-        try {
-          graph = await this.loadNode(graphNodeId);
-        } catch {
-          graph = null;
-        }
-      }
+      // The canonical walk must remain local-first. The timeline view already
+      // contains the graph records needed for earthbound/archetype projection;
+      // falling back to readGraphNode here silently reintroduced a Neo4j
+      // dependency and delayed the entire walk behind one remote read per
+      // Canvas node. Explicit reader/open-node behaviour may still use
+      // loadNode after the walk has rendered.
+      const graph = canvasNode.graph ?? nodesById.get(graphNodeId) ?? null;
       if (!graph || (graph.isArchetype !== true && graph.entityType !== "Archetype")) continue;
 
       let expansion: ExpandedTimelineNode;
