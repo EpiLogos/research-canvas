@@ -21,7 +21,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: feat/redemption-map
-          fetch-depth: 3
 
       - name: Apply bounded shell + T11 acceptance correction
         shell: bash
@@ -59,11 +58,8 @@ jobs:
           spec.write_text(text)
           PY
 
-          # Restore the last permanent verifier from before the temporary
-          # patch-executor commits; only the product + acceptance changes remain.
-          git show c4706abaaf8a7f523d1e9f7a3ccd85dba1f9ecbb:.github/workflows/redemption-t11.yml > .github/workflows/redemption-t11.yml
           git config user.name "research-canvas-redemption-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add apps/desktop/src/layout/observatory.css tests/e2e/timeline.spec.ts .github/workflows/redemption-t11.yml
+          git add apps/desktop/src/layout/observatory.css tests/e2e/timeline.spec.ts
           git commit -m "fix(timeline): restore usable stage geometry"
           git push origin HEAD:feat/redemption-map
