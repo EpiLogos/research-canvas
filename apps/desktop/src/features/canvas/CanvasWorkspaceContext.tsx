@@ -532,6 +532,19 @@ export function CanvasWorkspaceProvider({
           setActiveCanvasId,
           primaryCanvasId
         );
+        const managerAtHydration = tabManager.getState();
+        const activeTabAtHydration =
+          managerAtHydration.tabs.find((tab) => tab.id === managerAtHydration.activeTabId) ?? null;
+        // Constellation hydration may complete after the user has already
+        // moved to another surface. Keep its Canvas tab current without
+        // stealing focus; activation is reserved for normal Canvas-led
+        // constellation navigation, first hydration, or an explicit pending
+        // Canvas-tab activation.
+        const shouldActivateCanvasTab =
+          pendingCanvasTabIdRef.current === tabId ||
+          activeTabAtHydration === null ||
+          activeTabAtHydration.surfaceId === "canvas";
+
         ensureCanvasTab({
           id: tabId,
           constellationId: document.constellation.id,
@@ -541,7 +554,7 @@ export function CanvasWorkspaceProvider({
           viewport: persistedViewport ?? undefined,
           selectedNodeId: rememberedTab?.selectedNodeId ?? undefined,
           selectedEdgeId: rememberedTab?.selectedEdgeId ?? undefined,
-          activate: true,
+          activate: shouldActivateCanvasTab,
         });
         pendingCanvasTabIdRef.current = null;
         setErrorMessage(null);

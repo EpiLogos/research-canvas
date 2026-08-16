@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
-  createWorkspaceServices,
+  DesktopTimelineRepository,
   type GraphNode,
   type TimelineRelationField,
 } from "@research-canvas/desktop-api";
@@ -152,13 +152,16 @@ export function Shell() {
 
   const timelineDataSource = useMemo(
     () =>
-      workspace.workspaceId
+      workspace.workspaceId && workspace.databasePath
         ? createTimelineDataSource({
-            transport: createWorkspaceServices(),
-            workspaceId: workspace.workspaceId,
+            repository: new DesktopTimelineRepository(
+              workspace.transport,
+              workspace.workspaceId,
+              workspace.databasePath,
+            ),
           })
         : null,
-    [workspace.workspaceId],
+    [workspace.databasePath, workspace.transport, workspace.workspaceId],
   );
   const rememberedTimelineViewport = workspace.workspaceId
     ? timelineViewports.current.get(workspace.workspaceId)
