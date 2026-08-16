@@ -48,6 +48,7 @@ export function TimelineSurface({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const selectedNodeIdRef = useRef(initialState.selectedNodeId);
   const viewStateRef = useRef(initialState);
+  const pendingControlledViewportRef = useRef<{ centerYear: number; pixelsPerYear: number } | null>(null);
   const clickTimerRef = useRef<number | null>(null);
   const [widthPx, setWidthPx] = useState(1000);
   const [viewState, setViewState] = useState(initialState);
@@ -135,15 +136,32 @@ export function TimelineSurface({
   }), [dataSource, earthboundById]);
 
   const setControlledViewport = useCallback((centerYear: number, pixelsPerYear: number) => {
-    publishState({
+    const target = {
       centerYear,
       pixelsPerYear: clampPixelsPerYear(pixelsPerYear),
+    };
+    // The old rich-lens instance can publish its previous viewport while React
+    // is replacing it for an explicit shell control (zoom/fit). Remember the
+    // requested target first so that stale settlement cannot undo the user's
+    // command. The replacement lens echoes its target after hydration, at which
+    // point direct manipulation becomes authoritative again.
+    pendingControlledViewportRef.current = target;
+    publishState({
+      ...target,
       selectedNodeId: selectedNodeIdRef.current,
     });
     setLensRevision((revision) => revision + 1);
   }, [publishState]);
 
   const handleLensViewportChange = useCallback((viewport: { centerYear: number; pixelsPerYear: number }) => {
+    const pending = pendingControlledViewportRef.current;
+    if (pending) {
+      if (sameViewport(viewport, pending)) {
+        pendingControlledViewportRef.current = null;
+      } else {
+        return;
+      }
+    }
     publishState({
       ...viewport,
       selectedNodeId: selectedNodeIdRef.current,
@@ -339,4 +357,11 @@ function yearFromTemporal(value: string | null): number | null {
 
 function clampPixelsPerYear(value: number): number {
   return Math.min(MAX_PIXELS_PER_YEAR, Math.max(MIN_PIXELS_PER_YEAR, value));
+}
+
+function sameViewport(
+  left: { centerYear: number; pixelsPerYear: number },
+  right: { centerYear: number; pixelsPerYear: number },
+): boolean {
+  return left.centerYear === right.centerYear && left.pixelsPerYear === right.pixelsPerYear;
 }
