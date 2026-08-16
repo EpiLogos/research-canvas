@@ -47,6 +47,7 @@ export function TimelineSurface({
 }: TimelineSurfaceProps): JSX.Element {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const selectedNodeIdRef = useRef(initialState.selectedNodeId);
+  const viewStateRef = useRef(initialState);
   const clickTimerRef = useRef<number | null>(null);
   const [widthPx, setWidthPx] = useState(1000);
   const [viewState, setViewState] = useState(initialState);
@@ -54,6 +55,15 @@ export function TimelineSurface({
   const [lensRevision, setLensRevision] = useState(0);
 
   const publishState = useCallback((next: TimelineViewState) => {
+    const current = viewStateRef.current;
+    if (
+      current.centerYear === next.centerYear
+      && current.pixelsPerYear === next.pixelsPerYear
+      && current.selectedNodeId === next.selectedNodeId
+    ) {
+      return;
+    }
+    viewStateRef.current = next;
     selectedNodeIdRef.current = next.selectedNodeId;
     setViewState(next);
     onViewStateChange?.(next);
@@ -133,6 +143,13 @@ export function TimelineSurface({
     setLensRevision((revision) => revision + 1);
   }, [publishState]);
 
+  const handleLensViewportChange = useCallback((viewport: { centerYear: number; pixelsPerYear: number }) => {
+    publishState({
+      ...viewport,
+      selectedNodeId: selectedNodeIdRef.current,
+    });
+  }, [publishState]);
+
   const fit = useCallback(() => {
     // An empty in-memory walk can mean either a genuinely empty constellation
     // or simply that the canonical repository read has not resolved yet. Fit
@@ -165,11 +182,11 @@ export function TimelineSurface({
     if (clickTimerRef.current !== null) window.clearTimeout(clickTimerRef.current);
     clickTimerRef.current = window.setTimeout(() => {
       clickTimerRef.current = null;
-      const next = { ...viewState, selectedNodeId: graphNodeId };
+      const next = { ...viewStateRef.current, selectedNodeId: graphNodeId };
       publishState(next);
       void onOpenCanvasNode(graphNodeId);
     }, SINGLE_CLICK_DELAY_MS);
-  }, [onOpenCanvasNode, publishState, viewState]);
+  }, [onOpenCanvasNode, publishState]);
 
   const cancelPendingSingleClick = useCallback(() => {
     if (clickTimerRef.current !== null) {
@@ -287,12 +304,7 @@ export function TimelineSurface({
             centerYear: viewState.centerYear,
             pixelsPerYear: viewState.pixelsPerYear,
           }}
-          onViewportChange={(viewport) => {
-            publishState({
-              ...viewport,
-              selectedNodeId: selectedNodeIdRef.current,
-            });
-          }}
+          onViewportChange={handleLensViewportChange}
         />
       </div>
     </div>
