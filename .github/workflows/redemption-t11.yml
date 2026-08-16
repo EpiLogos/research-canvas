@@ -22,9 +22,6 @@ concurrency:
   group: redemption-t11-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: write
-
 jobs:
   t11:
     name: typecheck + timeline contract + e2e
@@ -33,61 +30,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-
-      - name: Apply local-first repository fix once
-        if: github.event_name == 'pull_request' && github.head_ref == 'feat/redemption-map'
-        shell: bash
-        env:
-          HEAD_REF: ${{ github.head_ref }}
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          repo_path = Path("packages/desktop-api/src/repositories.ts")
-          source = repo_path.read_text()
-          if "falling back to readGraphNode here silently reintroduced a Neo4j" not in source:
-            start = source.index("      let graph = canvasNode.graph ?? null;")
-            final = '      if (!graph || (graph.isArchetype !== true && graph.entityType !== "Archetype")) continue;'
-            end = source.index(final, start) + len(final)
-            replacement = (
-              "      // The canonical walk must remain local-first. The timeline view already\n"
-              "      // contains the graph records needed for earthbound/archetype projection;\n"
-              "      // falling back to readGraphNode here silently reintroduced a Neo4j\n"
-              "      // dependency and delayed the entire walk behind one remote read per\n"
-              "      // Canvas node. Explicit reader/open-node behaviour may still use\n"
-              "      // loadNode after the walk has rendered.\n"
-              "      const graph = canvasNode.graph ?? nodesById.get(graphNodeId) ?? null;\n"
-              "      if (!graph || (graph.isArchetype !== true && graph.entityType !== \"Archetype\")) continue;"
-            )
-            repo_path.write_text(source[:start] + replacement + source[end:])
-
-          test_path = Path("packages/desktop-api/src/repositories.timeline.test.ts")
-          tests = test_path.read_text()
-          tests = tests.replace(
-            '{ id: event.graphNodeId, graphNodeId: event.graphNodeId, graph: event },\n          { id: place.graphNodeId, graphNodeId: place.graphNodeId, graph: place },',
-            '{ id: event.graphNodeId, graphNodeId: event.graphNodeId },\n          { id: place.graphNodeId, graphNodeId: place.graphNodeId },',
-            1,
-          )
-          assertion = '    expect(transport.readGraphNode).not.toHaveBeenCalled();\n'
-          if assertion not in tests:
-            marker = '    expect(walk.archetypeLayers).toEqual([\n'
-            if marker not in tests:
-              raise SystemExit("expected timeline repository assertion marker not found")
-            tests = tests.replace(marker, assertion + marker, 1)
-          test_path.write_text(tests)
-          PY
-
-          if git diff --quiet; then
-            echo "Local-first Timeline repository fix already present"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packages/desktop-api/src/repositories.ts packages/desktop-api/src/repositories.timeline.test.ts
-          git commit -m "fix(t11): keep canonical timeline walk local-first"
-          git push origin "HEAD:${HEAD_REF}"
 
       - name: Use Node 22
         uses: actions/setup-node@v4
@@ -100,6 +42,10 @@ jobs:
           corepack prepare pnpm@10.25.0 --activate
 
       - name: Install workspace for verification
+        # The long-lived redemption branch currently has pre-existing lockfile
+        # importer drift (`packages/canvas` declares viewers but its importer
+        # omits it). T11 must still execute mechanically; lock repair is kept
+        # separate from this surface ticket instead of silently blocking it.
         run: pnpm install --no-frozen-lockfile
 
       - name: Typecheck workspace
@@ -128,6 +74,11 @@ jobs:
             librsvg2-dev
 
       - name: Prebuild browser bridge
+        # apps/desktop/scripts/dev.mjs starts Vite and the Rust bridge together.
+        # On a fresh runner Vite is ready long before Cargo's first build, so
+        # Playwright can race the workspace bootstrap and test a loading shell
+        # instead of Surface #2. Prebuilding makes the dev bridge startup
+        # deterministic without changing the product path under test.
         shell: bash
         run: |
           set -o pipefail
