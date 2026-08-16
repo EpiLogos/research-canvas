@@ -73,7 +73,9 @@ test("timeline surface renders the active constellation walk and canonical contr
   await expect(page.getByTestId(`timeline-node-${MEDICI}`)).toBeAttached({ timeout: 15_000 });
 
   // Exercise a real zoom from the global overview, then Fit the active
-  // constellation so its ordinary card-level representation is in view.
+  // constellation. Historical Forms spans more than four millennia, so the
+  // mature Timeline correctly returns to its panoramic millennium tier rather
+  // than trying to force every stop into a full-size card.
   await page.getByTestId("timeline-zoom-in").click();
   await expect(surface).toBeVisible();
   await fit.click();
@@ -83,8 +85,26 @@ test("timeline surface renders the active constellation walk and canonical contr
   await expect(page.getByTestId("timeline-walk-stops").locator("li")).not.toHaveCount(0);
   expect(external).toEqual([]);
 
-  const mediciCard = page.getByTestId(`timeline-card-${MEDICI}`);
   const mediciNode = page.getByTestId(`timeline-node-${MEDICI}`);
+  const mediciMarker = page.getByTestId(`timeline-node-marker-${MEDICI}`);
+  await expect(page.getByTestId("timeline-tier")).toHaveText("millennium");
+  await expect(mediciNode).toHaveAttribute("data-lod", "marker");
+  await expect(mediciMarker).toBeVisible();
+
+  // Semantic zoom is a real Timeline capability, not an acceptance loophole:
+  // zoom around the fitted Medici marker with the user's wheel gesture. The
+  // anchor-preserving camera must keep that event in view as the renderer
+  // crosses into the card-bearing century tier.
+  const markerBox = await mediciMarker.boundingBox();
+  expect(markerBox).not.toBeNull();
+  await page.mouse.move(
+    markerBox!.x + markerBox!.width / 2,
+    markerBox!.y + markerBox!.height / 2,
+  );
+  await page.mouse.wheel(0, -500);
+  await expect(page.getByTestId("timeline-tier")).toHaveText("century", { timeout: 15_000 });
+
+  const mediciCard = page.getByTestId(`timeline-card-${MEDICI}`);
   await expect(mediciCard).toBeVisible({ timeout: 15_000 });
   await expect(mediciCard).toContainText("Medici Template");
   await expect(mediciNode).toBeAttached();
