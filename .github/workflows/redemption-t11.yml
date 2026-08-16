@@ -47,27 +47,21 @@ jobs:
 
           repo_path = Path("packages/desktop-api/src/repositories.ts")
           source = repo_path.read_text()
-          old = '''      let graph = canvasNode.graph ?? null;
-          if (!graph) {
-            try {
-              graph = await this.loadNode(graphNodeId);
-            } catch {
-              graph = null;
-            }
-          }
-          if (!graph || (graph.isArchetype !== true && graph.entityType !== "Archetype")) continue;'''
-          new = '''      // The canonical walk must remain local-first. The timeline view already
-          // contains the graph records needed for earthbound/archetype projection;
-          // falling back to readGraphNode here silently reintroduced a Neo4j
-          // dependency and delayed the entire walk behind one remote read per
-          // Canvas node. Explicit reader/open-node behaviour may still use
-          // loadNode after the walk has rendered.
-          const graph = canvasNode.graph ?? nodesById.get(graphNodeId) ?? null;
-          if (!graph || (graph.isArchetype !== true && graph.entityType !== "Archetype")) continue;'''
-          if old in source:
-            repo_path.write_text(source.replace(old, new, 1))
-          elif "falling back to readGraphNode here silently reintroduced a Neo4j" not in source:
-            raise SystemExit("expected DesktopTimelineRepository graph fallback not found")
+          if "falling back to readGraphNode here silently reintroduced a Neo4j" not in source:
+            start = source.index("      let graph = canvasNode.graph ?? null;")
+            final = '      if (!graph || (graph.isArchetype !== true && graph.entityType !== "Archetype")) continue;'
+            end = source.index(final, start) + len(final)
+            replacement = (
+              "      // The canonical walk must remain local-first. The timeline view already\n"
+              "      // contains the graph records needed for earthbound/archetype projection;\n"
+              "      // falling back to readGraphNode here silently reintroduced a Neo4j\n"
+              "      // dependency and delayed the entire walk behind one remote read per\n"
+              "      // Canvas node. Explicit reader/open-node behaviour may still use\n"
+              "      // loadNode after the walk has rendered.\n"
+              "      const graph = canvasNode.graph ?? nodesById.get(graphNodeId) ?? null;\n"
+              "      if (!graph || (graph.isArchetype !== true && graph.entityType !== \"Archetype\")) continue;"
+            )
+            repo_path.write_text(source[:start] + replacement + source[end:])
 
           test_path = Path("packages/desktop-api/src/repositories.timeline.test.ts")
           tests = test_path.read_text()
@@ -76,9 +70,9 @@ jobs:
             '{ id: event.graphNodeId, graphNodeId: event.graphNodeId },\n          { id: place.graphNodeId, graphNodeId: place.graphNodeId },',
             1,
           )
-          marker = '    expect(walk.archetypeLayers).toEqual([\n'
           assertion = '    expect(transport.readGraphNode).not.toHaveBeenCalled();\n'
           if assertion not in tests:
+            marker = '    expect(walk.archetypeLayers).toEqual([\n'
             if marker not in tests:
               raise SystemExit("expected timeline repository assertion marker not found")
             tests = tests.replace(marker, assertion + marker, 1)
