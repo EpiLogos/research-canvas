@@ -146,7 +146,7 @@ describe("TimelineSurface", () => {
     expect(screen.queryAllByTestId(/^timeline-card-/)).toHaveLength(0);
   });
 
-  test("zoom controls publish persisted camera state", async () => {
+  test("publishes only genuine camera changes without a lens feedback loop", async () => {
     const onViewStateChange = vi.fn();
     render(
       <TimelineSurface
@@ -160,8 +160,12 @@ describe("TimelineSurface", () => {
       />,
     );
 
+    await screen.findByTestId("timeline-card-event-1917");
+    expect(onViewStateChange).not.toHaveBeenCalled();
+
     fireEvent.click(screen.getByTestId("timeline-zoom-in"));
     await waitFor(() => {
+      expect(onViewStateChange).toHaveBeenCalledTimes(1);
       expect(onViewStateChange).toHaveBeenCalledWith(expect.objectContaining({
         centerYear: 1917,
         pixelsPerYear: 6.4,
