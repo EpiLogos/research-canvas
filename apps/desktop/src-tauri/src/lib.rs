@@ -16,6 +16,7 @@ pub mod commands {
     pub mod palace;
     pub mod palace_export;
     pub mod palace_graph;
+    pub mod places;
     pub mod scenes;
     pub mod search;
     pub mod street_view;
@@ -144,6 +145,7 @@ pub fn run() {
             commands::graph::archetypal_lighting_command,
             commands::graph::resonances_for_instance_command,
             commands::graph::load_canvas_view_command,
+            commands::places::list_located_graph_nodes_command,
             commands::timeline::load_timeline_view_command,
             commands::timeline::load_timeline_relation_field_command,
             commands::timeline::expand_timeline_node_command,
