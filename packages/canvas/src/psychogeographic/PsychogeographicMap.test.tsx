@@ -1,256 +1,305 @@
-import { describe, expect, test } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createLiveServicePolicy } from "@research-canvas/geography";
-import type { GeographyEdge } from "@research-canvas/schema";
+import type { LocatedGraphNode, PlacesRepository } from "@research-canvas/domain";
+import type { ArchetypalExpression, GeographyEdge, GraphNodeContract } from "@research-canvas/schema";
 
-import type { WalkStop } from "../scenes/walkAssembly";
 import { PsychogeographicMap } from "./PsychogeographicMap";
-import type { MapSurfaceRenderer } from "./renderer";
+import type {
+  ArchetypeExpressionRenderMarker,
+  MapSurfaceRenderer,
+  PlaceRenderMarker,
+} from "./renderer";
+
+const florence = locatedNode("place:florence", "Florence", 43.7714, 11.254);
+const istanbul = locatedNode("place:istanbul", "İstanbul", 41.0082, 28.9784);
+const relatedArchetype = graphNode("archetype:threshold", "Threshold", "Archetype");
+const expression: ArchetypalExpression = {
+  id: "expression:threshold-florence",
+  archetypeGraphNodeId: relatedArchetype.graphNodeId,
+  placeGraphNodeId: florence.graphNodeId,
+  timeWindow: { start: "1500", end: "1700", precision: "century" },
+  expressionKind: "visual",
+  sourceCoordinates: ["source:threshold"],
+};
 
 const vocLane: GeographyEdge = {
   id: "geo:voc",
   profileScope: "bootstrapping",
   mode: "shipping",
-  sourcePlaceId: "root-archetypal-field:place-amsterdam",
-  targetPlaceId: "root-archetypal-field:place-banda-islands",
-  label: "VOC shipping lane Amsterdam → Banda",
+  sourcePlaceId: "place:istanbul",
+  targetPlaceId: "place:florence",
+  label: "Mediterranean shipping lane",
   timeWindow: { start: "1602-03-20", end: "1621-05-08" },
   geometry: {
     type: "LineString",
-    coordinates: [
-      [4.8936, 52.3728],
-      [129.9, -4.55],
-    ],
+    coordinates: [[28.9784, 41.0082], [11.254, 43.7714]],
   },
   provenance: {
-    sourceRefs: [
-      {
-        artifactId: "antichrist-vault/episodes/2/Research/Report8.md",
-        unit: { kind: "text_span", startOffset: 100, endOffset: 200 },
-      },
-    ],
+    sourceRefs: [{ artifactId: "Research/Report8.md", unit: { kind: "text_span", startOffset: 100, endOffset: 200 } }],
   },
-  seedKey: "voc:amsterdam-to-banda",
+  seedKey: "voc:mediterranean",
   createdAt: "2026-08-10T00:00:00.000Z",
   updatedAt: "2026-08-10T00:00:00.000Z",
 };
 
-const rhodesLane: GeographyEdge = {
-  ...vocLane,
-  id: "geo:rhodes",
-  mode: "overland",
-  sourcePlaceId: "root-archetypal-field:place-oxford",
-  targetPlaceId: "root-archetypal-field:place-kimberley",
-  label: "Rhodes's Oxford ↔ Kimberley shuttle",
-  timeWindow: { start: "1873-10-13", end: "1881-01-01" },
-  seedKey: "rhodes:oxford-to-kimberley",
-};
-
-const stops: WalkStop[] = [
-  {
-    sceneId: "origin",
-    placeId: "wikidata:Q913",
-    validAt: "1922-09-13",
-    title: "Leaving Istanbul",
-    coordinate: { latitude: 41.0082, longitude: 28.9784 },
-    gazetteerEntry: null,
-    located: true,
-  },
-  {
-    sceneId: "destination",
-    placeId: "pleiades:422665",
-    validAt: "1922-10-01",
-    title: "Florence",
-    coordinate: { latitude: 43.7714, longitude: 11.254 },
-    gazetteerEntry: null,
-    located: true,
-  },
-];
-
-function recordingRenderer(): MapSurfaceRenderer & {
-  calls: {
-    create: number;
-    drawWalk: number;
-    drawLanes: number;
-    setLiveTileSource: number;
-  };
-  drawLanesArgs: GeographyEdge[][];
-} {
-  const calls = { create: 0, drawWalk: 0, drawLanes: 0, setLiveTileSource: 0 };
-  const drawLanesArgs: GeographyEdge[][] = [];
+function repository(): PlacesRepository {
   return {
-    calls,
-    drawLanesArgs,
-    async create() {
-      calls.create += 1;
+    async getLocatedNodes() { return [florence, istanbul]; },
+    async getGeographyEdges() { return [vocLane]; },
+    async getArchetypeExpressionsForPlace(_projectId, placeGraphNodeId) {
+      return placeGraphNodeId === florence.graphNodeId ? [expression] : [];
     },
-    async drawWalk() {
-      calls.drawWalk += 1;
+    async getRelatedNodesForPlace(_projectId, placeGraphNodeId) {
+      return placeGraphNodeId === florence.graphNodeId ? [relatedArchetype] : [];
     },
-    async drawLanes(edges: GeographyEdge[]) {
-      calls.drawLanes += 1;
-      drawLanesArgs.push(edges);
-    },
-    async setLiveTileSource() {
-      calls.setLiveTileSource += 1;
-    },
-    async centerOn() {},
-    destroy() {},
   };
 }
 
+function recordingRenderer(options: { failLive?: boolean } = {}): MapSurfaceRenderer & {
+  placeCalls: Array<{ places: PlaceRenderMarker[]; expressions: ArchetypeExpressionRenderMarker[] }>;
+  laneCalls: GeographyEdge[][];
+  tileSources: unknown[];
+  placeClick: ((id: string) => void) | null;
+  placeDoubleClick: ((id: string) => void) | null;
+  projections: string[];
+} {
+  const recorder = {
+    placeCalls: [] as Array<{ places: PlaceRenderMarker[]; expressions: ArchetypeExpressionRenderMarker[] }>,
+    laneCalls: [] as GeographyEdge[][],
+    tileSources: [] as unknown[],
+    placeClick: null as ((id: string) => void) | null,
+    placeDoubleClick: null as ((id: string) => void) | null,
+    projections: [] as string[],
+  };
+  return {
+    ...recorder,
+    async create() {},
+    async drawWalk() {},
+    async drawPlaces(places, expressions) { recorder.placeCalls.push({ places, expressions }); },
+    async drawLanes(edges) { recorder.laneCalls.push(edges); },
+    async setLiveTileSource(source) {
+      recorder.tileSources.push(source);
+      if (options.failLive && (source as { kind?: string }).kind === "raster") throw new Error("offline");
+    },
+    async centerOn() {},
+    async flyTo() {},
+    async fitToPlaces() {},
+    async setProjection(projection) { recorder.projections.push(projection); },
+    setPlaceClickHandler(handler) { recorder.placeClick = handler; },
+    setPlaceDoubleClickHandler(handler) { recorder.placeDoubleClick = handler; },
+    setLaneClickHandler() {},
+    onViewChange() {},
+    destroy() {},
+  } as MapSurfaceRenderer & typeof recorder;
+}
+
+const offlineTileSource = {
+  kind: "geojson" as const,
+  url: "assets/map/places.geojson",
+  attribution: "Natural Earth",
+};
+
 describe("PsychogeographicMap", () => {
-  test("mounts an offline map and draws the walk through the renderer port", async () => {
+  test("queries the project repository and draws all located + archetypal markers", async () => {
     const renderer = recordingRenderer();
     render(
       <PsychogeographicMap
-        walkId="walk-1"
-        stops={stops}
-        tileSource={{ kind: "geojson", url: "assets/map/places.geojson", attribution: "Pleiades CC BY" }}
+        repository={repository()}
+        projectId="project:one"
+        tileSource={offlineTileSource}
         policy={createLiveServicePolicy()}
         renderer={renderer}
       />,
     );
 
-    expect(screen.getByTestId("psychogeographic-map")).toBeInTheDocument();
-    expect(screen.getByTestId("psychogeographic-connection")).toHaveTextContent(
-      "Offline",
-    );
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(renderer.calls.create).toBe(1);
-    expect(renderer.calls.drawWalk).toBeGreaterThanOrEqual(1);
-    expect(screen.getByTestId("psychogeographic-stop-origin")).toHaveTextContent(
-      "Leaving Istanbul",
-    );
-  });
-
-  test("live tile refresh stays gated until the user opts in, then shows the active indicator", async () => {
-    const renderer = recordingRenderer();
-    const policy = createLiveServicePolicy();
-    render(
-      <PsychogeographicMap
-        walkId="walk-1"
-        stops={stops}
-        tileSource={{ kind: "geojson", url: "assets/map/places.geojson", attribution: "Pleiades CC BY" }}
-        policy={policy}
-        renderer={renderer}
-      />,
-    );
-
-    fireEvent.click(screen.getByTestId("psychogeographic-opt-in-live"));
-    expect(policy.isOptedIn("tile_refresh")).toBe(true);
-    expect(screen.getByTestId("psychogeographic-connection")).toHaveTextContent(
-      "Live services opted in",
-    );
-
-    fireEvent.click(screen.getByTestId("psychogeographic-refresh-tiles"));
-    expect(policy.state()).toBe("active");
-    expect(policy.activeReason()).toContain("basemap tiles");
-    expect(screen.getByTestId("psychogeographic-connection")).toHaveTextContent(
-      "Live:",
-    );
-    expect(renderer.calls.setLiveTileSource).toBe(1);
-  });
-
-  test("opt-in survives without mutating the offline default when denied", () => {
-    const policy = createLiveServicePolicy();
-    expect(
-      policy.requestLiveAction("tile_refresh", "refresh live basemap tiles"),
-    ).toBe("denied");
-    expect(policy.state()).toBe("offline");
-  });
-
-  test("draws movement lanes through the renderer port and shows the lane list", async () => {
-    const renderer = recordingRenderer();
-    render(
-      <PsychogeographicMap
-        walkId="walk-1"
-        stops={stops}
-        lanes={[vocLane, rhodesLane]}
-        tileSource={{ kind: "geojson", url: "assets/map/places.geojson", attribution: "Pleiades CC BY" }}
-        policy={createLiveServicePolicy()}
-        renderer={renderer}
-      />,
-    );
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(renderer.calls.drawLanes).toBeGreaterThanOrEqual(1);
-    const lastDraw = renderer.drawLanesArgs.at(-1) ?? [];
-    expect(lastDraw.map((edge) => edge.seedKey)).toEqual([
-      "voc:amsterdam-to-banda",
-      "rhodes:oxford-to-kimberley",
+    await waitFor(() => expect(renderer.placeCalls.length).toBeGreaterThan(0));
+    const last = renderer.placeCalls.at(-1)!;
+    expect(last.places.map((marker) => marker.graphNodeId)).toEqual([
+      florence.graphNodeId,
+      istanbul.graphNodeId,
     ]);
-    expect(
-      screen.getByTestId("geography-lane-voc:amsterdam-to-banda"),
-    ).toHaveTextContent("VOC shipping lane Amsterdam → Banda");
+    expect(last.expressions.map((marker) => marker.expressionId)).toEqual([expression.id]);
+    expect(screen.getByTestId("places-globe")).toBeInTheDocument();
+    expect(screen.getByTestId("places-connection-status")).toHaveTextContent("Offline");
   });
 
-  test("temporal lane filter hides lanes inactive in the selected year", async () => {
+  test("marker click opens a location panel with relation and archetype context", async () => {
     const renderer = recordingRenderer();
     render(
       <PsychogeographicMap
-        walkId="walk-1"
-        stops={stops}
-        lanes={[vocLane, rhodesLane]}
-        tileSource={{ kind: "geojson", url: "assets/map/places.geojson", attribution: "Pleiades CC BY" }}
+        repository={repository()}
+        projectId="project:one"
+        tileSource={offlineTileSource}
         policy={createLiveServicePolicy()}
         renderer={renderer}
       />,
     );
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await waitFor(() => expect(renderer.placeClick).not.toBeNull());
 
-    const filter = screen.getByTestId("lane-year-filter") as HTMLInputElement;
-    expect(filter.min).toBe("1602");
-    expect(filter.max).toBe("1881");
-
-    // Move to 1620: the VOC lane is active, Rhodes (1873) is not.
-    fireEvent.change(filter, { target: { value: "1620" } });
-    expect(
-      screen.getByTestId("geography-lane-voc:amsterdam-to-banda"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByTestId("geography-lane-rhodes:oxford-to-kimberley"),
-    ).not.toBeInTheDocument();
-    await act(async () => {
-      await Promise.resolve();
-    });
-    const lastDraw = renderer.drawLanesArgs.at(-1) ?? [];
-    expect(lastDraw.map((edge) => edge.seedKey)).toEqual(["voc:amsterdam-to-banda"]);
-
-    // Clearing the filter restores every lane.
-    fireEvent.click(screen.getByTestId("lane-year-clear"));
-    expect(
-      screen.getByTestId("geography-lane-rhodes:oxford-to-kimberley"),
-    ).toBeInTheDocument();
+    act(() => renderer.placeClick?.(florence.graphNodeId));
+    const panel = await screen.findByTestId("places-location-panel");
+    expect(panel).toHaveTextContent("Florence");
+    expect(panel).toHaveTextContent("43.77140, 11.25400");
+    expect(screen.getByTestId("place-precision")).toHaveTextContent("exact");
+    expect(screen.getByTestId("place-height")).toHaveTextContent("Not recorded");
+    await waitFor(() => expect(screen.getByTestId("place-related-nodes")).toHaveTextContent("Threshold"));
+    expect(screen.getByTestId("place-archetype-expressions")).toHaveTextContent("visual");
   });
 
-  test("clicking a lane opens its provenance panel with real passage refs", async () => {
+  test("double-click delegates opening the selected graph node in Canvas", async () => {
+    const renderer = recordingRenderer();
+    const openCanvasNode = vi.fn();
+    render(
+      <PsychogeographicMap
+        repository={repository()}
+        projectId="project:one"
+        tileSource={offlineTileSource}
+        policy={createLiveServicePolicy()}
+        renderer={renderer}
+        onOpenCanvasNode={openCanvasNode}
+      />,
+    );
+    await waitFor(() => expect(renderer.placeDoubleClick).not.toBeNull());
+    act(() => renderer.placeDoubleClick?.(istanbul.graphNodeId));
+    expect(openCanvasNode).toHaveBeenCalledWith(istanbul.graphNodeId);
+  });
+
+  test("toolbar switches globe/flat projection and retains fit affordance", async () => {
     const renderer = recordingRenderer();
     render(
       <PsychogeographicMap
-        walkId="walk-1"
-        stops={stops}
-        lanes={[vocLane]}
-        tileSource={{ kind: "geojson", url: "assets/map/places.geojson", attribution: "Pleiades CC BY" }}
+        repository={repository()}
+        projectId="project:one"
+        tileSource={offlineTileSource}
         policy={createLiveServicePolicy()}
         renderer={renderer}
       />,
     );
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await waitFor(() => expect(renderer.placeCalls.length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByTestId("places-flat-toggle"));
+    expect(screen.getByTestId("places-flat-map")).toBeInTheDocument();
+    expect(renderer.projections.at(-1)).toBe("flat");
+    fireEvent.click(screen.getByTestId("places-globe-toggle"));
+    expect(screen.getByTestId("places-globe")).toBeInTheDocument();
+    expect(renderer.projections.at(-1)).toBe("globe");
+    expect(screen.getByTestId("places-zoom-fit")).toBeEnabled();
+  });
 
-    fireEvent.click(screen.getByTestId("geography-lane-voc:amsterdam-to-banda"));
-    const provenance = screen.getByTestId("lane-provenance");
-    expect(provenance).toHaveTextContent("VOC shipping lane Amsterdam → Banda");
-    expect(provenance).toHaveTextContent("shipping");
-    expect(provenance).toHaveTextContent("Report8.md");
-    expect(provenance).toHaveTextContent("chars 100–200");
+  test("live tile opt-in reports live success and explicit offline fallback", async () => {
+    const liveRenderer = recordingRenderer();
+    const livePolicy = createLiveServicePolicy();
+    const { unmount } = render(
+      <PsychogeographicMap
+        repository={repository()}
+        projectId="project:one"
+        tileSource={offlineTileSource}
+        policy={livePolicy}
+        renderer={liveRenderer}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("psychogeographic-opt-in-live"));
+    fireEvent.click(screen.getByTestId("psychogeographic-refresh-tiles"));
+    await waitFor(() => expect(screen.getByTestId("places-connection-status")).toHaveTextContent("Live tiles"));
+    expect(liveRenderer.tileSources.at(-1)).toMatchObject({ kind: "raster" });
+    unmount();
+
+    const fallbackRenderer = recordingRenderer({ failLive: true });
+    const fallbackPolicy = createLiveServicePolicy();
+    render(
+      <PsychogeographicMap
+        repository={repository()}
+        projectId="project:one"
+        tileSource={offlineTileSource}
+        policy={fallbackPolicy}
+        renderer={fallbackRenderer}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("psychogeographic-opt-in-live"));
+    fireEvent.click(screen.getByTestId("psychogeographic-refresh-tiles"));
+    await waitFor(() => expect(screen.getByTestId("places-connection-status")).toHaveTextContent("offline fallback"));
+    expect(fallbackRenderer.tileSources.at(-1)).toMatchObject({ kind: "geojson" });
+  });
+
+  test("movement lane year filtering still drives the renderer and provenance panel", async () => {
+    const renderer = recordingRenderer();
+    render(
+      <PsychogeographicMap
+        repository={repository()}
+        projectId="project:one"
+        tileSource={offlineTileSource}
+        policy={createLiveServicePolicy()}
+        renderer={renderer}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("geography-lane-voc:mediterranean")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("geography-lane-voc:mediterranean"));
+    expect(screen.getByTestId("lane-provenance")).toHaveTextContent("Report8.md");
+    fireEvent.change(screen.getByTestId("lane-year-filter"), { target: { value: "1700" } });
+    expect(screen.queryByTestId("geography-lane-voc:mediterranean")).not.toBeInTheDocument();
+    await waitFor(() => expect(renderer.laneCalls.at(-1)).toEqual([]));
   });
 });
+
+function locatedNode(
+  graphNodeId: string,
+  title: string,
+  latitude: number,
+  longitude: number,
+): LocatedGraphNode {
+  return {
+    ...graphNode(graphNodeId, title, "Place"),
+    placeCoverage: "resolved",
+    place: {
+      graphNodeId,
+      names: [{ language: "en", name: title }],
+      coordinate: { precision: "exact", latitude, longitude },
+      hierarchy: [],
+      externalRefs: [],
+      provenance: { sourceRefs: [] },
+    },
+  };
+}
+
+function graphNode(
+  graphNodeId: string,
+  title: string,
+  entityType: GraphNodeContract["entityType"],
+): GraphNodeContract {
+  return {
+    graphNodeId,
+    entityType,
+    isArchetype: entityType === "Archetype",
+    title,
+    body: "[]",
+    summary: "",
+    archetypalResonance: null,
+    coordinate: null,
+    sourceCoordinates: [],
+    evidenceTags: [],
+    sourceKind: null,
+    contentOrigin: "seed",
+    contentRevision: 1,
+    seedSchemaVersion: 1,
+    bodySourceCoordinates: [],
+    historicity: null,
+    claimKind: null,
+    evidenceStatus: null,
+    temporalRole: null,
+    placeCoverage: null,
+    place: null,
+    qlForm: null,
+    qlUnitId: null,
+    qlArc: null,
+    qlTopology: null,
+    qlSchemaVersion: null,
+    qlSourceCoordinates: [],
+    qlCompletenessStatus: null,
+    isTemporal: false,
+    validFrom: null,
+    validTo: null,
+    temporalPrecision: null,
+    createdAt: "2026-08-10T00:00:00.000Z",
+    updatedAt: "2026-08-10T00:00:00.000Z",
+  };
+}
