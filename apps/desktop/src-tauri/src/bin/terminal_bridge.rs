@@ -3,46 +3,47 @@ use std::sync::Arc;
 use research_canvas_desktop_lib::{
     commands::{
         constellations::{
-            attach_constellation_resource_root_at, bootstrap_workspace_at,
-            create_project_at, create_saved_sequence_command, default_database_path,
-            delete_saved_sequence_command, detach_constellation_resource_root_at,
-            list_constellation_resource_roots_at, list_directories_at, list_saved_sequences_command,
-            load_constellation_document_at, persist_constellation_document_at,
-            resolve_or_create_home_at, update_saved_sequence_command, ActiveProjectPayload,
-            CreateProjectRequest, CreateSavedSequenceRequest, DeleteSavedSequenceRequest,
-            ListSavedSequencesRequest, PersistConstellationDocumentRequest, ResourceRootLookupRequest,
+            attach_constellation_resource_root_at, bootstrap_workspace_at, create_project_at,
+            create_saved_sequence_command, default_database_path, delete_saved_sequence_command,
+            detach_constellation_resource_root_at, list_constellation_resource_roots_at,
+            list_directories_at, list_saved_sequences_command, load_constellation_document_at,
+            persist_constellation_document_at, resolve_or_create_home_at,
+            update_saved_sequence_command, ActiveProjectPayload, CreateProjectRequest,
+            CreateSavedSequenceRequest, DeleteSavedSequenceRequest, ListSavedSequencesRequest,
+            PersistConstellationDocumentRequest, ResourceRootLookupRequest,
             ResourceRootMutationRequest, SetActiveProjectRequest, UpdateSavedSequenceRequest,
         },
+        fetch_asset::{ingest_fetched_asset_at, list_fetch_records_at, IngestFetchedAssetRequest},
+        geography_edges::{
+            delete_geography_edge_at, list_geography_edges_at, upsert_geography_edge_at,
+        },
+        graph::{
+            connect_graph_nodes_locally_at_path, update_node_metadata_at_path,
+            ConnectGraphNodesRequest, UpdateGraphNodeRequest,
+        },
+        keepsake::write_keepsake_bundle_at,
+        layout::{flush_canvas_layout_at, FlushCanvasLayoutRequest},
+        palace::{load_palace_curation_at, save_palace_curation_at},
+        palace_export::write_palace_bundle_at,
+        palace_graph::{load_palace_graph_at, merge_encapsulation_edges, LoadPalaceGraphRequest},
+        places::list_located_graph_nodes_at_path,
         scenes::{
             delete_scene_at, delete_scene_sequence_at, list_scene_sequences_at, list_scenes_at,
             upsert_scene_at, upsert_scene_sequence_at,
         },
-        geography_edges::{
-            delete_geography_edge_at, list_geography_edges_at, upsert_geography_edge_at,
+        search::{
+            rebuild_constellation_search_index_command, search_constellation_command,
+            RebuildConstellationSearchIndexRequest, SearchConstellationRequest,
         },
         street_view::{
             add_manual_street_view_region_at, apply_street_view_redaction_at,
             list_street_view_images_at, mark_street_view_redaction_none_needed_at,
             register_street_view_image_at, stage_street_view_image_at,
         },
-        fetch_asset::{ingest_fetched_asset_at, list_fetch_records_at, IngestFetchedAssetRequest},
-        keepsake::write_keepsake_bundle_at,
-        palace::{load_palace_curation_at, save_palace_curation_at},
-        palace_export::write_palace_bundle_at,
-        palace_graph::{load_palace_graph_at, merge_encapsulation_edges, LoadPalaceGraphRequest},
-        layout::{flush_canvas_layout_at, FlushCanvasLayoutRequest},
-        search::{
-            rebuild_constellation_search_index_command, search_constellation_command,
-            RebuildConstellationSearchIndexRequest, SearchConstellationRequest,
-        },
         timeline::{
-            expand_timeline_node_at_path, load_timeline_view_at_path, merge_relationships_by_canonical_key,
-            upsert_timeline_layout_at_path, ExpandTimelineNodeRequest, LoadTimelineViewRequest,
-            UpsertTimelineLayoutRequest,
-        },
-        graph::{
-            connect_graph_nodes_locally_at_path, update_node_metadata_at_path,
-            ConnectGraphNodesRequest, UpdateGraphNodeRequest,
+            expand_timeline_node_at_path, load_timeline_view_at_path,
+            merge_relationships_by_canonical_key, upsert_timeline_layout_at_path,
+            ExpandTimelineNodeRequest, LoadTimelineViewRequest, UpsertTimelineLayoutRequest,
         },
     },
     db::{
@@ -212,7 +213,6 @@ fn handle_request(
         return respond_json(request, StatusCode(200), json!({ "content": content }));
     }
 
-    // Non-constellation-scoped routes
     if method == Method::Get && path == "/workspace/directories" {
         let dirs = list_directories_at()?;
         return respond_json(request, StatusCode(200), dirs);
@@ -225,12 +225,10 @@ fn handle_request(
             .ok_or_else(|| "missing constellationId query parameter".to_string())?;
         let query = query_param(&url, "q").unwrap_or_default();
         let limit = query_param(&url, "limit").and_then(|value| value.parse::<u32>().ok());
-
         rebuild_constellation_search_index_command(RebuildConstellationSearchIndexRequest {
             database_path: database_path.clone(),
             constellation_id: constellation_id.clone(),
         })?;
-
         let hits = search_constellation_command(SearchConstellationRequest {
             database_path,
             constellation_id,
@@ -251,9 +249,6 @@ fn handle_request(
         return respond_json(request, StatusCode(200), payload);
     }
 
-    // Profile-level scene and scene-sequence routes (vision §3.7/§3.15):
-    // the same wire records the Tauri commands use, served over the dev
-    // bridge so the browser build can author and read scenes.
     if method == Method::Get && path == "/workspace/scenes" {
         let database_path = session_database_path(&request)?
             .to_string_lossy()
@@ -326,9 +321,6 @@ fn handle_request(
         }
     }
 
-    // Geography-edge routes (refinement-2 D2, ticket #19): surface-layer
-    // movement streams, the same wire records the Tauri commands use, served
-    // over the dev bridge so the browser build can seed and read lanes.
     if method == Method::Get && path == "/workspace/geography-edges" {
         let database_path = session_database_path(&request)?
             .to_string_lossy()
@@ -360,8 +352,6 @@ fn handle_request(
         }
     }
 
-    // Street-view imagery routes: own captured imagery (portable relative
-    // paths inside the media root) plus the local redaction pipeline.
     if method == Method::Get && path == "/workspace/street-view" {
         let database_path = session_database_path(&request)?
             .to_string_lossy()
@@ -382,10 +372,8 @@ fn handle_request(
         let media_root = input["mediaRoot"]
             .as_str()
             .ok_or_else(|| "missing mediaRoot".to_string())?;
-        let image: StreetViewImageRecord = serde_json::from_value(
-            input["image"].clone(),
-        )
-        .map_err(|error| error.to_string())?;
+        let image: StreetViewImageRecord =
+            serde_json::from_value(input["image"].clone()).map_err(|error| error.to_string())?;
         let payload = register_street_view_image_at(&database_path, media_root, image)?;
         return respond_json(request, StatusCode(201), payload);
     }
@@ -506,11 +494,9 @@ fn handle_request(
             .to_string();
         let mut view = load_palace_graph_at(&database_path, input)?;
         if let Some(graph_state) = graph_state.as_ref() {
-            let repo =
-                GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
+            let repo = GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
             let remote = graph_state.runtime.block_on(repo.list_encapsulation_edges())?;
-            view.encapsulation_edges =
-                merge_encapsulation_edges(view.encapsulation_edges, remote);
+            view.encapsulation_edges = merge_encapsulation_edges(view.encapsulation_edges, remote);
         }
         return respond_json(request, StatusCode(200), view);
     }
@@ -559,6 +545,11 @@ fn handle_request(
         return respond_json(request, StatusCode(200), payload);
     }
 
+    if method == Method::Get && path == "/graph/places" {
+        let payload = list_located_graph_nodes_at_path(session_database_path(&request)?)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
     if method == Method::Post && path == "/graph/timeline-view" {
         let body = read_body(&mut request)?;
         let input: LoadTimelineViewRequest =
@@ -574,12 +565,8 @@ fn handle_request(
         let database_path = session_database_path(&request)?;
         let mut view =
             expand_timeline_node_at_path(&database_path, &input.workspace_id, &input.graph_node_id)?;
-        // Opportunistic remote enrichment: a configured live graph merges its
-        // authoritative edges over the offline projection (ticket #28 D13
-        // §4.4). The local projection alone remains a complete offline answer.
         if let Some(graph_state) = graph_state.as_ref() {
-            let repo =
-                GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
+            let repo = GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
             if let Ok(remote) = graph_state
                 .runtime
                 .block_on(repo.relationships_for_node(&input.graph_node_id))
@@ -661,8 +648,7 @@ fn handle_request(
             };
             let decoded =
                 decode_query_component(graph_node_id).unwrap_or_else(|| graph_node_id.to_string());
-            let repo =
-                GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
+            let repo = GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
             let payload = graph_state
                 .runtime
                 .block_on(repo.get_node(&decoded))?
@@ -679,11 +665,8 @@ fn handle_request(
             };
             let decoded = decode_query_component(operator_graph_node_id)
                 .unwrap_or_else(|| operator_graph_node_id.to_string());
-            let repo =
-                GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
-            let payload = graph_state
-                .runtime
-                .block_on(repo.archetypal_lighting(&decoded))?;
+            let repo = GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
+            let payload = graph_state.runtime.block_on(repo.archetypal_lighting(&decoded))?;
             return respond_json(request, StatusCode(200), payload);
         }
     }
@@ -696,11 +679,8 @@ fn handle_request(
             };
             let decoded =
                 decode_query_component(graph_node_id).unwrap_or_else(|| graph_node_id.to_string());
-            let repo =
-                GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
-            let payload = graph_state
-                .runtime
-                .block_on(repo.resonances_for_instance(&decoded))?;
+            let repo = GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
+            let payload = graph_state.runtime.block_on(repo.resonances_for_instance(&decoded))?;
             return respond_json(request, StatusCode(200), payload);
         }
     }
@@ -743,7 +723,6 @@ fn handle_request(
             };
             payload.database_path = database_path;
             payload.constellation_id = constellation_id;
-
             return match persist_constellation_document_at(payload) {
                 Ok(persisted) => respond_json(request, StatusCode(200), persisted),
                 Err(error) => respond_error(request, StatusCode(500), &error),
@@ -790,7 +769,7 @@ fn handle_request(
                 database_path,
                 canvas_id: query_param(&url, "canvasId").unwrap_or_default(),
             })
-            .map_err(|e| e.to_string())?;
+            .map_err(|error| error.to_string())?;
             return respond_json(request, StatusCode(200), payload);
         }
 
@@ -800,33 +779,32 @@ fn handle_request(
                 .to_string();
             let body = read_body(&mut request)?;
             let input: serde_json::Value =
-                serde_json::from_str(&body).map_err(|e| e.to_string())?;
+                serde_json::from_str(&body).map_err(|error| error.to_string())?;
             let payload = create_saved_sequence_command(CreateSavedSequenceRequest {
                 database_path,
                 constellation_id: constellation_id.clone(),
                 canvas_id: input["canvasId"].as_str().unwrap_or_default().to_string(),
                 name: input["name"].as_str().unwrap_or("Untitled").to_string(),
             })
-            .map_err(|e| e.to_string())?;
+            .map_err(|error| error.to_string())?;
             return respond_json(request, StatusCode(201), payload);
         }
     }
 
     if let Some(sequence_id) = path.strip_prefix("/workspace/constellation/sequences/") {
         let sequence_id = sequence_id.to_string();
-
         if method == Method::Put {
             let database_path = session_database_path(&request)?
                 .to_string_lossy()
                 .to_string();
             let body = read_body(&mut request)?;
             let input: serde_json::Value =
-                serde_json::from_str(&body).map_err(|e| e.to_string())?;
+                serde_json::from_str(&body).map_err(|error| error.to_string())?;
             let edge_ids: Vec<String> = input["edgeIds"]
                 .as_array()
                 .unwrap_or(&vec![])
                 .iter()
-                .filter_map(|v| v.as_str().map(ToOwned::to_owned))
+                .filter_map(|value| value.as_str().map(ToOwned::to_owned))
                 .collect();
             let payload = update_saved_sequence_command(UpdateSavedSequenceRequest {
                 database_path,
@@ -835,7 +813,7 @@ fn handle_request(
                 root_node_id: input["rootNodeId"].as_str().map(ToOwned::to_owned),
                 edge_ids,
             })
-            .map_err(|e| e.to_string())?;
+            .map_err(|error| error.to_string())?;
             return respond_json(request, StatusCode(200), payload);
         }
 
@@ -847,7 +825,7 @@ fn handle_request(
                 database_path,
                 id: sequence_id,
             })
-            .map_err(|e| e.to_string())?;
+            .map_err(|error| error.to_string())?;
             return respond_json(request, StatusCode(200), json!({ "ok": true }));
         }
     }
@@ -859,7 +837,6 @@ fn handle_request(
         } else {
             serde_json::from_str(&body).map_err(|error| error.to_string())?
         };
-
         let workdir = payload
             .workdir
             .map(std::path::PathBuf::from)
@@ -902,7 +879,6 @@ fn handle_request(
         }
 
         let body = read_body(&mut request)?;
-
         if method == Method::Post && action == "input" {
             let payload: BrowserTerminalInput = if body.is_empty() {
                 BrowserTerminalInput { input: None }
@@ -1006,7 +982,6 @@ fn session_database_path(request: &tiny_http::Request) -> Result<std::path::Path
             }
         })
         .or_else(|| query_param(request.url(), "sessionId"));
-
     default_database_path(session_id.as_deref())
 }
 
@@ -1027,7 +1002,6 @@ fn decode_query_component(value: &str) -> Option<String> {
     let bytes = value.as_bytes();
     let mut decoded = Vec::with_capacity(bytes.len());
     let mut index = 0;
-
     while index < bytes.len() {
         match bytes[index] {
             b'%' if index + 2 < bytes.len() => {
@@ -1046,7 +1020,6 @@ fn decode_query_component(value: &str) -> Option<String> {
             }
         }
     }
-
     String::from_utf8(decoded).ok()
 }
 
@@ -1060,7 +1033,6 @@ mod tests {
             "/workspace/file-content?path=%2Ftmp%2FMy%20Project%2FREADME.md",
             "path",
         );
-
         assert_eq!(value.as_deref(), Some("/tmp/My Project/README.md"));
     }
 }
