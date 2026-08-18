@@ -56,16 +56,21 @@ test("timeline surface renders the active constellation walk and canonical contr
   const surface = page.getByTestId("timeline-surface");
   await expect(surface).toBeVisible({ timeout: 20_000 });
   // The shell has four vertical regions (title bar, pipeline rail, Stage,
-  // status). Guard the Stage geometry itself so a grid-row regression
-  // cannot make a technically mounted Timeline invisible below the fold.
+  // status). Guard the Stage geometry itself so a grid-row regression cannot
+  // make a technically mounted Timeline live entirely below the viewport.
   const stageBox = await page.getByTestId("shell-stage").boundingBox();
+  const browserViewport = page.viewportSize();
   expect(stageBox).not.toBeNull();
+  expect(browserViewport).not.toBeNull();
   expect(stageBox!.height).toBeGreaterThan(300);
+  expect(stageBox!.y).toBeLessThan(browserViewport!.height);
+  expect(stageBox!.y + stageBox!.height).toBeGreaterThan(0);
   await expect(page.getByTestId("timeline-earthbound-track")).toBeVisible();
   await expect(page.getByTestId("timeline-axis")).toBeVisible();
   await expect(page.getByTestId("timeline-zoom-out")).toBeVisible();
   await expect(page.getByTestId("timeline-zoom-in")).toBeVisible();
-  await expect(page.getByTestId("timeline-track")).toBeVisible();
+  const timelineTrack = page.getByTestId("timeline-track");
+  await expect(timelineTrack).toBeVisible();
   await expect(page.getByTestId("timeline-load-error")).toHaveCount(0, {
     timeout: 15_000,
   });
@@ -97,15 +102,26 @@ test("timeline surface renders the active constellation walk and canonical contr
   await expect(mediciNode).toHaveAttribute("data-lod", "marker");
   await expect(mediciMarker).toBeVisible();
 
-  // Semantic zoom is a real Timeline capability, not an acceptance loophole:
-  // zoom around the fitted Medici marker with the user's wheel gesture. The
-  // anchor-preserving camera must keep that event in view as the renderer
-  // crosses into the card-bearing century tier.
+  // Semantic zoom is a real Timeline capability, not an acceptance loophole.
+  // The wheel contract belongs to the visible Timeline track, while cards may
+  // intentionally occupy lanes above/below the browser viewport until the user
+  // pans vertically. Preserve Medici's horizontal time anchor, but deliver the
+  // gesture to a visible point on the track rather than its possibly off-screen
+  // marker box.
   const markerBox = await mediciMarker.boundingBox();
+  const trackBox = await timelineTrack.boundingBox();
   expect(markerBox).not.toBeNull();
+  expect(trackBox).not.toBeNull();
+  const trackLeft = Math.max(0, trackBox!.x);
+  const trackRight = Math.min(browserViewport!.width - 1, trackBox!.x + trackBox!.width - 1);
+  const trackTop = Math.max(0, trackBox!.y);
+  const trackBottom = Math.min(browserViewport!.height - 1, trackBox!.y + trackBox!.height - 1);
+  expect(trackRight).toBeGreaterThan(trackLeft);
+  expect(trackBottom).toBeGreaterThan(trackTop);
+  const mediciAnchorX = markerBox!.x + markerBox!.width / 2;
   await page.mouse.move(
-    markerBox!.x + markerBox!.width / 2,
-    markerBox!.y + markerBox!.height / 2,
+    Math.min(trackRight, Math.max(trackLeft, mediciAnchorX)),
+    trackTop + (trackBottom - trackTop) / 2,
   );
   await page.mouse.wheel(0, -600);
   await expect(page.getByTestId("timeline-tier")).toHaveText("century", { timeout: 15_000 });
