@@ -21,18 +21,34 @@ import {
   type MapTileSource,
 } from "./mapStyle";
 
-/**
- * The rendering port of the Places surface. The desktop app binds the
- * MapLibre GL implementation (below); tests and the static web viewer can
- * bind their own adapter. All geography logic (styles, markers, walk
- * geometry, policy gating) lives outside this port.
- */
 export interface MapViewState {
   latitude: number;
   longitude: number;
   zoom: number;
 }
 
+export interface PlaceRenderMarker {
+  graphNodeId: string;
+  title: string;
+  latitude: number;
+  longitude: number;
+  precision: string;
+  entityType: string;
+}
+
+export interface ArchetypeExpressionRenderMarker {
+  expressionId: string;
+  placeGraphNodeId: string;
+  latitude: number;
+  longitude: number;
+  title: string;
+}
+
+/**
+ * Rendering port for Surface #3. The legacy walk methods remain available to
+ * old sequence/story consumers, while Places itself uses `drawPlaces` and is
+ * therefore no longer shaped around a single walk.
+ */
 export interface MapSurfaceRenderer {
   create(
     container: HTMLElement,
@@ -40,38 +56,37 @@ export interface MapSurfaceRenderer {
     options?: MapSurfaceOptions,
   ): Promise<void>;
   drawWalk(walkId: string, stops: WalkStop[]): Promise<void>;
-  /** Draw movement-stream lanes (ticket #19) as mode-styled arcs. */
+  drawPlaces?(
+    places: PlaceRenderMarker[],
+    expressions: ArchetypeExpressionRenderMarker[],
+  ): Promise<void>;
   drawLanes?(edges: GeographyEdge[]): Promise<void>;
   setLiveTileSource(tileSource: MapTileSource): Promise<void>;
   centerOn(latitude: number, longitude: number, zoom?: number): Promise<void>;
-  /** Animated camera flight to a place over the globe surface (task-2 step 4). */
   flyTo?(latitude: number, longitude: number, zoom?: number): Promise<void>;
-  /** Switch between the globe surface and the flat detail map (task-2 step 6). */
+  fitToPlaces?(places: PlaceRenderMarker[]): Promise<void>;
   setProjection?(projection: MapSurfaceProjection): Promise<void>;
-  /** Register a handler for stop-marker clicks on the map surface. */
   setStopClickHandler?(handler: (sceneId: string) => void): void;
-  /** Register a handler for lane-arc clicks on the map surface (ticket #19). */
+  setPlaceClickHandler?(handler: (graphNodeId: string) => void): void;
+  setPlaceDoubleClickHandler?(handler: (graphNodeId: string) => void): void;
   setLaneClickHandler?(handler: (laneId: string) => void): void;
-  /** Register a handler for camera moves (used to surface the current center). */
   onViewChange?(handler: (view: MapViewState) => void): void;
   destroy(): void;
 }
 
-/** MapLibre GL implementation of the renderer port. The map stays fully
- * offline by default: the style references only local sources, so the globe
- * and the walk arcs draw with zero external network requests. */
+/** MapLibre GL implementation. The initial style stays fully offline; a live
+ * raster source is installed only after the surface's LiveServicePolicy grants
+ * the explicit action. */
 export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
   const maplibre = await import("maplibre-gl");
-  // The maplibre-gl worker is a separate entry that Vite would otherwise
-  // reference via `new URL(…, import.meta.url)`, which 404s under the
-  // packaged app's `tauri://` asset protocol (the production bundle emits no
-  // worker, so the globe never draws in a shipped build). Import it as a
-  // bundled asset URL and pin it before any Map is constructed.
   maplibre.setWorkerUrl(maplibreWorkerUrl);
   let map: InstanceType<typeof maplibre.Map> | null = null;
   let stopClickHandler: ((sceneId: string) => void) | null = null;
+  let placeClickHandler: ((graphNodeId: string) => void) | null = null;
+  let placeDoubleClickHandler: ((graphNodeId: string) => void) | null = null;
   let laneClickHandler: ((laneId: string) => void) | null = null;
   let viewChangeHandler: ((view: MapViewState) => void) | null = null;
+  let htmlMarkers: Array<{ remove(): void }> = [];
 
   function emitViewChange(): void {
     if (!map || !viewChangeHandler) return;
@@ -83,15 +98,17 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
     });
   }
 
+  function clearHtmlMarkers(): void {
+    for (const marker of htmlMarkers) marker.remove();
+    htmlMarkers = [];
+  }
+
   return {
     async create(el, tileSource, options) {
-      const projection: MapSurfaceProjection =
-        options?.projection ?? "globe";
+      const projection: MapSurfaceProjection = options?.projection ?? "globe";
       map = new maplibre.Map({
         container: el,
-        style: createOfflineMapStyle(tileSource, {
-          projection,
-        }) as StyleSpecification,
+        style: createOfflineMapStyle(tileSource, { projection }) as StyleSpecification,
         attributionControl: { compact: false },
       });
       map.on("moveend", emitViewChange);
@@ -106,8 +123,6 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
         if (laneId && laneClickHandler) laneClickHandler(laneId);
       });
       await waitForStyleLoad(map);
-      // setSky throws "Style is not done loading" if called before the style
-      // reaches load, so it must happen after waitForStyleLoad.
       if (projection === "globe") {
         map.setSky({ "sky-color": GLOBE.space, "sky-horizon-blend": 0.4 });
       }
@@ -141,6 +156,67 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
         },
       });
     },
+    async drawPlaces(places, expressions) {
+      if (!map) throw new Error("map renderer is not initialized");
+      clearHtmlMarkers();
+
+      for (const place of places) {
+        const element = document.createElement("button");
+        element.type = "button";
+        element.className = "places-globe-marker";
+        element.dataset.testid = `globe-marker-${place.graphNodeId}`;
+        element.dataset.precision = place.precision;
+        element.dataset.entityType = place.entityType;
+        element.title = place.title;
+        element.setAttribute("aria-label", `Open ${place.title}`);
+        Object.assign(element.style, {
+          width: "16px",
+          height: "16px",
+          borderRadius: "50%",
+          border: "2px solid #17171d",
+          background: GLOBE.marker,
+          boxShadow: "0 0 0 3px rgba(208,162,74,.18), 0 2px 10px rgba(0,0,0,.6)",
+          cursor: "pointer",
+          padding: "0",
+        });
+        element.addEventListener("click", (event) => {
+          event.stopPropagation();
+          placeClickHandler?.(place.graphNodeId);
+        });
+        element.addEventListener("dblclick", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          placeDoubleClickHandler?.(place.graphNodeId);
+        });
+        htmlMarkers.push(
+          new maplibre.Marker({ element, anchor: "center" })
+            .setLngLat([place.longitude, place.latitude])
+            .addTo(map),
+        );
+      }
+
+      for (const expression of expressions) {
+        const element = document.createElement("span");
+        element.className = "places-archetype-marker";
+        element.dataset.testid = `globe-archetype-marker-${expression.expressionId}`;
+        element.title = expression.title;
+        Object.assign(element.style, {
+          display: "block",
+          width: "8px",
+          height: "8px",
+          borderRadius: "50%",
+          background: "#b892d8",
+          boxShadow: "0 0 0 4px rgba(184,146,216,.15), 0 0 12px rgba(184,146,216,.65)",
+          pointerEvents: "none",
+          transform: "translate(10px, -10px)",
+        });
+        htmlMarkers.push(
+          new maplibre.Marker({ element, anchor: "center" })
+            .setLngLat([expression.longitude, expression.latitude])
+            .addTo(map),
+        );
+      }
+    },
     async drawLanes(edges) {
       if (!map) throw new Error("map renderer is not initialized");
       addGeoJsonSource(map, "geography-edges", buildGeographyEdgeSource(edges));
@@ -170,11 +246,17 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
     },
     async setLiveTileSource(tileSource) {
       if (!map) throw new Error("map renderer is not initialized");
-      map.removeSource("offline");
-      map.addSource(
-        "offline",
-        sourceDefinition(tileSource) as SourceSpecification,
-      );
+      if (map.getLayer("offline-base")) map.removeLayer("offline-base");
+      if (map.getSource("offline")) map.removeSource("offline");
+      map.addSource("offline", sourceDefinition(tileSource) as SourceSpecification);
+      map.addLayer({
+        id: "offline-base",
+        type: tileSource.kind === "raster" ? "raster" : tileSource.kind === "geojson" ? "circle" : "background",
+        source: "offline",
+        paint: tileSource.kind === "geojson"
+          ? { "circle-radius": 4, "circle-color": GLOBE.basePoint, "circle-opacity": 0.9 }
+          : {},
+      } as never, "geography-edges-layer");
     },
     async centerOn(latitude, longitude, zoom) {
       if (!map) return;
@@ -185,40 +267,45 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
       map.flyTo({
         center: [longitude, latitude],
         zoom: zoom ?? 4,
-        duration: 1800,
+        duration: 900,
       });
+    },
+    async fitToPlaces(places) {
+      if (!map || places.length === 0) return;
+      if (places.length === 1) {
+        map.flyTo({
+          center: [places[0].longitude, places[0].latitude],
+          zoom: 5,
+          duration: 700,
+        });
+        return;
+      }
+      const bounds = new maplibre.LngLatBounds();
+      for (const place of places) bounds.extend([place.longitude, place.latitude]);
+      map.fitBounds(bounds, { padding: 72, maxZoom: 6, duration: 700 });
     },
     async setProjection(projection) {
       if (!map) return;
-      map.setProjection({
-        type: projection === "globe" ? "globe" : "mercator",
-      });
+      map.setProjection({ type: projection === "globe" ? "globe" : "mercator" });
       if (projection === "globe") {
         map.setSky({ "sky-color": GLOBE.space, "sky-horizon-blend": 0.4 });
       }
-      // MapLibre ignores the sky in mercator, so leaving it set is harmless in
-      // the flat detail view.
-      // The flat detail view is clean: graticule + dark ocean are globe-only.
-      // This keeps the runtime flat path consistent with a flat-created style
-      // (which omits both layers).
       const globeOnly = projection === "globe";
       if (map.getLayer("graticule-lines")) {
-        map.setLayoutProperty(
-          "graticule-lines",
-          "visibility",
-          globeOnly ? "visible" : "none",
-        );
+        map.setLayoutProperty("graticule-lines", "visibility", globeOnly ? "visible" : "none");
       }
       if (map.getLayer("ocean-background")) {
-        map.setLayoutProperty(
-          "ocean-background",
-          "visibility",
-          globeOnly ? "visible" : "none",
-        );
+        map.setLayoutProperty("ocean-background", "visibility", globeOnly ? "visible" : "none");
       }
     },
     setStopClickHandler(handler) {
       stopClickHandler = handler;
+    },
+    setPlaceClickHandler(handler) {
+      placeClickHandler = handler;
+    },
+    setPlaceDoubleClickHandler(handler) {
+      placeDoubleClickHandler = handler;
     },
     setLaneClickHandler(handler) {
       laneClickHandler = handler;
@@ -227,9 +314,12 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
       viewChangeHandler = handler;
     },
     destroy() {
+      clearHtmlMarkers();
       map?.remove();
       map = null;
       stopClickHandler = null;
+      placeClickHandler = null;
+      placeDoubleClickHandler = null;
       laneClickHandler = null;
       viewChangeHandler = null;
     },
@@ -281,12 +371,7 @@ function waitForStyleLoad(
   if (map.isStyleLoaded()) return Promise.resolve();
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
-      () =>
-        reject(
-          new Error(
-            "map style load timed out (is the maplibre-gl worker being served?)",
-          ),
-        ),
+      () => reject(new Error("map style load timed out (is the maplibre-gl worker being served?)")),
       15_000,
     );
     map.once("load", () => {
