@@ -57,31 +57,28 @@ jobs:
           block = workflow[run_start:end]
           lines = block.splitlines()
           script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
-
-          old = '''            return value === "year"
-              || value === "decade"
-              || value === "century"
-              || value === "millennium"
-              || value === "exact"
-              || value === "range"
-              || value === "circa"
-              ? value as TemporalPrecision
-              : null;'''
-          new = '''            return value === "millennium"
-              || value === "century"
-              || value === "decade"
-              || value === "year"
-              || value === "month"
-              || value === "day"
-              ? value as TemporalPrecision
-              : null;'''
-          if script.count(old) != 1:
-              raise SystemExit(f'expected one temporal precision parser to correct, found {script.count(old)}')
-          script = script.replace(old, new, 1)
           Path('/tmp/apply-t12-substrate.sh').write_text(script)
           PY
 
           bash /tmp/apply-t12-substrate.sh
+
+          python <<'PY'
+          from pathlib import Path
+
+          target = Path('apps/desktop/src/features/psychogeographic/DesktopPlacesRepository.ts')
+          text = target.read_text()
+          old = '''              || value === "exact"
+              || value === "range"
+              || value === "circa"
+'''
+          new = '''              || value === "month"
+              || value === "day"
+'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one generated precision alternative block, found {text.count(old)}')
+          target.write_text(text.replace(old, new, 1))
+          PY
+
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Format Rust substrate
