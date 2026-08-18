@@ -1,0 +1,390 @@
+name: Redemption T12 substrate
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/redemption-t12-substrate.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: redemption-t12-substrate-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout integration branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/redemption-map
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Apply bounded Places repository substrate
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str):
+              target = Path(path)
+              text = target.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one replacement target, found {count}")
+              target.write_text(text.replace(old, new, 1))
+
+          graph_metadata = "apps/desktop/src-tauri/src/db/repositories/graph_metadata.rs"
+          marker = '''    /// Optimistic, ownership-aware persistence. `expected_revision` is required
+          '''
+          located_method = '''    /// Returns every graph node whose canonical local projection carries
+              /// structured Place data. Places is a project-wide surface, so this read is
+              /// deliberately independent of temporal membership and scene/walk curation.
+              pub fn list_located(&self) -> RepositoryResult<Vec<TemporalGraphNodeMetadataRecord>> {
+                  let mut statement = self.connection.prepare(
+                      "SELECT graph_node_id, entity_type, title, archetypal_resonance, coordinate,
+                       source_coordinates_json, evidence_tags_json, source_kind, content_origin,
+                       content_revision, seed_schema_version, body_source_coordinates_json, historicity,
+                       claim_kind, evidence_status, temporal_role, place_coverage, place_json, ql_form, ql_unit_id,
+                       ql_arc, ql_topology, ql_schema_version, ql_source_coordinates_json,
+                       ql_completeness_status, is_temporal, valid_from, valid_to, temporal_precision,
+                       schema_version, sync_state, remote_revision, is_archetype, created_at, updated_at,
+                       COALESCE((SELECT summary FROM node_document WHERE graph_node_id = graph_node_metadata.graph_node_id), '')
+                       FROM graph_node_metadata
+                       WHERE place_json IS NOT NULL
+                       ORDER BY graph_node_id",
+                  )?;
+                  let rows = statement.query_map([], |row| {
+                      Ok(TemporalGraphNodeMetadataRecord {
+                          metadata: record_from_row(row)?,
+                          created_at: row.get(33)?,
+                          updated_at: row.get(34)?,
+                          summary: row.get(35)?,
+                      })
+                  })?;
+                  rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+              }
+
+          '''
+          replace_once(graph_metadata, marker, located_method + marker)
+
+          Path("apps/desktop/src-tauri/src/commands/places.rs").write_text(r'''use serde::Deserialize;
+          use std::path::Path;
+
+          use crate::{
+              commands::{
+                  graph::resolve_db_path,
+                  timeline::graph_node_from_local_projection,
+              },
+              db::{
+                  connection::Database,
+                  repositories::{
+                      graph::GraphNode, GraphNodeMetadataRepository, NodeDocumentRepository,
+                  },
+              },
+              SharedApiState,
+          };
+
+          #[derive(Debug, Clone, Default, Deserialize)]
+          #[serde(rename_all = "camelCase", deny_unknown_fields)]
+          pub struct ListLocatedGraphNodesRequest {
+              #[serde(default)]
+              pub database_path: Option<String>,
+          }
+
+          /// Canonical project-wide Places read from the durable local graph projection.
+          /// It remains complete when Neo4j and live map services are unavailable.
+          pub fn list_located_graph_nodes_at_path(
+              path: impl AsRef<Path>,
+          ) -> Result<Vec<GraphNode>, String> {
+              let database = Database::open(path).map_err(|error| error.to_string())?;
+              let metadata = GraphNodeMetadataRepository::new(database.connection());
+              let documents = NodeDocumentRepository::new(database.connection());
+              metadata
+                  .list_located()
+                  .map_err(|error| error.to_string())?
+                  .into_iter()
+                  .map(|record| {
+                      let document = documents
+                          .get_node_document(&record.metadata.graph_node_id)
+                          .map_err(|error| error.to_string())?;
+                      Ok(graph_node_from_local_projection(&record, document))
+                  })
+                  .collect()
+          }
+
+          #[tauri::command]
+          pub fn list_located_graph_nodes_command(
+              request: ListLocatedGraphNodesRequest,
+              api_state: tauri::State<'_, SharedApiState>,
+          ) -> Result<Vec<GraphNode>, String> {
+              let database_path = resolve_db_path(&request.database_path, &api_state)?;
+              list_located_graph_nodes_at_path(database_path)
+          }
+          ''')
+
+          lib_rs = "apps/desktop/src-tauri/src/lib.rs"
+          replace_once(lib_rs, "    pub mod palace_graph;\n", "    pub mod palace_graph;\n    pub mod places;\n")
+          replace_once(
+              lib_rs,
+              "            commands::timeline::load_timeline_view_command,\n",
+              "            commands::places::list_located_graph_nodes_command,\n            commands::timeline::load_timeline_view_command,\n",
+          )
+
+          bridge = "apps/desktop/src-tauri/src/bin/terminal_bridge.rs"
+          replace_once(
+              bridge,
+              "        palace_graph::{load_palace_graph_at, merge_encapsulation_edges, LoadPalaceGraphRequest},\n",
+              "        palace_graph::{load_palace_graph_at, merge_encapsulation_edges, LoadPalaceGraphRequest},\n        places::list_located_graph_nodes_at_path,\n",
+          )
+          timeline_route = '''    if method == Method::Post && path == "/graph/timeline-view" {
+          '''
+          places_route = '''    if method == Method::Get && path == "/graph/places" {
+              let payload = list_located_graph_nodes_at_path(session_database_path(&request)?)?;
+              return respond_json(request, StatusCode(200), payload);
+          }
+
+          '''
+          replace_once(bridge, timeline_route, places_route + timeline_route)
+
+          Path("packages/domain/src/ports/placesRepository.ts").write_text(r'''import type {
+            ArchetypalExpression,
+            GeographyEdge,
+            GraphNodeContract,
+            TemporalPlace,
+          } from "@research-canvas/schema";
+
+          /** A graph node whose canonical Place projection is present. */
+          export type LocatedGraphNode = GraphNodeContract & { place: TemporalPlace };
+
+          /** Canonical project-wide read boundary for Surface #3 Places. */
+          export interface PlacesRepository {
+            getLocatedNodes(projectId: string): Promise<LocatedGraphNode[]>;
+            getGeographyEdges(projectId: string): Promise<GeographyEdge[]>;
+            getArchetypeExpressionsForPlace(
+              projectId: string,
+              placeGraphNodeId: string,
+            ): Promise<ArchetypalExpression[]>;
+            getRelatedNodesForPlace(
+              projectId: string,
+              placeGraphNodeId: string,
+            ): Promise<GraphNodeContract[]>;
+          }
+          ''')
+
+          domain_index = "packages/domain/src/index.ts"
+          replace_once(
+              domain_index,
+              'export * from "./ports/timelineRepository";\n',
+              'export * from "./ports/timelineRepository";\nexport * from "./ports/placesRepository";\n',
+          )
+
+          Path("apps/desktop/src/features/psychogeographic/DesktopPlacesRepository.ts").write_text(r'''import type {
+            LocatedGraphNode,
+            PlacesRepository,
+          } from "@research-canvas/domain";
+          import {
+            resolveBrowserBridgeBaseUrl,
+            type ExpandedTimelineNode,
+            type GraphNode,
+            type WorkspaceServices,
+          } from "@research-canvas/desktop-api";
+          import type {
+            ArchetypalExpression,
+            GeographyEdge,
+            TemporalPrecision,
+          } from "@research-canvas/schema";
+
+          const SESSION_COOKIE = "research_canvas_session_id";
+
+          export class DesktopPlacesRepository implements PlacesRepository {
+            constructor(
+              private readonly transport: WorkspaceServices,
+              private readonly workspaceId: string,
+              private readonly databasePath: string,
+              private readonly profileScope: string,
+            ) {}
+
+            async getLocatedNodes(projectId: string): Promise<LocatedGraphNode[]> {
+              this.assertProject(projectId);
+              const nodes = await listLocatedGraphNodes(this.databasePath);
+              return nodes.filter((node): node is LocatedGraphNode => node.place !== null);
+            }
+
+            async getGeographyEdges(projectId: string): Promise<GeographyEdge[]> {
+              this.assertProject(projectId);
+              return this.transport.listGeographyEdges({
+                databasePath: this.databasePath,
+                profileScope: this.profileScope,
+              });
+            }
+
+            async getRelatedNodesForPlace(
+              projectId: string,
+              placeGraphNodeId: string,
+            ): Promise<GraphNode[]> {
+              this.assertProject(projectId);
+              const expansion = await this.expand(placeGraphNodeId);
+              return expansion.neighbours;
+            }
+
+            async getArchetypeExpressionsForPlace(
+              projectId: string,
+              placeGraphNodeId: string,
+            ): Promise<ArchetypalExpression[]> {
+              this.assertProject(projectId);
+              const expansion = await this.expand(placeGraphNodeId);
+              const nodesById = new Map(
+                [expansion.subject, ...expansion.neighbours].map((node) => [node.graphNodeId, node] as const),
+              );
+              return expansion.edges.flatMap((edge) => {
+                if (edge.relType !== "ARCHETYPE_EXPRESSES_AT") return [];
+                const otherId = edge.sourceGraphNodeId === placeGraphNodeId
+                  ? edge.targetGraphNodeId
+                  : edge.targetGraphNodeId === placeGraphNodeId
+                    ? edge.sourceGraphNodeId
+                    : null;
+                if (!otherId) return [];
+                const archetype = nodesById.get(otherId);
+                if (!archetype || (archetype.entityType !== "Archetype" && archetype.isArchetype !== true)) {
+                  return [];
+                }
+                const properties = edge.properties;
+                const rawWindow = isRecord(properties.timeWindow) ? properties.timeWindow : properties;
+                const start = typeof rawWindow.start === "string" ? rawWindow.start : null;
+                const end = typeof rawWindow.end === "string" ? rawWindow.end : null;
+                const precision = temporalPrecision(rawWindow.precision);
+                const expressionKind = expressionKindFrom(properties.expressionKind);
+                if (!start || !precision || !expressionKind) return [];
+                const sourceCoordinates = Array.isArray(properties.sourceCoordinates)
+                  ? properties.sourceCoordinates.filter((value): value is string => typeof value === "string")
+                  : [];
+                return [{
+                  id: edge.id,
+                  archetypeGraphNodeId: archetype.graphNodeId,
+                  placeGraphNodeId,
+                  timeWindow: { start, end, precision },
+                  expressionKind,
+                  sourceCoordinates,
+                }];
+              });
+            }
+
+            private async expand(graphNodeId: string): Promise<ExpandedTimelineNode> {
+              return this.transport.expandTimelineNode({
+                workspaceId: this.workspaceId,
+                graphNodeId,
+              });
+            }
+
+            private assertProject(projectId: string) {
+              if (projectId !== this.workspaceId) {
+                throw new Error(`PlacesRepository project mismatch: expected ${this.workspaceId}`);
+              }
+            }
+          }
+
+          async function listLocatedGraphNodes(databasePath: string): Promise<GraphNode[]> {
+            const tauri = (window as typeof window & {
+              __TAURI_INTERNALS__?: { invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> };
+            }).__TAURI_INTERNALS__;
+            if (tauri) {
+              return tauri.invoke<GraphNode[]>("list_located_graph_nodes_command", {
+                request: { databasePath },
+              });
+            }
+
+            const response = await fetch(`${resolveBrowserBridgeBaseUrl()}/graph/places`, {
+              headers: { "X-Research-Canvas-Session": browserSessionId() },
+            });
+            if (!response.ok) {
+              throw new Error(`Places bridge request failed with status ${response.status}`);
+            }
+            return response.json() as Promise<GraphNode[]>;
+          }
+
+          function browserSessionId(): string {
+            const current = document.cookie
+              .split(";")
+              .map((entry) => entry.trim())
+              .find((entry) => entry.startsWith(`${SESSION_COOKIE}=`))
+              ?.slice(SESSION_COOKIE.length + 1);
+            if (current) return current;
+            const value = crypto.randomUUID();
+            document.cookie = `${SESSION_COOKIE}=${value}; path=/; SameSite=Lax`;
+            return value;
+          }
+
+          function isRecord(value: unknown): value is Record<string, unknown> {
+            return typeof value === "object" && value !== null && !Array.isArray(value);
+          }
+
+          function temporalPrecision(value: unknown): TemporalPrecision | null {
+            return value === "year"
+              || value === "decade"
+              || value === "century"
+              || value === "millennium"
+              || value === "exact"
+              || value === "range"
+              || value === "circa"
+              ? value as TemporalPrecision
+              : null;
+          }
+
+          function expressionKindFrom(value: unknown): ArchetypalExpression["expressionKind"] | null {
+            return value === "mythic"
+              || value === "ritual"
+              || value === "literary"
+              || value === "visual"
+              || value === "theoretical"
+              ? value
+              : null;
+          }
+          ''')
+          PY
+
+      - name: Format Rust substrate
+        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck TypeScript substrate
+        run: pnpm exec tsc -b
+
+      - name: Check native Places substrate
+        run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --bin terminal_bridge
+
+      - name: Commit bounded substrate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git status --short
+          git config user.name "research-canvas-redemption-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add \
+            apps/desktop/src-tauri/src/db/repositories/graph_metadata.rs \
+            apps/desktop/src-tauri/src/commands/places.rs \
+            apps/desktop/src-tauri/src/lib.rs \
+            apps/desktop/src-tauri/src/bin/terminal_bridge.rs \
+            packages/domain/src/ports/placesRepository.ts \
+            packages/domain/src/index.ts \
+            apps/desktop/src/features/psychogeographic/DesktopPlacesRepository.ts
+          test "$(git diff --cached --name-only | wc -l | tr -d ' ')" = "7"
+          git commit -m "feat(places): add project-wide repository substrate"
+          git push origin HEAD:feat/redemption-map
