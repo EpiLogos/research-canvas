@@ -23,32 +23,26 @@ const sharedEnv = {
     process.env.VITE_RESEARCH_CANVAS_TERMINAL_BRIDGE_PORT ??
     String(TERMINAL_BRIDGE_PORT)
 };
-const skipTerminalBridge =
-  sharedEnv.RESEARCH_CANVAS_SKIP_TERMINAL_BRIDGE === "1";
 
-const bridge = skipTerminalBridge
+const bridge = (await hasRunningTerminalBridge(TERMINAL_BRIDGE_BASE_URL))
   ? null
-  : (await hasRunningTerminalBridge(TERMINAL_BRIDGE_BASE_URL))
-    ? null
-    : spawn(
-        "cargo",
-        [
-          "run",
-          "--manifest-path",
-          terminalBridgeManifest,
-          "--bin",
-          "terminal_bridge"
-        ],
-        {
-          cwd: process.cwd(),
-          env: sharedEnv,
-          stdio: "inherit"
-        }
-      );
+  : spawn(
+      "cargo",
+      [
+        "run",
+        "--manifest-path",
+        terminalBridgeManifest,
+        "--bin",
+        "terminal_bridge"
+      ],
+      {
+        cwd: process.cwd(),
+        env: sharedEnv,
+        stdio: "inherit"
+      }
+    );
 
-if (skipTerminalBridge) {
-  console.log("[dev] Terminal bridge disabled for this browser-only run");
-} else if (bridge === null) {
+if (bridge === null) {
   console.log(`[dev] Reusing terminal bridge on ${TERMINAL_BRIDGE_BASE_URL}`);
 }
 
