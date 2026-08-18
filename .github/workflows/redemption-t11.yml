@@ -1,26 +1,32 @@
-name: Redemption T11 lockfile repair
+name: Redemption T11 acceptance
 
 on:
   pull_request:
     paths:
       - ".github/workflows/redemption-t11.yml"
+      - "packages/canvas/src/timeline/**"
+      - "packages/domain/src/**timeline**"
+      - "apps/desktop/src/**timeline**"
+      - "apps/desktop/src/layout/observatory.css"
+      - "tests/e2e/timeline.spec.ts"
+      - "playwright.config.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: redemption-t11-lockfile-repair-${{ github.run_id }}
-  cancel-in-progress: false
+  group: redemption-t11-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  repair:
+  acceptance:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
-      - name: Checkout integration branch
+      - name: Checkout exact PR head
         uses: actions/checkout@v4
-        with:
-          ref: feat/redemption-map
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -32,27 +38,33 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
 
-      - name: Regenerate lockfile metadata only
-        run: pnpm install --lockfile-only --no-frozen-lockfile
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
 
-      - name: Prove the repair is bounded
-        shell: bash
-        run: |
-          set -euo pipefail
-          status="$(git status --short)"
-          test "$status" = " M pnpm-lock.yaml"
-          stats="$(git diff --numstat -- pnpm-lock.yaml)"
-          test "$stats" = $'3\t0\tpnpm-lock.yaml'
-          git diff -- pnpm-lock.yaml | grep -F "+      '@research-canvas/viewers':"
-          git diff -- pnpm-lock.yaml | grep -F "+        specifier: workspace:*"
-          git diff -- pnpm-lock.yaml | grep -F "+        version: link:../viewers"
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
 
-      - name: Commit repaired lockfile
-        shell: bash
-        run: |
-          git config user.name "research-canvas-redemption-bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add pnpm-lock.yaml
-          git commit -m "fix(workspace): sync canvas viewers lockfile entry"
-          git push origin HEAD:feat/redemption-map
+      - name: Typecheck workspace
+        run: pnpm exec tsc -b
+
+      - name: Run focused Timeline unit acceptance
+        run: >-
+          pnpm vitest run
+          packages/canvas/src/timeline/TimelineSurface.test.tsx
+          packages/canvas/src/timeline/TimelineLens.test.tsx
+
+      - name: Run Timeline browser acceptance
+        run: pnpm playwright test tests/e2e/timeline.spec.ts --project=chromium
+
+      - name: Upload Playwright evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redemption-t11-playwright-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
