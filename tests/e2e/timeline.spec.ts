@@ -127,14 +127,18 @@ test("timeline surface renders the active constellation walk and canonical contr
   await expect(page.getByTestId("timeline-tier")).toHaveText("century", { timeout: 15_000 });
 
   const mediciCard = page.getByTestId(`timeline-card-${MEDICI}`);
+  const mediciInteractiveCard = page.getByTestId(`timeline-node-card-${MEDICI}`);
   await expect(mediciCard).toBeVisible({ timeout: 15_000 });
+  await expect(mediciInteractiveCard).toBeVisible({ timeout: 15_000 });
   await expect(mediciCard).toContainText("Medici Template");
   await expect(mediciNode).toBeAttached();
 
-  // Shift-click is the real timeline-local exploration affordance. It lets the
-  // mature relational working set open while default click remains T11's
-  // Canvas navigation contract.
-  await mediciNode.click({ modifiers: ["Shift"] });
+  // Shift-click is the real timeline-local exploration affordance. Activate
+  // the visible card box: its absolute node wrapper is only the year anchor and
+  // can itself sit outside the browser viewport while the lane-offset card is
+  // visible. The click still bubbles through the node selection contract, while
+  // Surface #2 deliberately keeps Shift on Timeline instead of opening Canvas.
+  await mediciInteractiveCard.click({ modifiers: ["Shift"] });
 
   await expect(page.getByTestId("timeline-working-set")).toBeVisible();
   const entry = page.getByTestId(`timeline-working-set-entry-${MEDICI}`);
@@ -153,8 +157,10 @@ test("timeline surface renders the active constellation walk and canonical contr
   expect(external).toEqual([]);
 
   // Default single activation opens the selected node in the active
-  // constellation's Canvas tab.
-  await mediciNode.click();
+  // constellation's Canvas tab. Again use the visible card box so this remains
+  // a genuine pointer action rather than forcing an off-screen anchor wrapper.
+  await expect(mediciInteractiveCard).toBeVisible({ timeout: 15_000 });
+  await mediciInteractiveCard.click();
   await expect(page.getByTestId("canvas-pane")).toBeVisible({ timeout: 5_000 });
   expect(external).toEqual([]);
 });
