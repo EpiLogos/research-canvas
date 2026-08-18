@@ -16,7 +16,7 @@ on:
       - "pnpm-lock.yaml"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: redemption-t11-${{ github.event.pull_request.number }}
@@ -27,10 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - name: Checkout integration branch
+      - name: Checkout exact PR head
         uses: actions/checkout@v4
         with:
-          ref: feat/redemption-map
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 2
 
       - name: Set up pnpm
@@ -114,31 +114,28 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
-      - name: Validate T12 substrate before publish
+      - name: Validate T12 substrate
         if: steps.t12.outputs.changed == 'true'
         run: |
           pnpm exec tsc -b
           cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --bin terminal_bridge
-
-      - name: Commit bounded T12 substrate
-        if: steps.t12.outputs.changed == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
           git diff --check
-          git config user.name "research-canvas-redemption-bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add \
-            apps/desktop/src-tauri/src/db/repositories/graph_metadata.rs \
-            apps/desktop/src-tauri/src/commands/places.rs \
-            apps/desktop/src-tauri/src/lib.rs \
-            apps/desktop/src-tauri/src/bin/terminal_bridge.rs \
-            packages/domain/src/ports/placesRepository.ts \
-            packages/domain/src/index.ts \
+
+      - name: Upload validated T12 substrate
+        if: steps.t12.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: redemption-t12-substrate-${{ github.run_id }}
+          path: |
+            apps/desktop/src-tauri/src/db/repositories/graph_metadata.rs
+            apps/desktop/src-tauri/src/commands/places.rs
+            apps/desktop/src-tauri/src/lib.rs
+            apps/desktop/src-tauri/src/bin/terminal_bridge.rs
+            packages/domain/src/ports/placesRepository.ts
+            packages/domain/src/index.ts
             apps/desktop/src/features/psychogeographic/DesktopPlacesRepository.ts
-          test "$(git diff --cached --name-only | wc -l | tr -d ' ')" = "7"
-          git commit -m "feat(places): add project-wide repository substrate"
-          git push origin HEAD:feat/redemption-map
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Prebuild canonical browser workspace bridge
         run: >-
