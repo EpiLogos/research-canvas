@@ -56,42 +56,42 @@ function repository(): PlacesRepository {
   };
 }
 
-function recordingRenderer(options: { failLive?: boolean } = {}): MapSurfaceRenderer & {
+type RecordingRenderer = MapSurfaceRenderer & {
   placeCalls: Array<{ places: PlaceRenderMarker[]; expressions: ArchetypeExpressionRenderMarker[] }>;
   laneCalls: GeographyEdge[][];
   tileSources: unknown[];
   placeClick: ((id: string) => void) | null;
   placeDoubleClick: ((id: string) => void) | null;
   projections: string[];
-} {
-  const recorder = {
-    placeCalls: [] as Array<{ places: PlaceRenderMarker[]; expressions: ArchetypeExpressionRenderMarker[] }>,
-    laneCalls: [] as GeographyEdge[][],
-    tileSources: [] as unknown[],
-    placeClick: null as ((id: string) => void) | null,
-    placeDoubleClick: null as ((id: string) => void) | null,
-    projections: [] as string[],
-  };
-  return {
-    ...recorder,
+};
+
+function recordingRenderer(options: { failLive?: boolean } = {}): RecordingRenderer {
+  const renderer: RecordingRenderer = {
+    placeCalls: [],
+    laneCalls: [],
+    tileSources: [],
+    placeClick: null,
+    placeDoubleClick: null,
+    projections: [],
     async create() {},
     async drawWalk() {},
-    async drawPlaces(places, expressions) { recorder.placeCalls.push({ places, expressions }); },
-    async drawLanes(edges) { recorder.laneCalls.push(edges); },
+    async drawPlaces(places, expressions) { renderer.placeCalls.push({ places, expressions }); },
+    async drawLanes(edges) { renderer.laneCalls.push(edges); },
     async setLiveTileSource(source) {
-      recorder.tileSources.push(source);
+      renderer.tileSources.push(source);
       if (options.failLive && (source as { kind?: string }).kind === "raster") throw new Error("offline");
     },
     async centerOn() {},
     async flyTo() {},
     async fitToPlaces() {},
-    async setProjection(projection) { recorder.projections.push(projection); },
-    setPlaceClickHandler(handler) { recorder.placeClick = handler; },
-    setPlaceDoubleClickHandler(handler) { recorder.placeDoubleClick = handler; },
+    async setProjection(projection) { renderer.projections.push(projection); },
+    setPlaceClickHandler(handler) { renderer.placeClick = handler; },
+    setPlaceDoubleClickHandler(handler) { renderer.placeDoubleClick = handler; },
     setLaneClickHandler() {},
     onViewChange() {},
     destroy() {},
-  } as MapSurfaceRenderer & typeof recorder;
+  };
+  return renderer;
 }
 
 const offlineTileSource = {
