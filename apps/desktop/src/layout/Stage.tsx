@@ -6,6 +6,7 @@ import { PsychogeographicLens } from "../features/psychogeographic/Psychogeograp
 import { StoryLens } from "../features/story/StoryLens";
 import { PalaceLensHost } from "../features/palace/PalaceLensHost";
 import { TimelineLens } from "../features/timeline/TimelineLens";
+import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
 import type { ReaderRecord } from "../features/viewer/readerRecord";
 import type { LensMode } from "./useLensMode";
 
@@ -59,7 +60,15 @@ export function Stage({
   onReaderFullScreen,
   onReaderExit,
 }: StageProps) {
+  const workspace = useCanvasWorkspace();
   const commonStageSurfaceStyle: React.CSSProperties = { position: "absolute", inset: 0 };
+
+  const openPlaceOnCanvas = async (graphNodeId: string) => {
+    const constellationId = workspace.activeConstellationId;
+    if (!constellationId) return;
+    await workspace.openConstellationTab(constellationId);
+    workspace.selectNode(graphNodeId);
+  };
 
   return (
     <div className="shell-stage" data-testid="shell-stage">
@@ -81,15 +90,17 @@ export function Stage({
         </section>
       )}
 
-      {lens === "psychogeographic" && databasePath && workspaceId && activeProfileScope && (
+      {lens === "psychogeographic" && databasePath && workspaceId && activeProfileScope && workspace.activeProjectId && (
         <section className="canvas-pane" data-testid="psychogeographic-pane" style={commonStageSurfaceStyle}>
           <PsychogeographicLens
             transport={workspaceTransport}
+            projectId={workspace.activeProjectId}
             databasePath={databasePath}
             workspaceId={workspaceId}
             profileScope={activeProfileScope}
             mediaRoot={workingRoot ?? ""}
             repoRoot={repoRoot ?? ""}
+            onOpenCanvasNode={openPlaceOnCanvas}
           />
         </section>
       )}
