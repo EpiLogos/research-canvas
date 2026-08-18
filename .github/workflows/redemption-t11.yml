@@ -1,65 +1,70 @@
-name: Redemption T11 one-run patch
+name: Redemption T11 acceptance
 
 on:
   pull_request:
     paths:
       - ".github/workflows/redemption-t11.yml"
+      - "packages/canvas/src/timeline/**"
+      - "packages/domain/src/**timeline**"
+      - "apps/desktop/src/**timeline**"
+      - "apps/desktop/src/layout/observatory.css"
+      - "tests/e2e/timeline.spec.ts"
+      - "playwright.config.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: redemption-t11-patch-${{ github.run_id }}
-  cancel-in-progress: false
+  group: redemption-t11-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  patch:
+  acceptance:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
-      - name: Checkout integration branch
+      - name: Checkout exact PR head
         uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
         with:
-          ref: feat/redemption-map
+          version: 10.25.0
+          run_install: false
 
-      - name: Apply bounded shell + T11 acceptance correction
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
 
-          shell_css = Path("apps/desktop/src/layout/observatory.css")
-          text = shell_css.read_text()
-          old = "grid-template-rows: 46px minmax(0, 1fr) 26px;"
-          new = "grid-template-rows: 46px 44px minmax(0, 1fr) 26px;"
-          if text.count(old) != 1:
-              raise SystemExit(f"expected one shell grid contract, found {text.count(old)}")
-          shell_css.write_text(text.replace(old, new))
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
 
-          spec = Path("tests/e2e/timeline.spec.ts")
-          text = spec.read_text()
-          needle = 'await expect(surface).toBeVisible({ timeout: 20_000 });\n'
-          if text.count(needle) != 1:
-              raise SystemExit(f"expected one Timeline surface readiness assertion, found {text.count(needle)}")
-          indent = "  "
-          insertion = needle + "".join([
-              f'{indent}// The shell has four vertical regions (title bar, pipeline rail, Stage,\n',
-              f'{indent}// status). Guard the Stage geometry itself so a grid-row regression\n',
-              f'{indent}// cannot make a technically mounted Timeline invisible below the fold.\n',
-              f'{indent}const stageBox = await page.getByTestId("shell-stage").boundingBox();\n',
-              f'{indent}expect(stageBox).not.toBeNull();\n',
-              f'{indent}expect(stageBox!.height).toBeGreaterThan(300);\n',
-          ])
-          text = text.replace(needle, insertion, 1)
-          old_wheel = "await page.mouse.wheel(0, -500);"
-          if text.count(old_wheel) != 1:
-              raise SystemExit(f"expected one semantic zoom wheel, found {text.count(old_wheel)}")
-          text = text.replace(old_wheel, "await page.mouse.wheel(0, -600);", 1)
-          spec.write_text(text)
-          PY
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
 
-          git config user.name "research-canvas-redemption-bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add apps/desktop/src/layout/observatory.css tests/e2e/timeline.spec.ts
-          git commit -m "fix(timeline): restore usable stage geometry"
-          git push origin HEAD:feat/redemption-map
+      - name: Typecheck workspace
+        run: pnpm exec tsc -b
+
+      - name: Run focused Timeline unit acceptance
+        run: >-
+          pnpm vitest run
+          packages/canvas/src/timeline/TimelineSurface.test.tsx
+          packages/canvas/src/timeline/TimelineLens.test.tsx
+
+      - name: Run Timeline browser acceptance
+        run: pnpm playwright test tests/e2e/timeline.spec.ts --project=chromium
+
+      - name: Upload Playwright evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redemption-t11-playwright-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
