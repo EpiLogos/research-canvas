@@ -8,6 +8,7 @@ on:
       - "packages/domain/src/**timeline**"
       - "apps/desktop/src/**timeline**"
       - "apps/desktop/src/layout/observatory.css"
+      - "apps/desktop/scripts/dev.mjs"
       - "tests/e2e/timeline.spec.ts"
       - "playwright.config.ts"
       - "package.json"
@@ -27,6 +28,8 @@ jobs:
     steps:
       - name: Checkout exact PR head
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -56,6 +59,8 @@ jobs:
           packages/canvas/src/timeline/TimelineLens.test.tsx
 
       - name: Run Timeline browser acceptance
+        env:
+          RESEARCH_CANVAS_SKIP_TERMINAL_BRIDGE: "1"
         run: pnpm playwright test tests/e2e/timeline.spec.ts --project=chromium
 
       - name: Upload Playwright evidence on failure
