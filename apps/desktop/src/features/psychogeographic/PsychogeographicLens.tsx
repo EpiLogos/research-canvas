@@ -10,6 +10,7 @@ import type {
   StreetViewImageRecord,
   WorkspaceServices,
 } from "@research-canvas/desktop-api";
+import type { PlacesRepository } from "@research-canvas/domain";
 import {
   createLiveServicePolicy,
   type LiveServicePolicy,
@@ -31,6 +32,8 @@ export interface PsychogeographicLensProps {
   renderer?: MapSurfaceRenderer;
   resolveAsset?: (artifactPath: string) => string;
   onOpenCanvasNode?: (graphNodeId: string) => void | Promise<void>;
+  /** Canonical port override for focused surface tests/static compositions. */
+  placesRepository?: PlacesRepository;
 }
 
 let sharedPolicy: LiveServicePolicy | null = null;
@@ -53,6 +56,7 @@ export function PsychogeographicLens({
   renderer,
   resolveAsset,
   onOpenCanvasNode,
+  placesRepository,
 }: PsychogeographicLensProps): JSX.Element {
   const pack = useMemo(() => loadBundledGeographyPack(), []);
   const policy = useMemo(() => geographyPolicy(), []);
@@ -62,14 +66,14 @@ export function PsychogeographicLens({
   const [importOpen, setImportOpen] = useState(false);
 
   const repository = useMemo(
-    () => new DesktopPlacesRepository(
+    () => placesRepository ?? new DesktopPlacesRepository(
       transport,
       projectId,
       workspaceId,
       databasePath,
       profileScope,
     ),
-    [databasePath, profileScope, projectId, refreshVersion, transport, workspaceId],
+    [databasePath, placesRepository, profileScope, projectId, refreshVersion, transport, workspaceId],
   );
 
   const reloadStreetView = useCallback(async () => {
