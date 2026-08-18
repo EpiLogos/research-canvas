@@ -9,6 +9,7 @@ on:
       - "apps/desktop/src/**timeline**"
       - "apps/desktop/src/layout/observatory.css"
       - "apps/desktop/scripts/dev.mjs"
+      - "apps/desktop/src-tauri/**"
       - "tests/e2e/timeline.spec.ts"
       - "playwright.config.ts"
       - "package.json"
@@ -46,6 +47,26 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install canonical Linux bridge build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Prebuild canonical browser workspace bridge
+        run: >-
+          cargo build
+          --manifest-path apps/desktop/src-tauri/Cargo.toml
+          --bin terminal_bridge
+
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium
 
@@ -59,8 +80,6 @@ jobs:
           packages/canvas/src/timeline/TimelineLens.test.tsx
 
       - name: Run Timeline browser acceptance
-        env:
-          RESEARCH_CANVAS_SKIP_TERMINAL_BRIDGE: "1"
         run: pnpm playwright test tests/e2e/timeline.spec.ts --project=chromium
 
       - name: Upload Playwright evidence on failure
