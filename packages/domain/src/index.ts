@@ -8,3 +8,4 @@ export * from "./ports/edge";
 export * from "./ports/sequence";
 export * from "./ports/scene";
 export * from "./ports/timelineRepository";
+export * from "./ports/placesRepository";
