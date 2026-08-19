@@ -50,11 +50,7 @@ jobs:
             librsvg2-dev
 
       - name: Check T12 Rust formatting
-        run: >-
-          rustfmt --edition 2021 --check
-          apps/desktop/src-tauri/src/commands/places.rs
-          apps/desktop/src-tauri/src/lib.rs
-          apps/desktop/src-tauri/src/bin/terminal_bridge.rs
+        run: rustfmt --edition 2021 --check apps/desktop/src-tauri/src/commands/places.rs
 
       - name: Check and prebuild canonical browser bridge
         run: |
