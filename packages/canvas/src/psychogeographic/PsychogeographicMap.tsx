@@ -79,7 +79,7 @@ export function PsychogeographicMap({
               const expressions = await repository.getArchetypeExpressionsForPlace(projectId, node.graphNodeId);
               return [node.graphNodeId, expressions] as const;
             } catch {
-              return [node.graphNodeId, []] as const;
+              return [node.graphNodeId, [] as ArchetypalExpression[]] as const;
             }
           }),
         );
