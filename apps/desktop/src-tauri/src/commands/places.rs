@@ -2,15 +2,10 @@ use serde::Deserialize;
 use std::path::Path;
 
 use crate::{
-    commands::{
-        graph::resolve_db_path,
-        timeline::graph_node_from_local_projection,
-    },
+    commands::{graph::resolve_db_path, timeline::graph_node_from_local_projection},
     db::{
         connection::Database,
-        repositories::{
-            graph::GraphNode, GraphNodeMetadataRepository, NodeDocumentRepository,
-        },
+        repositories::{graph::GraphNode, GraphNodeMetadataRepository, NodeDocumentRepository},
     },
     SharedApiState,
 };
@@ -28,9 +23,7 @@ pub struct ListLocatedGraphNodesRequest {
 /// Canvas, Timeline window, Story scene, or saved walk. This keeps Places
 /// complete and useful offline: every locally projected node that carries a
 /// Temporal Place can appear on the globe whether or not Neo4j is available.
-pub fn list_located_graph_nodes_at_path(
-    path: impl AsRef<Path>,
-) -> Result<Vec<GraphNode>, String> {
+pub fn list_located_graph_nodes_at_path(path: impl AsRef<Path>) -> Result<Vec<GraphNode>, String> {
     let database = Database::open(path).map_err(|error| error.to_string())?;
     let connection = database.connection();
     let metadata = GraphNodeMetadataRepository::new(connection);
