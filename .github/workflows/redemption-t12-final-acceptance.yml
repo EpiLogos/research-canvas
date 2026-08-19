@@ -108,6 +108,7 @@ jobs:
           pnpm vitest run
           packages/canvas/src/psychogeographic/PsychogeographicMap.test.tsx
           apps/desktop/src/features/psychogeographic/PsychogeographicLens.test.tsx
+          --reporter=verbose
 
       - name: Run Places and Timeline browser acceptance
         run: >-
