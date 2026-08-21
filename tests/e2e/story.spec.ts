@@ -2,7 +2,8 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function selectHistoricalForms(page: Page): Promise<void> {
   const rail = page.getByTestId("left-rail");
-  await rail.getByRole("button", { name: "Files & Constellation", exact: true }).dispatchEvent("click");
+  const filesButton = rail.getByRole("button", { name: "Files & Constellation", exact: true });
+  await filesButton.dispatchEvent("click");
   await expect(page.getByTestId("lo-project-scope-profile")).toBeAttached({ timeout: 35_000 });
   const constellations = page.getByTestId("lo-constellations");
   await expect(constellations.getByRole("button").first()).toBeAttached({ timeout: 35_000 });
@@ -10,6 +11,12 @@ async function selectHistoricalForms(page: Page): Promise<void> {
   await expect(historicalForms).toBeAttached({ timeout: 15_000 });
   await historicalForms.dispatchEvent("click");
   await expect(historicalForms).toHaveAttribute("data-active", "true", { timeout: 15_000 });
+
+  // Selecting a constellation intentionally leaves the browser panel open.
+  // Close it through the real rail toggle before exercising the main stage so
+  // Story authoring is tested with the same shell geometry a user sees.
+  await filesButton.click();
+  await expect(page.getByTestId("shell-left-sidebar")).toHaveAttribute("data-open", "false");
 }
 
 async function addScene(
