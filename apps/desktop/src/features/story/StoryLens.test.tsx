@@ -63,7 +63,11 @@ function makeTransport(options: { empty?: boolean } = {}) {
   const scenes = options.empty ? [] : [scene];
   const upsertScene = vi.fn();
   const upsertSceneSequence = vi.fn();
-  const writeKeepsakeBundle = vi.fn(async () => ({
+  const writeKeepsakeBundle = vi.fn(async (_input: {
+    outputDir: string;
+    mediaRoot: string;
+    manifestJson: string;
+  }) => ({
     mediaCopied: 0,
     manifestPath: "/tmp/ws/keepsake/keepsake.json",
   }));
@@ -135,12 +139,9 @@ describe("StoryLens", () => {
     fireEvent.click(screen.getByTestId("story-export-keepsake"));
 
     await waitFor(() => expect(writeKeepsakeBundle).toHaveBeenCalledTimes(1));
-    const input = writeKeepsakeBundle.mock.calls[0]?.[0] as {
-      outputDir: string;
-      manifestJson: string;
-    };
-    expect(input.outputDir).toBe(`/tmp/ws/keepsake/${JOURNEY_ID}`);
-    const manifest = JSON.parse(input.manifestJson) as {
+    const input = writeKeepsakeBundle.mock.calls[0]?.[0];
+    expect(input?.outputDir).toBe(`/tmp/ws/keepsake/${JOURNEY_ID}`);
+    const manifest = JSON.parse(input?.manifestJson ?? "{}") as {
       title: string;
       scenes: Array<{ passages: unknown[] }>;
     };
