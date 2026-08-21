@@ -105,13 +105,13 @@ export function Stage({
         </section>
       )}
 
-      {lens === "story" && databasePath && workspaceId && activeProfileScope && (
+      {lens === "story" && databasePath && workspaceId && activeProfileScope && workspace.activeConstellationId && (
         <section className="canvas-pane" data-testid="story-pane" style={commonStageSurfaceStyle}>
           <StoryLens
             transport={workspaceTransport}
+            constellationId={workspace.activeConstellationId}
             databasePath={databasePath}
             workspaceId={workspaceId}
-            repoRoot={repoRoot ?? ""}
             profileScope={activeProfileScope}
             workingRoot={workingRoot ?? ""}
           />
