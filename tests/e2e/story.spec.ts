@@ -1,54 +1,81 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-/**
- * Task-5 acceptance gate (issue #21): the story lens renders a seeded journey
- * over located events — the visible label is "Journeys", the seeded journey
- * ("A journey over located events") and its 4 located scenes appear, and no
- * migration-only claim is visible anywhere. The harness boots the real desktop
- * dev server on 4173 with the corpus fixture, so the seed path (timeline view →
- * corpus passage refs → scene store) is exercised for real.
- */
-test("story lens renders the seeded journey with no migration-only claims", async ({
-  page,
-}) => {
+async function selectHistoricalForms(page: Page): Promise<void> {
+  const rail = page.getByTestId("left-rail");
+  await rail.getByRole("button", { name: "Files & Constellation", exact: true }).dispatchEvent("click");
+  await expect(page.getByTestId("lo-project-scope-profile")).toBeAttached({ timeout: 35_000 });
+  const constellations = page.getByTestId("lo-constellations");
+  await expect(constellations.getByRole("button").first()).toBeAttached({ timeout: 35_000 });
+  const historicalForms = constellations.getByRole("button", { name: /^Historical Forms\b/ });
+  await expect(historicalForms).toBeAttached({ timeout: 15_000 });
+  await historicalForms.dispatchEvent("click");
+  await expect(historicalForms).toHaveAttribute("data-active", "true", { timeout: 15_000 });
+}
+
+async function addScene(
+  page: Page,
+  title: string,
+  narration: string,
+  transition: "fade" | "dissolve",
+): Promise<void> {
+  await page.getByTestId("story-add-scene").click();
+  await expect(page.getByTestId("story-scene-editor")).toBeVisible();
+  await page.getByTestId("story-scene-title").fill(title);
+  await page.getByTestId("story-scene-narration").fill(narration);
+  await page.getByTestId("story-scene-transition").selectOption(transition);
+  await page.getByTestId("story-scene-duration").fill("1000");
+  const firstNode = page.getByTestId("story-scene-node-select").getByRole("checkbox").first();
+  if (await firstNode.count()) await firstNode.check();
+  await page.getByTestId("story-scene-save").click();
+  await expect(page.getByTestId("story-scene-editor")).toHaveCount(0, { timeout: 15_000 });
+}
+
+test("Story creates and persists a two-scene journey and previews its transition", async ({ page }) => {
+  test.setTimeout(90_000);
+  const journeyTitle = `T13 browser journey ${Date.now()}`;
+
   await page.goto("/");
-
-  // The shell labels the story lens "Journeys", never "Story"/migration.
-  await expect(page.getByTestId("lens-story")).toHaveText("Journeys");
-  await expect(page.getByRole("tab", { name: "Journeys" })).toBeVisible();
-
+  await selectHistoricalForms(page);
   await page.getByTestId("lens-story").click();
+  await expect(page.getByTestId("story-lens")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("story-compose-mode")).toHaveAttribute("data-active", "true");
+  await expect(page.getByTestId("story-surface")).toBeVisible();
 
-  // Seeding is real: the corpus walk assembles and the surface renders.
-  await expect(page.getByTestId("story-surface")).toBeVisible({
-    timeout: 20_000,
-  });
+  await page.getByTestId("story-new-journey-title").fill(journeyTitle);
+  await page.getByTestId("story-create-journey").click();
+  const journeyButton = page
+    .getByTestId("story-journey-list")
+    .getByRole("button", { name: new RegExp(journeyTitle) });
+  await expect(journeyButton).toBeVisible({ timeout: 15_000 });
 
-  // The visible narrative is an agnostic journey over located events.
-  await expect(
-    page.getByRole("heading", { name: "A journey over located events" }),
-  ).toBeVisible();
+  await addScene(page, "Arrival", "The first authored scene.", "fade");
+  await addScene(page, "Aftermath", "The second authored scene.", "dissolve");
 
-  // The located stops render as the journey's scenes. Scene ids keep the
-  // internal `migration:journey:` prefix (data compat) but the surface is
-  // ordered and navigable regardless of the exact stops the real graph yields.
-  const sceneNav = page.locator("[data-testid^='story-scene-migration:journey:']");
-  await expect(sceneNav).toHaveCount(4);
-  for (let index = 0; index < 4; index += 1) {
-    await expect(sceneNav.nth(index)).toBeVisible();
-  }
+  const strip = page.getByTestId("story-scene-strip");
+  await expect(strip.getByRole("button", { name: /Arrival/ })).toBeVisible();
+  await expect(strip.getByRole("button", { name: /Aftermath/ })).toBeVisible();
 
-  // The first scene is the chronologically-first located stop.
-  await expect(sceneNav.first()).toContainText(/Rudolf II/i);
+  await page.getByTestId("story-preview").click();
+  const previewScene = page.getByTestId("story-preview-scene");
+  await expect(previewScene).toContainText("Arrival");
+  await expect(previewScene).toContainText("The first authored scene.");
+  await expect(previewScene).toHaveAttribute("data-transition", "fade");
+  await expect(previewScene).toContainText("Aftermath", { timeout: 4_000 });
+  await expect(previewScene).toHaveAttribute("data-transition", "dissolve");
+  await page.getByTestId("story-preview-close").click();
 
-  // Media-first scene content: with no captured street-view imagery the
-  // surface degrades to a neutral fallback (never an error), and the walk's
-  // map context renders as the route diagram.
-  await expect(page.getByTestId("story-street-view-fallback")).toBeVisible();
-  await expect(page.getByTestId("story-walk-context")).toBeVisible();
-
-  // No migration-only claim is visible anywhere in the story surface.
-  const surface = page.getByTestId("story-surface");
-  await expect(surface.getByText(/migration/i)).toHaveCount(0);
-  await expect(surface.getByText(/From origin to destination/i)).toHaveCount(0);
+  // A reload must reconstruct the authored journey from the real SQLite scene
+  // store rather than component memory or an auto-created seed journey.
+  await page.reload();
+  await selectHistoricalForms(page);
+  await page.getByTestId("lens-story").click();
+  await expect(page.getByTestId("story-lens")).toBeVisible({ timeout: 20_000 });
+  const reloadedJourney = page
+    .getByTestId("story-journey-list")
+    .getByRole("button", { name: new RegExp(journeyTitle) });
+  await expect(reloadedJourney).toBeVisible({ timeout: 15_000 });
+  await reloadedJourney.click();
+  const reloadedStrip = page.getByTestId("story-scene-strip");
+  await expect(reloadedStrip.getByRole("button", { name: /Arrival/ })).toBeVisible();
+  await expect(reloadedStrip.getByRole("button", { name: /Aftermath/ })).toBeVisible();
 });
