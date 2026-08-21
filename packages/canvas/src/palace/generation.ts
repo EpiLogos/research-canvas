@@ -55,18 +55,32 @@ export function palaceLayoutFromScene(
  * Overlay editable layout state without discarding the rich generated room
  * model. Existing generated room ids retain members, QL faces, encapsulation
  * form and constellation objects; only spatial/title fields are curated.
+ *
+ * The generated scene remains authoritative for generated-room order. That
+ * order carries the mature Palace curation into guided recall. The layout is
+ * an additive presentation overlay: it may remove generated rooms and append
+ * manual rooms, but it must not silently replace the generated recall order.
  */
 export function applyPalaceLayoutToScene(
   scene: PalaceScene,
   layout: PalaceLayout,
 ): PalaceScene {
-  const generatedRooms = new Map(scene.rooms.map((room) => [room.id, room] as const));
-  const rooms = layout.rooms.map((room, index) =>
-    generatedRooms.has(room.id)
-      ? mergeGeneratedRoom(generatedRooms.get(room.id)!, room)
-      : manualRoomScene(room, index),
-  );
+  const layoutRooms = new Map(layout.rooms.map((room) => [room.id, room] as const));
+  const generatedRoomIds = new Set(scene.rooms.map((room) => room.id));
+  const generatedRooms = scene.rooms.flatMap((generated) => {
+    const room = layoutRooms.get(generated.id);
+    return room ? [mergeGeneratedRoom(generated, room)] : [];
+  });
+  const manualRooms = layout.rooms
+    .filter((room) => !generatedRoomIds.has(room.id))
+    .map((room, index) => manualRoomScene(room, generatedRooms.length + index));
+  const rooms = [...generatedRooms, ...manualRooms];
   const roomIds = new Set(rooms.map((room) => room.id));
+  const manualRoomIds = manualRooms.map((room) => room.id);
+  const walkOrder = [
+    ...scene.walkOrder.filter((roomId) => roomIds.has(roomId)),
+    ...manualRoomIds,
+  ];
 
   const connections = layout.corridors
     .filter((corridor) => roomIds.has(corridor.sourceRoomId) && roomIds.has(corridor.targetRoomId))
@@ -96,8 +110,8 @@ export function applyPalaceLayoutToScene(
     collections: scene.collections.filter((collection) => roomIds.has(collection.roomId)),
     fixtures: scene.fixtures.filter((fixture) => roomIds.has(fixture.roomId)),
     constellationObjects: scene.constellationObjects.filter((object) => roomIds.has(object.roomId)),
-    entryRoomId: rooms[0]?.id ?? "",
-    walkOrder: rooms.map((room) => room.id),
+    entryRoomId: walkOrder[0] ?? "",
+    walkOrder,
     encapsulationObjects: scene.encapsulationObjects.filter((object) => roomIds.has(object.roomId)),
   };
 }
