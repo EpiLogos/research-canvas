@@ -91,7 +91,9 @@ test("Places globe reads project geography, switches projection, opts into live 
   await expect(panel).toContainText(updated.title);
   await expect(page.getByTestId("place-coordinates")).toContainText("-4.55000, 129.90000");
   await expect(page.getByTestId("place-precision")).toHaveText("approximate");
-  await expect(page.getByTestId("place-height")).toHaveText("Not recorded");
+  await expect(page.getByTestId("place-height")).toHaveCount(0);
+  await expect(panel).toContainText("Related nodes");
+  await expect(panel).toContainText("Archetypal expressions");
 
   // Double-click uses the shared Canvas-opening seam rather than a Places-only
   // reader/session system.
