@@ -103,12 +103,13 @@ describe("PsychogeographicLens", () => {
       />,
     );
 
-    await waitFor(() => expect(drawPlaces).toHaveBeenCalled());
-    const places = drawPlaces.mock.calls.at(-1)?.[0] as PlaceRenderMarker[];
-    expect(places.map((place) => place.graphNodeId)).toEqual([
-      florence.graphNodeId,
-      istanbul.graphNodeId,
-    ]);
+    await waitFor(() => {
+      const places = drawPlaces.mock.calls.at(-1)?.[0] as PlaceRenderMarker[] | undefined;
+      expect(places?.map((place) => place.graphNodeId)).toEqual([
+        florence.graphNodeId,
+        istanbul.graphNodeId,
+      ]);
+    });
     expect(repository.getLocatedNodes).toHaveBeenCalledWith("project:one");
     expect(screen.getByTestId("places-globe")).toBeInTheDocument();
     expect(await screen.findByTestId("street-view-surface")).toBeInTheDocument();
@@ -128,9 +129,10 @@ describe("PsychogeographicLens", () => {
       />,
     );
 
-    await waitFor(() => expect(drawLanes).toHaveBeenCalled());
-    const lanes = drawLanes.mock.calls.at(-1)?.[0] as GeographyEdge[];
-    expect(lanes.map((edge) => edge.seedKey)).toEqual(["voc:mediterranean"]);
+    await waitFor(() => {
+      const lanes = drawLanes.mock.calls.at(-1)?.[0] as GeographyEdge[] | undefined;
+      expect(lanes?.map((edge) => edge.seedKey)).toEqual(["voc:mediterranean"]);
+    });
     expect(await screen.findByTestId("geography-lane-voc:mediterranean")).toBeInTheDocument();
   });
 
