@@ -78,7 +78,9 @@ test("Palace adopts, edits and restores curation over the mature generated palac
   // Reorder through the mature Palace curation controls. Guided recall must
   // follow this generated curated order even though the layout overlay was
   // persisted earlier in its original order.
-  const chambers = page.getByTestId("palace-chambers").locator("li");
+  const chambers = page
+    .getByTestId("palace-chambers")
+    .locator('[data-testid^="palace-chamber-"]');
   const firstChamberTestId = await dataTestId(chambers.nth(0));
   const secondChamberTestId = await dataTestId(chambers.nth(1));
   const firstChamberId = suffix(firstChamberTestId, "palace-chamber-");
@@ -107,7 +109,9 @@ test("Palace adopts, edits and restores curation over the mature generated palac
   await expect(page.getByTestId(`palace-room-${manualRoomId}`)).toBeVisible();
   await expect(page.locator('[data-testid^="palace-wall-object-manual:object:"]')).toHaveCount(1);
   await expect(page.getByTestId("palace-layout-corridors-panel").locator("li")).toHaveCount(corridorCount + 1);
-  const reloadedChambers = page.getByTestId("palace-chambers").locator("li");
+  const reloadedChambers = page
+    .getByTestId("palace-chambers")
+    .locator('[data-testid^="palace-chamber-"]');
   await expect(reloadedChambers.nth(0)).toHaveAttribute("data-testid", secondChamberTestId);
   const reloadedWalk = page.getByTestId("palace-walk-chambers").locator('span[data-testid^="palace-walk-"]');
   await expect(reloadedWalk.nth(0)).toHaveAttribute("data-testid", `palace-walk-${secondChamberId}`);
