@@ -185,9 +185,9 @@ describe("StoryLens", () => {
     render(
       <StoryLens
         transport={makeTransport([scene()], vi.fn())}
+        constellationId="root-archetypal-field"
         databasePath="/tmp/ws.sqlite"
         workspaceId="sqlite:/tmp/ws"
-        repoRoot="/tmp/repo"
         profileScope="migration"
         workingRoot="/tmp/ws"
       />,
@@ -217,9 +217,9 @@ describe("StoryLens", () => {
           vi.fn(),
           { images: [image], fetchRecords: [fetchRecord] },
         )}
+        constellationId="root-archetypal-field"
         databasePath="/tmp/ws.sqlite"
         workspaceId="sqlite:/tmp/ws"
-        repoRoot="/tmp/repo"
         profileScope="migration"
         workingRoot="/tmp/ws"
       />,
@@ -253,9 +253,9 @@ describe("StoryLens", () => {
           vi.fn(),
           { images: [image], fetchRecords: [fetchRecord] },
         )}
+        constellationId="root-archetypal-field"
         databasePath="/tmp/ws.sqlite"
         workspaceId="sqlite:/tmp/ws"
-        repoRoot="/tmp/repo"
         profileScope="migration"
         workingRoot="/tmp/ws"
       />,
@@ -286,9 +286,9 @@ describe("StoryLens", () => {
           vi.fn(),
           { images: [image], fetchRecords: [fetchRecord] },
         )}
+        constellationId="root-archetypal-field"
         databasePath="/tmp/ws.sqlite"
         workspaceId="sqlite:/tmp/ws"
-        repoRoot="/tmp/repo"
         profileScope="migration"
         workingRoot="/tmp/ws"
       />,
@@ -309,9 +309,9 @@ describe("StoryLens", () => {
     render(
       <StoryLens
         transport={makeTransport([scene()], writeKeepsake)}
+        constellationId="root-archetypal-field"
         databasePath="/tmp/ws.sqlite"
         workspaceId="sqlite:/tmp/ws"
-        repoRoot="/tmp/repo"
         profileScope="migration"
         workingRoot="/tmp/ws"
       />,
@@ -342,9 +342,9 @@ describe("StoryLens", () => {
     render(
       <StoryLens
         transport={makeTransport([], vi.fn())}
+        constellationId="root-archetypal-field"
         databasePath="/tmp/ws.sqlite"
         workspaceId="sqlite:/tmp/ws"
-        repoRoot="/tmp/repo"
         profileScope="migration"
         workingRoot="/tmp/ws"
       />,
