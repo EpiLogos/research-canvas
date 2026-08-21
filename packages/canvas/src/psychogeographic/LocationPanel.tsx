@@ -62,8 +62,6 @@ export function LocationPanel({
         </dd>
         <dt style={{ color: "var(--ob-faint, #7a8ca4)" }}>Precision</dt>
         <dd data-testid="place-precision" style={{ margin: 0 }}>{precision}</dd>
-        <dt style={{ color: "var(--ob-faint, #7a8ca4)" }}>Height</dt>
-        <dd data-testid="place-height" style={{ margin: 0 }}>Not recorded</dd>
       </dl>
 
       <section style={{ marginTop: 18 }}>
