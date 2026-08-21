@@ -15,6 +15,7 @@ export interface StoryComposerSurfaceProps {
   repository: StoryRepository;
   constellationId: string;
   resolveAsset: (assetId: string) => string;
+  onActiveJourneyChange?: (journeyId: string | null) => void;
 }
 
 /** Surface #4 authoring shell. Durable data always flows through StoryRepository. */
@@ -22,6 +23,7 @@ export function StoryComposerSurface({
   repository,
   constellationId,
   resolveAsset,
+  onActiveJourneyChange,
 }: StoryComposerSurfaceProps): JSX.Element {
   const [journeys, setJourneys] = useState<StoryJourney[]>([]);
   const [activeJourneyId, setActiveJourneyId] = useState<string | null>(null);
@@ -78,7 +80,8 @@ export function StoryComposerSurface({
     setAddingScene(false);
     setEditingSceneId(null);
     setPreviewing(false);
-  }, [activeJourneyId, loadScenes]);
+    onActiveJourneyChange?.(activeJourneyId);
+  }, [activeJourneyId, loadScenes, onActiveJourneyChange]);
 
   const createJourney = async (event: FormEvent) => {
     event.preventDefault();
@@ -119,8 +122,12 @@ export function StoryComposerSurface({
     const index = scenes.findIndex((scene) => scene.id === sceneId);
     const target = index + direction;
     if (index < 0 || target < 0 || target >= scenes.length) return;
+    const currentScene = scenes[index];
+    const targetScene = scenes[target];
+    if (!currentScene || !targetScene) return;
     const next = [...scenes];
-    [next[index], next[target]] = [next[target], next[index]];
+    next[index] = targetScene;
+    next[target] = currentScene;
     try {
       await repository.reorderScenes(activeJourneyId, next.map((scene) => scene.id));
       setScenes(next);
