@@ -113,13 +113,14 @@ describe("PsychogeographicMap", () => {
       />,
     );
 
-    await waitFor(() => expect(renderer.placeCalls.length).toBeGreaterThan(0));
-    const last = renderer.placeCalls.at(-1)!;
-    expect(last.places.map((marker) => marker.graphNodeId)).toEqual([
-      florence.graphNodeId,
-      istanbul.graphNodeId,
-    ]);
-    expect(last.expressions.map((marker) => marker.expressionId)).toEqual([expression.id]);
+    await waitFor(() => {
+      const last = renderer.placeCalls.at(-1);
+      expect(last?.places.map((marker) => marker.graphNodeId)).toEqual([
+        florence.graphNodeId,
+        istanbul.graphNodeId,
+      ]);
+      expect(last?.expressions.map((marker) => marker.expressionId)).toEqual([expression.id]);
+    });
     expect(screen.getByTestId("places-globe")).toBeInTheDocument();
     expect(screen.getByTestId("places-connection-status")).toHaveTextContent("Offline");
   });
@@ -142,7 +143,7 @@ describe("PsychogeographicMap", () => {
     expect(panel).toHaveTextContent("Florence");
     expect(panel).toHaveTextContent("43.77140, 11.25400");
     expect(screen.getByTestId("place-precision")).toHaveTextContent("exact");
-    expect(screen.getByTestId("place-height")).toHaveTextContent("Not recorded");
+    expect(screen.queryByTestId("place-height")).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId("place-related-nodes")).toHaveTextContent("Threshold"));
     expect(screen.getByTestId("place-archetype-expressions")).toHaveTextContent("visual");
   });
@@ -236,7 +237,7 @@ describe("PsychogeographicMap", () => {
     fireEvent.click(screen.getByTestId("geography-lane-voc:mediterranean"));
     expect(screen.getByTestId("lane-provenance")).toHaveTextContent("Report8.md");
     fireEvent.change(screen.getByTestId("lane-year-filter"), { target: { value: "1700" } });
-    expect(screen.queryByTestId("geography-lane-voc:mediterranean")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId("geography-lane-voc:mediterranean")).not.toBeInTheDocument());
     await waitFor(() => expect(renderer.laneCalls.at(-1)).toEqual([]));
   });
 });
