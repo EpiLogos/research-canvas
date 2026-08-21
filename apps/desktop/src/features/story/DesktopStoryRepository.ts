@@ -191,7 +191,7 @@ export class DesktopStoryRepository implements StoryRepository {
       return {
         graphNodeId,
         title: candidate.graph?.title ?? candidate.title ?? graphNodeId,
-        entityType: candidate.graph?.entityType ?? "Concept",
+        entityType: candidate.graph?.entityType ?? null,
       };
     });
   }
