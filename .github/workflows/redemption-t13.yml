@@ -72,10 +72,11 @@ jobs:
       - name: Typecheck workspace
         run: pnpm exec tsc -b
 
-      - name: Run focused Story authoring acceptance
+      - name: Run focused Story authoring and publication acceptance
         run: >-
           pnpm vitest run
           apps/desktop/src/features/story/DesktopStoryRepository.test.ts
+          apps/desktop/src/features/story/StoryLens.test.tsx
           packages/canvas/src/story/StoryComposerSurface.test.tsx
           packages/canvas/src/story/StorySurface.test.tsx
           packages/canvas/src/story/storyPresentation.test.ts
