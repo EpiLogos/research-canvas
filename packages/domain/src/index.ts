@@ -10,3 +10,4 @@ export * from "./ports/scene";
 export * from "./ports/timelineRepository";
 export * from "./ports/placesRepository";
 export * from "./ports/storyRepository";
+export * from "./ports/palaceRepository";
