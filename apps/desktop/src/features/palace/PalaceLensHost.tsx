@@ -1,51 +1,56 @@
 import { useCallback, useEffect, useMemo, useState, type JSX } from "react";
 
 import {
+  applyPalaceLayoutToScene,
   buildPalaceBundle,
   buildPalaceScene,
-  clusterChambers,
-  curateChambers,
   encapsulationEdgesFromRelationships,
+  palaceLayoutFromScene,
+  PalaceEditor,
   PalaceSurface,
   type PalaceCuration,
 } from "@research-canvas/canvas";
-import type {
-  GraphNode,
-  GraphRelationship,
-  WorkspaceServices,
-} from "@research-canvas/desktop-api";
+import type { PalaceLayout } from "@research-canvas/domain";
+import type { WorkspaceServices } from "@research-canvas/desktop-api";
 import type { Scene, SceneSequence } from "@research-canvas/schema";
 
-/**
- * Mind-palace host (slice 4 → refinement-2 D5): feeds the 3D palace surface
- * with the real graph, loads the persisted curation from the profile store,
- * saves curation changes, and persists palace walks as scene sequences so they
- * surface in the story and psychogeographic lenses too. All palace layout is
- * curation in the SQLite presentation store — never a graph write.
- */
+import {
+  DesktopPalaceRepository,
+  type PalaceProjection,
+} from "./DesktopPalaceRepository";
 
+/**
+ * Surface #5 host. The mature generated/WebGL palace remains the renderer;
+ * T14 adds a constellation-scoped local layout layer over it so manual rooms,
+ * corridors and wall objects persist without becoming graph mutations.
+ */
 export interface PalaceLensHostProps {
   transport: WorkspaceServices;
+  constellationId: string;
   databasePath: string;
   workspaceId: string;
   profileScope: string;
-  /** The workspace content root; the palace bundle is exported under it. */
   workingRoot: string;
 }
 
 export function PalaceLensHost({
   transport,
+  constellationId,
   databasePath,
   workspaceId,
   profileScope,
   workingRoot,
 }: PalaceLensHostProps): JSX.Element {
-  const [nodes, setNodes] = useState<GraphNode[]>([]);
-  const [relationships, setRelationships] = useState<GraphRelationship[]>([]);
-  const [encapsulationEdges, setEncapsulationEdges] = useState<
-    GraphRelationship[]
-  >([]);
-  const [storedCuration, setStoredCuration] = useState<PalaceCuration | null>(null);
+  const repository = useMemo(
+    () => new DesktopPalaceRepository(
+      transport,
+      databasePath,
+      workspaceId,
+      profileScope,
+    ),
+    [databasePath, profileScope, transport, workspaceId],
+  );
+  const [projection, setProjection] = useState<PalaceProjection | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exportState, setExportState] = useState<"idle" | "exporting" | "done" | "failed">(
@@ -59,24 +64,13 @@ export function PalaceLensHost({
       setLoading(true);
       setError(null);
       try {
-        // The palace subgraph surface returns the real ENCAPSULATES edges
-        // through the graph repository layer (`list_encapsulation_edges`),
-        // not a filter over the timeline view's bounded relationship
-        // neighbourhood. The palace shapes full/partial/compressed
-        // constellations from this repository surface.
-        const [view, stored] = await Promise.all([
-          transport.loadPalaceGraph({ workspaceId }),
-          transport.loadPalaceCuration({ databasePath, profileScope }),
-        ]);
-        if (cancelled) return;
-        setNodes(view.nodes.map((record) => record.node));
-        setRelationships(view.relationships);
-        setEncapsulationEdges(view.encapsulationEdges);
-        setStoredCuration((stored.curation as PalaceCuration | null) ?? null);
+        // Materialise the scoped layout first, then read the projection so a
+        // fresh constellation immediately has durable local presentation state.
+        await repository.getOrCreatePalace(constellationId);
+        const next = await repository.getProjection(constellationId);
+        if (!cancelled) setProjection(next);
       } catch (cause) {
-        if (!cancelled) {
-          setError(cause instanceof Error ? cause.message : String(cause));
-        }
+        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -84,18 +78,44 @@ export function PalaceLensHost({
     return () => {
       cancelled = true;
     };
-  }, [databasePath, profileScope, transport, workspaceId]);
+  }, [constellationId, repository]);
 
   const saveCuration = useCallback(
-    async (next: PalaceCuration) => {
-      await transport.savePalaceCuration({
-        databasePath,
+    async (nextCuration: PalaceCuration) => {
+      if (!projection) return;
+      const generatedScene = buildPalaceScene({
+        nodes: projection.nodes,
+        relationships: projection.relationships,
         profileScope,
-        curation: next,
+        curation: nextCuration,
+        encapsulationEdges: encapsulationEdgesFromRelationships(projection.encapsulationEdges),
       });
+      const nextProjection = {
+        ...projection,
+        curation: nextCuration,
+        generatedScene,
+      };
+      setProjection(nextProjection);
+      await repository.saveCuration(constellationId, nextCuration, projection.layout);
     },
-    [databasePath, profileScope, transport],
+    [constellationId, profileScope, projection, repository],
   );
+
+  const saveLayout = useCallback(
+    async (layout: PalaceLayout) => {
+      if (!projection) return;
+      setProjection({ ...projection, layout });
+      await repository.updatePalace(constellationId, layout);
+    },
+    [constellationId, projection, repository],
+  );
+
+  const regenerateLayout = useCallback(async () => {
+    if (!projection) return;
+    const layout = palaceLayoutFromScene(constellationId, projection.generatedScene);
+    setProjection({ ...projection, layout });
+    await repository.updatePalace(constellationId, layout);
+  }, [constellationId, projection, repository]);
 
   const persistWalk = useCallback(
     ({ sequence, scenes }: { sequence: SceneSequence; scenes: Scene[] }) => {
@@ -109,41 +129,21 @@ export function PalaceLensHost({
     [databasePath, transport],
   );
 
-  const curation = useMemo<PalaceCuration>(() => {
-    if (storedCuration) return storedCuration;
-    const candidates = clusterChambers(nodes, relationships);
-    const nodesById = new Map(nodes.map((node) => [node.graphNodeId, node]));
-    return curateChambers(candidates, nodesById, profileScope);
-  }, [storedCuration, nodes, relationships, profileScope]);
-
-  // The transport returns raw ENCAPSULATES GraphRelationships; the palace
-  // scene builder consumes the edge view. The adapter is a pure shape
-  // conversion — the edges themselves come from the graph repository surface
-  // (`loadPalaceGraph`), not a filter over the timeline view.
-  const encapsulationEdgesInput = useMemo(
-    () => encapsulationEdgesFromRelationships(encapsulationEdges),
-    [encapsulationEdges],
-  );
-
   const scene = useMemo(
-    () =>
-      buildPalaceScene({
-        nodes,
-        relationships,
-        profileScope,
-        curation,
-        encapsulationEdges: encapsulationEdgesInput,
-      }),
-    [nodes, relationships, profileScope, curation, encapsulationEdgesInput],
+    () => projection
+      ? applyPalaceLayoutToScene(projection.generatedScene, projection.layout)
+      : null,
+    [projection],
   );
 
   const exportPalaceBundle = useCallback(() => {
+    if (!projection || !scene) return;
     const bundle = buildPalaceBundle({
       scene,
-      nodes,
-      relationships,
-      encapsulationEdges: encapsulationEdgesInput,
-      curation,
+      nodes: projection.nodes,
+      relationships: projection.relationships,
+      encapsulationEdges: encapsulationEdgesFromRelationships(projection.encapsulationEdges),
+      curation: projection.curation,
     });
     setExportState("exporting");
     setExportMessage(null);
@@ -157,20 +157,13 @@ export function PalaceLensHost({
           bundleJson: JSON.stringify(bundle),
         });
         setExportState("done");
-        setExportMessage(
-          `Palace bundle written to palace/${result.bundlePath}`,
-        );
+        setExportMessage(`Palace bundle written to palace/${result.bundlePath}`);
       } catch (cause) {
         setExportState("failed");
         setExportMessage(cause instanceof Error ? cause.message : String(cause));
       }
     })();
-  }, [scene, nodes, relationships, encapsulationEdgesInput, curation, workingRoot, transport]);
-
-  const isEmpty = useMemo(
-    () => nodes.length === 0 && relationships.length === 0,
-    [nodes.length, relationships.length],
-  );
+  }, [projection, scene, transport, workingRoot]);
 
   if (loading) {
     return (
@@ -183,18 +176,16 @@ export function PalaceLensHost({
   if (error) {
     return (
       <section className="palace-host" data-testid="palace-host">
-        <p className="palace-host__error" data-testid="palace-host-error">
-          {error}
-        </p>
+        <p className="palace-host__error" data-testid="palace-host-error">{error}</p>
       </section>
     );
   }
 
-  if (isEmpty) {
+  if (!projection || !scene || (projection.nodes.length === 0 && projection.relationships.length === 0)) {
     return (
       <section className="palace-host" data-testid="palace-host">
         <p data-testid="palace-host-empty">
-          No graph structure is available to generate a palace for this profile.
+          No graph structure is available to generate a palace for this constellation.
         </p>
       </section>
     );
@@ -204,18 +195,26 @@ export function PalaceLensHost({
     <section
       className="palace-host"
       data-testid="palace-host"
-      data-encapsulation-edges={encapsulationEdges.length}
+      data-constellation-id={constellationId}
+      data-encapsulation-edges={projection.encapsulationEdges.length}
     >
-      <PalaceSurface
-        scene={scene}
-        nodes={nodes}
-        relationships={relationships}
-        encapsulationEdges={encapsulationEdgesInput}
-        curation={curation}
-        onSaveCuration={saveCuration}
-        onPersistWalk={persistWalk}
-        onExportBundle={exportPalaceBundle}
-      />
+      <PalaceEditor
+        layout={projection.layout}
+        nodes={projection.nodes}
+        onChange={saveLayout}
+        onGenerate={regenerateLayout}
+      >
+        <PalaceSurface
+          scene={scene}
+          nodes={projection.nodes}
+          relationships={projection.relationships}
+          encapsulationEdges={encapsulationEdgesFromRelationships(projection.encapsulationEdges)}
+          curation={projection.curation}
+          onSaveCuration={saveCuration}
+          onPersistWalk={persistWalk}
+          onExportBundle={exportPalaceBundle}
+        />
+      </PalaceEditor>
       {exportMessage && (
         <p
           className="palace-lens__export-state"
