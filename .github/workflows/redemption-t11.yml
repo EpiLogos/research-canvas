@@ -45,58 +45,6 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Apply bounded T12 Places substrate when absent
-        id: t12
-        shell: bash
-        run: |
-          set -euo pipefail
-          if test -f apps/desktop/src-tauri/src/commands/places.rs; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "T12 Places substrate already present."
-            exit 0
-          fi
-
-          PATCH_SOURCE_SHA=da7a4ab18aa77ac3e70eee8ffd6c81b5d04d664e
-          git fetch --depth=1 origin "$PATCH_SOURCE_SHA"
-          git show "$PATCH_SOURCE_SHA":.github/workflows/redemption-t12-substrate.yml > /tmp/redemption-t12-source.yml
-
-          python <<'PY'
-          from pathlib import Path
-
-          workflow = Path('/tmp/redemption-t12-source.yml').read_text()
-          start_marker = '      - name: Apply bounded Places repository substrate\n'
-          end_marker = '\n      - name: Format Rust substrate\n'
-          start = workflow.index(start_marker)
-          run_start = workflow.index('        run: |\n', start) + len('        run: |\n')
-          end = workflow.index(end_marker, run_start)
-          block = workflow[run_start:end]
-          lines = block.splitlines()
-          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
-          Path('/tmp/apply-t12-substrate.sh').write_text(script)
-          PY
-
-          bash /tmp/apply-t12-substrate.sh
-
-          python <<'PY'
-          from pathlib import Path
-
-          target = Path('apps/desktop/src/features/psychogeographic/DesktopPlacesRepository.ts')
-          text = target.read_text()
-          old = '''              || value === "exact"
-              || value === "range"
-              || value === "circa"
-'''
-          new = '''              || value === "month"
-              || value === "day"
-'''
-          if text.count(old) != 1:
-              raise SystemExit(f'expected one generated precision alternative block, found {text.count(old)}')
-          target.write_text(text.replace(old, new, 1))
-          PY
-
-          cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
@@ -113,29 +61,6 @@ jobs:
             libssl-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev
-
-      - name: Validate T12 substrate
-        if: steps.t12.outputs.changed == 'true'
-        run: |
-          pnpm exec tsc -b
-          cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --bin terminal_bridge
-          git diff --check
-
-      - name: Upload validated T12 substrate
-        if: steps.t12.outputs.changed == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: redemption-t12-substrate-${{ github.run_id }}
-          path: |
-            apps/desktop/src-tauri/src/db/repositories/graph_metadata.rs
-            apps/desktop/src-tauri/src/commands/places.rs
-            apps/desktop/src-tauri/src/lib.rs
-            apps/desktop/src-tauri/src/bin/terminal_bridge.rs
-            packages/domain/src/ports/placesRepository.ts
-            packages/domain/src/index.ts
-            apps/desktop/src/features/psychogeographic/DesktopPlacesRepository.ts
-          if-no-files-found: error
-          retention-days: 7
 
       - name: Prebuild canonical browser workspace bridge
         run: >-
