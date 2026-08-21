@@ -36,7 +36,8 @@ export interface StorySceneInput {
 export interface StoryNodeOption {
   graphNodeId: string;
   title: string;
-  entityType: EntityType;
+  /** Null when a Canvas node has not yet hydrated a canonical graph projection. */
+  entityType: EntityType | null;
 }
 
 /**
