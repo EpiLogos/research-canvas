@@ -1,6 +1,0 @@
-temporary T12 acceptance trigger; remove after substrate lands
-retry after canonical T11 concurrency cleared
-read-only substrate validation trigger
-canonical T12 preflight now
-typed expression fallback acceptance
-verbose Places unit diagnostics
