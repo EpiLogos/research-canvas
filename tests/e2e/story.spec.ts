@@ -37,6 +37,16 @@ async function addScene(
   await expect(page.getByTestId("story-scene-editor")).toHaveCount(0, { timeout: 15_000 });
 }
 
+async function expectSceneStrip(page: Page, titles: string[]): Promise<void> {
+  const sceneButtons = page
+    .getByTestId("story-scene-strip")
+    .locator('button[data-testid^="story-scene-"]');
+  await expect(sceneButtons).toHaveCount(titles.length);
+  for (const [index, title] of titles.entries()) {
+    await expect(sceneButtons.nth(index)).toContainText(title);
+  }
+}
+
 test("Story creates and persists a two-scene journey and previews its transition", async ({ page }) => {
   test.setTimeout(90_000);
   const journeyTitle = `T13 browser journey ${Date.now()}`;
@@ -57,10 +67,7 @@ test("Story creates and persists a two-scene journey and previews its transition
 
   await addScene(page, "Arrival", "The first authored scene.", "fade");
   await addScene(page, "Aftermath", "The second authored scene.", "dissolve");
-
-  const strip = page.getByTestId("story-scene-strip");
-  await expect(strip.getByRole("button", { name: /Arrival/ })).toBeVisible();
-  await expect(strip.getByRole("button", { name: /Aftermath/ })).toBeVisible();
+  await expectSceneStrip(page, ["Arrival", "Aftermath"]);
 
   await page.getByTestId("story-preview").click();
   const previewScene = page.getByTestId("story-preview-scene");
@@ -82,7 +89,5 @@ test("Story creates and persists a two-scene journey and previews its transition
     .getByRole("button", { name: new RegExp(journeyTitle) });
   await expect(reloadedJourney).toBeVisible({ timeout: 15_000 });
   await reloadedJourney.click();
-  const reloadedStrip = page.getByTestId("story-scene-strip");
-  await expect(reloadedStrip.getByRole("button", { name: /Arrival/ })).toBeVisible();
-  await expect(reloadedStrip.getByRole("button", { name: /Aftermath/ })).toBeVisible();
+  await expectSceneStrip(page, ["Arrival", "Aftermath"]);
 });
