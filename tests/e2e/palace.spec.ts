@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { waitForSeededGraphReady } from "./helpers/project";
 
 /**
  * Task-7 acceptance gate: the 3D mind palace renders from a REAL graph, fully
@@ -43,6 +44,7 @@ test("3D palace renders from the real graph, flies between chambers, fully offli
   const external = await collectExternalRequests(page);
 
   await page.goto("/");
+  await waitForSeededGraphReady(page);
   await page.getByTestId("lens-palace").click();
 
   // The palace host boots with the real graph.
