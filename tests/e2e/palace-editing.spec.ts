@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { waitForSeededGraphReady } from "./helpers/project";
 
 async function closeLeftSidebar(page: Page): Promise<void> {
   const sidebar = page.getByTestId("shell-left-sidebar");
@@ -32,6 +33,7 @@ test("Palace adopts, edits and restores curation over the mature generated palac
   test.setTimeout(120_000);
   await page.goto("/");
   await expect(page.getByTestId("lo-project-scope-profile")).toBeAttached({ timeout: 35_000 });
+  await waitForSeededGraphReady(page);
   await openPalace(page);
 
   const rooms = page.getByTestId("palace-rooms-panel").locator("li");
@@ -103,6 +105,7 @@ test("Palace adopts, edits and restores curation over the mature generated palac
   // Reload reconstructs both the SQLite layout overlay and mature curation.
   await page.reload();
   await expect(page.getByTestId("lo-project-scope-profile")).toBeAttached({ timeout: 35_000 });
+  await waitForSeededGraphReady(page);
   await openPalace(page);
   const reloadedRooms = page.getByTestId("palace-rooms-panel").locator("li");
   await expect(reloadedRooms).toHaveCount(editedRoomCount);
