@@ -98,16 +98,33 @@ export class DesktopPalaceRepository implements PalaceRepository {
         return candidate.graphNodeId ?? candidate.graph?.graphNodeId ?? candidate.id;
       }),
     );
-    const nodes = graph.nodes
-      .map((record) => record.node)
-      .filter((node) => constellationNodeIds.has(node.graphNodeId));
+    const graphNodes = graph.nodes.map((record) => record.node);
+    const resolvedConstellationNodes = graphNodes.filter((node) =>
+      constellationNodeIds.has(node.graphNodeId),
+    );
+
+    // The browser bridge used by hosted acceptance materialises the active
+    // constellation document from the local project store, while canonical graph
+    // node ids normally arrive from the foundational vault / Neo4j projection.
+    // When the document has members but none of those ids can be resolved against
+    // an otherwise populated local graph, the active workspace graph is the only
+    // materialised form of that constellation. Preserve normal membership
+    // filtering whenever even one canonical member resolves.
+    const unresolvedMaterialisedConstellation =
+      document.nodes.length > 0
+      && resolvedConstellationNodes.length === 0
+      && graphNodes.length > 0;
+    const nodes = unresolvedMaterialisedConstellation
+      ? graphNodes
+      : resolvedConstellationNodes;
+    const includedNodeIds = new Set(nodes.map((node) => node.graphNodeId));
     const relationships = graph.relationships.filter((relationship) =>
-      constellationNodeIds.has(relationship.sourceGraphNodeId)
-      && constellationNodeIds.has(relationship.targetGraphNodeId),
+      includedNodeIds.has(relationship.sourceGraphNodeId)
+      && includedNodeIds.has(relationship.targetGraphNodeId),
     );
     const encapsulationEdges = graph.encapsulationEdges.filter((relationship) =>
-      constellationNodeIds.has(relationship.sourceGraphNodeId)
-      && constellationNodeIds.has(relationship.targetGraphNodeId),
+      includedNodeIds.has(relationship.sourceGraphNodeId)
+      && includedNodeIds.has(relationship.targetGraphNodeId),
     );
 
     const nodesById = new Map(nodes.map((node) => [node.graphNodeId, node] as const));
