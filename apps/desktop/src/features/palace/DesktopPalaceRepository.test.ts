@@ -106,6 +106,32 @@ describe("DesktopPalaceRepository", () => {
     }));
   });
 
+  test("uses the materialised workspace graph when hosted constellation ids cannot resolve", async () => {
+    const { transport } = harness();
+    vi.mocked(transport.loadConstellationDocument).mockResolvedValue({
+      nodes: [
+        { id: "browser:canvas:a" },
+        { id: "browser:canvas:b" },
+      ],
+    } as Awaited<ReturnType<WorkspaceServices["loadConstellationDocument"]>>);
+    const repository = new DesktopPalaceRepository(
+      transport,
+      "/tmp/ws.sqlite",
+      "sqlite:/tmp/ws",
+      "bootstrapping",
+    );
+
+    const projection = await repository.getProjection("constellation:hosted");
+
+    expect(projection.nodes.map((item) => item.graphNodeId).sort()).toEqual([
+      "node:a",
+      "node:b",
+      "node:outside",
+    ]);
+    expect(projection.relationships.map((edge) => edge.id).sort()).toEqual(["inside", "outside"]);
+    expect(projection.layout.rooms.length).toBeGreaterThan(0);
+  });
+
   test("persists an edited layout and reconstructs it from the scoped SQLite row", async () => {
     const { transport } = harness();
     const repository = new DesktopPalaceRepository(
