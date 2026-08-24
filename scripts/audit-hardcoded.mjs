@@ -25,10 +25,7 @@ const forbiddenIdentifiers = [
 ];
 
 const directTransport = /\btransport\.(?:list|read|load|get|upsert|save|write|create|update|delete|register|stage|apply|mark|connect|disconnect)[A-Z]\w*\s*\(/g;
-const repositoryFile = /Repository\.(?:ts|tsx)$/;
-const infrastructureAllowlist = new Set([
-  "apps/desktop/src/features/canvas/CanvasWorkspaceContext.tsx",
-]);
+const surfaceComponent = /(?:Lens|Surface|Host|Dialog|Editor)\.(?:ts|tsx)$/;
 
 function isProductionSource(file) {
   return /\.(?:ts|tsx|js|jsx)$/.test(file)
@@ -66,9 +63,11 @@ for (const file of files) {
       if (line.includes(identifier)) violations.push(`${file}:${index + 1}: forbidden production identifier ${identifier}`);
     });
   }
-  if (file.startsWith("apps/desktop/src/features/")
-      && !repositoryFile.test(file)
-      && !infrastructureAllowlist.has(file)) {
+
+  // Repository adapters, command hooks, terminal infrastructure and data-source
+  // adapters are allowed to speak transport. Canonical rendered surface
+  // components are not: they receive or compose repositories instead.
+  if (file.startsWith("apps/desktop/src/features/") && surfaceComponent.test(file)) {
     lines.forEach((line, index) => {
       directTransport.lastIndex = 0;
       if (directTransport.test(line)) {
