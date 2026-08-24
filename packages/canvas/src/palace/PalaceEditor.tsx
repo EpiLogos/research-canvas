@@ -105,7 +105,17 @@ export function PalaceEditor({
   };
 
   return (
-    <section className="palace-editor" data-testid="palace-editor">
+    <section
+      className="palace-editor"
+      data-testid="palace-editor"
+      style={{
+        display: "flex",
+        flex: "1 0 auto",
+        flexDirection: "column",
+        minHeight: "100%",
+        position: "relative",
+      }}
+    >
       <div className="palace-editor__toolbar" data-testid="palace-toolbar">
         <button type="button" data-testid="palace-generate" onClick={() => void onGenerate()}>
           Generate from constellation
@@ -168,7 +178,17 @@ export function PalaceEditor({
         </div>
       )}
 
-      {children}
+      <div
+        className="palace-editor__surface"
+        data-testid="palace-editor-surface"
+        style={{
+          flex: "1 0 min(72vh, 680px)",
+          minHeight: "min(72vh, 680px)",
+          position: "relative",
+        }}
+      >
+        {children}
+      </div>
 
       <div className="palace-editor__panels">
         <aside data-testid="palace-rooms-panel">
