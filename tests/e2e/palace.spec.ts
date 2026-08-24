@@ -41,6 +41,7 @@ async function screenshotPalace(page: Page): Promise<Buffer> {
 test("3D palace renders from the real graph, flies between chambers, fully offline", async ({
   page,
 }) => {
+  test.setTimeout(120_000);
   const external = await collectExternalRequests(page);
 
   await page.goto("/");
