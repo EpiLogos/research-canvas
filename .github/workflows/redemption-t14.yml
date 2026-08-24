@@ -87,6 +87,7 @@ jobs:
           tests/e2e/palace-editing.spec.ts
           tests/e2e/palace.spec.ts
           --project=chromium
+          --workers=1
 
       - name: Verify checkout remained read-only
         run: git diff --exit-code
