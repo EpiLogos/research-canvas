@@ -1,0 +1,56 @@
+name: Redemption T15 hardcoded-data audit
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/redemption-t15.yml"
+      - "scripts/audit-hardcoded.mjs"
+      - "package.json"
+      - "packages/domain/src/**"
+      - "packages/canvas/src/**"
+      - "apps/desktop/src/features/**"
+      - "apps/public-viewer/src/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: redemption-t15-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit hardcoded data and repository boundaries
+        run: pnpm run audit:hardcoded
+
+      - name: Typecheck workspace
+        run: pnpm exec tsc -b
+
+      - name: Run workspace unit acceptance
+        run: pnpm vitest run
+
+      - name: Verify checkout remained read-only
+        run: git diff --exit-code

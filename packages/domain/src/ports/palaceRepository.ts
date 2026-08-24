@@ -1,3 +1,5 @@
+import type { Scene, SceneSequence } from "@research-canvas/schema";
+
 export interface PalaceVector3 {
   x: number;
   y: number;
@@ -41,15 +43,18 @@ export interface PalaceLayout {
   objects: PalaceWallObject[];
 }
 
+export interface PalaceBundleWriteResult {
+  bundlePath: string;
+}
+
 /**
- * Canonical Surface #5 layout port.
- *
- * The graph remains semantic authority for generated structure. This port owns
- * only the constellation-scoped spatial presentation/curation projected over
- * that graph; implementations persist it locally and never write palace
- * geometry back into graph relationships.
+ * Canonical Surface #5 presentation/persistence port. The semantic graph stays
+ * authoritative; this boundary owns only local spatial layout, generated walk
+ * persistence and explicit bundle export.
  */
 export interface PalaceRepository {
   getOrCreatePalace(constellationId: string): Promise<PalaceLayout>;
   updatePalace(constellationId: string, layout: PalaceLayout): Promise<void>;
+  persistWalk(input: { sequence: SceneSequence; scenes: Scene[] }): Promise<void>;
+  writeBundle(input: { outputDir: string; bundleJson: string }): Promise<PalaceBundleWriteResult>;
 }

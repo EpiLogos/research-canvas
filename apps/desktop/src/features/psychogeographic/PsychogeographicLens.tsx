@@ -6,17 +6,19 @@ import {
   StreetViewSurface,
   type MapSurfaceRenderer,
 } from "@research-canvas/canvas";
+import type { WorkspaceServices } from "@research-canvas/desktop-api";
 import type {
+  PlacesRepository,
   StreetViewImageRecord,
-  WorkspaceServices,
-} from "@research-canvas/desktop-api";
-import type { PlacesRepository } from "@research-canvas/domain";
+  StreetViewRepository,
+} from "@research-canvas/domain";
 import {
   createLiveServicePolicy,
   type LiveServicePolicy,
 } from "@research-canvas/geography";
 
 import { DesktopPlacesRepository } from "./DesktopPlacesRepository";
+import { DesktopStreetViewRepository } from "./DesktopStreetViewRepository";
 import { StreetViewImportDialog } from "./StreetViewImportDialog";
 
 export interface PsychogeographicLensProps {
@@ -34,6 +36,7 @@ export interface PsychogeographicLensProps {
   onOpenCanvasNode?: (graphNodeId: string) => void | Promise<void>;
   /** Canonical port override for focused surface tests/static compositions. */
   placesRepository?: PlacesRepository;
+  streetViewRepository?: StreetViewRepository;
 }
 
 let sharedPolicy: LiveServicePolicy | null = null;
@@ -43,9 +46,9 @@ export function geographyPolicy(): LiveServicePolicy {
   return sharedPolicy;
 }
 
-/** Desktop composition for Surface #3. The globe owns its project-wide
- * repository reads; this host only supplies the desktop adapter, bundled
- * offline basemap, shared live-service policy, and Street View companion. */
+/** Desktop composition for Surface #3. The globe and companion imagery own
+ * project reads through domain repositories; this host only supplies desktop
+ * adapters, the bundled offline basemap and the shared live-service policy. */
 export function PsychogeographicLens({
   transport,
   projectId,
@@ -57,6 +60,7 @@ export function PsychogeographicLens({
   resolveAsset,
   onOpenCanvasNode,
   placesRepository,
+  streetViewRepository,
 }: PsychogeographicLensProps): JSX.Element {
   const pack = useMemo(() => loadBundledGeographyPack(), []);
   const policy = useMemo(() => geographyPolicy(), []);
@@ -73,17 +77,25 @@ export function PsychogeographicLens({
       databasePath,
       profileScope,
     ),
-    [databasePath, placesRepository, profileScope, projectId, refreshVersion, transport, workspaceId],
+    [databasePath, placesRepository, profileScope, projectId, transport, workspaceId],
+  );
+  const streetRepository = useMemo(
+    () => streetViewRepository ?? new DesktopStreetViewRepository(
+      transport,
+      databasePath,
+      mediaRoot,
+    ),
+    [databasePath, mediaRoot, streetViewRepository, transport],
   );
 
   const reloadStreetView = useCallback(async () => {
     setStreetError(null);
     try {
-      setStreetImages(await transport.listStreetViewImages({ databasePath, profileScope }));
+      setStreetImages(await streetRepository.listImages(profileScope));
     } catch (cause) {
       setStreetError(cause instanceof Error ? cause.message : String(cause));
     }
-  }, [databasePath, profileScope, transport]);
+  }, [profileScope, streetRepository]);
 
   useEffect(() => {
     void reloadStreetView();
@@ -146,6 +158,7 @@ export function PsychogeographicLens({
       />
       {importOpen && mediaRoot && (
         <StreetViewImportDialog
+          repository={streetRepository}
           transport={transport}
           databasePath={databasePath}
           mediaRoot={mediaRoot}
