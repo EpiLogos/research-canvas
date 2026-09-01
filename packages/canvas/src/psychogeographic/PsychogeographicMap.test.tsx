@@ -43,10 +43,18 @@ const vocLane: GeographyEdge = {
   updatedAt: "2026-08-10T00:00:00.000Z",
 };
 
-function repository(): PlacesRepository {
+const laterLane: GeographyEdge = {
+  ...vocLane,
+  id: "geo:later",
+  label: "Later test lane",
+  timeWindow: { start: "1800-01-01", end: "1801-12-31" },
+  seedKey: "later:test",
+};
+
+function repository(geographyEdges: GeographyEdge[] = [vocLane]): PlacesRepository {
   return {
     async getLocatedNodes() { return [florence, istanbul]; },
-    async getGeographyEdges() { return [vocLane]; },
+    async getGeographyEdges() { return geographyEdges; },
     async getArchetypeExpressionsForPlace(_projectId, placeGraphNodeId) {
       return placeGraphNodeId === florence.graphNodeId ? [expression] : [];
     },
@@ -226,7 +234,7 @@ describe("PsychogeographicMap", () => {
     const renderer = recordingRenderer();
     render(
       <PsychogeographicMap
-        repository={repository()}
+        repository={repository([vocLane, laterLane])}
         projectId="project:one"
         tileSource={offlineTileSource}
         policy={createLiveServicePolicy()}
