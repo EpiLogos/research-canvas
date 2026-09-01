@@ -107,7 +107,11 @@ const bandaNode = {
   validFrom: "1621-01-01", validTo: null, temporalPrecision: "year",
   createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z",
 };
-const loadTimelineView = vi.fn(async () => ({
+type TimelineLoadInput = {
+  workspaceId: string;
+  range: { startYear: number; endYear: number };
+};
+const loadTimelineView = vi.fn(async (_input: TimelineLoadInput) => ({
   workspaceId: "sqlite:/server-canonical/workspace.sqlite",
   nodes: [{
     node: bandaNode,
