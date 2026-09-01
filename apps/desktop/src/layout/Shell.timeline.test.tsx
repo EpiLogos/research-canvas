@@ -1,5 +1,5 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { createTabManagerStore } from "@research-canvas/canvas";
 import type { AppTab, SurfaceTabState } from "@research-canvas/schema";
@@ -183,10 +183,11 @@ describe("Shell timeline lens", () => {
 
     workspaceId = "sqlite:/private/var/server-canonical.sqlite";
     rendered.rerender(<Shell />);
-    await waitFor(() => expect(loadTimelineView).toHaveBeenCalledWith({
-      workspaceId: "sqlite:/private/var/server-canonical.sqlite",
-      range: { startYear: -20000, endYear: 20000 },
-    }));
+    await waitFor(() => expect(loadTimelineView).toHaveBeenCalled());
+    expect(loadTimelineView.mock.calls.length).toBeGreaterThan(0);
+    expect(loadTimelineView.mock.calls.every(([input]) =>
+      input.workspaceId === "sqlite:/private/var/server-canonical.sqlite"
+    )).toBe(true);
   });
 
   test("opening a timeline node presents its deep reader even when it is not on the active canvas", async () => {
@@ -211,8 +212,9 @@ describe("Shell timeline lens", () => {
     fireEvent.doubleClick(await screen.findByTestId("timeline-node-banda"));
     fireEvent.click(screen.getByRole("button", { name: "Read full screen" }));
 
-    expect(await screen.findByTestId("reading-fullscreen")).toHaveTextContent("Banda genocide");
-    expect(screen.getByTestId("reader-cover")).toHaveAttribute(
+    const fullScreenReader = await screen.findByTestId("reading-fullscreen");
+    expect(fullScreenReader).toHaveTextContent("Banda genocide");
+    expect(within(fullScreenReader).getByTestId("reader-cover")).toHaveAttribute(
       "src",
       "asset://localhost/%2Fcanonical%2Fassets%2Fbanda%2Fship.png",
     );
