@@ -114,6 +114,7 @@ const loadTimelineView = vi.fn(async () => ({
     anchor: { validFrom: "1621-01-01", validTo: null, precision: "year" },
     layoutOverride: null,
   }],
+  relationships: [],
   lanes: [], diagnostics: [],
 }));
 const upsertTimelineLayout = vi.fn(async (input) => ({ status: "created" as const, layout: {
@@ -168,7 +169,7 @@ describe("Shell timeline lens", () => {
     });
     expect(loadTimelineView).toHaveBeenCalledWith({
       workspaceId: "sqlite:/server-canonical/workspace.sqlite",
-      range: { startYear: 1200, endYear: 2200 },
+      range: { startYear: -20000, endYear: 20000 },
     });
     expect(screen.queryByTestId("timeline-node-root-portal")).not.toBeInTheDocument();
   });
@@ -184,7 +185,7 @@ describe("Shell timeline lens", () => {
     rendered.rerender(<Shell />);
     await waitFor(() => expect(loadTimelineView).toHaveBeenCalledWith({
       workspaceId: "sqlite:/private/var/server-canonical.sqlite",
-      range: { startYear: 1200, endYear: 2200 },
+      range: { startYear: -20000, endYear: 20000 },
     }));
   });
 
