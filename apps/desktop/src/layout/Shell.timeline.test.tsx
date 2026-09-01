@@ -38,6 +38,7 @@ const createProject = vi.fn(async () => ({
   updatedAt: "2026-01-01T00:00:00Z",
 }));
 
+let timelineTransport: Record<string, unknown> = {};
 const tabManager = createTabManagerStore({ tabs: [], activeTabId: null });
 let workspaceId: string | null = "sqlite:/server-canonical/workspace.sqlite";
 vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
@@ -66,6 +67,7 @@ vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
       workingRoot: "/canonical",
       repoRoot: "/canonical",
       workspaceId,
+      transport: timelineTransport,
       activeConstellationId: "p1",
       activeProjectId: "p1",
       activeProfileScope: "bootstrapping",
@@ -91,23 +93,24 @@ vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
   },
 }));
 
+const bandaNode = {
+  graphNodeId: "banda", entityType: "Event", title: "Banda genocide",
+  body: JSON.stringify([{ type: "image", props: { url: "assets/banda/ship.png" }, content: [], children: [] }]),
+  summary: "A documented Company-state violence event.",
+  archetypalResonance: null, coordinate: null, sourceCoordinates: ["episodes/2/colonial-power.md#banda"],
+  evidenceTags: ["history:documented", "place:banda-islands"], sourceKind: "research",
+  contentOrigin: "imported", contentRevision: 1, seedSchemaVersion: 1,
+  bodySourceCoordinates: ["episodes/2/colonial-power.md#banda"], historicity: "historical",
+  claimKind: "fact", evidenceStatus: "documented", temporalRole: "occurred_at", placeCoverage: "resolved",
+  qlForm: null, qlUnitId: null, qlArc: "not_applicable", qlTopology: "unspecified", qlSchemaVersion: null,
+  qlSourceCoordinates: [], qlCompletenessStatus: "not_applicable", isTemporal: true,
+  validFrom: "1621-01-01", validTo: null, temporalPrecision: "year",
+  createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z",
+};
 const loadTimelineView = vi.fn(async () => ({
   workspaceId: "sqlite:/server-canonical/workspace.sqlite",
   nodes: [{
-    node: {
-      graphNodeId: "banda", entityType: "Event", title: "Banda genocide",
-      body: JSON.stringify([{ type: "image", props: { url: "assets/banda/ship.png" }, content: [], children: [] }]),
-      summary: "A documented Company-state violence event.",
-      archetypalResonance: null, coordinate: null, sourceCoordinates: ["episodes/2/colonial-power.md#banda"],
-      evidenceTags: ["history:documented", "place:banda-islands"], sourceKind: "research",
-      contentOrigin: "imported", contentRevision: 1, seedSchemaVersion: 1,
-      bodySourceCoordinates: ["episodes/2/colonial-power.md#banda"], historicity: "historical",
-      claimKind: "fact", evidenceStatus: "documented", temporalRole: "occurred_at", placeCoverage: "resolved",
-      qlForm: null, qlUnitId: null, qlArc: "not_applicable", qlTopology: "unspecified", qlSchemaVersion: null,
-      qlSourceCoordinates: [], qlCompletenessStatus: "not_applicable", isTemporal: true,
-      validFrom: "1621-01-01", validTo: null, temporalPrecision: "year",
-      createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z",
-    },
+    node: bandaNode,
     anchor: { validFrom: "1621-01-01", validTo: null, precision: "year" },
     layoutOverride: null,
   }],
@@ -117,24 +120,30 @@ const upsertTimelineLayout = vi.fn(async (input) => ({ status: "created" as cons
   lane: input.lane, offsetY: input.offsetY, width: input.width, height: input.height,
   style: input.style, layoutRevision: 0,
 } }));
+timelineTransport = {
+  loadConstellationDocument: async ({ databasePath }: { databasePath: string }) => ({
+    databasePath,
+    nodes: [{ id: "banda", graphNodeId: "banda" }],
+  }),
+  loadTimelineView,
+  upsertTimelineLayout,
+  readGraphNode: async () => bandaNode,
+  readLocalNodeDocument: async () => ({
+    body: "[]",
+    summary: "",
+    neo4jSynced: true,
+    contentRevision: 1,
+    contentOrigin: "seed",
+    bodySourceCoordinates: [],
+  }),
+  archetypalLighting: async () => ({ operator: {}, instances: [] }),
+  resonancesForInstance: async () => [],
+};
 vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@research-canvas/desktop-api")>();
   return {
     ...actual,
-    createWorkspaceServices: () => ({
-      loadTimelineView,
-      upsertTimelineLayout,
-      readLocalNodeDocument: async () => ({
-        body: "[]",
-        summary: "",
-        neo4jSynced: true,
-        contentRevision: 1,
-        contentOrigin: "seed",
-        bodySourceCoordinates: [],
-      }),
-      archetypalLighting: async () => ({ operator: {}, instances: [] }),
-      resonancesForInstance: async () => [],
-    }),
+    createWorkspaceServices: () => timelineTransport,
   };
 });
 
