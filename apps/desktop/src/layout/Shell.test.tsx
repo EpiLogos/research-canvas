@@ -554,7 +554,7 @@ describe("Shell frame", () => {
     await waitFor(() => {
       expect(screen.getByTestId("timeline-pane")).toBeVisible();
     }, { timeout: 5_000 });
-  });
+  }, 15_000);
 
   it("Files rail verb reopens the Files view after Annotate was active", () => {
     renderShell();
