@@ -100,12 +100,13 @@ export function Shell() {
     }
   }, [workspace.activeSurfaceId, lens, setLens]);
 
-  // Route-driven workspace activation: when the URL changes, select the
-  // matching project and open/activate the requested surface/tab.
+  // Route-driven workspace activation only needs the bootstrapped database
+  // identity. Requiring full Canvas hydration here can strand a valid deep
+  // link when the initially active Canvas is unavailable or malformed.
   const applyingRouteRef = useRef(false);
   useEffect(() => {
     const routeKey = `${projectId ?? ""}:${surfaceId ?? ""}:${constellationId ?? ""}:${detailId ?? ""}`;
-    if (!workspace.isHydrated || applyingRouteRef.current || routeKey === appliedRouteRef.current) return;
+    if (!workspace.databasePath || applyingRouteRef.current || routeKey === appliedRouteRef.current) return;
     applyingRouteRef.current = true;
 
     const applyRoute = async () => {
