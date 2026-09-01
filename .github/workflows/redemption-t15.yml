@@ -50,7 +50,17 @@ jobs:
         run: pnpm exec tsc -b
 
       - name: Run workspace unit acceptance
-        run: pnpm vitest run
+        run: |
+          mkdir -p artifacts
+          pnpm vitest run --reporter=default --reporter=junit --outputFile.junit=artifacts/t15-vitest.xml
+
+      - name: Upload unit acceptance report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redemption-t15-vitest-${{ github.run_id }}
+          path: artifacts/t15-vitest.xml
+          if-no-files-found: warn
 
       - name: Verify checkout remained read-only
         run: git diff --exit-code
