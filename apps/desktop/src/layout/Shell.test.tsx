@@ -172,6 +172,7 @@ vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
             layoutOverride: null,
           },
         ],
+        relationships: [],
         lanes: [],
         diagnostics: [],
       }),
