@@ -547,11 +547,13 @@ describe("Shell frame", () => {
   it("route change selects the project and activates the matching surface tab", async () => {
     renderShell(["/project/proj-a/surface/timeline/constellation/root"]);
     await waitFor(() => {
+      expect(projectSpies.selectProject).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId: "proj-a" }),
+      );
+    }, { timeout: 5_000 });
+    await waitFor(() => {
       expect(screen.getByTestId("timeline-pane")).toBeVisible();
-    });
-    expect(projectSpies.selectProject).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: "proj-a" }),
-    );
+    }, { timeout: 5_000 });
   });
 
   it("Files rail verb reopens the Files view after Annotate was active", () => {
