@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { useStore } from "zustand";
 
 import { createAnnotationStore, createCanvasStore, createTabManagerStore } from "@research-canvas/canvas";
+import { createWorkspaceServices } from "@research-canvas/desktop-api";
 import type { AppTab, CanvasNode, SurfaceTabState } from "@research-canvas/schema";
 
 import { CanvasWorkspaceContext, CanvasWorkspaceProvider } from "../features/canvas/CanvasWorkspaceContext";
@@ -93,7 +94,7 @@ vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
         resourceRoots: [],
         annotations: [],
         edges: [],
-        nodes: [],
+        nodes: [{ id: "node-a", graphNodeId: "node-a" }],
         workingRoot: "/workspace",
         constellation: {
           id: constellationId,
@@ -377,7 +378,7 @@ function FakeWorkspaceProvider({
       registerFlyToEdge: vi.fn(),
       captureViewport: () => ({ x: 0, y: 0, zoom: 1 }),
       registerCaptureViewport: vi.fn(),
-      transport: {},
+      transport: createWorkspaceServices(),
       contentLinkingActions: {},
     }) as unknown as ComponentProps<typeof CanvasWorkspaceContext.Provider>["value"],
     [store, annotationStore, selectedEntryId, selectedEdgeId, selectedNodeId, selectNode, openCanvas, tabManager, tabs, activeTabId, activeTab],
