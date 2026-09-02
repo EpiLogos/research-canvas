@@ -17,7 +17,7 @@ use crate::{
             AnnotationRepository, CanvasGraphRepository, Constellation, ConstellationRepository,
             EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord, NodeRelationshipRepository,
             ResourceRootRecord, ResourceRootRepository, SavedSequenceRecord,
-            SavedSequenceRepository,
+            SavedSequenceRepository, WorkspaceStateRepository,
         },
         root_archetypal_seed::ensure_root_archetypal_local_projection,
     },
@@ -720,9 +720,13 @@ pub fn bootstrap_workspace_at(
     ensure_workspace_constellations(database.connection(), &root)?;
 
     let constellations = list_constellations_flat(database.connection())?;
-    let active_constellation = constellations
-        .iter()
-        .find(|constellation| constellation.slug == "root-archetypal-field")
+    let persisted_active_project_id = WorkspaceStateRepository::new(database.connection())
+        .load_active_project_id()
+        .map_err(|error| error.to_string())?;
+    let active_constellation = persisted_active_project_id
+        .as_deref()
+        .and_then(|project_id| constellations.iter().find(|constellation| constellation.id == project_id))
+        .or_else(|| constellations.iter().find(|constellation| constellation.slug == "root-archetypal-field"))
         .or_else(|| {
             constellations
                 .iter()
@@ -731,6 +735,9 @@ pub fn bootstrap_workspace_at(
         .or_else(|| constellations.first())
         .ok_or_else(|| "workspace bootstrap found no constellations".to_string())?;
     let active_constellation_id = active_constellation.id.clone();
+    WorkspaceStateRepository::new(database.connection())
+        .save_active_project_id(&active_constellation_id, &current_timestamp())
+        .map_err(|error| error.to_string())?;
 
     Ok(WorkspaceBootstrap {
         active_constellation_id: active_constellation_id.clone(),
@@ -1694,27 +1701,38 @@ pub struct ActiveProjectPayload {
     pub root_type: String,
 }
 
-#[tauri::command]
-pub fn set_active_project_command(
-    request: SetActiveProjectRequest,
-    api_state: tauri::State<SharedApiState>,
+pub fn select_active_project_at(
+    database_path: &str,
+    project_id: &str,
 ) -> Result<ActiveProjectPayload, String> {
-    let database = Database::open(PathBuf::from(&request.database_path)).map_err(|e| e.to_string())?;
+    let database = Database::open(PathBuf::from(database_path)).map_err(|error| error.to_string())?;
     let constellation = ConstellationRepository::new(database.connection())
-        .get_by_id(&request.project_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("project {} not found", request.project_id))?;
-    {
-        let mut state = api_state.lock().unwrap();
-        state.active_project_id = Some(constellation.id.clone());
-        state.active_profile_scope = Some(constellation.profile_scope.clone());
-        state.active_constellation_id = Some(constellation.id.clone());
-    }
+        .get_by_id(project_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("project {project_id} not found"))?;
+    WorkspaceStateRepository::new(database.connection())
+        .save_active_project_id(&constellation.id, &current_timestamp())
+        .map_err(|error| error.to_string())?;
     Ok(ActiveProjectPayload {
         project_id: constellation.id,
         profile_scope: constellation.profile_scope,
         root_type: constellation.root_type,
     })
+}
+
+#[tauri::command]
+pub fn set_active_project_command(
+    request: SetActiveProjectRequest,
+    api_state: tauri::State<SharedApiState>,
+) -> Result<ActiveProjectPayload, String> {
+    let selected = select_active_project_at(&request.database_path, &request.project_id)?;
+    {
+        let mut state = api_state.lock().unwrap();
+        state.active_project_id = Some(selected.project_id.clone());
+        state.active_profile_scope = Some(selected.profile_scope.clone());
+        state.active_constellation_id = Some(selected.project_id.clone());
+    }
+    Ok(selected)
 }
 
 pub fn resolve_active_profile_scope(
@@ -1738,22 +1756,14 @@ pub fn set_active_project_at(
     project_id: &str,
     api_state: &SharedApiState,
 ) -> Result<ActiveProjectPayload, String> {
-    let database = Database::open(PathBuf::from(database_path)).map_err(|e| e.to_string())?;
-    let constellation = ConstellationRepository::new(database.connection())
-        .get_by_id(project_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("project {} not found", project_id))?;
+    let selected = select_active_project_at(database_path, project_id)?;
     {
         let mut state = api_state.lock().unwrap();
-        state.active_project_id = Some(constellation.id.clone());
-        state.active_profile_scope = Some(constellation.profile_scope.clone());
-        state.active_constellation_id = Some(constellation.id.clone());
+        state.active_project_id = Some(selected.project_id.clone());
+        state.active_profile_scope = Some(selected.profile_scope.clone());
+        state.active_constellation_id = Some(selected.project_id.clone());
     }
-    Ok(ActiveProjectPayload {
-        project_id: constellation.id,
-        profile_scope: constellation.profile_scope,
-        root_type: constellation.root_type,
-    })
+    Ok(selected)
 }
 
 #[tauri::command]

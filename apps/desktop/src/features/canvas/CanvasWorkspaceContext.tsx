@@ -395,11 +395,18 @@ export function CanvasWorkspaceProvider({
 
     void transport
       .bootstrapWorkspace()
-      .then((workspace) => {
+      .then(async (workspace) => {
+        let persistedTabs: { tabs: AppTab[]; activeTabId: string | null } = { tabs: [], activeTabId: null };
+        try {
+          persistedTabs = await transport.loadAppTabs({ databasePath: workspace.databasePath });
+        } catch (error) {
+          console.warn("failed to restore app tabs; continuing with the active project", error);
+        }
         if (cancelled) {
           return;
         }
 
+        tabManager.getState().hydrate(persistedTabs);
         setConstellations(workspace.constellations);
         setDatabasePath(workspace.databasePath);
         setWorkspaceId(workspace.workspaceId);
@@ -424,7 +431,7 @@ export function CanvasWorkspaceProvider({
     return () => {
       cancelled = true;
     };
-  }, [transport]);
+  }, [tabManager, transport]);
 
   useEffect(() => {
     if (!databasePath || !activeConstellationId) {

@@ -1313,10 +1313,12 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       return result;
     },
     async selectProject({ databasePath, projectId }) {
-      return requestJsonWithRetry<ActiveProject>("/workspace/project", {
+      const result = await requestJsonWithRetry<ActiveProject>("/workspace/project", {
         body: { databasePath, projectId },
         method: "POST",
       });
+      activeProfileScope = result.profileScope;
+      return result;
     },
     async resolveOrCreateHome(input) {
       const params = new URLSearchParams();
@@ -1698,11 +1700,18 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     async listPendingNodeDocumentSyncs() { throw new Error("read-only web build"); },
     async upsertLocalNodeDocument() { throw new Error("read-only web build"); },
     async acknowledgeLocalNodeDocumentSync() { throw new Error("read-only web build"); },
-    async loadAppTabs() {
-      return { tabs: [], activeTabId: null };
+    async loadAppTabs(input) {
+      const databasePath = input.databasePath ?? activeDatabasePath;
+      if (!databasePath) throw new Error("loadAppTabs: no database path in input or context");
+      return requestJsonWithRetry<{ tabs: AppTab[]; activeTabId: string | null }>("/workspace/app-tabs");
     },
-    async saveAppTabs() {
-      // Tabs are local-only; the web bridge has no persistence endpoint.
+    async saveAppTabs(input) {
+      const databasePath = input.databasePath ?? activeDatabasePath;
+      if (!databasePath) throw new Error("saveAppTabs: no database path in input or context");
+      await requestJsonWithRetry<void>("/workspace/app-tabs", {
+        method: "POST",
+        body: { tabs: input.tabs, activeTabId: input.activeTabId },
+      });
     },
   };
 }

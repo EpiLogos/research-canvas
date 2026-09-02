@@ -7,8 +7,8 @@ use research_canvas_desktop_lib::{
             create_saved_sequence_command, default_database_path, delete_saved_sequence_command,
             detach_constellation_resource_root_at, list_constellation_resource_roots_at,
             list_directories_at, list_saved_sequences_command, load_constellation_document_at,
-            persist_constellation_document_at, resolve_or_create_home_at,
-            update_saved_sequence_command, ActiveProjectPayload, CreateProjectRequest,
+            persist_constellation_document_at, resolve_or_create_home_at, select_active_project_at,
+            update_saved_sequence_command, CreateProjectRequest,
             CreateSavedSequenceRequest, DeleteSavedSequenceRequest, ListSavedSequencesRequest,
             PersistConstellationDocumentRequest, ResourceRootLookupRequest,
             ResourceRootMutationRequest, SetActiveProjectRequest, UpdateSavedSequenceRequest,
@@ -51,7 +51,7 @@ use research_canvas_desktop_lib::{
         connection::Database,
         neo4j::{self, config::Neo4jConfig},
         repositories::{
-            graph::GraphRepository, ConstellationRepository, SceneRecord, SceneSequenceRecord,
+            graph::GraphRepository, AppTabRecord, AppTabRepository, SceneRecord, SceneSequenceRecord,
             StreetViewImageRecord, StreetViewRegion,
         },
     },
@@ -94,6 +94,13 @@ struct BrowserResourceRootMutation {
 #[serde(rename_all = "camelCase")]
 struct BrowserResourceRootDelete {
     root_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserSaveAppTabs {
+    tabs: Vec<AppTabRecord>,
+    active_tab_id: Option<String>,
 }
 
 #[derive(Clone)]
@@ -169,6 +176,26 @@ fn handle_request(
         return respond_json(request, StatusCode(200), payload);
     }
 
+    if method == Method::Get && path == "/workspace/app-tabs" {
+        let database_path = session_database_path(&request)?;
+        let database = Database::open(&database_path).map_err(|error| error.to_string())?;
+        let repository = AppTabRepository::new(database.connection());
+        let tabs = repository.load_tabs().map_err(|error| error.to_string())?;
+        let active_tab_id = repository.load_active_tab_id().map_err(|error| error.to_string())?;
+        return respond_json(request, StatusCode(200), json!({ "tabs": tabs, "activeTabId": active_tab_id }));
+    }
+
+    if method == Method::Post && path == "/workspace/app-tabs" {
+        let database_path = session_database_path(&request)?;
+        let body = read_body(&mut request)?;
+        let payload: BrowserSaveAppTabs = serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let database = Database::open(&database_path).map_err(|error| error.to_string())?;
+        let repository = AppTabRepository::new(database.connection());
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        repository.save_tabs(&payload.tabs, payload.active_tab_id.as_deref(), &now).map_err(|error| error.to_string())?;
+        return respond_json(request, StatusCode(200), json!({}));
+    }
+
     if method == Method::Get && path == "/workspace/home" {
         let database_path = match query_param(&url, "databasePath") {
             Some(path) if !path.trim().is_empty() => path,
@@ -191,17 +218,7 @@ fn handle_request(
         let body = read_body(&mut request)?;
         let project_request: SetActiveProjectRequest =
             serde_json::from_str(&body).map_err(|error| error.to_string())?;
-        let database = Database::open(std::path::PathBuf::from(&project_request.database_path))
-            .map_err(|error| error.to_string())?;
-        let constellation = ConstellationRepository::new(database.connection())
-            .get_by_id(&project_request.project_id)
-            .map_err(|error| error.to_string())?
-            .ok_or_else(|| format!("project {} not found", project_request.project_id))?;
-        let payload = ActiveProjectPayload {
-            project_id: constellation.id,
-            profile_scope: constellation.profile_scope,
-            root_type: constellation.root_type,
-        };
+        let payload = select_active_project_at(&project_request.database_path, &project_request.project_id)?;
         return respond_json(request, StatusCode(200), payload);
     }
 

@@ -166,6 +166,10 @@ const MIGRATIONS: &[Migration] = &[
         version: "0038_relationship_vocabulary_t10",
         sql: include_str!("../../migrations/0038_relationship_vocabulary_t10.sql"),
     },
+    Migration {
+        version: "0039_workspace_state",
+        sql: include_str!("../../migrations/0039_workspace_state.sql"),
+    },
 ];
 
 impl MigrationRunner {

@@ -22,6 +22,7 @@ pub mod scene_repository;
 pub mod search;
 pub mod street_view;
 pub mod timeline_layout;
+pub mod workspace_state;
 
 pub use agent_activity::{AgentActivityRecord, AgentActivityRepository, NewAgentActivity};
 pub use annotations::{AnnotationRecord, AnnotationRepository};
@@ -72,3 +73,4 @@ pub use street_view::{
 };
 pub use search::{SearchHit, SearchIndexSummary, SearchRepository};
 pub use timeline_layout::{TimelineLayoutMutation, TimelineLayoutRecord, TimelineLayoutRepository};
+pub use workspace_state::WorkspaceStateRepository;
