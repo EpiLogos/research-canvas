@@ -15,6 +15,8 @@ const transport = vi.hoisted(() => ({
   flushCanvasLayout: vi.fn().mockResolvedValue(true),
   persistConstellationDocument: vi.fn().mockResolvedValue(undefined),
   listPendingNodeDocumentSyncs: vi.fn().mockResolvedValue([]),
+  loadAppTabs: vi.fn().mockResolvedValue({ tabs: [], activeTabId: null }),
+  saveAppTabs: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
@@ -64,6 +66,7 @@ function Probe() {
 
 describe("CanvasWorkspaceProvider canvas tabs", () => {
   it("retains per-constellation selection and viewport when a tab is reactivated", async () => {
+    transport.loadAppTabs.mockResolvedValue({ tabs: [], activeTabId: null });
     transport.bootstrapWorkspace.mockResolvedValue({
       activeConstellationId: "root",
       activeProjectId: "root",
@@ -139,6 +142,7 @@ describe("CanvasWorkspaceProvider canvas tabs", () => {
   });
 
   it("switches the active project and profile scope when selectProject is called", async () => {
+    transport.loadAppTabs.mockResolvedValue({ tabs: [], activeTabId: null });
     transport.bootstrapWorkspace.mockResolvedValue({
       activeConstellationId: "root",
       activeProjectId: "root",
@@ -197,6 +201,89 @@ describe("CanvasWorkspaceProvider canvas tabs", () => {
       projectId: "project-2",
     });
 
+    rendered.unmount();
+  });
+
+  it("restores persisted tabs without allowing Canvas hydration to steal a non-Canvas active surface", async () => {
+    const rootNodeId = "33333333-3333-4333-8333-333333333333";
+    const restoredViewport = { x: 15, y: 25, zoom: 1.2 };
+    transport.bootstrapWorkspace.mockResolvedValue({
+      activeConstellationId: "root",
+      activeProjectId: "root",
+      activeProfileScope: "bootstrapping",
+      databasePath: "/tmp/workspace.sqlite",
+      workspaceId: "sqlite:/tmp/workspace.sqlite",
+      workspaceRoot: "/workspace",
+      constellations: [
+        { id: "root", name: "Archetypal field", slug: "root", rootPath: "/workspace", summary: "", parentId: null, children: [] },
+      ],
+    });
+    transport.loadAppTabs.mockResolvedValue({
+      tabs: [
+        {
+          id: `root:${ROOT_CANVAS_ID}`,
+          surfaceId: "canvas",
+          title: "Archetypal field",
+          pinned: true,
+          state: {
+            surfaceId: "canvas",
+            canvasId: ROOT_CANVAS_ID,
+            constellationId: "root",
+            viewport: restoredViewport,
+            selectedGraphNodeId: rootNodeId,
+            selectedEdgeId: null,
+          },
+        },
+        {
+          id: "story-restored",
+          surfaceId: "story",
+          title: "Story",
+          pinned: false,
+          state: { surfaceId: "story" },
+        },
+      ],
+      activeTabId: "story-restored",
+    });
+    transport.loadConstellationDocument.mockResolvedValue({
+      canvasId: ROOT_CANVAS_ID,
+      databasePath: "/tmp/workspace.sqlite",
+      entries: [],
+      resourceRoots: [],
+      annotations: [],
+      edges: [],
+      nodes: [canvasNode(rootNodeId, "Root", ROOT_CANVAS_ID)],
+      workingRoot: "/workspace",
+      constellation: {
+        id: "root",
+        displayName: "Archetypal field",
+        slug: "root",
+        parentConstellationId: null,
+        rootPath: "/workspace",
+        primaryCanvasId: ROOT_CANVAS_ID,
+        summary: "",
+        coverAssetPath: null,
+        publishSettings: {},
+        createdAt: "2026-07-13T00:00:00Z",
+        updatedAt: "2026-07-13T00:00:00Z",
+      },
+    });
+    latest = null;
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const rendered = render(<CanvasWorkspaceProvider><Probe /></CanvasWorkspaceProvider>);
+
+    await waitFor(() => expect(getLatest()?.isHydrated).toBe(true));
+    expect(getLatest()?.activeSurfaceId).toBe("story");
+    expect(getLatest()?.activeTabId).toBe("story-restored");
+    expect(getLatest()?.canvasTabs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: `root:${ROOT_CANVAS_ID}`,
+        selectedNodeId: rootNodeId,
+        viewport: restoredViewport,
+      }),
+    ]));
+    expect(transport.loadAppTabs).toHaveBeenCalledWith({ databasePath: "/tmp/workspace.sqlite" });
+
+    warning.mockRestore();
     rendered.unmount();
   });
 });
