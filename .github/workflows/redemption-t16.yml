@@ -61,11 +61,29 @@ jobs:
       - name: Run workspace unit acceptance
         run: pnpm vitest run
 
-      - name: Run Rust acceptance serially
+      - name: Run local Rust acceptance serially
         id: rust_acceptance
         continue-on-error: true
         shell: bash
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml -- --test-threads=1 > rust-test.log 2>&1
+        run: |
+          set -euo pipefail
+          manifest="apps/desktop/src-tauri/Cargo.toml"
+          test_dir="apps/desktop/src-tauri/tests"
+          cargo_args=(test --locked --manifest-path "$manifest" --lib --bins)
+          {
+            echo "Local Rust acceptance excludes targets owned by pnpm test:graph:integration:"
+            while IFS= read -r test_file; do
+              target="$(basename "$test_file" .rs)"
+              if grep -qF 'support::neo4j_test_graph()' "$test_file"; then
+                echo "  graph integration: $target"
+                continue
+              fi
+              cargo_args+=(--test "$target")
+            done < <(find "$test_dir" -maxdepth 1 -type f -name '*.rs' | sort)
+            echo
+            echo "Running local Rust lib/bin and non-graph integration targets"
+            cargo "${cargo_args[@]}" -- --test-threads=1
+          } > rust-test.log 2>&1
 
       - name: Upload Rust evidence on failure
         if: steps.rust_acceptance.outcome == 'failure'
