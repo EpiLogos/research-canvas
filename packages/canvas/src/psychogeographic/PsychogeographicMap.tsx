@@ -20,6 +20,10 @@ export interface PsychogeographicMapProps {
   tileSource: MapTileSource;
   policy: LiveServicePolicy;
   renderer?: MapSurfaceRenderer;
+  initialViewState?: MapViewState;
+  initialSelectedGraphNodeId?: string | null;
+  onViewStateChange?: (viewState: MapViewState) => void;
+  onSelectedGraphNodeIdChange?: (graphNodeId: string | null) => void;
   onOpenCanvasNode?: (graphNodeId: string) => void | Promise<void>;
 }
 
@@ -36,6 +40,10 @@ export function PsychogeographicMap({
   tileSource,
   policy,
   renderer: rendererProp,
+  initialViewState,
+  initialSelectedGraphNodeId = null,
+  onViewStateChange,
+  onSelectedGraphNodeIdChange,
   onOpenCanvasNode,
 }: PsychogeographicMapProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -43,14 +51,21 @@ export function PsychogeographicMap({
   const placeClickRef = useRef<(graphNodeId: string) => void>(() => {});
   const placeDoubleClickRef = useRef<(graphNodeId: string) => void>(() => {});
   const laneClickRef = useRef<(laneId: string) => void>(() => {});
+  const initialViewStateRef = useRef<MapViewState | undefined>(initialViewState);
+  const onViewStateChangeRef = useRef(onViewStateChange);
+  const onSelectedGraphNodeIdChangeRef = useRef(onSelectedGraphNodeIdChange);
+  onViewStateChangeRef.current = onViewStateChange;
+  onSelectedGraphNodeIdChangeRef.current = onSelectedGraphNodeIdChange;
 
   const [renderer, setRenderer] = useState<MapSurfaceRenderer | null>(rendererProp ?? null);
   const [view, setView] = useState<"globe" | "flat">("globe");
-  const [viewState, setViewState] = useState<MapViewState>({ latitude: 20, longitude: 0, zoom: 1 });
+  const [viewState, setViewState] = useState<MapViewState>(() =>
+    initialViewState ?? { latitude: 20, longitude: 0, zoom: 1 },
+  );
   const [nodes, setNodes] = useState<LocatedGraphNode[]>([]);
   const [lanes, setLanes] = useState<GeographyEdge[]>([]);
   const [expressionsByPlace, setExpressionsByPlace] = useState<Map<string, ArchetypalExpression[]>>(new Map());
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(initialSelectedGraphNodeId);
   const [relatedNodes, setRelatedNodes] = useState<GraphNodeContract[]>([]);
   const [contextLoading, setContextLoading] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -140,6 +155,30 @@ export function PsychogeographicMap({
     ? expressionsByPlace.get(selectedNode.graphNodeId) ?? []
     : [];
 
+  useEffect(() => {
+    if (!selectedNodeId || !nodes.some((node) => node.graphNodeId === selectedNodeId)) {
+      setRelatedNodes([]);
+      setContextLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setRelatedNodes([]);
+    setContextLoading(true);
+    void repository.getRelatedNodesForPlace(projectId, selectedNodeId)
+      .then((related) => {
+        if (!cancelled) setRelatedNodes(related);
+      })
+      .catch(() => {
+        if (!cancelled) setRelatedNodes([]);
+      })
+      .finally(() => {
+        if (!cancelled) setContextLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [nodes, projectId, repository, selectedNodeId]);
+
   const laneYearRange = useMemo(() => {
     if (lanes.length === 0) return null;
     const years = lanes.flatMap((lane) => [
@@ -167,15 +206,10 @@ export function PsychogeographicMap({
     const node = nodes.find((candidate) => candidate.graphNodeId === graphNodeId);
     if (!node) return;
     setSelectedNodeId(graphNodeId);
-    setRelatedNodes([]);
-    setContextLoading(true);
+    onSelectedGraphNodeIdChangeRef.current?.(graphNodeId);
     const point = pointForPlace(node);
     if (point) void mountedRenderer.current?.flyTo?.(point.latitude, point.longitude, Math.max(3, viewState.zoom));
-    void repository.getRelatedNodesForPlace(projectId, graphNodeId)
-      .then(setRelatedNodes)
-      .catch(() => setRelatedNodes([]))
-      .finally(() => setContextLoading(false));
-  }, [nodes, projectId, repository, viewState.zoom]);
+  }, [nodes, viewState.zoom]);
   placeClickRef.current = selectPlace;
 
   const openPlaceOnCanvas = useCallback((graphNodeId: string) => {
@@ -218,7 +252,18 @@ export function PsychogeographicMap({
         renderer.setPlaceClickHandler?.((graphNodeId) => placeClickRef.current(graphNodeId));
         renderer.setPlaceDoubleClickHandler?.((graphNodeId) => placeDoubleClickRef.current(graphNodeId));
         renderer.setLaneClickHandler?.((laneId) => laneClickRef.current(laneId));
-        renderer.onViewChange?.(setViewState);
+        renderer.onViewChange?.((nextViewState) => {
+          setViewState(nextViewState);
+          onViewStateChangeRef.current?.(nextViewState);
+        });
+        const restoredViewState = initialViewStateRef.current;
+        if (restoredViewState) {
+          void renderer.flyTo?.(
+            restoredViewState.latitude,
+            restoredViewState.longitude,
+            restoredViewState.zoom,
+          );
+        }
         return Promise.all([
           renderer.drawPlaces?.(placeMarkers, expressionMarkers),
           renderer.drawLanes?.(filteredLanes),

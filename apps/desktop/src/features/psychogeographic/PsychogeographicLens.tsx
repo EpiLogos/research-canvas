@@ -32,6 +32,10 @@ export interface PsychogeographicLensProps {
    * walk or movement lane merely because the surface was opened. */
   repoRoot?: string;
   renderer?: MapSurfaceRenderer;
+  initialViewState?: { latitude: number; longitude: number; zoom: number };
+  initialSelectedGraphNodeId?: string | null;
+  onViewStateChange?: (viewState: { latitude: number; longitude: number; zoom: number }) => void;
+  onSelectedGraphNodeIdChange?: (graphNodeId: string | null) => void;
   resolveAsset?: (artifactPath: string) => string;
   onOpenCanvasNode?: (graphNodeId: string) => void | Promise<void>;
   /** Canonical port override for focused surface tests/static compositions. */
@@ -57,6 +61,10 @@ export function PsychogeographicLens({
   profileScope,
   mediaRoot = "",
   renderer,
+  initialViewState,
+  initialSelectedGraphNodeId,
+  onViewStateChange,
+  onSelectedGraphNodeIdChange,
   resolveAsset,
   onOpenCanvasNode,
   placesRepository,
@@ -123,6 +131,10 @@ export function PsychogeographicLens({
         tileSource={tileSource}
         policy={policy}
         renderer={renderer}
+        initialViewState={initialViewState}
+        initialSelectedGraphNodeId={initialSelectedGraphNodeId}
+        onViewStateChange={onViewStateChange}
+        onSelectedGraphNodeIdChange={onSelectedGraphNodeIdChange}
         onOpenCanvasNode={onOpenCanvasNode}
       />
 

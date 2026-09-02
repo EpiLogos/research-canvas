@@ -62,6 +62,9 @@ export function Stage({
 }: StageProps) {
   const workspace = useCanvasWorkspace();
   const commonStageSurfaceStyle: React.CSSProperties = { position: "absolute", inset: 0 };
+  const placesTabState = workspace.activeTab?.state.surfaceId === "places"
+    ? workspace.activeTab.state
+    : null;
 
   const openPlaceOnCanvas = async (graphNodeId: string) => {
     const constellationId = workspace.activeConstellationId;
@@ -100,6 +103,30 @@ export function Stage({
             profileScope={activeProfileScope}
             mediaRoot={workingRoot ?? ""}
             repoRoot={repoRoot ?? ""}
+            initialViewState={placesTabState ? {
+              longitude: placesTabState.viewport.x,
+              latitude: placesTabState.viewport.y,
+              zoom: placesTabState.viewport.zoom,
+            } : undefined}
+            initialSelectedGraphNodeId={placesTabState?.selectedGraphNodeId ?? null}
+            onViewStateChange={(nextViewState) => {
+              if (!placesTabState) return;
+              workspace.updateTabState({
+                ...placesTabState,
+                viewport: {
+                  x: nextViewState.longitude,
+                  y: nextViewState.latitude,
+                  zoom: nextViewState.zoom,
+                },
+              });
+            }}
+            onSelectedGraphNodeIdChange={(graphNodeId) => {
+              if (!placesTabState) return;
+              workspace.updateTabState({
+                ...placesTabState,
+                selectedGraphNodeId: graphNodeId,
+              });
+            }}
             onOpenCanvasNode={openPlaceOnCanvas}
           />
         </section>
