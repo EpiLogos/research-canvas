@@ -4,7 +4,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: redemption-t16-${{ github.event.pull_request.number }}
@@ -20,198 +20,109 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Apply bounded T17 restoration wiring
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install canonical Linux bridge build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Audit repository-owned surface data paths
+        run: pnpm run audit:hardcoded
+
+      - name: Typecheck workspace
+        run: pnpm exec tsc -b
+
+      - name: Run workspace unit acceptance
+        run: pnpm vitest run
+
+      - name: Run local Rust acceptance serially
+        id: rust_acceptance
+        continue-on-error: true
         shell: bash
         run: |
-          python - <<'PY'
-          from pathlib import Path
+          set -euo pipefail
+          manifest="apps/desktop/src-tauri/Cargo.toml"
+          test_dir="apps/desktop/src-tauri/tests"
+          cargo_args=(test --locked --manifest-path "$manifest" --lib --bins)
+          {
+            echo "Local Rust acceptance excludes targets owned by pnpm test:graph:integration:"
+            while IFS= read -r test_file; do
+              target="$(basename "$test_file" .rs)"
+              if grep -qF 'support::neo4j_test_graph()' "$test_file"; then
+                echo "  graph integration: $target"
+                continue
+              fi
+              cargo_args+=(--test "$target")
+            done < <(find "$test_dir" -maxdepth 1 -type f -name '*.rs' | sort)
+            echo
+            echo "Running local Rust lib/bin and non-graph integration targets"
+            cargo "${cargo_args[@]}" -- --test-threads=1
+          } > rust-test.log 2>&1
 
-          workflow = Path('.github/workflows/redemption-t17.yml').read_text().splitlines()
-          start = next(i for i, line in enumerate(workflow) if line.strip() == "python - <<'PY'")
-          end = next(i for i, line in enumerate(workflow[start + 1:], start + 1) if line.strip() == 'PY')
-          script = '\n'.join(
-              line[10:] if line.startswith('          ') else line
-              for line in workflow[start + 1:end]
-          )
-          bridge_path_at = script.index('"apps/desktop/src-tauri/src/bin/terminal_bridge.rs"')
-          bridge_start = script.rfind('replace_once(', 0, bridge_path_at)
-          if bridge_start < 0:
-              raise SystemExit('could not isolate pre-bridge restoration tranche')
-          namespace = {'__name__': '__main__'}
-          exec(compile(script[:bridge_start], 'redemption-t17-pre-bridge.py', 'exec'), namespace)
-          replace_once = namespace['replace_once']
+      - name: Upload Rust evidence on failure
+        if: steps.rust_acceptance.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: redemption-t16-rust-${{ github.run_id }}
+          path: rust-test.log
+          if-no-files-found: error
+          retention-days: 7
 
-          bridge = 'apps/desktop/src-tauri/src/bin/terminal_bridge.rs'
-          replace_once(
-              bridge,
-              '            persist_constellation_document_at, resolve_or_create_home_at,\n'
-              '            update_saved_sequence_command, ActiveProjectPayload, CreateProjectRequest,\n',
-              '            persist_constellation_document_at, resolve_or_create_home_at, select_active_project_at,\n'
-              '            update_saved_sequence_command, CreateProjectRequest,\n',
-          )
-          replace_once(
-              bridge,
-              '            graph::GraphRepository, ConstellationRepository, SceneRecord, SceneSequenceRecord,\n'
-              '            StreetViewImageRecord, StreetViewRegion,\n',
-              '            graph::GraphRepository, AppTabRecord, AppTabRepository, SceneRecord, SceneSequenceRecord,\n'
-              '            StreetViewImageRecord, StreetViewRegion,\n',
-          )
-          replace_once(
-              bridge,
-              'struct BrowserResourceRootDelete {\n    root_path: String,\n}\n\n#[derive(Clone)]',
-              'struct BrowserResourceRootDelete {\n    root_path: String,\n}\n\n'
-              '#[derive(Debug, Deserialize)]\n#[serde(rename_all = "camelCase")]\n'
-              'struct BrowserSaveAppTabs {\n    tabs: Vec<AppTabRecord>,\n    active_tab_id: Option<String>,\n}\n\n'
-              '#[derive(Clone)]',
-          )
-          replace_once(
-              bridge,
-              '    if method == Method::Get && path == "/workspace/bootstrap" {\n'
-              '        let database_path = session_database_path(&request)?;\n'
-              '        let payload = bootstrap_workspace_at(&database_path)?;\n'
-              '        return respond_json(request, StatusCode(200), payload);\n'
-              '    }\n\n',
-              '    if method == Method::Get && path == "/workspace/bootstrap" {\n'
-              '        let database_path = session_database_path(&request)?;\n'
-              '        let payload = bootstrap_workspace_at(&database_path)?;\n'
-              '        return respond_json(request, StatusCode(200), payload);\n'
-              '    }\n\n'
-              '    if method == Method::Get && path == "/workspace/app-tabs" {\n'
-              '        let database_path = session_database_path(&request)?;\n'
-              '        let database = Database::open(&database_path).map_err(|error| error.to_string())?;\n'
-              '        let repository = AppTabRepository::new(database.connection());\n'
-              '        let tabs = repository.load_tabs().map_err(|error| error.to_string())?;\n'
-              '        let active_tab_id = repository.load_active_tab_id().map_err(|error| error.to_string())?;\n'
-              '        return respond_json(request, StatusCode(200), json!({ "tabs": tabs, "activeTabId": active_tab_id }));\n'
-              '    }\n\n'
-              '    if method == Method::Post && path == "/workspace/app-tabs" {\n'
-              '        let database_path = session_database_path(&request)?;\n'
-              '        let body = read_body(&mut request)?;\n'
-              '        let payload: BrowserSaveAppTabs = serde_json::from_str(&body).map_err(|error| error.to_string())?;\n'
-              '        let database = Database::open(&database_path).map_err(|error| error.to_string())?;\n'
-              '        let repository = AppTabRepository::new(database.connection());\n'
-              '        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);\n'
-              '        repository.save_tabs(&payload.tabs, payload.active_tab_id.as_deref(), &now).map_err(|error| error.to_string())?;\n'
-              '        return respond_json(request, StatusCode(200), json!({}));\n'
-              '    }\n\n',
-          )
-          replace_once(
-              bridge,
-              '    if method == Method::Post && path == "/workspace/project" {\n'
-              '        let body = read_body(&mut request)?;\n'
-              '        let project_request: SetActiveProjectRequest =\n'
-              '            serde_json::from_str(&body).map_err(|error| error.to_string())?;\n'
-              '        let database = Database::open(std::path::PathBuf::from(&project_request.database_path))\n'
-              '            .map_err(|error| error.to_string())?;\n'
-              '        let constellation = ConstellationRepository::new(database.connection())\n'
-              '            .get_by_id(&project_request.project_id)\n'
-              '            .map_err(|error| error.to_string())?\n'
-              '            .ok_or_else(|| format!("project {} not found", project_request.project_id))?;\n'
-              '        let payload = ActiveProjectPayload {\n'
-              '            project_id: constellation.id,\n'
-              '            profile_scope: constellation.profile_scope,\n'
-              '            root_type: constellation.root_type,\n'
-              '        };\n'
-              '        return respond_json(request, StatusCode(200), payload);\n'
-              '    }\n',
-              '    if method == Method::Post && path == "/workspace/project" {\n'
-              '        let body = read_body(&mut request)?;\n'
-              '        let project_request: SetActiveProjectRequest =\n'
-              '            serde_json::from_str(&body).map_err(|error| error.to_string())?;\n'
-              '        let payload = select_active_project_at(&project_request.database_path, &project_request.project_id)?;\n'
-              '        return respond_json(request, StatusCode(200), payload);\n'
-              '    }\n',
-          )
+      - name: Fail when Rust acceptance failed
+        if: steps.rust_acceptance.outcome == 'failure'
+        run: |
+          cat rust-test.log
+          exit 1
 
-          desktop = 'packages/desktop-api/src/index.ts'
-          replace_once(
-              desktop,
-              '    async selectProject({ databasePath, projectId }) {\n'
-              '      return requestJsonWithRetry<ActiveProject>("/workspace/project", {\n'
-              '        body: { databasePath, projectId },\n'
-              '        method: "POST",\n'
-              '      });\n'
-              '    },\n',
-              '    async selectProject({ databasePath, projectId }) {\n'
-              '      const result = await requestJsonWithRetry<ActiveProject>("/workspace/project", {\n'
-              '        body: { databasePath, projectId },\n'
-              '        method: "POST",\n'
-              '      });\n'
-              '      activeProfileScope = result.profileScope;\n'
-              '      return result;\n'
-              '    },\n',
-          )
-          replace_once(
-              desktop,
-              '    async loadAppTabs() {\n'
-              '      return { tabs: [], activeTabId: null };\n'
-              '    },\n'
-              '    async saveAppTabs() {\n'
-              '      // Tabs are local-only; the web bridge has no persistence endpoint.\n'
-              '    },\n',
-              '    async loadAppTabs(input) {\n'
-              '      const databasePath = input.databasePath ?? activeDatabasePath;\n'
-              '      if (!databasePath) throw new Error("loadAppTabs: no database path in input or context");\n'
-              '      return requestJsonWithRetry<{ tabs: AppTab[]; activeTabId: string | null }>("/workspace/app-tabs");\n'
-              '    },\n'
-              '    async saveAppTabs(input) {\n'
-              '      const databasePath = input.databasePath ?? activeDatabasePath;\n'
-              '      if (!databasePath) throw new Error("saveAppTabs: no database path in input or context");\n'
-              '      await requestJsonWithRetry<void>("/workspace/app-tabs", {\n'
-              '        method: "POST",\n'
-              '        body: { tabs: input.tabs, activeTabId: input.activeTabId },\n'
-              '      });\n'
-              '    },\n',
-          )
+      - name: Build desktop and public viewer workspace
+        run: pnpm run build
 
-          provider = 'apps/desktop/src/features/canvas/CanvasWorkspaceContext.tsx'
-          replace_once(
-              provider,
-              '    void transport\n'
-              '      .bootstrapWorkspace()\n'
-              '      .then((workspace) => {\n'
-              '        if (cancelled) {\n'
-              '          return;\n'
-              '        }\n\n'
-              '        setConstellations(workspace.constellations);\n',
-              '    void transport\n'
-              '      .bootstrapWorkspace()\n'
-              '      .then(async (workspace) => {\n'
-              '        let persistedTabs: { tabs: AppTab[]; activeTabId: string | null } = { tabs: [], activeTabId: null };\n'
-              '        try {\n'
-              '          persistedTabs = await transport.loadAppTabs({ databasePath: workspace.databasePath });\n'
-              '        } catch (error) {\n'
-              '          console.warn("failed to restore app tabs; continuing with the active project", error);\n'
-              '        }\n'
-              '        if (cancelled) {\n'
-              '          return;\n'
-              '        }\n\n'
-              '        tabManager.getState().hydrate(persistedTabs);\n'
-              '        setConstellations(workspace.constellations);\n',
-          )
-          replace_once(
-              provider,
-              '  }, [transport]);\n\n'
-              '  useEffect(() => {\n'
-              '    if (!databasePath || !activeConstellationId) {\n',
-              '  }, [tabManager, transport]);\n\n'
-              '  useEffect(() => {\n'
-              '    if (!databasePath || !activeConstellationId) {\n',
-          )
-          PY
-          if ! git diff --quiet; then
-            git config user.name github-actions[bot]
-            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-            git add \
-              apps/desktop/src-tauri/src/db/migrations.rs \
-              apps/desktop/src-tauri/src/db/repositories/mod.rs \
-              apps/desktop/src-tauri/src/commands/constellations.rs \
-              apps/desktop/src-tauri/src/bin/terminal_bridge.rs \
-              packages/desktop-api/src/index.ts \
-              apps/desktop/src/features/canvas/CanvasWorkspaceContext.tsx
-            git commit -m "feat(state): restore project tabs and active surface"
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
-          fi
+      - name: Prebuild canonical browser bridge
+        run: cargo build --manifest-path apps/desktop/src-tauri/Cargo.toml --bin terminal_bridge
 
-      - name: Stop after bounded wiring
-        run: echo "Production patch carrier only; clean read-only acceptance follows on the resulting head."
+      - name: Run six-surface real-data smoke in Chromium
+        run: >-
+          pnpm playwright test
+          tests/e2e/smoke.spec.ts
+          --project=chromium
+          --workers=1
+
+      - name: Verify checkout remained read-only
+        run: git diff --exit-code
+
+      - name: Upload Playwright evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redemption-t16-playwright-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7

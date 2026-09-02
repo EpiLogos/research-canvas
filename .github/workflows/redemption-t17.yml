@@ -4,562 +4,125 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: redemption-t17-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  wire-restoration:
+  acceptance:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout exact PR head
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Apply bounded T17 restoration wiring
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install canonical Linux bridge build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Audit repository-owned surface data paths
+        run: pnpm run audit:hardcoded
+
+      - name: Typecheck workspace
+        run: pnpm exec tsc -b
+
+      - name: Run workspace unit acceptance
+        run: pnpm vitest run
+
+      - name: Run local Rust acceptance serially
+        id: rust_acceptance
+        continue-on-error: true
         shell: bash
         run: |
-          python - <<'PY'
-          from pathlib import Path
+          set -euo pipefail
+          manifest="apps/desktop/src-tauri/Cargo.toml"
+          test_dir="apps/desktop/src-tauri/tests"
+          cargo_args=(test --locked --manifest-path "$manifest" --lib --bins)
+          {
+            echo "Local Rust acceptance excludes targets owned by pnpm test:graph:integration:"
+            while IFS= read -r test_file; do
+              target="$(basename "$test_file" .rs)"
+              if grep -qF 'support::neo4j_test_graph()' "$test_file"; then
+                echo "  graph integration: $target"
+                continue
+              fi
+              cargo_args+=(--test "$target")
+            done < <(find "$test_dir" -maxdepth 1 -type f -name '*.rs' | sort)
+            cargo "${cargo_args[@]}" -- --test-threads=1
+          } > rust-test.log 2>&1
 
-          def replace_once(path, old, new):
-              p = Path(path)
-              text = p.read_text()
-              if old in text:
-                  if text.count(old) != 1:
-                      raise SystemExit(f"{path}: expected one replacement target, found {text.count(old)}")
-                  p.write_text(text.replace(old, new))
-                  return
-              if new in text:
-                  return
-              raise SystemExit(f"{path}: neither asserted pre- nor post-repair form found")
+      - name: Upload Rust evidence on failure
+        if: steps.rust_acceptance.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: redemption-t17-rust-${{ github.run_id }}
+          path: rust-test.log
+          if-no-files-found: error
+          retention-days: 7
 
-          replace_once(
-              "apps/desktop/src-tauri/src/db/migrations.rs",
-              '''    Migration {
-                  version: "0038_relationship_vocabulary_t10",
-                  sql: include_str!("../../migrations/0038_relationship_vocabulary_t10.sql"),
-              },
-          ];''',
-              '''    Migration {
-                  version: "0038_relationship_vocabulary_t10",
-                  sql: include_str!("../../migrations/0038_relationship_vocabulary_t10.sql"),
-              },
-              Migration {
-                  version: "0039_workspace_state",
-                  sql: include_str!("../../migrations/0039_workspace_state.sql"),
-              },
-          ];''',
-          )
+      - name: Fail when Rust acceptance failed
+        if: steps.rust_acceptance.outcome == 'failure'
+        run: |
+          cat rust-test.log
+          exit 1
 
-          replace_once(
-              "apps/desktop/src-tauri/src/db/repositories/mod.rs",
-              '''pub mod timeline_layout;
-''',
-              '''pub mod timeline_layout;
-pub mod workspace_state;
-''',
-          )
-          replace_once(
-              "apps/desktop/src-tauri/src/db/repositories/mod.rs",
-              '''pub use timeline_layout::{TimelineLayoutMutation, TimelineLayoutRecord, TimelineLayoutRepository};
-''',
-              '''pub use timeline_layout::{TimelineLayoutMutation, TimelineLayoutRecord, TimelineLayoutRepository};
-pub use workspace_state::WorkspaceStateRepository;
-''',
-          )
+      - name: Build desktop and public viewer workspace
+        run: pnpm run build
 
-          replace_once(
-              "apps/desktop/src-tauri/src/commands/constellations.rs",
-              '''            ResourceRootRecord, ResourceRootRepository, SavedSequenceRecord,
-                      SavedSequenceRepository,
-''',
-              '''            ResourceRootRecord, ResourceRootRepository, SavedSequenceRecord,
-                      SavedSequenceRepository, WorkspaceStateRepository,
-''',
-          )
-          replace_once(
-              "apps/desktop/src-tauri/src/commands/constellations.rs",
-              '''    let constellations = list_constellations_flat(database.connection())?;
-              let active_constellation = constellations
-                  .iter()
-                  .find(|constellation| constellation.slug == "root-archetypal-field")
-                  .or_else(|| {
-                      constellations
-                          .iter()
-                          .find(|constellation| constellation.parent_constellation_id.is_none())
-                  })
-                  .or_else(|| constellations.first())
-                  .ok_or_else(|| "workspace bootstrap found no constellations".to_string())?;
-              let active_constellation_id = active_constellation.id.clone();
+      - name: Prebuild canonical browser bridge
+        run: cargo build --manifest-path apps/desktop/src-tauri/Cargo.toml --bin terminal_bridge
 
-              Ok(WorkspaceBootstrap {''',
-              '''    let constellations = list_constellations_flat(database.connection())?;
-              let persisted_active_project_id = WorkspaceStateRepository::new(database.connection())
-                  .load_active_project_id()
-                  .map_err(|error| error.to_string())?;
-              let active_constellation = persisted_active_project_id
-                  .as_deref()
-                  .and_then(|project_id| constellations.iter().find(|constellation| constellation.id == project_id))
-                  .or_else(|| constellations.iter().find(|constellation| constellation.slug == "root-archetypal-field"))
-                  .or_else(|| {
-                      constellations
-                          .iter()
-                          .find(|constellation| constellation.parent_constellation_id.is_none())
-                  })
-                  .or_else(|| constellations.first())
-                  .ok_or_else(|| "workspace bootstrap found no constellations".to_string())?;
-              let active_constellation_id = active_constellation.id.clone();
-              WorkspaceStateRepository::new(database.connection())
-                  .save_active_project_id(&active_constellation_id, &current_timestamp())
-                  .map_err(|error| error.to_string())?;
-
-              Ok(WorkspaceBootstrap {''',
-          )
-          replace_once(
-              "apps/desktop/src-tauri/src/commands/constellations.rs",
-              '''#[tauri::command]
-          pub fn set_active_project_command(
-              request: SetActiveProjectRequest,
-              api_state: tauri::State<SharedApiState>,
-          ) -> Result<ActiveProjectPayload, String> {
-              let database = Database::open(PathBuf::from(&request.database_path)).map_err(|e| e.to_string())?;
-              let constellation = ConstellationRepository::new(database.connection())
-                  .get_by_id(&request.project_id)
-                  .map_err(|e| e.to_string())?
-                  .ok_or_else(|| format!("project {} not found", request.project_id))?;
-              {
-                  let mut state = api_state.lock().unwrap();
-                  state.active_project_id = Some(constellation.id.clone());
-                  state.active_profile_scope = Some(constellation.profile_scope.clone());
-                  state.active_constellation_id = Some(constellation.id.clone());
-              }
-              Ok(ActiveProjectPayload {
-                  project_id: constellation.id,
-                  profile_scope: constellation.profile_scope,
-                  root_type: constellation.root_type,
-              })
-          }
-''',
-              '''pub fn select_active_project_at(
-              database_path: &str,
-              project_id: &str,
-          ) -> Result<ActiveProjectPayload, String> {
-              let database = Database::open(PathBuf::from(database_path)).map_err(|error| error.to_string())?;
-              let constellation = ConstellationRepository::new(database.connection())
-                  .get_by_id(project_id)
-                  .map_err(|error| error.to_string())?
-                  .ok_or_else(|| format!("project {project_id} not found"))?;
-              WorkspaceStateRepository::new(database.connection())
-                  .save_active_project_id(&constellation.id, &current_timestamp())
-                  .map_err(|error| error.to_string())?;
-              Ok(ActiveProjectPayload {
-                  project_id: constellation.id,
-                  profile_scope: constellation.profile_scope,
-                  root_type: constellation.root_type,
-              })
-          }
-
-          #[tauri::command]
-          pub fn set_active_project_command(
-              request: SetActiveProjectRequest,
-              api_state: tauri::State<SharedApiState>,
-          ) -> Result<ActiveProjectPayload, String> {
-              let selected = select_active_project_at(&request.database_path, &request.project_id)?;
-              {
-                  let mut state = api_state.lock().unwrap();
-                  state.active_project_id = Some(selected.project_id.clone());
-                  state.active_profile_scope = Some(selected.profile_scope.clone());
-                  state.active_constellation_id = Some(selected.project_id.clone());
-              }
-              Ok(selected)
-          }
-''',
-          )
-          replace_once(
-              "apps/desktop/src-tauri/src/commands/constellations.rs",
-              '''pub fn set_active_project_at(
-              database_path: &str,
-              project_id: &str,
-              api_state: &SharedApiState,
-          ) -> Result<ActiveProjectPayload, String> {
-              let database = Database::open(PathBuf::from(database_path)).map_err(|e| e.to_string())?;
-              let constellation = ConstellationRepository::new(database.connection())
-                  .get_by_id(project_id)
-                  .map_err(|e| e.to_string())?
-                  .ok_or_else(|| format!("project {} not found", project_id))?;
-              {
-                  let mut state = api_state.lock().unwrap();
-                  state.active_project_id = Some(constellation.id.clone());
-                  state.active_profile_scope = Some(constellation.profile_scope.clone());
-                  state.active_constellation_id = Some(constellation.id.clone());
-              }
-              Ok(ActiveProjectPayload {
-                  project_id: constellation.id,
-                  profile_scope: constellation.profile_scope,
-                  root_type: constellation.root_type,
-              })
-          }
-''',
-              '''pub fn set_active_project_at(
-              database_path: &str,
-              project_id: &str,
-              api_state: &SharedApiState,
-          ) -> Result<ActiveProjectPayload, String> {
-              let selected = select_active_project_at(database_path, project_id)?;
-              {
-                  let mut state = api_state.lock().unwrap();
-                  state.active_project_id = Some(selected.project_id.clone());
-                  state.active_profile_scope = Some(selected.profile_scope.clone());
-                  state.active_constellation_id = Some(selected.project_id.clone());
-              }
-              Ok(selected)
-          }
-''',
-          )
-
-          replace_once(
-              "apps/desktop/src-tauri/src/bin/terminal_bridge.rs",
-              '''            persist_constellation_document_at, resolve_or_create_home_at,
-                      update_saved_sequence_command, ActiveProjectPayload, CreateProjectRequest,
-''',
-              '''            persist_constellation_document_at, resolve_or_create_home_at, select_active_project_at,
-                      update_saved_sequence_command, CreateProjectRequest,
-''',
-          )
-          replace_once(
-              "apps/desktop/src-tauri/src/bin/terminal_bridge.rs",
-              '''            graph::GraphRepository, ConstellationRepository, SceneRecord, SceneSequenceRecord,
-                      StreetViewImageRecord, StreetViewRegion,
-''',
-              '''            graph::GraphRepository, AppTabRecord, AppTabRepository, SceneRecord, SceneSequenceRecord,
-                      StreetViewImageRecord, StreetViewRegion,
-''',
-          )
-          replace_once(
-              "apps/desktop/src-tauri/src/bin/terminal_bridge.rs",
-              '''struct BrowserResourceRootDelete {
-              root_path: String,
-          }
-
-          #[derive(Clone)]''',
-              '''struct BrowserResourceRootDelete {
-              root_path: String,
-          }
-
-          #[derive(Debug, Deserialize)]
-          #[serde(rename_all = "camelCase")]
-          struct BrowserSaveAppTabs {
-              tabs: Vec<AppTabRecord>,
-              active_tab_id: Option<String>,
-          }
-
-          #[derive(Clone)]''',
-          )
-          replace_once(
-              "apps/desktop/src-tauri/src/bin/terminal_bridge.rs",
-              '''    if method == Method::Get && path == "/workspace/bootstrap" {
-              let database_path = session_database_path(&request)?;
-              let payload = bootstrap_workspace_at(&database_path)?;
-              return respond_json(request, StatusCode(200), payload);
-          }
-
-          ''',
-              '''    if method == Method::Get && path == "/workspace/bootstrap" {
-              let database_path = session_database_path(&request)?;
-              let payload = bootstrap_workspace_at(&database_path)?;
-              return respond_json(request, StatusCode(200), payload);
-          }
-
-              if method == Method::Get && path == "/workspace/app-tabs" {
-                  let database_path = session_database_path(&request)?;
-                  let database = Database::open(&database_path).map_err(|error| error.to_string())?;
-                  let repository = AppTabRepository::new(database.connection());
-                  let tabs = repository.load_tabs().map_err(|error| error.to_string())?;
-                  let active_tab_id = repository.load_active_tab_id().map_err(|error| error.to_string())?;
-                  return respond_json(
-                      request,
-                      StatusCode(200),
-                      json!({ "tabs": tabs, "activeTabId": active_tab_id }),
-                  );
-              }
-
-              if method == Method::Post && path == "/workspace/app-tabs" {
-                  let database_path = session_database_path(&request)?;
-                  let body = read_body(&mut request)?;
-                  let payload: BrowserSaveAppTabs =
-                      serde_json::from_str(&body).map_err(|error| error.to_string())?;
-                  let database = Database::open(&database_path).map_err(|error| error.to_string())?;
-                  let repository = AppTabRepository::new(database.connection());
-                  let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-                  repository
-                      .save_tabs(&payload.tabs, payload.active_tab_id.as_deref(), &now)
-                      .map_err(|error| error.to_string())?;
-                  return respond_json(request, StatusCode(200), json!({}));
-              }
-
-          ''',
-          )
-          replace_once(
-              "apps/desktop/src-tauri/src/bin/terminal_bridge.rs",
-              '''    if method == Method::Post && path == "/workspace/project" {
-              let body = read_body(&mut request)?;
-              let project_request: SetActiveProjectRequest =
-                  serde_json::from_str(&body).map_err(|error| error.to_string())?;
-              let database = Database::open(std::path::PathBuf::from(&project_request.database_path))
-                  .map_err(|error| error.to_string())?;
-              let constellation = ConstellationRepository::new(database.connection())
-                  .get_by_id(&project_request.project_id)
-                  .map_err(|error| error.to_string())?
-                  .ok_or_else(|| format!("project {} not found", project_request.project_id))?;
-              let payload = ActiveProjectPayload {
-                  project_id: constellation.id,
-                  profile_scope: constellation.profile_scope,
-                  root_type: constellation.root_type,
-              };
-              return respond_json(request, StatusCode(200), payload);
-          }
-''',
-              '''    if method == Method::Post && path == "/workspace/project" {
-              let body = read_body(&mut request)?;
-              let project_request: SetActiveProjectRequest =
-                  serde_json::from_str(&body).map_err(|error| error.to_string())?;
-              let payload = select_active_project_at(
-                  &project_request.database_path,
-                  &project_request.project_id,
-              )?;
-              return respond_json(request, StatusCode(200), payload);
-          }
-''',
-          )
-
-          replace_once(
-              "packages/desktop-api/src/index.ts",
-              '''    async selectProject({ databasePath, projectId }) {
-              return requestJsonWithRetry<ActiveProject>("/workspace/project", {
-                body: { databasePath, projectId },
-                method: "POST",
-              });
-            },
-''',
-              '''    async selectProject({ databasePath, projectId }) {
-              const result = await requestJsonWithRetry<ActiveProject>("/workspace/project", {
-                body: { databasePath, projectId },
-                method: "POST",
-              });
-              activeProfileScope = result.profileScope;
-              return result;
-            },
-''',
-          )
-          replace_once(
-              "packages/desktop-api/src/index.ts",
-              '''    async loadAppTabs() {
-              return { tabs: [], activeTabId: null };
-            },
-            async saveAppTabs() {
-              // Tabs are local-only; the web bridge has no persistence endpoint.
-            },
-''',
-              '''    async loadAppTabs(input) {
-              const databasePath = input.databasePath ?? activeDatabasePath;
-              if (!databasePath) {
-                throw new Error("loadAppTabs: no database path in input or context");
-              }
-              return requestJsonWithRetry<{ tabs: AppTab[]; activeTabId: string | null }>("/workspace/app-tabs");
-            },
-            async saveAppTabs(input) {
-              const databasePath = input.databasePath ?? activeDatabasePath;
-              if (!databasePath) {
-                throw new Error("saveAppTabs: no database path in input or context");
-              }
-              await requestJsonWithRetry<void>("/workspace/app-tabs", {
-                method: "POST",
-                body: { tabs: input.tabs, activeTabId: input.activeTabId },
-              });
-            },
-''',
-          )
-
-          replace_once(
-              "apps/desktop/src/features/canvas/CanvasWorkspaceContext.tsx",
-              '''    void transport
-              .bootstrapWorkspace()
-              .then((workspace) => {
-                if (cancelled) {
-                  return;
-                }
-
-                setConstellations(workspace.constellations);
-                setDatabasePath(workspace.databasePath);
-                setWorkspaceId(workspace.workspaceId);
-                setRepoRoot(workspace.workspaceRoot);
-                setActiveConstellationId((current) =>
-                  current && workspace.constellations.some((constellation) => constellation.id === current)
-                    ? current
-                    : workspace.activeConstellationId
-                );
-                setActiveProjectId(workspace.activeProjectId);
-                setActiveProfileScope(workspace.activeProfileScope);
-                setErrorMessage(null);
-              })''',
-              '''    void transport
-              .bootstrapWorkspace()
-              .then(async (workspace) => {
-                let persistedTabs: { tabs: AppTab[]; activeTabId: string | null } = {
-                  tabs: [],
-                  activeTabId: null,
-                };
-                try {
-                  persistedTabs = await transport.loadAppTabs({ databasePath: workspace.databasePath });
-                } catch (error) {
-                  console.warn("failed to restore app tabs; continuing with the active project", error);
-                }
-                if (cancelled) {
-                  return;
-                }
-
-                tabManager.getState().hydrate(persistedTabs);
-                setConstellations(workspace.constellations);
-                setDatabasePath(workspace.databasePath);
-                setWorkspaceId(workspace.workspaceId);
-                setRepoRoot(workspace.workspaceRoot);
-                setActiveConstellationId((current) =>
-                  current && workspace.constellations.some((constellation) => constellation.id === current)
-                    ? current
-                    : workspace.activeConstellationId
-                );
-                setActiveProjectId(workspace.activeProjectId);
-                setActiveProfileScope(workspace.activeProfileScope);
-                setErrorMessage(null);
-              })''',
-          )
-          replace_once(
-              "apps/desktop/src/features/canvas/CanvasWorkspaceContext.tsx",
-              '''  }, [transport]);
-
-          useEffect(() => {
-            if (!databasePath || !activeConstellationId) {''',
-              '''  }, [tabManager, transport]);
-
-          useEffect(() => {
-            if (!databasePath || !activeConstellationId) {''',
-          )
-
-          replace_once(
-              "apps/desktop/src/features/canvas/CanvasWorkspaceContext.test.tsx",
-              '''  listPendingNodeDocumentSyncs: vi.fn().mockResolvedValue([]),
-          }));''',
-              '''  listPendingNodeDocumentSyncs: vi.fn().mockResolvedValue([]),
-            loadAppTabs: vi.fn().mockResolvedValue({ tabs: [], activeTabId: null }),
-            saveAppTabs: vi.fn().mockResolvedValue(undefined),
-          }));''',
-          )
-          replace_once(
-              "apps/desktop/src/features/canvas/CanvasWorkspaceContext.test.tsx",
-              '''    rendered.unmount();
-            });
-          });''',
-              '''    rendered.unmount();
-            });
-
-            it("restores persisted tabs and active surface before Canvas fallback hydration", async () => {
-              transport.bootstrapWorkspace.mockResolvedValue({
-                activeConstellationId: "root",
-                activeProjectId: "root",
-                activeProfileScope: "bootstrapping",
-                databasePath: "/tmp/workspace.sqlite",
-                workspaceId: "sqlite:/tmp/workspace.sqlite",
-                workspaceRoot: "/workspace",
-                constellations: [
-                  { id: "root", name: "Archetypal field", slug: "root", rootPath: "/workspace", summary: "", parentId: null, children: [] },
-                ],
-              });
-              transport.loadAppTabs.mockResolvedValue({
-                tabs: [
-                  {
-                    id: `root:${ROOT_CANVAS_ID}`,
-                    surfaceId: "canvas",
-                    title: "Archetypal field",
-                    pinned: true,
-                    state: {
-                      surfaceId: "canvas",
-                      canvasId: ROOT_CANVAS_ID,
-                      constellationId: "root",
-                      viewport: { x: 15, y: 25, zoom: 1.2 },
-                      selectedGraphNodeId: "33333333-3333-4333-8333-333333333333",
-                      selectedEdgeId: null,
-                    },
-                  },
-                  { id: "story-restored", surfaceId: "story", title: "Story", pinned: false, state: { surfaceId: "story" } },
-                ],
-                activeTabId: "story-restored",
-              });
-              transport.loadConstellationDocument.mockResolvedValue({
-                canvasId: ROOT_CANVAS_ID,
-                databasePath: "/tmp/workspace.sqlite",
-                entries: [],
-                resourceRoots: [],
-                annotations: [],
-                edges: [],
-                nodes: [canvasNode("33333333-3333-4333-8333-333333333333", "Root", ROOT_CANVAS_ID)],
-                workingRoot: "/workspace",
-                constellation: {
-                  id: "root",
-                  displayName: "Archetypal field",
-                  slug: "root",
-                  parentConstellationId: null,
-                  rootPath: "/workspace",
-                  primaryCanvasId: ROOT_CANVAS_ID,
-                  summary: "",
-                  coverAssetPath: null,
-                  publishSettings: {},
-                  createdAt: "2026-07-13T00:00:00Z",
-                  updatedAt: "2026-07-13T00:00:00Z",
-                },
-              });
-              latest = null;
-              const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
-              const rendered = render(<CanvasWorkspaceProvider><Probe /></CanvasWorkspaceProvider>);
-
-              await waitFor(() => expect(getLatest()?.isHydrated).toBe(true));
-              expect(getLatest()?.activeSurfaceId).toBe("story");
-              expect(getLatest()?.activeTabId).toBe("story-restored");
-              expect(getLatest()?.activeCanvasViewport).toEqual({ x: 15, y: 25, zoom: 1.2 });
-              expect(transport.loadAppTabs).toHaveBeenCalledWith({ databasePath: "/tmp/workspace.sqlite" });
-
-              warning.mockRestore();
-              rendered.unmount();
-            });
-          });''',
-          )
-
-          changed = [
-              "apps/desktop/src-tauri/src/db/migrations.rs",
-              "apps/desktop/src-tauri/src/db/repositories/mod.rs",
-              "apps/desktop/src-tauri/src/commands/constellations.rs",
-              "apps/desktop/src-tauri/src/bin/terminal_bridge.rs",
-              "packages/desktop-api/src/index.ts",
-              "apps/desktop/src/features/canvas/CanvasWorkspaceContext.tsx",
-              "apps/desktop/src/features/canvas/CanvasWorkspaceContext.test.tsx",
-          ]
-          if any(Path(path).read_bytes() != (Path(path).read_bytes()) for path in []):
-              raise SystemExit("unreachable")
-          PY
-          if ! git diff --quiet; then
-            git config user.name github-actions[bot]
-            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-            git add \
-              apps/desktop/src-tauri/src/db/migrations.rs \
-              apps/desktop/src-tauri/src/db/repositories/mod.rs \
-              apps/desktop/src-tauri/src/commands/constellations.rs \
-              apps/desktop/src-tauri/src/bin/terminal_bridge.rs \
-              packages/desktop-api/src/index.ts \
-              apps/desktop/src/features/canvas/CanvasWorkspaceContext.tsx \
-              apps/desktop/src/features/canvas/CanvasWorkspaceContext.test.tsx
-            git commit -m "feat(state): restore project tabs and active surface"
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+      - name: Run full-flow when landed
+        shell: bash
+        run: |
+          if [[ -f tests/e2e/full-flow.spec.ts ]]; then
+            pnpm playwright test tests/e2e/full-flow.spec.ts --project=chromium --workers=1
+          else
+            echo "full-flow.spec.ts not landed yet; this run is baseline only"
           fi
+
+      - name: Verify checkout remained read-only
+        run: git diff --exit-code
+
+      - name: Upload Playwright evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redemption-t17-playwright-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
