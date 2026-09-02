@@ -133,7 +133,7 @@ controlled_string_enum!(TemporalPrecision {
 controlled_string_enum!(EntityType {
     Figure => "Figure", People => "People", Event => "Event", Institution => "Institution",
     Source => "Source", Claim => "Claim", Myth => "Myth", Interpretation => "Interpretation",
-    Place => "Place", Work => "Work", Archetype => "Archetype", Dynamic => "Dynamic",
+    Place => "Place", Work => "Work", Archetype => "Archetype", ArchetypeExpression => "ArchetypeExpression", Dynamic => "Dynamic",
     Constellation => "Constellation", PsychoidOperator => "PsychoidOperator",
 });
 
