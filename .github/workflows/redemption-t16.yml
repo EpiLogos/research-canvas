@@ -4,7 +4,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: redemption-t16-${{ github.event.pull_request.number }}
@@ -19,31 +19,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-
-      - name: Apply bounded Rust vocabulary repair
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("apps/desktop/src-tauri/src/db/repositories/graph.rs")
-          text = path.read_text()
-          old = '    Place => "Place", Work => "Work", Archetype => "Archetype", Dynamic => "Dynamic",'
-          new = '    Place => "Place", Work => "Work", Archetype => "Archetype", ArchetypeExpression => "ArchetypeExpression", Dynamic => "Dynamic",'
-          if old in text:
-              if text.count(old) != 1:
-                  raise SystemExit(f"expected one Rust vocabulary repair target, found {text.count(old)}")
-              path.write_text(text.replace(old, new))
-          elif new not in text:
-              raise SystemExit("Rust vocabulary no longer matches the asserted pre- or post-repair form")
-          PY
-          if ! git diff --quiet -- apps/desktop/src-tauri/src/db/repositories/graph.rs; then
-            git config user.name github-actions[bot]
-            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-            git add apps/desktop/src-tauri/src/db/repositories/graph.rs
-            git commit -m "fix(schema): align Rust entity vocabulary"
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
-          fi
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
