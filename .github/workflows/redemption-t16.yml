@@ -34,13 +34,13 @@ jobs:
               for line in workflow[start + 1:end]
           )
 
-          bridge_start = script.index(
-              '    replace_once(\n        "apps/desktop/src-tauri/src/bin/terminal_bridge.rs"'
-          )
-          bridge_end = script.index(
-              '    replace_once(\n        "packages/desktop-api/src/index.ts"',
-              bridge_start,
-          )
+          bridge_path_at = script.index('"apps/desktop/src-tauri/src/bin/terminal_bridge.rs"')
+          bridge_start = script.rfind('replace_once(', 0, bridge_path_at)
+          desktop_path_at = script.index('"packages/desktop-api/src/index.ts"', bridge_path_at)
+          bridge_end = script.rfind('replace_once(', 0, desktop_path_at)
+          if bridge_start < 0 or bridge_end <= bridge_start:
+              raise SystemExit('could not isolate terminal bridge replacement tranche')
+
           namespace = {'__name__': '__main__'}
           exec(compile(script[:bridge_start], 'redemption-t17-before-bridge.py', 'exec'), namespace)
           replace_once = namespace['replace_once']
