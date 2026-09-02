@@ -33,19 +33,15 @@ jobs:
               line[10:] if line.startswith('          ') else line
               for line in workflow[start + 1:end]
           )
-
           bridge_path_at = script.index('"apps/desktop/src-tauri/src/bin/terminal_bridge.rs"')
           bridge_start = script.rfind('replace_once(', 0, bridge_path_at)
-          desktop_path_at = script.index('"packages/desktop-api/src/index.ts"', bridge_path_at)
-          bridge_end = script.rfind('replace_once(', 0, desktop_path_at)
-          if bridge_start < 0 or bridge_end <= bridge_start:
-              raise SystemExit('could not isolate terminal bridge replacement tranche')
-
+          if bridge_start < 0:
+              raise SystemExit('could not isolate pre-bridge restoration tranche')
           namespace = {'__name__': '__main__'}
-          exec(compile(script[:bridge_start], 'redemption-t17-before-bridge.py', 'exec'), namespace)
+          exec(compile(script[:bridge_start], 'redemption-t17-pre-bridge.py', 'exec'), namespace)
           replace_once = namespace['replace_once']
-          bridge = 'apps/desktop/src-tauri/src/bin/terminal_bridge.rs'
 
+          bridge = 'apps/desktop/src-tauri/src/bin/terminal_bridge.rs'
           replace_once(
               bridge,
               '            persist_constellation_document_at, resolve_or_create_home_at,\n'
@@ -62,19 +58,10 @@ jobs:
           )
           replace_once(
               bridge,
-              'struct BrowserResourceRootDelete {\n'
-              '    root_path: String,\n'
-              '}\n\n'
-              '#[derive(Clone)]',
-              'struct BrowserResourceRootDelete {\n'
-              '    root_path: String,\n'
-              '}\n\n'
-              '#[derive(Debug, Deserialize)]\n'
-              '#[serde(rename_all = "camelCase")]\n'
-              'struct BrowserSaveAppTabs {\n'
-              '    tabs: Vec<AppTabRecord>,\n'
-              '    active_tab_id: Option<String>,\n'
-              '}\n\n'
+              'struct BrowserResourceRootDelete {\n    root_path: String,\n}\n\n#[derive(Clone)]',
+              'struct BrowserResourceRootDelete {\n    root_path: String,\n}\n\n'
+              '#[derive(Debug, Deserialize)]\n#[serde(rename_all = "camelCase")]\n'
+              'struct BrowserSaveAppTabs {\n    tabs: Vec<AppTabRecord>,\n    active_tab_id: Option<String>,\n}\n\n'
               '#[derive(Clone)]',
           )
           replace_once(
@@ -95,23 +82,16 @@ jobs:
               '        let repository = AppTabRepository::new(database.connection());\n'
               '        let tabs = repository.load_tabs().map_err(|error| error.to_string())?;\n'
               '        let active_tab_id = repository.load_active_tab_id().map_err(|error| error.to_string())?;\n'
-              '        return respond_json(\n'
-              '            request,\n'
-              '            StatusCode(200),\n'
-              '            json!({ "tabs": tabs, "activeTabId": active_tab_id }),\n'
-              '        );\n'
+              '        return respond_json(request, StatusCode(200), json!({ "tabs": tabs, "activeTabId": active_tab_id }));\n'
               '    }\n\n'
               '    if method == Method::Post && path == "/workspace/app-tabs" {\n'
               '        let database_path = session_database_path(&request)?;\n'
               '        let body = read_body(&mut request)?;\n'
-              '        let payload: BrowserSaveAppTabs =\n'
-              '            serde_json::from_str(&body).map_err(|error| error.to_string())?;\n'
+              '        let payload: BrowserSaveAppTabs = serde_json::from_str(&body).map_err(|error| error.to_string())?;\n'
               '        let database = Database::open(&database_path).map_err(|error| error.to_string())?;\n'
               '        let repository = AppTabRepository::new(database.connection());\n'
               '        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);\n'
-              '        repository\n'
-              '            .save_tabs(&payload.tabs, payload.active_tab_id.as_deref(), &now)\n'
-              '            .map_err(|error| error.to_string())?;\n'
+              '        repository.save_tabs(&payload.tabs, payload.active_tab_id.as_deref(), &now).map_err(|error| error.to_string())?;\n'
               '        return respond_json(request, StatusCode(200), json!({}));\n'
               '    }\n\n',
           )
@@ -138,15 +118,86 @@ jobs:
               '        let body = read_body(&mut request)?;\n'
               '        let project_request: SetActiveProjectRequest =\n'
               '            serde_json::from_str(&body).map_err(|error| error.to_string())?;\n'
-              '        let payload = select_active_project_at(\n'
-              '            &project_request.database_path,\n'
-              '            &project_request.project_id,\n'
-              '        )?;\n'
+              '        let payload = select_active_project_at(&project_request.database_path, &project_request.project_id)?;\n'
               '        return respond_json(request, StatusCode(200), payload);\n'
               '    }\n',
           )
 
-          exec(compile(script[bridge_end:], 'redemption-t17-after-bridge.py', 'exec'), namespace)
+          desktop = 'packages/desktop-api/src/index.ts'
+          replace_once(
+              desktop,
+              '    async selectProject({ databasePath, projectId }) {\n'
+              '      return requestJsonWithRetry<ActiveProject>("/workspace/project", {\n'
+              '        body: { databasePath, projectId },\n'
+              '        method: "POST",\n'
+              '      });\n'
+              '    },\n',
+              '    async selectProject({ databasePath, projectId }) {\n'
+              '      const result = await requestJsonWithRetry<ActiveProject>("/workspace/project", {\n'
+              '        body: { databasePath, projectId },\n'
+              '        method: "POST",\n'
+              '      });\n'
+              '      activeProfileScope = result.profileScope;\n'
+              '      return result;\n'
+              '    },\n',
+          )
+          replace_once(
+              desktop,
+              '    async loadAppTabs() {\n'
+              '      return { tabs: [], activeTabId: null };\n'
+              '    },\n'
+              '    async saveAppTabs() {\n'
+              '      // Tabs are local-only; the web bridge has no persistence endpoint.\n'
+              '    },\n',
+              '    async loadAppTabs(input) {\n'
+              '      const databasePath = input.databasePath ?? activeDatabasePath;\n'
+              '      if (!databasePath) throw new Error("loadAppTabs: no database path in input or context");\n'
+              '      return requestJsonWithRetry<{ tabs: AppTab[]; activeTabId: string | null }>("/workspace/app-tabs");\n'
+              '    },\n'
+              '    async saveAppTabs(input) {\n'
+              '      const databasePath = input.databasePath ?? activeDatabasePath;\n'
+              '      if (!databasePath) throw new Error("saveAppTabs: no database path in input or context");\n'
+              '      await requestJsonWithRetry<void>("/workspace/app-tabs", {\n'
+              '        method: "POST",\n'
+              '        body: { tabs: input.tabs, activeTabId: input.activeTabId },\n'
+              '      });\n'
+              '    },\n',
+          )
+
+          provider = 'apps/desktop/src/features/canvas/CanvasWorkspaceContext.tsx'
+          replace_once(
+              provider,
+              '    void transport\n'
+              '      .bootstrapWorkspace()\n'
+              '      .then((workspace) => {\n'
+              '        if (cancelled) {\n'
+              '          return;\n'
+              '        }\n\n'
+              '        setConstellations(workspace.constellations);\n',
+              '    void transport\n'
+              '      .bootstrapWorkspace()\n'
+              '      .then(async (workspace) => {\n'
+              '        let persistedTabs: { tabs: AppTab[]; activeTabId: string | null } = { tabs: [], activeTabId: null };\n'
+              '        try {\n'
+              '          persistedTabs = await transport.loadAppTabs({ databasePath: workspace.databasePath });\n'
+              '        } catch (error) {\n'
+              '          console.warn("failed to restore app tabs; continuing with the active project", error);\n'
+              '        }\n'
+              '        if (cancelled) {\n'
+              '          return;\n'
+              '        }\n\n'
+              '        tabManager.getState().hydrate(persistedTabs);\n'
+              '        setConstellations(workspace.constellations);\n',
+          )
+          replace_once(
+              provider,
+              '  }, [transport]);\n\n'
+              '  useEffect(() => {\n'
+              '    if (!databasePath || !activeConstellationId) {\n',
+              '  }, [tabManager, transport]);\n\n'
+              '  useEffect(() => {\n'
+              '    if (!databasePath || !activeConstellationId) {\n',
+          )
           PY
           if ! git diff --quiet; then
             git config user.name github-actions[bot]
@@ -157,8 +208,7 @@ jobs:
               apps/desktop/src-tauri/src/commands/constellations.rs \
               apps/desktop/src-tauri/src/bin/terminal_bridge.rs \
               packages/desktop-api/src/index.ts \
-              apps/desktop/src/features/canvas/CanvasWorkspaceContext.tsx \
-              apps/desktop/src/features/canvas/CanvasWorkspaceContext.test.tsx
+              apps/desktop/src/features/canvas/CanvasWorkspaceContext.tsx
             git commit -m "feat(state): restore project tabs and active surface"
             git push origin HEAD:${{ github.event.pull_request.head.ref }}
           fi
