@@ -104,14 +104,8 @@ jobs:
       - name: Prebuild canonical browser bridge
         run: cargo build --manifest-path apps/desktop/src-tauri/Cargo.toml --bin terminal_bridge
 
-      - name: Run full-flow when landed
-        shell: bash
-        run: |
-          if [[ -f tests/e2e/full-flow.spec.ts ]]; then
-            pnpm playwright test tests/e2e/full-flow.spec.ts --project=chromium --workers=1
-          else
-            echo "full-flow.spec.ts not landed yet; this run is baseline only"
-          fi
+      - name: Run mandatory full-flow in real Chromium
+        run: pnpm playwright test tests/e2e/full-flow.spec.ts --project=chromium --workers=1
 
       - name: Verify checkout remained read-only
         run: git diff --exit-code
