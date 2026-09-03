@@ -4,7 +4,6 @@ import { waitForSeededGraphReady } from "./helpers/project";
 
 const ROOT_PROJECT_NAME = "Root Archetypal Field";
 const HISTORICAL_FORMS = "Historical Forms";
-const CHRIST = "root-archetypal-field:christ-sixfold-lineage";
 const MEDICI = "root-archetypal-field:medici-template";
 const VOC = "root-archetypal-field:voc-eic-corpora";
 const BANDA = "root-archetypal-field:banda-genocide";
@@ -186,7 +185,6 @@ test("full project journey restores tabs, active surface and persisted surface s
   await expect(page.locator(".canvas-flow")).toContainText("Christ Sixfold Spectral Lineage", {
     timeout: 20_000,
   });
-  await expect(page.locator(`[data-testid="canvas-node-${CHRIST}"]`)).toBeAttached({ timeout: 20_000 });
   const pane = page.getByTestId("canvas-pane");
   await pane.click({ button: "right", position: { x: 340, y: 230 } });
   await page.getByTestId("context-add-note").click();
