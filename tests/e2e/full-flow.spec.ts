@@ -35,7 +35,9 @@ async function openFiles(page: Page): Promise<void> {
   if (await sidebar.getAttribute("data-open") !== "true") {
     await files.dispatchEvent("click");
   }
-  await expect(page.getByTestId("lo-project-scope-profile")).toBeAttached({ timeout: 35_000 });
+  const profile = page.getByTestId("lo-project-scope-profile");
+  await expect(profile).toBeAttached({ timeout: 35_000 });
+  await expect(profile).not.toHaveText("bootstrapping", { timeout: 35_000 });
 }
 
 async function closeLeftSidebar(page: Page): Promise<void> {
