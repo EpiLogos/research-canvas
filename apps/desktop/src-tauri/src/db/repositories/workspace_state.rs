@@ -38,10 +38,10 @@ mod tests {
     use super::*;
     use crate::db::{connection::Database, repositories::ConstellationRepository};
 
-    fn create_project(db: &Database, id: &str, slug: &str) {
+    fn create_project(db: &Database, display_name: &str, slug: &str) -> String {
         let repo = ConstellationRepository::new(db.connection());
         repo.create_project(
-            id.to_string(),
+            display_name.to_string(),
             slug.to_string(),
             None,
             format!("/tmp/{slug}"),
@@ -51,29 +51,30 @@ mod tests {
             None,
             serde_json::json!({ "includeResources": true, "theme": "paper" }),
         )
-        .unwrap();
+        .unwrap()
+        .id
     }
 
     #[test]
     fn active_project_round_trips_and_overwrites() {
         let temp_dir = tempfile::tempdir().unwrap();
         let db = Database::open(temp_dir.path().join("workspace.sqlite")).unwrap();
-        create_project(&db, "Alpha", "alpha");
-        create_project(&db, "Beta", "beta");
-        let projects = ConstellationRepository::new(db.connection());
-        let alpha = projects.get_by_slug("alpha").unwrap().unwrap();
-        let beta = projects.get_by_slug("beta").unwrap().unwrap();
+        let alpha_id = create_project(&db, "Alpha", "alpha");
+        let beta_id = create_project(&db, "Beta", "beta");
         let state = WorkspaceStateRepository::new(db.connection());
 
         assert_eq!(state.load_active_project_id().unwrap(), None);
         state
-            .save_active_project_id(&alpha.id, "2026-09-02T00:00:00Z")
+            .save_active_project_id(&alpha_id, "2026-09-02T00:00:00Z")
             .unwrap();
-        assert_eq!(state.load_active_project_id().unwrap(), Some(alpha.id));
+        assert_eq!(
+            state.load_active_project_id().unwrap(),
+            Some(alpha_id.clone())
+        );
 
         state
-            .save_active_project_id(&beta.id, "2026-09-02T00:01:00Z")
+            .save_active_project_id(&beta_id, "2026-09-02T00:01:00Z")
             .unwrap();
-        assert_eq!(state.load_active_project_id().unwrap(), Some(beta.id));
+        assert_eq!(state.load_active_project_id().unwrap(), Some(beta_id));
     }
 }
