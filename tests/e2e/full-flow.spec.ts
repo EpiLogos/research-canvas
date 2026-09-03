@@ -186,7 +186,7 @@ test("a non-default project remains the active project after restart", async ({ 
   expect(external).toEqual([]);
 });
 
-test("full project journey restores tabs, active surface and persisted surface state", async ({ page }) => {
+test("full project journey restores tabs, active surface and persisted surface state", async ({ page, context }) => {
   test.setTimeout(180_000);
   const external = externalRequestCollector(page);
   const errors = errorCollector(page);
@@ -320,39 +320,62 @@ test("full project journey restores tabs, active surface and persisted surface s
   const palaceTabBefore = await tabItem(page, "Palace");
   await expect(palaceTabBefore).toHaveAttribute("data-active", "true");
 
-  // Restart boundary: no post-reload navigation is allowed before proving that
-  // the active Palace tab and its domain state came back from SQLite.
+  // Repository-owned restore proof: browser localStorage is deliberately
+  // erased before reload. Tabs/surface/domain state must still come back from
+  // the mutable bridge + SQLite session repository.
+  await page.evaluate(() => window.localStorage.clear());
   await page.reload();
   await expect(page.getByTestId("palace-surface")).toBeVisible({ timeout: 35_000 });
   await expect(page.getByTestId(`palace-room-${manualRoomId}`)).toBeVisible();
   await expect(page.locator('[data-testid^="palace-wall-object-manual:object:"]')).toHaveCount(1);
-  const tabsAfterRestart = await tabSnapshot(page);
-  expect(tabsAfterRestart).toEqual(tabsBeforeRestart);
-  const palaceTabAfter = await tabItem(page, "Palace");
-  await expect(palaceTabAfter).toHaveAttribute("data-active", "true");
+  const tabsAfterReload = await tabSnapshot(page);
+  expect(tabsAfterReload).toEqual(tabsBeforeRestart);
+  const palaceTabAfterReload = await tabItem(page, "Palace");
+  await expect(palaceTabAfterReload).toHaveAttribute("data-active", "true");
 
-  await activateSurfaceTab(page, "Story");
-  const restoredJourney = page.getByTestId("story-journey-list").getByRole("button", { name: new RegExp(journeyTitle) });
+  // Mature close/reopen boundary: keep the browser context (and therefore the
+  // real bridge session cookie), close the app page, and launch a fresh page.
+  // The reopened app must reconstruct the same project, tabs and active Palace
+  // state from SQLite before any manual surface navigation.
+  await page.close();
+  const reopenedPage = await context.newPage();
+  const reopenedExternal = externalRequestCollector(reopenedPage);
+  const reopenedErrors = errorCollector(reopenedPage);
+  await reopenedPage.goto("/");
+  await expect(reopenedPage.getByTestId("palace-surface")).toBeVisible({ timeout: 35_000 });
+  await expect(reopenedPage.getByTestId(`palace-room-${manualRoomId}`)).toBeVisible();
+  await expect(reopenedPage.locator('[data-testid^="palace-wall-object-manual:object:"]')).toHaveCount(1);
+  expect(await tabSnapshot(reopenedPage)).toEqual(tabsBeforeRestart);
+  const palaceTabAfterReopen = await tabItem(reopenedPage, "Palace");
+  await expect(palaceTabAfterReopen).toHaveAttribute("data-active", "true");
+  await openFiles(reopenedPage);
+  await expect(reopenedPage.getByTestId("lo-project-scope-name")).toContainText(ROOT_PROJECT_NAME, { timeout: 20_000 });
+  await closeLeftSidebar(reopenedPage);
+
+  await activateSurfaceTab(reopenedPage, "Story");
+  const restoredJourney = reopenedPage.getByTestId("story-journey-list").getByRole("button", { name: new RegExp(journeyTitle) });
   await expect(restoredJourney).toBeVisible({ timeout: 20_000 });
   await restoredJourney.click();
-  await expect(page.getByTestId("story-scene-strip").locator('button[data-testid^="story-scene-"]')).toHaveCount(2);
+  await expect(reopenedPage.getByTestId("story-scene-strip").locator('button[data-testid^="story-scene-"]')).toHaveCount(2);
 
-  await activateSurfaceTab(page, "Places");
-  const restoredGlobe = page.getByTestId("places-globe");
+  await activateSurfaceTab(reopenedPage, "Places");
+  const restoredGlobe = reopenedPage.getByTestId("places-globe");
   await expect(restoredGlobe).toBeVisible({ timeout: 25_000 });
-  await expect(page.getByTestId("places-location-panel")).toContainText("Banda Genocide", { timeout: 20_000 });
-  await expect(page.getByTestId("place-coordinates")).toContainText("-4.55000, 129.90000");
+  await expect(reopenedPage.getByTestId("places-location-panel")).toContainText("Banda Genocide", { timeout: 20_000 });
+  await expect(reopenedPage.getByTestId("place-coordinates")).toContainText("-4.55000, 129.90000");
   await expect.poll(async () => restoredGlobe.getAttribute("data-center")).toBe(placesCenter);
 
-  await activateSurfaceTab(page, "Timeline");
-  await expect(page.getByTestId("timeline-surface")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByTestId("timeline-tier")).toHaveText("century", { timeout: 20_000 });
+  await activateSurfaceTab(reopenedPage, "Timeline");
+  await expect(reopenedPage.getByTestId("timeline-surface")).toBeVisible({ timeout: 20_000 });
+  await expect(reopenedPage.getByTestId("timeline-tier")).toHaveText("century", { timeout: 20_000 });
 
-  await activateSurfaceTab(page, "Canvas", ROOT_PROJECT_NAME);
-  await expect(page.getByTestId(noteTestId!)).toBeAttached({ timeout: 20_000 });
-  await expect(page.getByTestId(imageTestId!)).toBeAttached({ timeout: 20_000 });
-  await expect(page.locator(".react-flow__edge")).not.toHaveCount(0);
+  await activateSurfaceTab(reopenedPage, "Canvas", ROOT_PROJECT_NAME);
+  await expect(reopenedPage.getByTestId(noteTestId!)).toBeAttached({ timeout: 20_000 });
+  await expect(reopenedPage.getByTestId(imageTestId!)).toBeAttached({ timeout: 20_000 });
+  await expect(reopenedPage.locator(".react-flow__edge")).not.toHaveCount(0);
 
   expect(errors).toEqual([]);
   expect(external).toEqual([]);
+  expect(reopenedErrors).toEqual([]);
+  expect(reopenedExternal).toEqual([]);
 });
