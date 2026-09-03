@@ -1041,8 +1041,16 @@ export function CanvasWorkspaceProvider({
       tabs,
       activeTabId,
       activeTab,
-      openTab: (tab) => tabManager.getState().open(tab),
-      activateTab: (tabId) => tabManager.getState().activate(tabId),
+      openTab: (tab) => {
+        if (tab.surfaceId !== "canvas") pendingCanvasTabIdRef.current = null;
+        tabManager.getState().open(tab);
+      },
+      activateTab: (tabId) => {
+        const manager = tabManager.getState();
+        const target = manager.tabs.find((tab) => tab.id === tabId);
+        if (target?.surfaceId !== "canvas") pendingCanvasTabIdRef.current = null;
+        manager.activate(tabId);
+      },
       closeTab: (tabId) => tabManager.getState().close(tabId),
       updateTabState: (state) => {
         const manager = tabManager.getState();

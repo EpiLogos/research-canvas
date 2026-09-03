@@ -1,5 +1,4 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { awaitCanvasReady } from "./support/canvas";
 import { waitForSeededGraphReady } from "./helpers/project";
 
 const ROOT_PROJECT_NAME = "Root Archetypal Field";
@@ -47,6 +46,23 @@ async function closeLeftSidebar(page: Page): Promise<void> {
     await active.click();
     await expect(sidebar).toHaveAttribute("data-open", "false");
   }
+}
+
+async function selectRootProject(page: Page): Promise<void> {
+  await openFiles(page);
+  await page.getByTestId("projects-trigger").dispatchEvent("click");
+  const layer = page.getByTestId("projects-layer");
+  await expect(layer).toBeVisible();
+  const rootProject = page
+    .getByTestId("projects-list")
+    .locator(".projects-layer__project")
+    .filter({ hasText: ROOT_PROJECT_NAME })
+    .first();
+  await expect(rootProject).toBeVisible({ timeout: 15_000 });
+  await rootProject.dispatchEvent("click");
+  await expect(layer).not.toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("lo-project-scope-name")).toContainText(ROOT_PROJECT_NAME, { timeout: 20_000 });
+  await closeLeftSidebar(page);
 }
 
 async function selectHistoricalForms(page: Page): Promise<void> {
@@ -176,7 +192,9 @@ test("full project journey restores tabs, active surface and persisted surface s
   const errors = errorCollector(page);
   const journeyTitle = `T17 integrated journey ${Date.now()}`;
 
-  await awaitCanvasReady(page);
+  await page.goto("/");
+  await expect(page.getByTestId("canvas-pane")).toBeVisible({ timeout: 20_000 });
+  await selectRootProject(page);
   await waitForSeededGraphReady(page);
   await closeLeftSidebar(page);
 

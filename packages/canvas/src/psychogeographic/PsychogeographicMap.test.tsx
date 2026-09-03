@@ -174,7 +174,7 @@ describe("PsychogeographicMap", () => {
     expect(openCanvasNode).toHaveBeenCalledWith(istanbul.graphNodeId);
   });
 
-  test("toolbar switches globe/flat projection and retains fit affordance", async () => {
+  test("toolbar switches globe/flat projection and redraws durable overlays", async () => {
     const renderer = recordingRenderer();
     render(
       <PsychogeographicMap
@@ -186,12 +186,21 @@ describe("PsychogeographicMap", () => {
       />,
     );
     await waitFor(() => expect(renderer.placeCalls.length).toBeGreaterThan(0));
+    const beforeFlatPlaces = renderer.placeCalls.length;
+    const beforeFlatLanes = renderer.laneCalls.length;
     fireEvent.click(screen.getByTestId("places-flat-toggle"));
     expect(screen.getByTestId("places-flat-map")).toBeInTheDocument();
     expect(renderer.projections.at(-1)).toBe("flat");
+    await waitFor(() => expect(renderer.placeCalls.length).toBeGreaterThan(beforeFlatPlaces));
+    await waitFor(() => expect(renderer.laneCalls.length).toBeGreaterThan(beforeFlatLanes));
+
+    const beforeGlobePlaces = renderer.placeCalls.length;
+    const beforeGlobeLanes = renderer.laneCalls.length;
     fireEvent.click(screen.getByTestId("places-globe-toggle"));
     expect(screen.getByTestId("places-globe")).toBeInTheDocument();
     expect(renderer.projections.at(-1)).toBe("globe");
+    await waitFor(() => expect(renderer.placeCalls.length).toBeGreaterThan(beforeGlobePlaces));
+    await waitFor(() => expect(renderer.laneCalls.length).toBeGreaterThan(beforeGlobeLanes));
     expect(screen.getByTestId("places-zoom-fit")).toBeEnabled();
   });
 

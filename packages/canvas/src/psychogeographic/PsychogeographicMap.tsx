@@ -291,8 +291,16 @@ export function PsychogeographicMap({
 
   const setProjection = useCallback((next: "globe" | "flat") => {
     setView(next);
-    void mountedRenderer.current?.setProjection?.(next);
-  }, []);
+    const currentRenderer = mountedRenderer.current;
+    if (!currentRenderer) return;
+    void (async () => {
+      await currentRenderer.setProjection?.(next);
+      await Promise.all([
+        currentRenderer.drawPlaces?.(placeMarkers, expressionMarkers),
+        currentRenderer.drawLanes?.(filteredLanes),
+      ]);
+    })();
+  }, [expressionMarkers, filteredLanes, placeMarkers]);
 
   const refreshLiveTiles = useCallback(async () => {
     if (policy.requestLiveAction("tile_refresh", "refresh live basemap tiles") !== "granted") return;
