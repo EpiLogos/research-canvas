@@ -4,8 +4,10 @@ import { waitForSeededGraphReady } from "./helpers/project";
 
 const ROOT_PROJECT_NAME = "Root Archetypal Field";
 const HISTORICAL_FORMS = "Historical Forms";
+const CHRIST = "root-archetypal-field:christ-sixfold-lineage";
 const MEDICI = "root-archetypal-field:medici-template";
-const MALUKU = "root-archetypal-field:maluku-template";
+const VOC = "root-archetypal-field:voc-eic-corpora";
+const BANDA = "root-archetypal-field:banda-genocide";
 
 function externalRequestCollector(page: Page): string[] {
   const external: string[] = [];
@@ -57,6 +59,46 @@ async function selectHistoricalForms(page: Page): Promise<void> {
   await historical.dispatchEvent("click");
   await expect(historical).toHaveAttribute("data-active", "true", { timeout: 15_000 });
   await closeLeftSidebar(page);
+}
+
+async function attachCanonicalBandaPlace(page: Page): Promise<void> {
+  await page.evaluate(async ({ graphNodeId }) => {
+    const sessionId = document.cookie
+      .split(";")
+      .map((entry) => entry.trim())
+      .find((entry) => entry.startsWith("research_canvas_session_id="))
+      ?.slice("research_canvas_session_id=".length);
+    if (!sessionId) throw new Error("research-canvas browser session cookie was not established");
+
+    const response = await fetch("http://127.0.0.1:4789/graph/node/update", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Research-Canvas-Session": sessionId,
+      },
+      body: JSON.stringify({
+        graphNodeId,
+        patch: {
+          placeCoverage: "resolved",
+          place: {
+            graphNodeId,
+            names: [{ language: "en", name: "Banda Islands" }],
+            coordinate: {
+              precision: "approximate",
+              latitude: -4.55,
+              longitude: 129.9,
+            },
+            hierarchy: [],
+            externalRefs: [],
+            provenance: { sourceRefs: [] },
+          },
+        },
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`local Place update failed (${response.status}): ${await response.text()}`);
+    }
+  }, { graphNodeId: BANDA });
 }
 
 async function addStoryScene(
@@ -139,7 +181,12 @@ test("full project journey restores tabs, active surface and persisted surface s
   await waitForSeededGraphReady(page);
   await closeLeftSidebar(page);
 
-  // Canvas: author a real note + image and connect them through the editor.
+  // Surface #1 · Canvas: prove the canonical spectral lineage is repository-backed,
+  // then author a real note + image and connect them through the editor.
+  await expect(page.locator(".canvas-flow")).toContainText("Christ Sixfold Spectral Lineage", {
+    timeout: 20_000,
+  });
+  await expect(page.locator(`[data-testid="canvas-node-${CHRIST}"]`)).toBeAttached({ timeout: 20_000 });
   const pane = page.getByTestId("canvas-pane");
   await pane.click({ button: "right", position: { x: 340, y: 230 } });
   await page.getByTestId("context-add-note").click();
@@ -179,12 +226,22 @@ test("full project journey restores tabs, active surface and persisted surface s
   // Work on the real historical constellation for the mature relational surfaces.
   await selectHistoricalForms(page);
 
-  // Timeline: persist a genuine semantic camera tier + selected graph node.
-  await page.getByTestId("lens-timeline").click();
+  // Surface #2 · Timeline: enter via the real keyboard command palette, then
+  // persist a genuine semantic camera tier + selected graph node. Both Medici
+  // and VOC are canonical repository records in this historical constellation.
+  await page.keyboard.press("Control+k");
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await expect(palette).toBeVisible();
+  await palette.getByRole("textbox", { name: "Search workspace" }).fill("Go to Timeline");
+  const timelineCommand = palette.getByRole("button", { name: "Go to Timeline command" });
+  await expect(timelineCommand).toBeVisible();
+  await timelineCommand.click();
+  await expect(palette).toHaveCount(0);
   await expect(page.getByTestId("timeline-surface")).toBeVisible({ timeout: 20_000 });
   const fit = page.getByTestId("timeline-fit");
   await expect(fit).toBeEnabled({ timeout: 15_000 });
   await expect(page.getByTestId(`timeline-node-${MEDICI}`)).toBeAttached({ timeout: 15_000 });
+  await expect(page.getByTestId(`timeline-node-${VOC}`)).toBeAttached({ timeout: 15_000 });
   await fit.click();
   const track = page.getByTestId("timeline-track");
   const trackBox = await track.boundingBox();
@@ -197,21 +254,25 @@ test("full project journey restores tabs, active surface and persisted surface s
   await mediciCard.click({ modifiers: ["Shift"] });
   await expect(page.getByTestId(`timeline-working-set-entry-${MEDICI}`)).toBeVisible();
 
-  // Places: explicit live-service opt-in plus a real marker selection/camera move.
-  await page.getByTestId("lens-places").click();
+  // Surface #3 · Places: reuse the mature T12/T16 path. Enrich the existing
+  // Banda genocide graph node through the ordinary local metadata command,
+  // then select that same repository record on the real MapLibre globe.
+  await attachCanonicalBandaPlace(page);
+  await page.getByTestId("lens-psychogeographic").click();
   const globe = page.getByTestId("places-globe");
   await expect(globe).toBeVisible({ timeout: 25_000 });
   const optIn = page.getByTestId("psychogeographic-opt-in-live");
   if (await optIn.count()) await optIn.click();
-  const maluku = page.getByTestId(`places-marker-${MALUKU}`);
-  await expect(maluku).toBeVisible({ timeout: 20_000 });
-  await maluku.click();
-  await expect(page.getByTestId("places-location-panel")).toContainText("Maluku Islands");
+  const banda = page.getByTestId(`globe-marker-${BANDA}`);
+  await expect(banda).toBeVisible({ timeout: 25_000 });
+  await banda.click();
+  await expect(page.getByTestId("places-location-panel")).toContainText("Banda Genocide");
+  await expect(page.getByTestId("place-coordinates")).toContainText("-4.55000, 129.90000");
   await expect.poll(async () => globe.getAttribute("data-center")).not.toBe("0.0000,20.0000");
   const placesCenter = await globe.getAttribute("data-center");
   expect(placesCenter).toBeTruthy();
 
-  // Story: author a durable two-scene journey.
+  // Surface #4 · Story: author a durable two-scene journey.
   await page.getByTestId("lens-story").click();
   await expect(page.getByTestId("story-surface")).toBeVisible({ timeout: 20_000 });
   await page.getByTestId("story-new-journey-title").fill(journeyTitle);
@@ -221,7 +282,7 @@ test("full project journey restores tabs, active surface and persisted surface s
   await addStoryScene(page, "Aftermath", "The second integrated scene.", "dissolve");
   await expect(page.getByTestId("story-scene-strip").locator('button[data-testid^="story-scene-"]')).toHaveCount(2);
 
-  // Palace: regenerate/adopt the mature palace, add a durable room and wall object.
+  // Surface #5 · Palace: regenerate/adopt the mature palace, add a durable room and wall object.
   await page.getByTestId("lens-palace").click();
   await expect(page.getByTestId("palace-surface")).toBeVisible({ timeout: 25_000 });
   const rooms = page.getByTestId("palace-rooms-panel").locator("li");
@@ -263,7 +324,8 @@ test("full project journey restores tabs, active surface and persisted surface s
   await activateSurfaceTab(page, "Places");
   const restoredGlobe = page.getByTestId("places-globe");
   await expect(restoredGlobe).toBeVisible({ timeout: 25_000 });
-  await expect(page.getByTestId("places-location-panel")).toContainText("Maluku Islands", { timeout: 20_000 });
+  await expect(page.getByTestId("places-location-panel")).toContainText("Banda Genocide", { timeout: 20_000 });
+  await expect(page.getByTestId("place-coordinates")).toContainText("-4.55000, 129.90000");
   await expect.poll(async () => restoredGlobe.getAttribute("data-center")).toBe(placesCenter);
 
   await activateSurfaceTab(page, "Timeline");
