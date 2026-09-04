@@ -102,6 +102,10 @@ test("Palace adopts, edits and restores curation over the mature generated palac
   // The existing generated Palace remains mounted throughout the editing flow.
   await expect(page.getByTestId("palace-canvas")).toBeVisible();
 
+  // The curation write is asynchronous. Prove it reached the repository before
+  // crossing the reload boundary instead of racing navigation against SQLite.
+  await expect(page.getByTestId("palace-save-state")).toHaveText("Saved", { timeout: 10_000 });
+
   // Reload reconstructs both the SQLite layout overlay and mature curation.
   await page.reload();
   await expect(page.getByTestId("lo-project-scope-profile")).toBeAttached({ timeout: 35_000 });
