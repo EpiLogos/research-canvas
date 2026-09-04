@@ -204,7 +204,7 @@ test("full project journey restores tabs, active surface and persisted surface s
   });
   const pane = page.getByTestId("canvas-pane");
   await pane.click({ button: "right", position: { x: 340, y: 230 } });
-  await page.getByTestId("context-add-note").click();
+  await page.getByRole("menuitem", { name: /^Add note\b/ }).click();
   const note = page.locator('.react-flow__node[data-node-type="note"]').last();
   await expect(note).toBeVisible();
 
