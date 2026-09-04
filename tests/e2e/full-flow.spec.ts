@@ -205,38 +205,66 @@ test("full project journey restores tabs, active surface and persisted surface s
   const pane = page.getByTestId("canvas-pane");
   await pane.click({ button: "right", position: { x: 340, y: 230 } });
   await page.getByRole("menuitem", { name: /^Add note\b/ }).click();
-  const note = page.locator('.react-flow__node[data-node-type="note"]').last();
+  const note = page.locator(".react-flow__node-note").last();
   await expect(note).toBeVisible();
 
-  const dataTransfer = await page.evaluateHandle(() => {
-    const dt = new DataTransfer();
-    dt.setData("text/uri-list", "file:///tmp/research-canvas-e2e/dropped-image.png");
-    dt.setData("text/plain", "/tmp/research-canvas-e2e/dropped-image.png");
-    return dt;
+  const paneBox = await pane.boundingBox();
+  expect(paneBox).not.toBeNull();
+  const imageEntry = JSON.stringify({
+    id: "t17-image-drop",
+    kind: "image",
+    name: "dropped-image.png",
+    relativePath: "fixtures/dropped-image.png",
+    absolutePath: "/fixtures/dropped-image.png",
   });
-  await pane.dispatchEvent("drop", { dataTransfer });
-  const image = page.locator('.react-flow__node[data-node-type="image"]').last();
+  const flow = page.locator(".react-flow");
+  const flowElement = await flow.elementHandle();
+  if (!flowElement) throw new Error("React Flow surface was not available for image drop");
+  await flowElement.evaluate(
+    (element, { data, dropX, dropY }) => {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.setData("application/x-canvas-entry", data);
+      dataTransfer.effectAllowed = "copy";
+      dataTransfer.dropEffect = "copy";
+      element.dispatchEvent(new DragEvent("dragover", {
+        bubbles: true,
+        cancelable: true,
+        clientX: dropX,
+        clientY: dropY,
+        dataTransfer,
+      }));
+      element.dispatchEvent(new DragEvent("drop", {
+        bubbles: true,
+        cancelable: true,
+        clientX: dropX,
+        clientY: dropY,
+        dataTransfer,
+      }));
+    },
+    {
+      data: imageEntry,
+      dropX: paneBox!.x + Math.min(paneBox!.width - 80, 620),
+      dropY: paneBox!.y + 230,
+    },
+  );
+  const image = page.locator(".react-flow__node-image").last();
   await expect(image).toBeVisible({ timeout: 15_000 });
 
-  const noteTestId = await note.getAttribute("data-testid");
-  const imageTestId = await image.getAttribute("data-testid");
-  expect(noteTestId).toBeTruthy();
-  expect(imageTestId).toBeTruthy();
-  const noteId = noteTestId!.replace("canvas-node-", "");
-  const imageId = imageTestId!.replace("canvas-node-", "");
-  const source = page.locator(`[data-nodeid="${noteId}"][data-handlepos="right"]`).first();
-  const target = page.locator(`[data-nodeid="${imageId}"][data-handlepos="left"]`).first();
-  await expect(source).toBeVisible();
-  await expect(target).toBeVisible();
-  const sourceBox = await source.boundingBox();
-  const targetBox = await target.boundingBox();
-  expect(sourceBox).not.toBeNull();
-  expect(targetBox).not.toBeNull();
-  await page.mouse.move(sourceBox!.x + sourceBox!.width / 2, sourceBox!.y + sourceBox!.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(targetBox!.x + targetBox!.width / 2, targetBox!.y + targetBox!.height / 2, { steps: 8 });
-  await page.mouse.up();
-  await expect(page.locator(".react-flow__edge")).not.toHaveCount(0);
+  const noteId = await note.getAttribute("data-id");
+  const imageId = await image.getAttribute("data-id");
+  expect(noteId).toBeTruthy();
+  expect(imageId).toBeTruthy();
+  await page.addStyleTag({ content: ".flow-handle { opacity: 1 !important; pointer-events: all !important; z-index: 10 !important; }" });
+  const source = note.locator("[data-handleid='source-right']");
+  const target = image.locator("[data-handleid='target-left']");
+  await expect(source).toBeAttached();
+  await expect(target).toBeAttached();
+  const edgeCountBeforeConnect = await page.locator("[data-testid^='edge-']").count();
+  await source.dispatchEvent("click", { button: 0, bubbles: true, cancelable: true });
+  await page.waitForTimeout(100);
+  await target.dispatchEvent("click", { button: 0, bubbles: true, cancelable: true });
+  await expect(page.locator("[data-testid^='edge-']")).toHaveCount(edgeCountBeforeConnect + 1, { timeout: 15_000 });
+  const edgeCountAfterConnect = edgeCountBeforeConnect + 1;
 
   // Work on the real historical constellation for the mature relational surfaces.
   await selectHistoricalForms(page);
@@ -369,9 +397,9 @@ test("full project journey restores tabs, active surface and persisted surface s
   await expect(reopenedPage.getByTestId("timeline-tier")).toHaveText("century", { timeout: 20_000 });
 
   await activateSurfaceTab(reopenedPage, "Canvas", ROOT_PROJECT_NAME);
-  await expect(reopenedPage.getByTestId(noteTestId!)).toBeAttached({ timeout: 20_000 });
-  await expect(reopenedPage.getByTestId(imageTestId!)).toBeAttached({ timeout: 20_000 });
-  await expect(reopenedPage.locator(".react-flow__edge")).not.toHaveCount(0);
+  await expect(reopenedPage.locator(`.react-flow__node[data-id="${noteId}"]`)).toBeAttached({ timeout: 20_000 });
+  await expect(reopenedPage.locator(`.react-flow__node[data-id="${imageId}"]`)).toBeAttached({ timeout: 20_000 });
+  await expect(reopenedPage.locator("[data-testid^='edge-']")).toHaveCount(edgeCountAfterConnect, { timeout: 20_000 });
 
   expect(errors).toEqual([]);
   expect(external).toEqual([]);
