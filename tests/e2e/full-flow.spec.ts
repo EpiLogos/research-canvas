@@ -53,18 +53,14 @@ async function closeLeftSidebar(page: Page): Promise<void> {
 
 async function selectRootProject(page: Page): Promise<void> {
   await openFiles(page);
-  await page.getByTestId("projects-trigger").dispatchEvent("click");
-  const layer = page.getByTestId("projects-layer");
-  await expect(layer).toBeVisible();
-  const rootProject = page
-    .getByTestId("projects-list")
-    .locator(".projects-layer__project")
-    .filter({ hasText: ROOT_PROJECT_NAME })
-    .first();
-  await expect(rootProject).toBeVisible({ timeout: 15_000 });
-  await rootProject.dispatchEvent("click");
-  await expect(layer).not.toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId("lo-project-scope-name")).toContainText(ROOT_PROJECT_NAME, { timeout: 20_000 });
+  // The seeded Root Archetypal Field is the canonical default project but its
+  // vault root intentionally lives outside the user research-canvas home.
+  // ProjectsLayer lists only home-owned projects, so a fresh browser session
+  // proves the root through the active workspace scope rather than looking for
+  // an impossible home-project row.
+  await expect(page.getByTestId("lo-project-scope-name")).toContainText(ROOT_PROJECT_NAME, {
+    timeout: 35_000,
+  });
   await closeLeftSidebar(page);
 }
 

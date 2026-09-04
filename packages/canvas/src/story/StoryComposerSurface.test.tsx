@@ -79,7 +79,8 @@ function inMemoryRepository(): StoryRepository {
 
 async function addScene(title: string, narration: string, transition: StorySceneInput["transition"]) {
   fireEvent.click(screen.getByTestId("story-add-scene"));
-  fireEvent.change(screen.getByTestId("story-scene-title"), { target: { value: title } });
+  const titleInput = await screen.findByTestId("story-scene-title");
+  fireEvent.change(titleInput, { target: { value: title } });
   fireEvent.change(screen.getByTestId("story-scene-narration"), { target: { value: narration } });
   fireEvent.change(screen.getByTestId("story-scene-transition"), { target: { value: transition } });
   fireEvent.change(screen.getByTestId("story-scene-duration"), { target: { value: "10000" } });

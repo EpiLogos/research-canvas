@@ -110,13 +110,22 @@ export function ProjectsLayer() {
 
   const handleCreate = useCallback(async () => {
     const name = newName.trim();
-    if (!name || !workspace.databasePath || !homePath) return;
+    if (!name || !workspace.databasePath) return;
     setCreating(true);
     setActionError(null);
     try {
+      // The project popover can become interactive in the brief interval after
+      // workspace bootstrap but before its background home lookup resolves.
+      // Resolve the same repository-owned home on demand instead of turning a
+      // valid Create click into a silent no-op during that interval.
+      const resolvedHomePath = homePath ?? (
+        await workspace.resolveOrCreateHome({ databasePath: workspace.databasePath })
+      ).homePath;
+      if (!homePath) setHomePath(resolvedHomePath);
+
       const project = await workspace.createProject({
         databasePath: workspace.databasePath,
-        homePath,
+        homePath: resolvedHomePath,
         name,
         rootType: "directory",
       });
