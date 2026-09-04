@@ -35,9 +35,10 @@ async function openFiles(page: Page): Promise<void> {
   if (await sidebar.getAttribute("data-open") !== "true") {
     await files.dispatchEvent("click");
   }
-  const profile = page.getByTestId("lo-project-scope-profile");
-  await expect(profile).toBeAttached({ timeout: 35_000 });
-  await expect(profile).not.toHaveText("bootstrapping", { timeout: 35_000 });
+  // `bootstrapping` is a legitimate canonical profile for the root field, so
+  // it cannot double as a workspace-readiness sentinel. Callers wait on the
+  // concrete project/profile/surface they actually require.
+  await expect(page.getByTestId("lo-project-scope-profile")).toBeAttached({ timeout: 35_000 });
 }
 
 async function closeLeftSidebar(page: Page): Promise<void> {
@@ -177,12 +178,12 @@ test("a non-default project remains the active project after restart", async ({ 
   await page.getByTestId("projects-create").dispatchEvent("click");
   await expect(page.getByTestId("projects-layer")).not.toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId("lo-project-scope-name")).toContainText(projectName, { timeout: 15_000 });
-  await expect(page.getByTestId("lo-project-scope-profile")).toContainText("project:t17-restart-project");
+  await expect(page.getByTestId("lo-project-scope-profile")).toContainText("project:t17-restart-project", { timeout: 20_000 });
 
   await page.reload();
   await openFiles(page);
-  await expect(page.getByTestId("lo-project-scope-name")).toContainText(projectName, { timeout: 20_000 });
-  await expect(page.getByTestId("lo-project-scope-profile")).toContainText("project:t17-restart-project");
+  await expect(page.getByTestId("lo-project-scope-name")).toContainText(projectName, { timeout: 35_000 });
+  await expect(page.getByTestId("lo-project-scope-profile")).toContainText("project:t17-restart-project", { timeout: 35_000 });
 
   expect(errors).toEqual([]);
   expect(external).toEqual([]);
