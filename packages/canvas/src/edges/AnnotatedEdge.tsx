@@ -8,6 +8,8 @@ import {
   type Position
 } from "@xyflow/react";
 
+import { RELATIONSHIP_KINDS } from "../content/relationshipKinds";
+
 type AnnotatedEdgeData = Record<string, unknown> & {
   directionality?: "none" | "forward" | "backward" | "bidirectional";
   note?: string;
@@ -21,6 +23,7 @@ type AnnotatedEdgeData = Record<string, unknown> & {
 };
 
 export function AnnotatedEdge({
+  id,
   data,
   markerEnd,
   sourceX,
@@ -32,7 +35,7 @@ export function AnnotatedEdge({
 }: EdgeProps<Edge<AnnotatedEdgeData, "annotated">>) {
   const [draftRelationKind, setDraftRelationKind] = useState(data?.relationKind ?? "");
   const cancelEditRef = useRef(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const selectRef = useRef<HTMLSelectElement>(null);
 
   useEffect(() => {
     setDraftRelationKind(data?.relationKind ?? "");
@@ -40,8 +43,7 @@ export function AnnotatedEdge({
 
   useEffect(() => {
     if (data?.selected) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
+      selectRef.current?.focus();
     }
   }, [data?.selected]);
 
@@ -56,7 +58,7 @@ export function AnnotatedEdge({
 
   return (
     <>
-      <g data-sequencing={data?.sequencing ? "true" : "false"}>
+      <g data-sequencing={data?.sequencing ? "true" : "false"} data-testid={`edge-${id}`}>
         <BaseEdge markerEnd={markerEnd} path={edgePath} />
       </g>
       <EdgeLabelRenderer>
@@ -78,42 +80,47 @@ export function AnnotatedEdge({
         >
           <div className="flow-edge-label__text">
             {data?.selected ? (
-              <input
-                aria-label="Relation label"
-                className="flow-edge-label__input"
-                onBlur={(event) => {
+              <select
+                aria-label="Relation kind"
+                className="flow-edge-label__select"
+                onBlur={() => {
                   if (cancelEditRef.current) {
                     cancelEditRef.current = false;
                     setDraftRelationKind(data?.relationKind ?? "");
                     return;
                   }
-
-                  const nextRelationKind = event.currentTarget.value.trim();
-                  setDraftRelationKind(nextRelationKind || (data?.relationKind ?? ""));
+                  if (draftRelationKind && draftRelationKind !== data?.relationKind) {
+                    data?.onUpdateRelationKind?.(draftRelationKind);
+                  }
+                }}
+                onChange={(event) => {
+                  const nextRelationKind = event.currentTarget.value;
+                  setDraftRelationKind(nextRelationKind);
                   if (nextRelationKind) {
                     data?.onUpdateRelationKind?.(nextRelationKind);
                   }
                 }}
-                onChange={(event) => setDraftRelationKind(event.target.value)}
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
                 }}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    inputRef.current?.blur();
-                  }
                   if (event.key === "Escape") {
                     event.preventDefault();
                     cancelEditRef.current = true;
                     setDraftRelationKind(data?.relationKind ?? "");
-                    inputRef.current?.blur();
+                    selectRef.current?.blur();
                   }
                 }}
-                ref={inputRef}
+                ref={selectRef}
                 value={draftRelationKind}
-              />
+              >
+                {RELATIONSHIP_KINDS.map((option) => (
+                  <option key={option.kind} value={option.kind}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             ) : (
               <strong>{data?.relationKind}</strong>
             )}

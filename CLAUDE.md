@@ -98,3 +98,13 @@ Two stores, cleanly split, joined only by `graph_node_id` (an app-minted UUIDv4)
 - Treat the embedded terminal, freehand annotation layer, and static export as **core v1 scope**, not stretch goals.
 - PDF is the supported deck format for v1.
 - Keep file, folder, and package names exactly as specified in the implementation plan unless a documented change is necessary.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues via `gh`; wayfinder maps and decision tickets live there. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` at the repo root plus `docs/adr/`. See `docs/agents/domain.md`.

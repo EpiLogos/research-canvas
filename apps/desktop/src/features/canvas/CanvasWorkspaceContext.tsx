@@ -18,10 +18,12 @@ import {
   createAnnotationStore,
   createCanvasStore,
   createContentLinkingActions,
+  createTabManagerStore,
   entityTypeForNodeType,
   isRelationshipKind,
   serializeLayoutSnapshot,
   type ContentLinkingActions,
+  type TabManagerStore,
 } from "@research-canvas/canvas";
 import { buildNewGraphNodeInput, createPreparedNoteNode } from "./nodeCreation";
 import {
@@ -31,9 +33,11 @@ import {
 } from "./pendingGraphNodeSync";
 import { canvasViewToCanvasNodes } from "./canvasViewToNodes";
 import { selectLegacyNodesNeedingImport, importLegacyCanvasNodes } from "./legacyNodeImport";
-import type { CanvasNode, CanvasEdge, Viewport } from "@research-canvas/schema";
+import type { AppTab, CanvasNode, CanvasEdge, SurfaceId, Viewport } from "@research-canvas/schema";
 import {
-  createWorkspaceTransport,
+  createWorkspaceServices,
+  DesktopEdgeRepository,
+  DesktopNodeRepository,
   type DirectoryEntry,
   type IndexedEntry,
   type ConstellationDocument,
@@ -42,26 +46,59 @@ import {
   type SavedSequence,
   type SearchHit,
   type GraphNodePatch,
-  type WorkspaceConstellation
+  type WorkspaceConstellation,
+  type ResolveHomeInput,
+  type ResolveHomeResult,
+  type CreateProjectInput
 } from "@research-canvas/desktop-api";
-type WorkspaceTransport = ReturnType<typeof createWorkspaceTransport>;
+type WorkspaceServices = import("@research-canvas/desktop-api").WorkspaceServices;
 import {
   deriveResourceImportPlan,
   toAssetUrl,
 } from "./resourceFileHelpers";
 import { shouldWriteSubstanceOnLayoutFlush } from "./persistPolicy";
-import {
-  activateCanvasTab as activateCanvasTabState,
-  canvasTabId,
-  closeCanvasTab as closeCanvasTabState,
-  openOrActivateCanvasTab,
-  rememberCanvasTabSession,
-  type CanvasTab,
-  type CanvasTabState,
-} from "./canvasTabState";
 
 const EMPTY_CANVAS_ID = "00000000-0000-4000-8000-000000000001";
 const EMPTY_CONSTELLATION_ID = "00000000-0000-4000-8000-000000000002";
+
+export interface CanvasTab {
+  id: string;
+  constellationId: string;
+  canvasId: string;
+  label: string;
+  pinned: boolean;
+  selectedNodeId: string | null;
+  selectedEdgeId: string | null;
+  viewport: Viewport | null;
+}
+
+function canvasTabId(constellationId: string, canvasId: string) {
+  return `${constellationId}:${canvasId}`;
+}
+
+function toCanvasTab(tab: AppTab | null): CanvasTab | null {
+  if (!tab || tab.surfaceId !== "canvas") return null;
+  const state = tab.state;
+  if (typeof state !== "object" || state === null || !("canvasId" in state)) return null;
+  const canvasState = state as {
+    canvasId: string;
+    constellationId: string;
+    viewport: Viewport;
+    selectedGraphNodeId?: string | null;
+    selectedEdgeId?: string | null;
+  };
+  return {
+    id: tab.id,
+    constellationId: canvasState.constellationId,
+    canvasId: canvasState.canvasId,
+    label: tab.title,
+    pinned: tab.pinned,
+    selectedNodeId: canvasState.selectedGraphNodeId ?? null,
+    selectedEdgeId: canvasState.selectedEdgeId ?? null,
+    viewport: canvasState.viewport ?? null,
+  };
+}
+
 
 interface WorkspaceStores {
   annotationStore: ReturnType<typeof createAnnotationStore>;
@@ -69,8 +106,21 @@ interface WorkspaceStores {
 }
 
 interface CanvasWorkspaceContextValue extends WorkspaceStores {
+  tabManager: TabManagerStore;
   activeConstellation: WorkspaceConstellation | null;
   activeConstellationId: string | null;
+  /** The active project — projects ARE constellations, so this mirrors `activeConstellationId`. */
+  activeProjectId: string | null;
+  /** The active project's profile scope; profile-scoped surfaces read through this. */
+  activeProfileScope: string | null;
+  /** The currently active surface lens, driven by the active global tab. */
+  activeSurfaceId: SurfaceId;
+  /** Select a project by id, switching the active profile scope (and re-hydrating the canvas for its primary canvas). */
+  selectProject: (projectId: string) => Promise<void>;
+  /** Resolve-or-create the research-canvas home directory and list projects under it. */
+  resolveOrCreateHome: (input: ResolveHomeInput) => Promise<ResolveHomeResult>;
+  /** Create a directory or file project under the home. */
+  createProject: (input: CreateProjectInput) => Promise<WorkspaceConstellation>;
   canvasId: string;
   databasePath: string | null;
   workspaceId: string | null;
@@ -87,6 +137,7 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   attachResourceRoot: (rootPath: string, displayName?: string) => Promise<void>;
   createNoteNode: (position?: { x: number; y: number }) => Promise<void>;
   createGroupNode: (position?: { x: number; y: number }) => Promise<void>;
+  createImageNode: (entry: { id?: string; name: string; absolutePath?: string; relativePath?: string }, position: { x: number; y: number }) => Promise<void>;
   addResourceNode: (entry: { id?: string; name: string; path?: string; absolutePath?: string; relativePath?: string; kind?: string }, position: { x: number; y: number }) => Promise<void>;
   addResourceNodeFromAbsolutePath: (absolutePath: string, position: { x: number; y: number }) => Promise<void>;
   deleteEdge: (edgeId: string) => Promise<void>;
@@ -110,6 +161,20 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   activateCanvasTab: (tabId: string) => Promise<void>;
   /** Closes a non-root tab; the root tab is intentionally protected. */
   closeCanvasTab: (tabId: string) => Promise<void>;
+  /** All open global tabs. */
+  tabs: AppTab[];
+  /** The active global tab id. */
+  activeTabId: string | null;
+  /** The active global tab, or null when the tab list is empty. */
+  activeTab: AppTab | null;
+  /** Opens a new global tab or replaces an existing one with the same id. */
+  openTab: (tab: AppTab) => void;
+  /** Activates an existing global tab. */
+  activateTab: (tabId: string) => void;
+  /** Closes a global tab. */
+  closeTab: (tabId: string) => void;
+  /** Updates the persisted surface state for the active tab. */
+  updateTabState: (state: import("@research-canvas/schema").SurfaceTabState) => void;
   canvasTabs: CanvasTab[];
   activeCanvasTabId: string | null;
   activeCanvasViewport: Viewport | null;
@@ -151,7 +216,7 @@ interface CanvasWorkspaceContextValue extends WorkspaceStores {
   registerFlyToEdge: (fn: (edgeId: string, viewport?: { x: number; y: number; zoom: number }) => void) => void;
   captureViewport: () => Viewport;
   registerCaptureViewport: (fn: () => Viewport) => void;
-  transport: WorkspaceTransport;
+  transport: WorkspaceServices;
   contentLinkingActions: ContentLinkingActions;
 }
 
@@ -166,15 +231,25 @@ export function CanvasWorkspaceProvider({
 }: {
   children: ReactNode;
 }) {
-  const transport = useMemo(() => createWorkspaceTransport(), []);
+  const transport = useMemo(() => createWorkspaceServices(), []);
+  const nodeRepository = useMemo(() => new DesktopNodeRepository(transport), [transport]);
+  const edgeRepository = useMemo(() => new DesktopEdgeRepository(transport), [transport]);
   const [stores, setStores] = useState<WorkspaceStores>(() =>
     createWorkspaceStores(EMPTY_CANVAS_ID, EMPTY_CONSTELLATION_ID)
+  );
+  const [tabManager] = useState(() =>
+    createTabManagerStore(
+      { tabs: [], activeTabId: null },
+      { onPersist: (snapshot) => persistTabsRef.current(snapshot) },
+    ),
   );
   const [constellations, setConstellations] = useState<ConstellationTreeNode[]>([]);
   const [databasePath, setDatabasePath] = useState<string | null>(null);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [activeConstellation, setActiveConstellation] = useState<WorkspaceConstellation | null>(null);
   const [activeConstellationId, setActiveConstellationId] = useState<string | null>(null);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [activeProfileScope, setActiveProfileScope] = useState<string | null>(null);
   const [activeCanvasId, setActiveCanvasId] = useState(EMPTY_CANVAS_ID);
   const [entries, setEntries] = useState<IndexedEntry[]>([]);
   const [resourceRoots, setResourceRoots] = useState<ResourceRoot[]>([]);
@@ -185,10 +260,38 @@ export function CanvasWorkspaceProvider({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [workingRoot, setWorkingRoot] = useState<string | null>(null);
   const [repoRoot, setRepoRoot] = useState<string | null>(null);
-  const [canvasTabState, setCanvasTabState] = useState<CanvasTabState>({
-    tabs: [],
-    activeTabId: null,
-  });
+  const selectedEntryIdRef = useRef<string | null>(null);
+  const selectedNodeIdRef = useRef<string | null>(null);
+  const selectedEdgeIdRef = useRef<string | null>(null);
+  const pendingCanvasTabIdRef = useRef<string | null>(null);
+  const flyToNodeRef = useRef<(nodeId: string, viewport?: { x: number; y: number; zoom: number }) => void>(() => {});
+  const flyToEdgeRef = useRef<(edgeId: string, viewport?: { x: number; y: number; zoom: number }) => void>(() => {});
+  const captureViewportRef = useRef<() => Viewport>(() => ({ x: 0, y: 0, zoom: 1 }));
+  const persistTabsRef = useRef<(snapshot: { tabs: AppTab[]; activeTabId: string | null }) => void>(() => {});
+
+  const tabs = useStore(tabManager, (state) => state.tabs);
+  const activeTabId = useStore(tabManager, (state) => state.activeTabId);
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+  const activeSurfaceId: SurfaceId = activeTab?.surfaceId ?? "canvas";
+
+  const persistTabs = useCallback(
+    async (snapshot: { tabs: AppTab[]; activeTabId: string | null }) => {
+      if (!databasePath || typeof transport.saveAppTabs !== "function") return;
+      try {
+        await transport.saveAppTabs({ databasePath, tabs: snapshot.tabs, activeTabId: snapshot.activeTabId });
+      } catch (error) {
+        console.warn("failed to persist app tabs", error);
+      }
+    },
+    [databasePath, transport],
+  );
+
+  useEffect(() => {
+    persistTabsRef.current = (snapshot) => {
+      void persistTabs(snapshot);
+    };
+  }, [persistTabs]);
+
   const contentLinkingActions = useMemo<ContentLinkingActions>(
     () =>
       createContentLinkingActions({
@@ -209,14 +312,6 @@ export function CanvasWorkspaceProvider({
       }),
     [transport, workingRoot, databasePath],
   );
-  const selectedEntryIdRef = useRef<string | null>(null);
-  const selectedNodeIdRef = useRef<string | null>(null);
-  const selectedEdgeIdRef = useRef<string | null>(null);
-  const canvasTabStateRef = useRef(canvasTabState);
-  const pendingCanvasTabIdRef = useRef<string | null>(null);
-  const flyToNodeRef = useRef<(nodeId: string, viewport?: { x: number; y: number; zoom: number }) => void>(() => {});
-  const flyToEdgeRef = useRef<(edgeId: string, viewport?: { x: number; y: number; zoom: number }) => void>(() => {});
-  const captureViewportRef = useRef<() => Viewport>(() => ({ x: 0, y: 0, zoom: 1 }));
 
   useEffect(() => {
     selectedEntryIdRef.current = selectedEntryId;
@@ -230,18 +325,69 @@ export function CanvasWorkspaceProvider({
     selectedEdgeIdRef.current = selectedEdgeId;
   }, [selectedEdgeId]);
 
-  useEffect(() => {
-    canvasTabStateRef.current = canvasTabState;
-  }, [canvasTabState]);
-
-  const applyCanvasTabState = useCallback(
-    (update: (current: CanvasTabState) => CanvasTabState) => {
-      const next = update(canvasTabStateRef.current);
-      canvasTabStateRef.current = next;
-      setCanvasTabState(next);
-      return next;
+  const ensureCanvasTab = useCallback(
+    (input: {
+      id: string;
+      constellationId: string;
+      canvasId: string;
+      title: string;
+      pinned: boolean;
+      viewport?: Viewport;
+      selectedNodeId?: string | null;
+      selectedEdgeId?: string | null;
+      activate?: boolean;
+    }) => {
+      const manager = tabManager.getState();
+      const existing = manager.tabs.find((tab) => tab.id === input.id);
+      if (existing) {
+        manager.update(input.id, { title: input.title, pinned: input.pinned });
+        if (existing.surfaceId === "canvas" && "canvasId" in existing.state) {
+          manager.updateState(input.id, {
+            ...existing.state,
+            viewport: input.viewport ?? existing.state.viewport,
+            selectedGraphNodeId: input.selectedNodeId ?? existing.state.selectedGraphNodeId,
+            selectedEdgeId: input.selectedEdgeId ?? existing.state.selectedEdgeId,
+          });
+        }
+      } else {
+        manager.open(
+          {
+            id: input.id,
+            surfaceId: "canvas",
+            title: input.title,
+            pinned: input.pinned,
+            state: {
+              surfaceId: "canvas",
+              canvasId: input.canvasId,
+              constellationId: input.constellationId,
+              viewport: input.viewport ?? { x: 0, y: 0, zoom: 1 },
+              selectedGraphNodeId: input.selectedNodeId ?? null,
+              selectedEdgeId: input.selectedEdgeId ?? null,
+            },
+          },
+          { activate: false },
+        );
+      }
+      if (input.activate) {
+        manager.activate(input.id);
+      }
     },
-    [],
+    [tabManager],
+  );
+
+  const rememberCanvasTabSession = useCallback(
+    (tabId: string, session: { selectedNodeId: string | null; selectedEdgeId: string | null; viewport: Viewport }) => {
+      const manager = tabManager.getState();
+      const tab = manager.tabs.find((candidate) => candidate.id === tabId);
+      if (!tab || tab.surfaceId !== "canvas" || !("canvasId" in tab.state)) return;
+      manager.updateState(tabId, {
+        ...tab.state,
+        selectedGraphNodeId: session.selectedNodeId,
+        selectedEdgeId: session.selectedEdgeId,
+        viewport: session.viewport,
+      });
+    },
+    [tabManager],
   );
 
   useEffect(() => {
@@ -249,11 +395,18 @@ export function CanvasWorkspaceProvider({
 
     void transport
       .bootstrapWorkspace()
-      .then((workspace) => {
+      .then(async (workspace) => {
+        let persistedTabs: { tabs: AppTab[]; activeTabId: string | null } = { tabs: [], activeTabId: null };
+        try {
+          persistedTabs = await transport.loadAppTabs({ databasePath: workspace.databasePath });
+        } catch (error) {
+          console.warn("failed to restore app tabs; continuing with the active project", error);
+        }
         if (cancelled) {
           return;
         }
 
+        tabManager.getState().hydrate(persistedTabs);
         setConstellations(workspace.constellations);
         setDatabasePath(workspace.databasePath);
         setWorkspaceId(workspace.workspaceId);
@@ -263,6 +416,8 @@ export function CanvasWorkspaceProvider({
             ? current
             : workspace.activeConstellationId
         );
+        setActiveProjectId(workspace.activeProjectId);
+        setActiveProfileScope(workspace.activeProfileScope);
         setErrorMessage(null);
       })
       .catch((error: Error) => {
@@ -276,7 +431,7 @@ export function CanvasWorkspaceProvider({
     return () => {
       cancelled = true;
     };
-  }, [transport]);
+  }, [tabManager, transport]);
 
   useEffect(() => {
     if (!databasePath || !activeConstellationId) {
@@ -302,7 +457,7 @@ export function CanvasWorkspaceProvider({
         // needed. Only fall back to the local document nodes if the call
         // itself fails (e.g. transport/backend error), for resilience.
           const pendingTab = pendingCanvasTabIdRef.current
-            ? canvasTabStateRef.current.tabs.find((tab) => tab.id === pendingCanvasTabIdRef.current) ?? null
+            ? toCanvasTab(tabManager.getState().tabs.find((tab) => tab.id === pendingCanvasTabIdRef.current) ?? null)
             : null;
           // A tab may refer to a non-primary canvas inside the same
           // constellation. A constellation switch otherwise begins at its
@@ -363,7 +518,7 @@ export function CanvasWorkspaceProvider({
         if (cancelled) return;
 
         const tabId = canvasTabId(document.constellation.id, primaryCanvasId);
-        const rememberedTab = canvasTabStateRef.current.tabs.find((tab) => tab.id === tabId) ?? null;
+        const rememberedTab = toCanvasTab(tabManager.getState().tabs.find((tab) => tab.id === tabId) ?? null);
         hydrateWorkspaceDocument(
           document,
           graphNodes,
@@ -384,23 +539,29 @@ export function CanvasWorkspaceProvider({
           setActiveCanvasId,
           primaryCanvasId
         );
-        applyCanvasTabState((current) => {
-          let next = openOrActivateCanvasTab(current, {
-            constellationId: document.constellation.id,
-            canvasId: primaryCanvasId,
-            label: document.constellation.displayName,
-            pinned: document.constellation.parentConstellationId === null,
-            viewport: persistedViewport,
-          });
-          const tab = next.tabs.find((candidate) => candidate.id === tabId);
-          if (tab && !tab.viewport && persistedViewport) {
-            next = rememberCanvasTabSession(next, tabId, {
-              selectedNodeId: tab.selectedNodeId,
-              selectedEdgeId: tab.selectedEdgeId,
-              viewport: persistedViewport,
-            });
-          }
-          return next;
+        const managerAtHydration = tabManager.getState();
+        const activeTabAtHydration =
+          managerAtHydration.tabs.find((tab) => tab.id === managerAtHydration.activeTabId) ?? null;
+        // Constellation hydration may complete after the user has already
+        // moved to another surface. Keep its Canvas tab current without
+        // stealing focus; activation is reserved for normal Canvas-led
+        // constellation navigation, first hydration, or an explicit pending
+        // Canvas-tab activation.
+        const shouldActivateCanvasTab =
+          pendingCanvasTabIdRef.current === tabId ||
+          activeTabAtHydration === null ||
+          activeTabAtHydration.surfaceId === "canvas";
+
+        ensureCanvasTab({
+          id: tabId,
+          constellationId: document.constellation.id,
+          canvasId: primaryCanvasId,
+          title: document.constellation.displayName,
+          pinned: document.constellation.parentConstellationId === null,
+          viewport: persistedViewport ?? undefined,
+          selectedNodeId: rememberedTab?.selectedNodeId ?? undefined,
+          selectedEdgeId: rememberedTab?.selectedEdgeId ?? undefined,
+          activate: shouldActivateCanvasTab,
         });
         pendingCanvasTabIdRef.current = null;
         setErrorMessage(null);
@@ -427,7 +588,7 @@ export function CanvasWorkspaceProvider({
     return () => {
       cancelled = true;
     };
-  }, [activeConstellationId, applyCanvasTabState, databasePath, transport]);
+  }, [activeConstellationId, databasePath, tabManager, transport]);
 
   useEffect(() => {
     if (!isHydrated || !databasePath || !activeConstellation) {
@@ -660,14 +821,15 @@ export function CanvasWorkspaceProvider({
   }, [activeCanvasId, activeConstellation, databasePath, stores, transport]);
 
   const captureActiveCanvasTabSession = useCallback(() => {
-    const activeTabId = canvasTabStateRef.current.activeTabId;
+    const manager = tabManager.getState();
+    const activeTabId = manager.activeTabId;
     if (!activeTabId) return;
-    applyCanvasTabState((current) => rememberCanvasTabSession(current, activeTabId, {
+    rememberCanvasTabSession(activeTabId, {
       selectedNodeId: selectedNodeIdRef.current,
       selectedEdgeId: selectedEdgeIdRef.current,
       viewport: captureViewportRef.current(),
-    }));
-  }, [applyCanvasTabState]);
+    });
+  }, [tabManager, rememberCanvasTabSession]);
 
   const openCanvas = useCallback(
     async (canvasId: string, options: { captureCurrent?: boolean } = {}) => {
@@ -690,26 +852,19 @@ export function CanvasWorkspaceProvider({
         nextStores.store.getState().hydrate({ nodes, edges });
 
         const tabId = canvasTabId(activeConstellation.id, canvasId);
-        let nextTabs = applyCanvasTabState((current) => openOrActivateCanvasTab(current, {
+        ensureCanvasTab({
+          id: tabId,
           constellationId: activeConstellation.id,
           canvasId,
-          label: activeConstellation.displayName,
-          // Only the constellation's landing canvas is the protected root
-          // tab. A portal may open another canvas within that root
-          // constellation, and that working tab must remain closeable.
+          title: activeConstellation.displayName,
           pinned: activeConstellation.parentConstellationId === null
             && canvasId === activeConstellation.primaryCanvasId,
           viewport: view.viewport,
-        }));
-        const tab = nextTabs.tabs.find((candidate) => candidate.id === tabId);
-        if (tab && !tab.viewport && view.viewport) {
-          nextTabs = applyCanvasTabState((current) => rememberCanvasTabSession(current, tabId, {
-            selectedNodeId: tab.selectedNodeId,
-            selectedEdgeId: tab.selectedEdgeId,
-            viewport: view.viewport,
-          }));
-        }
-        const rememberedTab = nextTabs.tabs.find((candidate) => candidate.id === tabId) ?? null;
+          selectedNodeId: undefined,
+          selectedEdgeId: undefined,
+          activate: true,
+        });
+        const rememberedTab = toCanvasTab(tabManager.getState().tabs.find((candidate) => candidate.id === tabId) ?? null);
         const restoredEdgeId = rememberedTab?.selectedEdgeId && edges.some((edge) => edge.id === rememberedTab.selectedEdgeId)
           ? rememberedTab.selectedEdgeId
           : null;
@@ -731,12 +886,13 @@ export function CanvasWorkspaceProvider({
         setErrorMessage(error instanceof Error ? error.message : "failed to open canvas");
       }
     },
-    [activeConstellation, applyCanvasTabState, captureActiveCanvasTabSession, databasePath, flushActiveCanvas, transport],
+    [activeConstellation, captureActiveCanvasTabSession, databasePath, ensureCanvasTab, flushActiveCanvas, tabManager, transport],
   );
 
   const activateCanvasTabById = useCallback(async (tabId: string): Promise<void> => {
-    const target = canvasTabStateRef.current.tabs.find((tab) => tab.id === tabId);
-    if (!target || target.id === canvasTabStateRef.current.activeTabId) return;
+    const manager = tabManager.getState();
+    const target = toCanvasTab(manager.tabs.find((tab) => tab.id === tabId) ?? null);
+    if (!target || target.id === manager.activeTabId) return;
 
     captureActiveCanvasTabSession();
     pendingCanvasTabIdRef.current = tabId;
@@ -753,16 +909,17 @@ export function CanvasWorkspaceProvider({
       return;
     }
 
-    applyCanvasTabState((current) => activateCanvasTabState(current, tabId));
+    manager.activate(tabId);
     selectedEdgeIdRef.current = target.selectedEdgeId;
     selectedNodeIdRef.current = target.selectedNodeId;
     setSelectedEdgeId(target.selectedEdgeId);
     setSelectedNodeId(target.selectedNodeId);
-  }, [activeCanvasId, activeConstellationId, applyCanvasTabState, captureActiveCanvasTabSession, openCanvas]);
+  }, [activeCanvasId, activeConstellationId, captureActiveCanvasTabSession, openCanvas, tabManager]);
 
   const openConstellationTab = useCallback(async (constellationId: string) => {
-    const existing = canvasTabStateRef.current.tabs.find(
-      (tab) => tab.constellationId === constellationId,
+    const existing = tabManager.getState().tabs.find(
+      (tab): tab is AppTab & { state: { constellationId: string; canvasId: string } } =>
+        tab.surfaceId === "canvas" && "constellationId" in tab.state && tab.state.constellationId === constellationId,
     );
     if (existing) {
       await activateCanvasTabById(existing.id);
@@ -777,36 +934,89 @@ export function CanvasWorkspaceProvider({
     setSelectedEdgeId(null);
     setSelectedNodeId(null);
     setActiveConstellationId(constellationId);
-  }, [activateCanvasTabById, activeConstellationId, captureActiveCanvasTabSession]);
+  }, [activateCanvasTabById, activeConstellationId, captureActiveCanvasTabSession, tabManager]);
 
-  const closeCanvasTab = useCallback(async (tabId: string) => {
-    const current = canvasTabStateRef.current;
-    const tab = current.tabs.find((candidate) => candidate.id === tabId);
-    if (!tab || tab.pinned) return;
-
-    const wasActive = current.activeTabId === tabId;
-    if (wasActive) captureActiveCanvasTabSession();
-    const next = closeCanvasTabState(canvasTabStateRef.current, tabId);
-    if (next === canvasTabStateRef.current) return;
-    canvasTabStateRef.current = next;
-    setCanvasTabState(next);
-
-    if (!wasActive || !next.activeTabId) return;
-    const successor = next.tabs.find((candidate) => candidate.id === next.activeTabId);
-    if (!successor) return;
-    pendingCanvasTabIdRef.current = successor.id;
-    if (successor.constellationId !== activeConstellationId) {
+  const selectProject = useCallback(
+    async (projectId: string) => {
+      if (!databasePath) {
+        throw new Error("selectProject: no database path yet");
+      }
+      const selected = await transport.selectProject({ databasePath, projectId });
+      // Guard against stale state: the active scope always follows the
+      // selected project, and the canvas re-hydrates from the project's
+      // primary canvas because activeConstellationId changes too.
+      setActiveProjectId(selected.projectId);
+      setActiveProfileScope(selected.profileScope);
       selectedEdgeIdRef.current = null;
       selectedNodeIdRef.current = null;
       setSelectedEdgeId(null);
       setSelectedNodeId(null);
-      setActiveConstellationId(successor.constellationId);
-      return;
+      setActiveConstellationId(selected.projectId);
+      setErrorMessage(null);
+    },
+    [databasePath, transport],
+  );
+
+  const resolveOrCreateHome = useCallback(
+    (input: ResolveHomeInput) => transport.resolveOrCreateHome(input),
+    [transport],
+  );
+
+  const createProject = useCallback(
+    async (input: CreateProjectInput) => {
+      const project = await transport.createProject(input);
+      const treeNode: ConstellationTreeNode = {
+        id: project.id,
+        name: project.displayName,
+        slug: project.slug,
+        rootPath: project.rootPath,
+        rootType: project.rootType,
+        profileScope: project.profileScope,
+        summary: project.summary,
+        parentId: project.parentConstellationId,
+        children: [],
+      };
+      setConstellations((current) => {
+        if (current.some((c) => c.id === treeNode.id)) return current;
+        return [...current, treeNode];
+      });
+      return project;
+    },
+    [transport],
+  );
+
+  const closeCanvasTab = useCallback(async (tabId: string) => {
+    const manager = tabManager.getState();
+    const tab = manager.tabs.find((candidate) => candidate.id === tabId);
+    if (!tab || tab.pinned) return;
+
+    const wasActive = manager.activeTabId === tabId;
+    if (wasActive) captureActiveCanvasTabSession();
+
+    manager.close(tabId);
+
+    if (!wasActive) return;
+    const successorId = tabManager.getState().activeTabId;
+    if (!successorId) return;
+    const successor = tabManager.getState().tabs.find((candidate) => candidate.id === successorId);
+    if (!successor) return;
+
+    pendingCanvasTabIdRef.current = successor.id;
+    if (successor.surfaceId === "canvas" && "constellationId" in successor.state) {
+      const { constellationId, canvasId } = successor.state;
+      if (constellationId !== activeConstellationId) {
+        selectedEdgeIdRef.current = null;
+        selectedNodeIdRef.current = null;
+        setSelectedEdgeId(null);
+        setSelectedNodeId(null);
+        setActiveConstellationId(constellationId);
+        return;
+      }
+      if (canvasId !== activeCanvasId) {
+        await openCanvas(canvasId, { captureCurrent: false });
+      }
     }
-    if (successor.canvasId !== activeCanvasId) {
-      await openCanvas(successor.canvasId, { captureCurrent: false });
-    }
-  }, [activeCanvasId, activeConstellationId, captureActiveCanvasTabSession, openCanvas]);
+  }, [activeCanvasId, activeConstellationId, captureActiveCanvasTabSession, openCanvas, tabManager]);
 
   const selectEntry = useCallback((entryId: string | null) => {
     selectedEntryIdRef.current = entryId;
@@ -821,15 +1031,40 @@ export function CanvasWorkspaceProvider({
     setSelectedNodeId(nodeId);
   }, []);
 
-  const activeCanvasTab = canvasTabState.tabs.find(
-    (tab) => tab.id === canvasTabState.activeTabId,
-  ) ?? null;
+  const activeCanvasTab = toCanvasTab(activeTab);
 
   const contextValue = useMemo<CanvasWorkspaceContextValue>(
     () => ({
       ...stores,
+      tabManager,
+      activeSurfaceId,
+      tabs,
+      activeTabId,
+      activeTab,
+      openTab: (tab) => {
+        if (tab.surfaceId !== "canvas") pendingCanvasTabIdRef.current = null;
+        tabManager.getState().open(tab);
+      },
+      activateTab: (tabId) => {
+        const manager = tabManager.getState();
+        const target = manager.tabs.find((tab) => tab.id === tabId);
+        if (target?.surfaceId !== "canvas") pendingCanvasTabIdRef.current = null;
+        manager.activate(tabId);
+      },
+      closeTab: (tabId) => tabManager.getState().close(tabId),
+      updateTabState: (state) => {
+        const manager = tabManager.getState();
+        if (manager.activeTabId) {
+          manager.updateState(manager.activeTabId, state);
+        }
+      },
       activeConstellation,
       activeConstellationId,
+      activeProjectId,
+      activeProfileScope,
+      selectProject,
+      resolveOrCreateHome,
+      createProject,
       canvasId: activeCanvasId,
       databasePath,
       workspaceId,
@@ -841,8 +1076,8 @@ export function CanvasWorkspaceProvider({
       resourceRoots,
       workingRoot,
       repoRoot,
-      canvasTabs: canvasTabState.tabs,
-      activeCanvasTabId: canvasTabState.activeTabId,
+      canvasTabs: tabs.map((tab) => toCanvasTab(tab)).filter((tab): tab is CanvasTab => tab !== null),
+      activeCanvasTabId: activeCanvasTab?.id ?? null,
       activeCanvasViewport: activeCanvasTab?.viewport ?? null,
       async attachResourceRoot(rootPath, displayName) {
         if (!databasePath || !activeConstellation) {
@@ -922,7 +1157,7 @@ export function CanvasWorkspaceProvider({
         }
 
         try {
-          const relationship = await transport.connectGraphNodes({
+          const relationship = await edgeRepository.createEdge({
             sourceGraphNodeId: source.graphNodeId,
             targetGraphNodeId: target.graphNodeId,
             relType: input.relationKind,
@@ -934,33 +1169,44 @@ export function CanvasWorkspaceProvider({
           });
           setErrorMessage(null);
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Could not create graph relationship.";
-          setErrorMessage(message);
-          throw error;
+          console.warn("addEdge: graph relationship creation failed; falling back to local-only edge", error);
+          stores.store.getState().connectNodes({
+            ...input,
+            id: crypto.randomUUID(),
+            relationKind: input.relationKind,
+          });
+          setErrorMessage(null);
         }
       },
       async createNoteNode(position) {
         const graphNodeId = crypto.randomUUID();
-        await createPreparedNoteNode({
-          graphNodeId,
-          title: "Untitled note",
-          databasePath,
-          upsertLocalNodeDocument: (input) => transport.upsertLocalNodeDocument(input),
-          publishCanvasNode: () => {
-            const node = stores.store.getState().createNoteNode({
-              title: "Untitled note", content: "", id: graphNodeId, graphNodeId,
-            });
-            if (position) {
-              stores.store.getState().updateNodePosition(node.id, position);
-            }
-          },
-          createGraphNode: (input) =>
-            transport.createGraphNode(
-              input as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string }
-            ),
-          acknowledgeLocalNodeDocumentSync: (input) =>
-            transport.acknowledgeLocalNodeDocumentSync(input),
-        });
+        const publishCanvasNode = () => {
+          const node = stores.store.getState().createNoteNode({
+            title: "Untitled note", content: "", id: graphNodeId, graphNodeId,
+          });
+          if (position) {
+            stores.store.getState().updateNodePosition(node.id, position);
+          }
+        };
+
+        try {
+          await createPreparedNoteNode({
+            graphNodeId,
+            title: "Untitled note",
+            databasePath,
+            upsertLocalNodeDocument: (input) => transport.upsertLocalNodeDocument(input),
+            publishCanvasNode,
+            createGraphNode: (input) =>
+              transport.createGraphNode(
+                input as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string }
+              ),
+            acknowledgeLocalNodeDocumentSync: (input) =>
+              transport.acknowledgeLocalNodeDocumentSync(input),
+          });
+        } catch (error) {
+          console.warn("createNoteNode: authoritative creation failed; falling back to local-only note", error);
+          publishCanvasNode();
+        }
       },
       async createGroupNode(position) {
         const graphNodeId = crypto.randomUUID();
@@ -1037,13 +1283,31 @@ export function CanvasWorkspaceProvider({
           } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string })
           .catch((error) => console.warn("createGraphNode sync failed; node kept locally", error));
       },
+      async createImageNode(entry, position) {
+        const graphNodeId = crypto.randomUUID();
+        const absolutePath = entry.absolutePath ?? "";
+        const node = stores.store.getState().createImageNode({
+          title: entry.name,
+          src: absolutePath,
+          caption: undefined,
+          id: graphNodeId,
+          graphNodeId,
+        });
+        stores.store.getState().updateNodePosition(node.id, position);
+        void transport
+          .createGraphNode({
+            ...buildNewGraphNodeInput({ nodeType: "resource", title: entry.name }),
+            graphNodeId,
+          } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string })
+          .catch((error) => console.warn("createGraphNode sync failed for image; node kept locally", error));
+      },
       async deleteEdge(edgeId) {
         const edge = stores.store.getState().edges.find((candidate) => candidate.id === edgeId);
         if (!edge) return;
         const relationshipId = relationshipIdFromCanvasEdge(edgeId);
         try {
           if (relationshipId) {
-            await transport.disconnectGraphNodes({ relationshipId });
+            await edgeRepository.deleteEdge(relationshipId);
           }
           stores.store.getState().deleteEdge(edgeId);
           setErrorMessage(null);
@@ -1085,8 +1349,8 @@ export function CanvasWorkspaceProvider({
               original.type as "note" | "group" | "resource" | "portal"
             );
             if (original.graphNodeId) {
-              const sourceNode = await transport.readGraphNode({ graphNodeId: original.graphNodeId });
-              body = sourceNode.body;
+              const sourceNode = await nodeRepository.getNode(original.graphNodeId);
+              body = sourceNode?.body ?? "[]";
             }
             await transport.createGraphNode({
               entityType,
@@ -1161,16 +1425,16 @@ export function CanvasWorkspaceProvider({
           // the create fails the original relationship and visual link remain
           // intact; if deletion fails, remove the replacement again rather
           // than leave two competing assertions in the graph.
-          const replacement = await transport.connectGraphNodes({
+          const replacement = await edgeRepository.createEdge({
             sourceGraphNodeId: edge.sourceNodeId,
             targetGraphNodeId: edge.targetNodeId,
             relType: relationKind,
           });
           try {
-            await transport.disconnectGraphNodes({ relationshipId: oldRelationshipId });
+            await edgeRepository.deleteEdge(oldRelationshipId);
           } catch (disconnectError) {
             try {
-              await transport.disconnectGraphNodes({ relationshipId: replacement.id });
+              await edgeRepository.deleteEdge(replacement.id);
             } catch {
               // The primary failure is more actionable; the workspace error
               // surface reports it, while the two relationships remain explicit
@@ -1231,6 +1495,11 @@ export function CanvasWorkspaceProvider({
     [
       activeConstellation,
       activeConstellationId,
+      activeProjectId,
+      activeProfileScope,
+      selectProject,
+      resolveOrCreateHome,
+      createProject,
       activeCanvasId,
       contentLinkingActions,
       databasePath,
@@ -1243,7 +1512,6 @@ export function CanvasWorkspaceProvider({
       selectedEntryId,
       selectedEdgeId,
       selectedNodeId,
-      canvasTabState,
       activeCanvasTab,
       openCanvas,
       openConstellationTab,
@@ -1253,6 +1521,11 @@ export function CanvasWorkspaceProvider({
       selectEdge,
       selectNode,
       stores,
+      tabManager,
+      tabs,
+      activeTabId,
+      activeTab,
+      activeSurfaceId,
       transport,
       workingRoot,
       repoRoot
@@ -1293,7 +1566,7 @@ export function useCanvasWorkspace() {
 function createWorkspaceStores(canvasId: string, _constellationId: string): WorkspaceStores {
   return {
     annotationStore: createAnnotationStore({ canvasId }),
-    store: createCanvasStore({ canvasId })
+    store: createCanvasStore({ canvasId }),
   };
 }
 

@@ -14,11 +14,14 @@ import {
   ENTITY_TYPES, TEMPORAL_PRECISIONS, CONTENT_ORIGINS, HISTORICITIES, CLAIM_KINDS,
   EVIDENCE_STATUSES, TEMPORAL_ROLES, PLACE_COVERAGES, QL_FORMS, QL_ARCS,
   QL_TOPOLOGIES, QL_COMPLETENESS_STATUSES,
+  PLACE_COORDINATE_PRECISIONS, GAZETTEER_KINDS, PASSAGE_NATIVE_UNIT_KINDS,
+  SCENE_ASSEMBLERS, CURATION_EVENT_TYPES, SUB_TIMELINE_SPATIAL_FRAMES,
+  COLOUR_TAGS,
 } from "./index";
 
 const now = "2026-03-30T20:00:00.000Z";
 
-describe("schema package", () => {
+  describe("schema package", () => {
   it("matches every controlled value in the shared vocabulary manifest", () => {
     expect({
       entityType: ENTITY_TYPES, temporalPrecision: TEMPORAL_PRECISIONS,
@@ -27,6 +30,13 @@ describe("schema package", () => {
       temporalRole: TEMPORAL_ROLES, placeCoverage: PLACE_COVERAGES,
       qlForm: QL_FORMS, qlArc: QL_ARCS, qlTopology: QL_TOPOLOGIES,
       qlCompletenessStatus: QL_COMPLETENESS_STATUSES,
+      placeCoordinatePrecision: PLACE_COORDINATE_PRECISIONS,
+      gazetteerKinds: GAZETTEER_KINDS,
+      passageNativeUnitKinds: PASSAGE_NATIVE_UNIT_KINDS,
+      sceneAssemblers: SCENE_ASSEMBLERS,
+      curationEventTypes: CURATION_EVENT_TYPES,
+      subTimelineSpatialFrames: SUB_TIMELINE_SPATIAL_FRAMES,
+      colourTag: COLOUR_TAGS,
     }).toEqual(vocabularyManifest);
   });
 
@@ -111,6 +121,8 @@ describe("schema package", () => {
       slug: "episode-0-2",
       parentConstellationId: null,
       rootPath: "/tmp/episode-0-2",
+      rootType: "directory",
+      profileScope: "bootstrapping",
       primaryCanvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
       summary: "Research-driven pilot episode.",
       coverAssetPath: null,
@@ -124,6 +136,8 @@ describe("schema package", () => {
     });
 
     expect(parsed.publishSettings.theme).toBe("ledger");
+    expect(parsed.rootType).toBe("directory");
+    expect(parsed.profileScope).toBe("bootstrapping");
   });
 
   it("rejects invalid edge directionality", () => {
@@ -202,7 +216,7 @@ describe("schema package", () => {
       updatedAt: now
     });
 
-    expect(parsed.content).toBe("");
+    expect(parsed.content).toBe("[]");
   });
 
   it("accepts nullable node style fields and nullable edge handles from persisted payloads", () => {
@@ -439,6 +453,8 @@ describe("schema package", () => {
         slug: "episode-0-2",
         parentConstellationId: null,
         rootPath: "/tmp/episode-0-2",
+        rootType: "directory",
+        profileScope: "bootstrapping",
         primaryCanvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
         summary: "Research-driven pilot episode.",
         coverAssetPath: null,

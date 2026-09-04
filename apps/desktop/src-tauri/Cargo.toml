@@ -11,6 +11,10 @@ default-run = "research-canvas-desktop"
 name = "agent_research"
 path = "src/bin/agent_research.rs"
 
+[[bin]]
+name = "rc-asset"
+path = "src/bin/rc_asset.rs"
+
 [lib]
 name = "research_canvas_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
@@ -34,6 +38,7 @@ tauri-plugin-fs = "2"
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
 sha2 = "0.10"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }

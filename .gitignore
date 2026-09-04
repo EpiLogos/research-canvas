@@ -23,6 +23,7 @@ apps/desktop/src-tauri/target
 .env.*.local
 .epi/
 .research-canvas/
+.wayfinder/
 
 # Python environments and generated caches
 .venv/
@@ -51,3 +52,6 @@ research-canvas-workspace-v*.tar.gz.sha256
 research-canvas-workspace-v*.manifest.json
 backups/
 workspace-backups/
+
+# Subagent ephemeral clones
+research-canvas-*/

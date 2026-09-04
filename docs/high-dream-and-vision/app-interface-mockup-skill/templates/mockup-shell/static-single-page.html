@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
+<title>[PRODUCT] — Mockup Workbench</title>
+<style>
+:root{
+  --left:278px;--right:326px;--top:46px;
+  --bg:#08111d;--panel:#0d1928;--panel2:#122237;--stage:#040a11;
+  --text:#dce6f0;--muted:#91a1b3;--faint:#657589;--line:#243449;--line2:#3b526c;
+  --blue:#78aee8;--teal:#55b3ad;--orange:#c9824f;--paper:#0b1624;
+  --ui:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+html[data-theme="light"]{--bg:#eef3f7;--panel:#fff;--panel2:#f5f8fb;--stage:#dfe6ec;--text:#162536;--muted:#5e6e80;--faint:#8b98a7;--line:#d4dee7;--line2:#bac8d4;--blue:#2d6ea9;--teal:#287e7d;--orange:#a75f32;--paper:#f9fbfc}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:var(--ui)}button,textarea,select,input{font:inherit;color:inherit}button{cursor:pointer}
+.app{min-height:100vh;display:grid;grid-template-columns:var(--left) minmax(0,1fr) var(--right);grid-template-rows:var(--top) minmax(0,1fr);grid-template-areas:"top top top" "left main right"}.app.left-closed{grid-template-columns:0 minmax(0,1fr) var(--right)}.app.right-closed{grid-template-columns:var(--left) minmax(0,1fr) 0}.app.left-closed.right-closed{grid-template-columns:0 minmax(0,1fr) 0}
+.top{grid-area:top;display:flex;align-items:center;gap:8px;padding:0 9px;border-bottom:1px solid var(--line);background:var(--panel)}.title{display:flex;align-items:baseline;gap:8px;margin-right:auto;min-width:0}.title strong{font-size:10px;letter-spacing:.08em;text-transform:uppercase}.title span{color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.icon{width:29px;height:29px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--muted)}.chip{height:27px;display:flex;align-items:center;padding:0 8px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font:9px/1 var(--mono)}
+.left,.right{min-width:0;overflow:hidden;background:var(--panel)}.left{grid-area:left;border-right:1px solid var(--line)}.right{grid-area:right;border-left:1px solid var(--line)}.left-closed .left,.right-closed .right{visibility:hidden}.scroll{height:calc(100vh - var(--top));overflow:auto;padding:15px 13px 30px}.kicker{margin:2px 0 9px;color:var(--faint);font-size:8.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.block{margin-top:15px;padding-top:14px;border-top:1px solid var(--line)}.block:first-of-type{margin-top:0}.block h2{margin:0 0 7px;font-size:14px;line-height:1.3}.block h3{margin:0 0 7px;color:var(--muted);font-size:9px;letter-spacing:.06em;text-transform:uppercase}.block p{margin:0;color:var(--muted);font-size:10px;line-height:1.5}.block dl{display:grid;gap:6px;margin:8px 0 0}.block dl div{display:grid;grid-template-columns:62px minmax(0,1fr);gap:6px}.block dt{color:var(--faint);font-size:9px}.block dd{margin:0;color:var(--muted);font-size:9.5px;line-height:1.4}.block ul{display:grid;gap:4px;margin:7px 0 0;padding-left:15px;color:var(--muted);font-size:9.5px;line-height:1.45}
+.main{grid-area:main;min-width:0;min-height:0;display:grid;grid-template-rows:29px minmax(0,1fr);background:var(--stage)}.meta{display:flex;align-items:center;justify-content:space-between;padding:0 10px;border-bottom:1px solid var(--line);background:var(--panel2);color:var(--faint);font:8.5px/1 var(--mono)}.host{min-width:0;min-height:0;display:grid;place-items:center;padding:18px;overflow:auto}.viewport{width:1600px;height:1000px;transform-origin:center;transform:scale(.62);background:var(--paper);box-shadow:0 24px 70px rgba(0,0,0,.34);overflow:hidden}
+/* Replace only the demo app inside .viewport. The outer workbench is review infrastructure. */
+.demo-app{width:100%;height:100%;display:grid;grid-template-rows:38px 34px minmax(0,1fr) 24px;background:#0a111b;color:#cbd6e2;font:12px/1.4 var(--ui)}.demo-bar,.demo-tabs,.demo-status{display:flex;align-items:center;border-color:#243247;background:#0d1826}.demo-bar{gap:10px;padding:0 10px;border-bottom:1px solid #243247}.demo-bar span:last-child{margin-left:auto;color:#7f90a4}.demo-tabs{gap:3px;padding:0 8px;border-bottom:1px solid #243247}.demo-tabs b{height:28px;padding:7px 10px;border-bottom:2px solid #6ea7e1}.demo-tabs span{height:28px;padding:7px 10px;color:#8798aa}.demo-work{min-height:0;display:grid;grid-template-columns:218px minmax(0,1fr) 292px}.demo-rail,.demo-inspect{padding:11px;background:#0d1826}.demo-rail{border-right:1px solid #243247}.demo-inspect{border-left:1px solid #243247}.demo-label{margin-bottom:9px;color:#617286;font-size:9px;font-weight:800;letter-spacing:.12em}.demo-row{padding:6px 7px;margin-bottom:2px}.demo-row.active{background:#162b43}.demo-stage{position:relative;background:#08101a}.demo-node{position:absolute;width:220px;padding:14px;border:1px solid #38516b;border-radius:7px;background:#101f30}.demo-node strong{display:block;margin-bottom:8px;font-size:15px}.demo-node span{color:#8193a6;font-size:10px}.demo-node.a{left:15%;top:25%}.demo-node.b{left:49%;top:38%;border:2px solid #78aee8;background:#152338}.demo-node.c{right:8%;bottom:21%;width:160px}.demo-inspect p{color:#8495a8;font-size:10.5px;line-height:1.5}.demo-status{gap:12px;padding:0 9px;border-top:1px solid #243247;color:#6f8093;font-size:9px}.demo-status span:last-child{margin-left:auto}
+.review-nav{display:flex;flex-wrap:wrap;gap:5px}.review-nav button{padding:6px 7px;border:1px solid var(--line);border-radius:5px;background:transparent;color:var(--muted);font-size:8.5px}.review-nav button.active{border-color:var(--blue);color:var(--text);background:color-mix(in srgb,var(--blue) 15%,transparent)}label{display:block;margin:9px 0 5px;color:var(--muted);font-size:9.5px;font-weight:700}textarea{width:100%;min-height:110px;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--paper);font-size:10.5px;line-height:1.5;resize:vertical}.primary{margin-top:7px;padding:7px 9px;border:1px solid var(--blue);border-radius:5px;background:var(--blue);color:#fff;font-size:9.5px;font-weight:700}.save{margin-top:5px;color:var(--faint);font-size:8px}.comments{display:grid;gap:7px;margin-top:13px}.comment{padding:8px 9px;border:1px solid var(--line);background:var(--panel2)}.comment.resolved{opacity:.55}.comment p{margin:0;color:var(--muted);font-size:9.5px;line-height:1.45}.comment footer{display:flex;align-items:center;gap:7px;margin-top:6px;color:var(--faint);font:8px/1 var(--mono)}.comment footer span{flex:1}.comment button{padding:0;border:0;background:transparent;color:var(--blue);font-size:8px}.checks{display:grid;gap:6px}.checks label{display:grid;grid-template-columns:14px 1fr;gap:6px;align-items:start;margin:0;font-size:9px;font-weight:400;line-height:1.4}.checks input{margin:1px 0 0;accent-color:var(--teal)}
+@media(max-width:1180px){.app{grid-template-columns:240px minmax(0,1fr);grid-template-areas:"top top" "left main"}.right{position:fixed;z-index:20;right:0;top:var(--top);width:var(--right);height:calc(100vh - var(--top));box-shadow:-18px 0 45px rgba(0,0,0,.25)}.right-closed .right{transform:translateX(100%)}}
+@media(max-width:820px){.app{grid-template-columns:minmax(0,1fr);grid-template-areas:"top" "main"}.left{position:fixed;z-index:20;left:0;top:var(--top);width:min(320px,88vw);height:calc(100vh - var(--top));box-shadow:18px 0 45px rgba(0,0,0,.25)}.left-closed .left{transform:translateX(-100%)}.chip{display:none}}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="top">
+    <button class="icon" id="leftToggle" aria-label="Toggle design context">☰</button>
+    <div class="title"><strong>[PRODUCT]</strong><span>[SURFACE] · [WORKING STATE]</span></div>
+    <div class="chip">intent-led · 1600×1000</div>
+    <button class="icon" id="themeToggle" aria-label="Switch theme">◐</button>
+    <button class="icon" id="rightToggle" aria-label="Toggle review">✎</button>
+  </header>
+
+  <aside class="left"><div class="scroll">
+    <div class="kicker">State brief</div>
+    <section class="block"><h2>[Concrete primary goal]</h2><dl><div><dt>Actor</dt><dd>[Actor]</dd></div><div><dt>Scope</dt><dd>[Active scope]</dd></div><div><dt>Selection</dt><dd>[Exact selected object]</dd></div><div><dt>Action</dt><dd>[Primary action]</dd></div><div><dt>Result</dt><dd>[Visible consequence]</dd></div></dl></section>
+    <section class="block"><h3>Geometry contract</h3><ul><li>Canonical viewport: 1600 × 1000.</li><li>Stage keeps the largest useful area.</li><li>Context regions appear only when the state requires them.</li><li>Compact working density; no dashboard spacing by habit.</li></ul></section>
+    <section class="block"><h3>Reference questions</h3><ul><li>[Question that a visual reference should answer.]</li><li>[Question about geometry, density, or interaction.]</li></ul></section>
+    <section class="block"><h3>Design freedom</h3><p>Use current application evidence only when the selected mode makes it relevant. A missing screenshot does not block intent-led design.</p></section>
+  </div></aside>
+
+  <main class="main">
+    <div class="meta"><span>Mockup viewport · logical pixels</span><span>Render → inspect → revise</span></div>
+    <div class="host">
+      <div class="viewport" id="mockupRoot">
+        <div class="demo-app">
+          <div class="demo-bar"><strong>PRODUCT</strong><span>Project / active work</span><span>⌘K Command</span></div>
+          <div class="demo-tabs"><b>Workspace</b><span>Timeline</span><span>Map</span></div>
+          <div class="demo-work">
+            <aside class="demo-rail"><div class="demo-label">PROJECT</div><div class="demo-row active">Current constellation</div><div class="demo-row">Primary source set</div><div class="demo-row">Related inquiry</div></aside>
+            <section class="demo-stage"><div class="demo-node a"><strong>Meaningful object</strong><span>Representative content belongs here.</span></div><div class="demo-node b"><strong>Current working focus</strong><span>One selected state constrains the interface.</span></div><div class="demo-node c"><strong>Context</strong><span>Reachable, not dominant.</span></div></section>
+            <aside class="demo-inspect"><div class="demo-label">SELECTION</div><strong>Current working focus</strong><p>Replace this inspector when the state does not need one. The template does not require a three-column application layout.</p></aside>
+          </div>
+          <div class="demo-status"><span>Local</span><span>1 selected</span><span>Replace everything inside #mockupRoot</span></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="right"><div class="scroll">
+    <div class="kicker">Rendered critique</div>
+    <nav class="review-nav" id="reviewNav"></nav>
+    <section class="block"><h2 id="reviewTitle">Working state</h2><p id="reviewPrompt"></p><label for="commentText">Add review comment</label><textarea id="commentText" placeholder="Describe the visible problem, its consequence, and the next revision."></textarea><button class="primary" id="addComment">Add comment</button><div class="save" id="saveState">Review state saves locally when available.</div></section>
+    <div class="comments" id="comments"></div>
+    <section class="block"><h3>Recognition gate</h3><div class="checks" id="checks"></div></section>
+  </div></aside>
+</div>
+<script>
+(() => {
+  const app=document.getElementById('app');
+  const root=document.documentElement;
+  const storageRoot='app-mockup:[PRODUCT-SLUG]:[STATE-ID]';
+  const reviews=[
+    ['state','Working state','Does the screen depict one credible working state with a clear task and selection?'],
+    ['geometry','Geometry','Does the stage dominate, and do permanent regions justify their area?'],
+    ['density','Density','Are type, rows, controls, spacing, and metadata credible for prolonged professional use?'],
+    ['interaction','Interaction','Are frequent actions stable and local actions contextual or directly manipulable?'],
+    ['surface','Surface identity','Does the workspace use the spatial logic of its actual work?'],
+    ['product','Product identity','Would the interface remain recognisable as this product without its logo?'],
+    ['failures','Failure scan','Scan for generic SaaS smell, mockup inflation, panel symmetry, card capture, dead stage, feature exhibition, and agent colonisation.']
+  ];
+  const gate=['Specific working state','Explicit geometry contract','Primary stage dominance','Professional working density','No generic SaaS default','Surface-specific composition','Visible product semantics','Rendered critique caused a material revision'];
+  const read=(k,f)=>{try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}};
+  const write=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));return true}catch{return false}};
+  let active=reviews[0][0];
+  let comments=read(storageRoot+':comments',{});
+  let checks=read(storageRoot+':checks',{});
+  const nav=document.getElementById('reviewNav'),title=document.getElementById('reviewTitle'),prompt=document.getElementById('reviewPrompt'),commentText=document.getElementById('commentText'),commentsEl=document.getElementById('comments'),checksEl=document.getElementById('checks'),saveState=document.getElementById('saveState');
+  function renderNav(){nav.innerHTML='';reviews.forEach(([id,label])=>{const b=document.createElement('button');b.textContent=label;b.className=id===active?'active':'';b.onclick=()=>{active=id;renderAll()};nav.appendChild(b)})}
+  function renderComments(){commentsEl.innerHTML='';(comments[active]||[]).forEach(c=>{const el=document.createElement('article');el.className='comment'+(c.resolved?' resolved':'');const p=document.createElement('p');p.textContent=c.body;const f=document.createElement('footer');const t=document.createElement('time');t.textContent=new Date(c.createdAt).toLocaleString();const space=document.createElement('span');const resolve=document.createElement('button');resolve.textContent=c.resolved?'Reopen':'Resolve';resolve.onclick=()=>{c.resolved=!c.resolved;persist()};const del=document.createElement('button');del.textContent='Delete';del.onclick=()=>{comments[active]=comments[active].filter(x=>x.id!==c.id);persist()};f.append(t,space,resolve,del);el.append(p,f);commentsEl.appendChild(el)})}
+  function renderChecks(){checksEl.innerHTML='';gate.forEach((label,i)=>{const row=document.createElement('label');const input=document.createElement('input');input.type='checkbox';input.checked=!!checks[i];input.onchange=()=>{checks[i]=input.checked;write(storageRoot+':checks',checks)};const span=document.createElement('span');span.textContent=label;row.append(input,span);checksEl.appendChild(row)})}
+  function persist(){saveState.textContent=write(storageRoot+':comments',comments)?'Comments saved locally.':'Local persistence is unavailable.';renderComments()}
+  function renderAll(){const item=reviews.find(r=>r[0]===active)||reviews[0];title.textContent=item[1];prompt.textContent=item[2];renderNav();renderComments();renderChecks()}
+  document.getElementById('addComment').onclick=()=>{const body=commentText.value.trim();if(!body)return;(comments[active]??=[]).push({id:Date.now().toString(36),body,createdAt:new Date().toISOString(),resolved:false});commentText.value='';persist()};
+  document.getElementById('leftToggle').onclick=()=>app.classList.toggle('left-closed');
+  document.getElementById('rightToggle').onclick=()=>app.classList.toggle('right-closed');
+  document.getElementById('themeToggle').onclick=()=>{root.dataset.theme=root.dataset.theme==='dark'?'light':'dark';write('app-mockup:theme',root.dataset.theme)};
+  root.dataset.theme=read('app-mockup:theme','dark');
+  renderAll();
+})();
+</script>
+</body>
+</html>

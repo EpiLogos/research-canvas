@@ -3,26 +3,57 @@ use std::sync::Arc;
 use research_canvas_desktop_lib::{
     commands::{
         constellations::{
-            attach_constellation_resource_root_at, bootstrap_workspace_at,
+            attach_constellation_resource_root_at, bootstrap_workspace_at, create_project_at,
             create_saved_sequence_command, default_database_path, delete_saved_sequence_command,
             detach_constellation_resource_root_at, list_constellation_resource_roots_at,
             list_directories_at, list_saved_sequences_command, load_constellation_document_at,
-            persist_constellation_document_at, update_saved_sequence_command,
+            persist_constellation_document_at, resolve_or_create_home_at, select_active_project_at,
+            update_saved_sequence_command, CreateProjectRequest,
             CreateSavedSequenceRequest, DeleteSavedSequenceRequest, ListSavedSequencesRequest,
             PersistConstellationDocumentRequest, ResourceRootLookupRequest,
-            ResourceRootMutationRequest, UpdateSavedSequenceRequest,
+            ResourceRootMutationRequest, SetActiveProjectRequest, UpdateSavedSequenceRequest,
         },
+        fetch_asset::{ingest_fetched_asset_at, list_fetch_records_at, IngestFetchedAssetRequest},
+        geography_edges::{
+            delete_geography_edge_at, list_geography_edges_at, upsert_geography_edge_at,
+        },
+        graph::{
+            connect_graph_nodes_locally_at_path, update_node_metadata_at_path,
+            ConnectGraphNodesRequest, UpdateGraphNodeRequest,
+        },
+        keepsake::write_keepsake_bundle_at,
         layout::{flush_canvas_layout_at, FlushCanvasLayoutRequest},
+        palace::{load_palace_curation_at, save_palace_curation_at},
+        palace_export::write_palace_bundle_at,
+        palace_graph::{load_palace_graph_at, merge_encapsulation_edges, LoadPalaceGraphRequest},
+        places::list_located_graph_nodes_at_path,
+        scenes::{
+            delete_scene_at, delete_scene_sequence_at, list_scene_sequences_at, list_scenes_at,
+            upsert_scene_at, upsert_scene_sequence_at,
+        },
         search::{
             rebuild_constellation_search_index_command, search_constellation_command,
             RebuildConstellationSearchIndexRequest, SearchConstellationRequest,
         },
-        timeline::{load_timeline_view_at_path, LoadTimelineViewRequest},
+        street_view::{
+            add_manual_street_view_region_at, apply_street_view_redaction_at,
+            list_street_view_images_at, mark_street_view_redaction_none_needed_at,
+            register_street_view_image_at, stage_street_view_image_at,
+        },
+        timeline::{
+            expand_timeline_node_at_path, load_timeline_view_at_path,
+            merge_relationships_by_canonical_key, upsert_timeline_layout_at_path,
+            ExpandTimelineNodeRequest, LoadTimelineViewRequest, UpsertTimelineLayoutRequest,
+        },
     },
     db::{
         canvas_service::CanvasService,
+        connection::Database,
         neo4j::{self, config::Neo4jConfig},
-        repositories::graph::GraphRepository,
+        repositories::{
+            graph::GraphRepository, AppTabRecord, AppTabRepository, SceneRecord, SceneSequenceRecord,
+            StreetViewImageRecord, StreetViewRegion,
+        },
     },
     pty::TerminalManager,
 };
@@ -63,6 +94,13 @@ struct BrowserResourceRootMutation {
 #[serde(rename_all = "camelCase")]
 struct BrowserResourceRootDelete {
     root_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserSaveAppTabs {
+    tabs: Vec<AppTabRecord>,
+    active_tab_id: Option<String>,
 }
 
 #[derive(Clone)]
@@ -138,6 +176,52 @@ fn handle_request(
         return respond_json(request, StatusCode(200), payload);
     }
 
+    if method == Method::Get && path == "/workspace/app-tabs" {
+        let database_path = session_database_path(&request)?;
+        let database = Database::open(&database_path).map_err(|error| error.to_string())?;
+        let repository = AppTabRepository::new(database.connection());
+        let tabs = repository.load_tabs().map_err(|error| error.to_string())?;
+        let active_tab_id = repository.load_active_tab_id().map_err(|error| error.to_string())?;
+        return respond_json(request, StatusCode(200), json!({ "tabs": tabs, "activeTabId": active_tab_id }));
+    }
+
+    if method == Method::Post && path == "/workspace/app-tabs" {
+        let database_path = session_database_path(&request)?;
+        let body = read_body(&mut request)?;
+        let payload: BrowserSaveAppTabs = serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let database = Database::open(&database_path).map_err(|error| error.to_string())?;
+        let repository = AppTabRepository::new(database.connection());
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        repository.save_tabs(&payload.tabs, payload.active_tab_id.as_deref(), &now).map_err(|error| error.to_string())?;
+        return respond_json(request, StatusCode(200), json!({}));
+    }
+
+    if method == Method::Get && path == "/workspace/home" {
+        let database_path = match query_param(&url, "databasePath") {
+            Some(path) if !path.trim().is_empty() => path,
+            _ => session_database_path(&request)?.to_string_lossy().to_string(),
+        };
+        let home_path = query_param(&url, "homePath");
+        let payload = resolve_or_create_home_at(&database_path, home_path.as_deref())?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/projects" {
+        let body = read_body(&mut request)?;
+        let project_request: CreateProjectRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let payload = create_project_at(project_request)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/project" {
+        let body = read_body(&mut request)?;
+        let project_request: SetActiveProjectRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let payload = select_active_project_at(&project_request.database_path, &project_request.project_id)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
     if method == Method::Get && path == "/workspace/file-content" {
         let requested_path =
             query_param(&url, "path").ok_or_else(|| "missing path query parameter".to_string())?;
@@ -146,7 +230,6 @@ fn handle_request(
         return respond_json(request, StatusCode(200), json!({ "content": content }));
     }
 
-    // Non-constellation-scoped routes
     if method == Method::Get && path == "/workspace/directories" {
         let dirs = list_directories_at()?;
         return respond_json(request, StatusCode(200), dirs);
@@ -159,12 +242,10 @@ fn handle_request(
             .ok_or_else(|| "missing constellationId query parameter".to_string())?;
         let query = query_param(&url, "q").unwrap_or_default();
         let limit = query_param(&url, "limit").and_then(|value| value.parse::<u32>().ok());
-
         rebuild_constellation_search_index_command(RebuildConstellationSearchIndexRequest {
             database_path: database_path.clone(),
             constellation_id: constellation_id.clone(),
         })?;
-
         let hits = search_constellation_command(SearchConstellationRequest {
             database_path,
             constellation_id,
@@ -182,6 +263,283 @@ fn handle_request(
             .to_string_lossy()
             .to_string();
         let payload = flush_canvas_layout_at(input)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Get && path == "/workspace/scenes" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let profile_scope = query_param(&url, "profileScope")
+            .ok_or_else(|| "missing profileScope query parameter".to_string())?;
+        let payload = list_scenes_at(&database_path, &profile_scope)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/scenes" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let body = read_body(&mut request)?;
+        let scene: SceneRecord =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let payload = upsert_scene_at(&database_path, scene)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if let Some(scene_id) = path.strip_prefix("/workspace/scenes/") {
+        if method == Method::Get {
+            let database_path = session_database_path(&request)?
+                .to_string_lossy()
+                .to_string();
+            let payload = research_canvas_desktop_lib::commands::scenes::get_scene_at(
+                &database_path,
+                scene_id,
+            )?;
+            return respond_json(request, StatusCode(200), payload);
+        }
+        if method == Method::Delete {
+            let database_path = session_database_path(&request)?
+                .to_string_lossy()
+                .to_string();
+            delete_scene_at(&database_path, scene_id)?;
+            return respond_json(request, StatusCode(200), json!({ "ok": true }));
+        }
+    }
+
+    if method == Method::Get && path == "/workspace/scene-sequences" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let profile_scope = query_param(&url, "profileScope")
+            .ok_or_else(|| "missing profileScope query parameter".to_string())?;
+        let payload = list_scene_sequences_at(&database_path, &profile_scope)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/scene-sequences" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let body = read_body(&mut request)?;
+        let sequence: SceneSequenceRecord =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let payload = upsert_scene_sequence_at(&database_path, sequence)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if let Some(sequence_id) = path.strip_prefix("/workspace/scene-sequences/") {
+        if method == Method::Delete {
+            let database_path = session_database_path(&request)?
+                .to_string_lossy()
+                .to_string();
+            delete_scene_sequence_at(&database_path, sequence_id)?;
+            return respond_json(request, StatusCode(200), json!({ "ok": true }));
+        }
+    }
+
+    if method == Method::Get && path == "/workspace/geography-edges" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let profile_scope = query_param(&url, "profileScope")
+            .ok_or_else(|| "missing profileScope query parameter".to_string())?;
+        let payload = list_geography_edges_at(&database_path, &profile_scope)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/geography-edges" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let body = read_body(&mut request)?;
+        let edge: research_canvas_desktop_lib::db::repositories::GeographyEdgeRecord =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let payload = upsert_geography_edge_at(&database_path, edge)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if let Some(edge_id) = path.strip_prefix("/workspace/geography-edges/") {
+        if method == Method::Delete {
+            let database_path = session_database_path(&request)?
+                .to_string_lossy()
+                .to_string();
+            delete_geography_edge_at(&database_path, edge_id)?;
+            return respond_json(request, StatusCode(200), json!({ "ok": true }));
+        }
+    }
+
+    if method == Method::Get && path == "/workspace/street-view" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let profile_scope = query_param(&url, "profileScope")
+            .ok_or_else(|| "missing profileScope query parameter".to_string())?;
+        let payload = list_street_view_images_at(&database_path, &profile_scope)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/street-view" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let body = read_body(&mut request)?;
+        let input: serde_json::Value =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let media_root = input["mediaRoot"]
+            .as_str()
+            .ok_or_else(|| "missing mediaRoot".to_string())?;
+        let image: StreetViewImageRecord =
+            serde_json::from_value(input["image"].clone()).map_err(|error| error.to_string())?;
+        let payload = register_street_view_image_at(&database_path, media_root, image)?;
+        return respond_json(request, StatusCode(201), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/street-view/stage" {
+        let file_name = query_param(&url, "fileName")
+            .ok_or_else(|| "missing fileName query parameter".to_string())?;
+        let profile_scope = query_param(&url, "profileScope")
+            .ok_or_else(|| "missing profileScope query parameter".to_string())?;
+        let media_root = query_param(&url, "mediaRoot")
+            .ok_or_else(|| "missing mediaRoot query parameter".to_string())?;
+        let bytes = read_body_bytes(&mut request)?;
+        let payload = stage_street_view_image_at(&media_root, &profile_scope, &file_name, &bytes)?;
+        return respond_json(request, StatusCode(201), payload);
+    }
+
+    if let Some(street_view_path) = path.strip_prefix("/workspace/street-view/") {
+        let (id, action) = match street_view_path.split_once('/') {
+            Some((id, action)) => (id.to_string(), action.to_string()),
+            None => (street_view_path.to_string(), String::new()),
+        };
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+
+        if method == Method::Post && action == "regions" {
+            let body = read_body(&mut request)?;
+            let input: serde_json::Value =
+                serde_json::from_str(&body).map_err(|error| error.to_string())?;
+            let region: StreetViewRegion = serde_json::from_value(input["region"].clone())
+                .map_err(|error| error.to_string())?;
+            let payload = add_manual_street_view_region_at(&database_path, &id, region)?;
+            return respond_json(request, StatusCode(200), payload);
+        }
+
+        if method == Method::Post && action == "redact" {
+            let body = read_body(&mut request)?;
+            let input: serde_json::Value =
+                serde_json::from_str(&body).map_err(|error| error.to_string())?;
+            let media_root = input["mediaRoot"]
+                .as_str()
+                .ok_or_else(|| "missing mediaRoot".to_string())?;
+            let payload = apply_street_view_redaction_at(&database_path, media_root, &id)?;
+            return respond_json(request, StatusCode(200), payload);
+        }
+
+        if method == Method::Post && action == "none-needed" {
+            let payload = mark_street_view_redaction_none_needed_at(&database_path, &id)?;
+            return respond_json(request, StatusCode(200), payload);
+        }
+    }
+
+    if method == Method::Get && path == "/workspace/fetch-records" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let profile_scope = query_param(&url, "profileScope")
+            .ok_or_else(|| "missing profileScope query parameter".to_string())?;
+        let payload = list_fetch_records_at(&database_path, &profile_scope)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/fetch-records/ingest" {
+        let session_database = session_database_path(&request)?;
+        let body = read_body(&mut request)?;
+        let mut input: IngestFetchedAssetRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        if input.database_path.trim().is_empty() {
+            input.database_path = session_database.to_string_lossy().to_string();
+        }
+        let payload = ingest_fetched_asset_at(&input)?;
+        let accepted = payload.validation.all_ok() && !payload.artifact_path.is_empty();
+        let status = if accepted {
+            StatusCode(201)
+        } else {
+            StatusCode(422)
+        };
+        return respond_json(request, status, payload);
+    }
+
+    if method == Method::Post && path == "/workspace/keepsake" {
+        let body = read_body(&mut request)?;
+        let input: serde_json::Value =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let output_dir = input["outputDir"]
+            .as_str()
+            .ok_or_else(|| "missing outputDir".to_string())?;
+        let media_root = input["mediaRoot"]
+            .as_str()
+            .ok_or_else(|| "missing mediaRoot".to_string())?;
+        let manifest_json = input["manifestJson"]
+            .as_str()
+            .ok_or_else(|| "missing manifestJson".to_string())?;
+        let payload = write_keepsake_bundle_at(output_dir, media_root, manifest_json)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/palace-bundle" {
+        let body = read_body(&mut request)?;
+        let input: serde_json::Value =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let output_dir = input["outputDir"]
+            .as_str()
+            .ok_or_else(|| "missing outputDir".to_string())?;
+        let bundle_json = input["bundleJson"]
+            .as_str()
+            .ok_or_else(|| "missing bundleJson".to_string())?;
+        let payload = write_palace_bundle_at(output_dir, bundle_json)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/palace-graph" {
+        let body = read_body(&mut request)?;
+        let input: LoadPalaceGraphRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let mut view = load_palace_graph_at(&database_path, input)?;
+        if let Some(graph_state) = graph_state.as_ref() {
+            let repo = GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
+            let remote = graph_state.runtime.block_on(repo.list_encapsulation_edges())?;
+            view.encapsulation_edges = merge_encapsulation_edges(view.encapsulation_edges, remote);
+        }
+        return respond_json(request, StatusCode(200), view);
+    }
+
+    if method == Method::Get && path == "/workspace/palace-curation" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let profile_scope = query_param(&url, "profileScope")
+            .ok_or_else(|| "missing profileScope query parameter".to_string())?;
+        let payload = load_palace_curation_at(&database_path, &profile_scope)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/workspace/palace-curation" {
+        let database_path = session_database_path(&request)?
+            .to_string_lossy()
+            .to_string();
+        let body = read_body(&mut request)?;
+        let input: serde_json::Value =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let profile_scope = input["profileScope"]
+            .as_str()
+            .ok_or_else(|| "missing profileScope".to_string())?;
+        let curation = input["curation"].clone();
+        let payload = save_palace_curation_at(&database_path, profile_scope, curation)?;
         return respond_json(request, StatusCode(200), payload);
     }
 
@@ -204,12 +562,85 @@ fn handle_request(
         return respond_json(request, StatusCode(200), payload);
     }
 
+    if method == Method::Get && path == "/graph/places" {
+        let payload = list_located_graph_nodes_at_path(session_database_path(&request)?)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
     if method == Method::Post && path == "/graph/timeline-view" {
         let body = read_body(&mut request)?;
         let input: LoadTimelineViewRequest =
             serde_json::from_str(&body).map_err(|error| error.to_string())?;
         let payload = load_timeline_view_at_path(session_database_path(&request)?, input)?;
         return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/graph/timeline-expand" {
+        let body = read_body(&mut request)?;
+        let input: ExpandTimelineNodeRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let database_path = session_database_path(&request)?;
+        let mut view =
+            expand_timeline_node_at_path(&database_path, &input.workspace_id, &input.graph_node_id)?;
+        if let Some(graph_state) = graph_state.as_ref() {
+            let repo = GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
+            if let Ok(remote) = graph_state
+                .runtime
+                .block_on(repo.relationships_for_node(&input.graph_node_id))
+            {
+                view.edges =
+                    merge_relationships_by_canonical_key(std::mem::take(&mut view.edges), remote);
+                let known_ids = view
+                    .neighbours
+                    .iter()
+                    .map(|node| node.graph_node_id.clone())
+                    .collect::<std::collections::BTreeSet<_>>();
+                let missing_ids = view
+                    .edges
+                    .iter()
+                    .flat_map(|relationship| {
+                        [
+                            relationship.source_graph_node_id.clone(),
+                            relationship.target_graph_node_id.clone(),
+                        ]
+                    })
+                    .filter(|node_id| *node_id != input.graph_node_id && !known_ids.contains(node_id))
+                    .collect::<std::collections::BTreeSet<_>>();
+                if !missing_ids.is_empty() {
+                    if let Ok(nodes) = graph_state
+                        .runtime
+                        .block_on(repo.get_nodes(&missing_ids.into_iter().collect::<Vec<_>>()))
+                    {
+                        view.neighbours.extend(nodes);
+                    }
+                }
+            }
+        }
+        return respond_json(request, StatusCode(200), view);
+    }
+
+    if method == Method::Post && path == "/graph/timeline-layout" {
+        let body = read_body(&mut request)?;
+        let input: UpsertTimelineLayoutRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let payload = upsert_timeline_layout_at_path(session_database_path(&request)?, input)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/graph/node/update" {
+        let body = read_body(&mut request)?;
+        let input: UpdateGraphNodeRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let payload = update_node_metadata_at_path(session_database_path(&request)?, &input)?;
+        return respond_json(request, StatusCode(200), payload);
+    }
+
+    if method == Method::Post && path == "/graph/connect" {
+        let body = read_body(&mut request)?;
+        let input: ConnectGraphNodesRequest =
+            serde_json::from_str(&body).map_err(|error| error.to_string())?;
+        let local = connect_graph_nodes_locally_at_path(session_database_path(&request)?, &input)?;
+        return respond_json(request, StatusCode(200), local.relationship);
     }
 
     if method == Method::Get && path == "/graph/search" {
@@ -234,8 +665,7 @@ fn handle_request(
             };
             let decoded =
                 decode_query_component(graph_node_id).unwrap_or_else(|| graph_node_id.to_string());
-            let repo =
-                GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
+            let repo = GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
             let payload = graph_state
                 .runtime
                 .block_on(repo.get_node(&decoded))?
@@ -252,11 +682,8 @@ fn handle_request(
             };
             let decoded = decode_query_component(operator_graph_node_id)
                 .unwrap_or_else(|| operator_graph_node_id.to_string());
-            let repo =
-                GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
-            let payload = graph_state
-                .runtime
-                .block_on(repo.archetypal_lighting(&decoded))?;
+            let repo = GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
+            let payload = graph_state.runtime.block_on(repo.archetypal_lighting(&decoded))?;
             return respond_json(request, StatusCode(200), payload);
         }
     }
@@ -269,11 +696,8 @@ fn handle_request(
             };
             let decoded =
                 decode_query_component(graph_node_id).unwrap_or_else(|| graph_node_id.to_string());
-            let repo =
-                GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
-            let payload = graph_state
-                .runtime
-                .block_on(repo.resonances_for_instance(&decoded))?;
+            let repo = GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
+            let payload = graph_state.runtime.block_on(repo.resonances_for_instance(&decoded))?;
             return respond_json(request, StatusCode(200), payload);
         }
     }
@@ -316,7 +740,6 @@ fn handle_request(
             };
             payload.database_path = database_path;
             payload.constellation_id = constellation_id;
-
             return match persist_constellation_document_at(payload) {
                 Ok(persisted) => respond_json(request, StatusCode(200), persisted),
                 Err(error) => respond_error(request, StatusCode(500), &error),
@@ -363,7 +786,7 @@ fn handle_request(
                 database_path,
                 canvas_id: query_param(&url, "canvasId").unwrap_or_default(),
             })
-            .map_err(|e| e.to_string())?;
+            .map_err(|error| error.to_string())?;
             return respond_json(request, StatusCode(200), payload);
         }
 
@@ -373,33 +796,32 @@ fn handle_request(
                 .to_string();
             let body = read_body(&mut request)?;
             let input: serde_json::Value =
-                serde_json::from_str(&body).map_err(|e| e.to_string())?;
+                serde_json::from_str(&body).map_err(|error| error.to_string())?;
             let payload = create_saved_sequence_command(CreateSavedSequenceRequest {
                 database_path,
                 constellation_id: constellation_id.clone(),
                 canvas_id: input["canvasId"].as_str().unwrap_or_default().to_string(),
                 name: input["name"].as_str().unwrap_or("Untitled").to_string(),
             })
-            .map_err(|e| e.to_string())?;
+            .map_err(|error| error.to_string())?;
             return respond_json(request, StatusCode(201), payload);
         }
     }
 
     if let Some(sequence_id) = path.strip_prefix("/workspace/constellation/sequences/") {
         let sequence_id = sequence_id.to_string();
-
         if method == Method::Put {
             let database_path = session_database_path(&request)?
                 .to_string_lossy()
                 .to_string();
             let body = read_body(&mut request)?;
             let input: serde_json::Value =
-                serde_json::from_str(&body).map_err(|e| e.to_string())?;
+                serde_json::from_str(&body).map_err(|error| error.to_string())?;
             let edge_ids: Vec<String> = input["edgeIds"]
                 .as_array()
                 .unwrap_or(&vec![])
                 .iter()
-                .filter_map(|v| v.as_str().map(ToOwned::to_owned))
+                .filter_map(|value| value.as_str().map(ToOwned::to_owned))
                 .collect();
             let payload = update_saved_sequence_command(UpdateSavedSequenceRequest {
                 database_path,
@@ -408,7 +830,7 @@ fn handle_request(
                 root_node_id: input["rootNodeId"].as_str().map(ToOwned::to_owned),
                 edge_ids,
             })
-            .map_err(|e| e.to_string())?;
+            .map_err(|error| error.to_string())?;
             return respond_json(request, StatusCode(200), payload);
         }
 
@@ -420,7 +842,7 @@ fn handle_request(
                 database_path,
                 id: sequence_id,
             })
-            .map_err(|e| e.to_string())?;
+            .map_err(|error| error.to_string())?;
             return respond_json(request, StatusCode(200), json!({ "ok": true }));
         }
     }
@@ -432,7 +854,6 @@ fn handle_request(
         } else {
             serde_json::from_str(&body).map_err(|error| error.to_string())?
         };
-
         let workdir = payload
             .workdir
             .map(std::path::PathBuf::from)
@@ -475,7 +896,6 @@ fn handle_request(
         }
 
         let body = read_body(&mut request)?;
-
         if method == Method::Post && action == "input" {
             let payload: BrowserTerminalInput = if body.is_empty() {
                 BrowserTerminalInput { input: None }
@@ -525,6 +945,15 @@ fn read_body(request: &mut tiny_http::Request) -> Result<String, String> {
     Ok(body)
 }
 
+fn read_body_bytes(request: &mut tiny_http::Request) -> Result<Vec<u8>, String> {
+    let mut body = Vec::new();
+    request
+        .as_reader()
+        .read_to_end(&mut body)
+        .map_err(|error| error.to_string())?;
+    Ok(body)
+}
+
 fn respond_json<T: serde::Serialize>(
     request: tiny_http::Request,
     status: StatusCode,
@@ -570,7 +999,6 @@ fn session_database_path(request: &tiny_http::Request) -> Result<std::path::Path
             }
         })
         .or_else(|| query_param(request.url(), "sessionId"));
-
     default_database_path(session_id.as_deref())
 }
 
@@ -591,7 +1019,6 @@ fn decode_query_component(value: &str) -> Option<String> {
     let bytes = value.as_bytes();
     let mut decoded = Vec::with_capacity(bytes.len());
     let mut index = 0;
-
     while index < bytes.len() {
         match bytes[index] {
             b'%' if index + 2 < bytes.len() => {
@@ -610,7 +1037,6 @@ fn decode_query_component(value: &str) -> Option<String> {
             }
         }
     }
-
     String::from_utf8(decoded).ok()
 }
 
@@ -624,7 +1050,6 @@ mod tests {
             "/workspace/file-content?path=%2Ftmp%2FMy%20Project%2FREADME.md",
             "path",
         );
-
         assert_eq!(value.as_deref(), Some("/tmp/My Project/README.md"));
     }
 }

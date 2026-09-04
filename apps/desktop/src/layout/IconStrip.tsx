@@ -1,9 +1,11 @@
+import { ProjectsLayer } from "./ProjectsLayer";
+
 interface IconStripProps {
   browserActive: boolean;
-  activeLeftMode: "files" | "search" | "annotations";
+  activeLeftMode: "projects" | "files" | "search" | "annotations";
   onToggleBrowser: () => void;
-  onSetBrowserMode: (mode: "files" | "search" | "annotations") => void;
-  onPreviewBrowserMode?: (mode: "files" | "search" | "annotations") => void;
+  onSetBrowserMode: (mode: "projects" | "files" | "search" | "annotations") => void;
+  onPreviewBrowserMode?: (mode: "projects" | "files" | "search" | "annotations") => void;
   onBrowserInteractionStart?: () => void;
   onBrowserInteractionEnd?: () => void;
   onOpenSequences: () => void;
@@ -15,6 +17,11 @@ interface IconStripProps {
 }
 
 const NAV_ICONS: { id: string; label: string; svg: string }[] = [
+  {
+    id: "projects",
+    label: "Projects",
+    svg: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 5h4l1.5 2H14v6H2z"/><path d="M2 5V3h3.5l1.5 2"/></svg>`,
+  },
   {
     id: "files",
     label: "Files & Constellation",
@@ -39,12 +46,11 @@ const NAV_ICONS: { id: string; label: string; svg: string }[] = [
 
 export function IconStrip({ browserActive, activeLeftMode, onToggleBrowser, onSetBrowserMode, onPreviewBrowserMode, onBrowserInteractionStart, onBrowserInteractionEnd, onOpenSequences, onOpenSettings, inspectorActive, onToggleInspector, terminalActive, onToggleTerminal }: IconStripProps) {
   const handleNavClick = (id: string) => {
-    if (id === "files" || id === "search" || id === "annotate") {
-      // Uniform verb pattern: Files/Search/Annotate all set the shared
+    if (id === "projects" || id === "files" || id === "search" || id === "annotate") {
+      // Uniform verb pattern: Projects/Files/Search/Annotate all set the shared
       // leftMode, so the panel can never get stranded on another mode's
-      // view (e.g. Files being un-closable while leftMode="annotations").
-      // Re-clicking the already-active mode toggles the browser closed.
-      const mode = id === "annotate" ? "annotations" : (id as "files" | "search");
+      // view. Re-clicking the already-active mode toggles the browser closed.
+      const mode = id === "annotate" ? "annotations" : (id as "projects" | "files" | "search");
       if (browserActive && activeLeftMode === mode) {
         onToggleBrowser();
       } else {
@@ -65,12 +71,16 @@ export function IconStrip({ browserActive, activeLeftMode, onToggleBrowser, onSe
       onFocusCapture={onBrowserInteractionStart}
       onBlurCapture={onBrowserInteractionEnd}
     >
+      <div className="icon-strip__top">
+        <ProjectsLayer />
+      </div>
       <div className="icon-strip__nav">
         {NAV_ICONS.map((icon) => (
           <button
             key={icon.id}
             className="icon-strip__btn"
             data-active={
+              (icon.id === "projects" && browserActive && activeLeftMode === "projects") ||
               (icon.id === "files" && browserActive && activeLeftMode === "files") ||
               (icon.id === "search" && browserActive && activeLeftMode === "search") ||
               (icon.id === "annotate" && browserActive && activeLeftMode === "annotations")
@@ -81,8 +91,8 @@ export function IconStrip({ browserActive, activeLeftMode, onToggleBrowser, onSe
             aria-label={icon.label}
             onClick={() => handleNavClick(icon.id)}
             onPointerEnter={() => {
-              if (icon.id === "files" || icon.id === "search" || icon.id === "annotate") {
-                onPreviewBrowserMode?.(icon.id === "annotate" ? "annotations" : icon.id);
+              if (icon.id === "projects" || icon.id === "files" || icon.id === "search" || icon.id === "annotate") {
+                onPreviewBrowserMode?.(icon.id === "annotate" ? "annotations" : icon.id as "projects" | "files" | "search");
                 onBrowserInteractionStart?.();
               }
             }}

@@ -18,6 +18,7 @@
   "evidenceStatus": "documented",
   "temporalRole": "occurred_at",
   "placeCoverage": "resolved",
+  "place": null,
   "qlForm": "partial_positional_map",
   "qlUnitId": "ql-unit-council-of-florence",
   "qlArc": "braided",

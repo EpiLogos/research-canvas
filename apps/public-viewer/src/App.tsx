@@ -5,9 +5,10 @@ import type { ExportBundle } from "@research-canvas/schema";
 import { buildExportManifest } from "@research-canvas/exporter";
 
 import { MobileFallback } from "./routes/MobileFallback";
-import { MapView } from "./routes/MapView";
+import { IndexView } from "./routes/IndexView";
 import { NodePage } from "./routes/NodePage";
 import { SequenceView } from "./routes/SequenceView";
+import { StoryView } from "./routes/StoryView";
 import { readBootstrappedBundle } from "./OfflineBootstrap";
 
 interface AppProps {
@@ -36,11 +37,15 @@ export function App({ bundle: bundleProp = null }: AppProps) {
     return <SequenceView bundle={bundle} />;
   }
 
+  if (route.type === "story") {
+    return <StoryView />;
+  }
+
   if (isMobile) {
     return <MobileFallback bundle={bundle} />;
   }
 
-  return <MapView bundle={bundle} manifest={manifest} />;
+  return <IndexView bundle={bundle} manifest={manifest} />;
 }
 
 function useViewerBundle(bundle: ExportBundle | null) {
@@ -123,6 +128,10 @@ function getViewerRoute() {
   const sequenceMatch = path.match(/\/sequences\/([^/]+)$/);
   if (sequenceMatch) {
     return { id: decodeURIComponent(sequenceMatch[1]), type: "sequence" as const };
+  }
+
+  if (path.startsWith("/stories") || path.startsWith("/story")) {
+    return { type: "story" as const };
   }
 
   return { type: "map" as const };

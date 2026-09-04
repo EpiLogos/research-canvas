@@ -135,12 +135,14 @@ export function createSampleExportBundle(): ExportBundle {
       id: projectId,
       parentConstellationId: null,
       primaryCanvasId: canvasId,
+      profileScope: "bootstrapping",
       publishSettings: {
         includeResources: true,
         mobileSequenceFirst: true,
         theme: "paper"
       },
       rootPath: sampleProjectRoot,
+      rootType: "directory",
       slug: "sample-project",
       summary: "Seed workspace for exporter and viewer flows",
       updatedAt: "2026-03-30T22:00:00Z"

@@ -481,3 +481,282 @@
   color: #6f6f7d;
   text-transform: uppercase;
 }
+
+.timeline-frame {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid #3b3b46;
+  border-radius: 6px;
+  background: #1b1b22;
+}
+
+.timeline-frame-crumb {
+  font-size: 11px;
+  color: #c8c8d2;
+  text-transform: none;
+}
+
+.timeline-frame-action,
+.timeline-frame button {
+  font-size: 11px;
+  color: #9cc4ff;
+  background: transparent;
+  border: 1px solid #3b3b46;
+  border-radius: 5px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.timeline-hover-lane {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 12px;
+  border-bottom: 1px dashed #3b3b46;
+  background: #17171d;
+}
+
+.timeline-hover-chip {
+  font-size: 11px;
+  color: #d8a8ff;
+  background: #241b2e;
+  border: 1px solid #4a3560;
+  border-radius: 999px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+/* Ticket #28: working-set stack + global/temporal walk. These are bottom
+   panels of the timeline lens: relational depth on demand (the stack) and the
+   traversable spine of located, dated events with sub-timelines framed in
+   place (the walk). */
+
+.timeline-working-set,
+.timeline-walk {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 40%;
+  padding: 8px 12px 10px;
+  border-top: 1px solid #1d1d24;
+  background: #101016;
+  overflow: auto;
+}
+
+.timeline-working-set__header,
+.timeline-walk__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: #9a9aa8;
+}
+
+.timeline-working-set__header strong,
+.timeline-walk__header strong {
+  color: #d8dde7;
+}
+
+.timeline-working-set__header button {
+  padding: 2px 8px;
+  border: 1px solid #3b3b46;
+  border-radius: 5px;
+  background: transparent;
+  color: #9cc4ff;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.timeline-working-set__stack,
+.timeline-walk__stops {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.timeline-working-set__stack > li {
+  padding: 6px 8px;
+  border: 1px solid #2a2a32;
+  border-radius: 6px;
+  background: #15151b;
+}
+
+.timeline-working-set__subject {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.timeline-working-set__subject button {
+  border: none;
+  background: transparent;
+  color: #79c0d4;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  text-align: left;
+}
+
+.timeline-working-set__unload {
+  padding: 2px 8px;
+  border: 1px solid #4a3560;
+  border-radius: 5px;
+  background: #241b2e;
+  color: #d8a8ff;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.timeline-working-set__edges {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.timeline-working-set__edges > li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 6px;
+  border: 1px dashed #2a3446;
+  border-radius: 5px;
+  font-size: 11px;
+}
+
+.timeline-working-set__edge-kind {
+  font-family: var(--ob-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10px;
+  color: #b98a3e;
+  text-transform: lowercase;
+}
+
+.timeline-working-set__edge-target button {
+  border: none;
+  background: transparent;
+  color: #79c0d4;
+  font: inherit;
+  cursor: pointer;
+}
+
+.timeline-working-set__deep {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 2px 0 0;
+  font-size: 10px;
+  color: #788397;
+}
+
+.timeline-working-set__deep div {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.timeline-working-set__deep dt {
+  color: #6f6f7d;
+}
+
+.timeline-working-set__deep dd {
+  margin: 0;
+  color: #c8c8d2;
+}
+
+.timeline-working-set__empty {
+  margin: 4px 0 0;
+  font-size: 10px;
+  color: #6f6f7d;
+}
+
+.timeline-walk__counts {
+  font-size: 10px;
+  color: #707887;
+}
+
+.timeline-walk__stops > li {
+  display: grid;
+  grid-template-columns: 1.4rem 5.4rem minmax(0, 1fr);
+  gap: 6px;
+  align-items: baseline;
+  padding: 4px 6px;
+  border-radius: 5px;
+  font-size: 11px;
+}
+
+.timeline-walk__stops > li[data-located="true"] {
+  background: rgba(38, 55, 70, 0.4);
+}
+
+.timeline-walk__index {
+  color: #6f6f7d;
+  font-family: var(--ob-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10px;
+  text-align: right;
+}
+
+.timeline-walk__date {
+  font-family: var(--ob-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 10px;
+  color: #79c0d4;
+}
+
+.timeline-walk__title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.timeline-walk__title button {
+  border: none;
+  background: transparent;
+  color: #d8dde7;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-walk__place {
+  color: #b98a3e;
+  font-size: 10px;
+}
+
+.timeline-walk__frame {
+  grid-column: 3;
+  list-style: none;
+  margin: 0;
+  padding: 2px 0 0 1.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.timeline-walk__frame li {
+  padding: 1px 6px;
+  border: 1px solid #3b3b46;
+  border-radius: 999px;
+  font-size: 10px;
+  color: #aab5c4;
+}
+
+.timeline-walk__empty {
+  margin: 0;
+  font-size: 11px;
+  color: #6f6f7d;
+}

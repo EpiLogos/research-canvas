@@ -1,7 +1,7 @@
 import { describe, expect, it, test } from "vitest";
 import { EMPTY_GRAPH_NODE_METADATA } from "@research-canvas/schema";
 import { createTimelineStore } from "./timelineStore";
-import type { ArchetypalLighting, GraphNode, TimelineViewNode } from "./contracts";
+import type { ArchetypalLighting, ExpandedTimelineNode, GraphNode, TimelineViewNode } from "./contracts";
 import { pixelToYear } from "./viewport";
 
 test("persisted timeline override updates presentation without changing date-derived time", () => {
@@ -59,6 +59,15 @@ function record(over: Partial<GraphNode>): TimelineViewNode {
 
 function view(nodes: TimelineViewNode[]) {
   return { workspaceId: "sqlite:/test", nodes, relationships: [], lanes: [{ id: "events" }], diagnostics: [] };
+}
+
+function expansion(over: Partial<ExpandedTimelineNode>): ExpandedTimelineNode {
+  return {
+    subjectGraphNodeId: over.subjectGraphNodeId ?? "event-1",
+    subject: over.subject ?? node({ graphNodeId: "event-1", title: "Event One" }),
+    edges: over.edges ?? [],
+    neighbours: over.neighbours ?? [],
+  };
 }
 
 describe("timelineStore", () => {
@@ -124,6 +133,75 @@ describe("timelineStore", () => {
     expect(store.getState().tier()).toBe("event");
   });
 
+  test("setFrameForNode opens a window-bounded sub-timeline with hovering trans-temporal nodes", () => {
+    const store = createTimelineStore();
+    store.getState().hydrate({
+      workspaceId: "sqlite:/test",
+      nodes: [
+        record({ graphNodeId: "florence", entityType: "Place", title: "Florence", validFrom: "1400-01-01", validTo: "1500-12-31" }),
+        record({ graphNodeId: "council", title: "Council of Florence", validFrom: "1438-04-09", validTo: "1445-08-07" }),
+        record({ graphNodeId: "balfour", title: "Balfour Declaration", validFrom: "1917-01-01" }),
+        record({ graphNodeId: "monopoly", entityType: "Archetype", title: "Monopoly mechanism", isTemporal: false, validFrom: null }),
+      ],
+      relationships: [
+        { id: "r1", relType: "LOCATED_AT", sourceGraphNodeId: "council", targetGraphNodeId: "florence", properties: {} },
+        { id: "r2", relType: "INSTANTIATES", sourceGraphNodeId: "council", targetGraphNodeId: "monopoly", properties: {} },
+      ],
+      lanes: [{ id: "events" }],
+      diagnostics: [],
+    });
+
+    store.getState().setFrameForNode("council");
+    expect(store.getState().frame?.title).toBe("Council of Florence");
+    expect(store.getState().items.map((item) => item.graphNodeId)).toEqual([
+      "florence",
+      "council",
+    ]);
+    expect(store.getState().hovering.map((hover) => hover.graphNodeId)).toEqual([
+      "monopoly",
+    ]);
+
+    store.getState().setFrameForNode(null);
+    expect(store.getState().frame).toBeNull();
+    expect(store.getState().items.map((item) => item.graphNodeId).sort()).toEqual([
+      "balfour",
+      "council",
+      "florence",
+    ]);
+    expect(store.getState().hovering).toEqual([]);
+  });
+
+  test("hydrate preserves an active frame and refreshes its window", () => {
+    const store = createTimelineStore();
+    store.getState().hydrate({
+      workspaceId: "sqlite:/test",
+      nodes: [record({ graphNodeId: "florence", entityType: "Place", title: "Florence", validFrom: "1400-01-01", validTo: "1500-12-31" })],
+      relationships: [],
+      lanes: [{ id: "events" }],
+      diagnostics: [],
+    });
+    store.getState().setFrameForNode("florence");
+
+    store.getState().hydrate({
+      workspaceId: "sqlite:/test",
+      nodes: [
+        record({ graphNodeId: "florence", entityType: "Place", title: "Florence", validFrom: "1400-01-01", validTo: "1500-12-31" }),
+        record({ graphNodeId: "council", title: "Council of Florence", validFrom: "1438-04-09", validTo: "1445-08-07" }),
+      ],
+      relationships: [
+        { id: "r1", relType: "LOCATED_AT", sourceGraphNodeId: "council", targetGraphNodeId: "florence", properties: {} },
+      ],
+      lanes: [{ id: "events" }],
+      diagnostics: [],
+    });
+
+    expect(store.getState().frame?.frameNodeId).toBe("florence");
+    expect(store.getState().items.map((item) => item.graphNodeId)).toEqual([
+      "florence",
+      "council",
+    ]);
+  });
+
   test("pan shifts centerYear, zoom changes pixelsPerYear", () => {
     const store = createTimelineStore({ initialCenterYear: 1600, initialPixelsPerYear: 2 });
     store.getState().setWidth(1000);
@@ -171,6 +249,100 @@ describe("timelineStore", () => {
       height: 118,
       style: {},
     });
+  });
+});
+
+describe("working-set stack (ticket #28)", () => {
+  test("expandNode pushes a clicked node with its real edges and neighbours onto the stack", () => {
+    const store = createTimelineStore();
+    const subject = node({ graphNodeId: "event-1", title: "Event One" });
+    const neighbour = node({ graphNodeId: "arch-1", entityType: "Archetype", title: "Monopoly", isTemporal: false });
+    store.getState().expandNode(expansion({
+      subjectGraphNodeId: "event-1",
+      subject,
+      edges: [{ id: "e1", relType: "INSTANTIATES", sourceGraphNodeId: "event-1", targetGraphNodeId: "arch-1", properties: { dominance: "dominant", temporal_precision: "century" } }],
+      neighbours: [neighbour],
+    }));
+
+    expect(store.getState().workingSet).toHaveLength(1);
+    const entry = store.getState().workingSet[0];
+    expect(entry.graphNodeId).toBe("event-1");
+    expect(entry.node.title).toBe("Event One");
+    expect(entry.edges.map((edge) => edge.relType)).toEqual(["INSTANTIATES"]);
+    expect(entry.neighbours.map((n) => n.graphNodeId)).toEqual(["arch-1"]);
+    expect(store.getState().isNodeExpanded("event-1")).toBe(true);
+    expect(store.getState().isNodeExpanded("other")).toBe(false);
+  });
+
+  test("clicks accumulate on the stack; the latest click sits on top", () => {
+    const store = createTimelineStore();
+    store.getState().expandNode(expansion({ subjectGraphNodeId: "a", subject: node({ graphNodeId: "a", title: "A" }) }));
+    store.getState().expandNode(expansion({ subjectGraphNodeId: "b", subject: node({ graphNodeId: "b", title: "B" }) }));
+    store.getState().expandNode(expansion({ subjectGraphNodeId: "c", subject: node({ graphNodeId: "c", title: "C" }) }));
+
+    expect(store.getState().workingSet.map((entry) => entry.graphNodeId)).toEqual(["a", "b", "c"]);
+
+    store.getState().popWorkingSet();
+    expect(store.getState().workingSet.map((entry) => entry.graphNodeId)).toEqual(["a", "b"]);
+  });
+
+  test("re-expanding an already-stacked node refreshes it in place without reordering", () => {
+    const store = createTimelineStore();
+    store.getState().expandNode(expansion({ subjectGraphNodeId: "a", subject: node({ graphNodeId: "a", title: "A" }) }));
+    store.getState().expandNode(expansion({ subjectGraphNodeId: "b", subject: node({ graphNodeId: "b", title: "B" }) }));
+
+    const refreshed = expansion({
+      subjectGraphNodeId: "a",
+      subject: node({ graphNodeId: "a", title: "A refreshed" }),
+      edges: [{ id: "e2", relType: "ECHOES", sourceGraphNodeId: "a", targetGraphNodeId: "c", properties: { mode: "temporal" } }],
+      neighbours: [node({ graphNodeId: "c", title: "C" })],
+    });
+    store.getState().expandNode(refreshed);
+
+    expect(store.getState().workingSet.map((entry) => entry.graphNodeId)).toEqual(["a", "b"]);
+    expect(store.getState().workingSet[0].node.title).toBe("A refreshed");
+    expect(store.getState().workingSet[0].edges).toHaveLength(1);
+  });
+
+  test("collapseNode removes one clicked node (and its edges) from the working set", () => {
+    const store = createTimelineStore();
+    store.getState().expandNode(expansion({ subjectGraphNodeId: "a" }));
+    store.getState().expandNode(expansion({ subjectGraphNodeId: "b" }));
+
+    store.getState().collapseNode("a");
+
+    expect(store.getState().workingSet.map((entry) => entry.graphNodeId)).toEqual(["b"]);
+    expect(store.getState().isNodeExpanded("a")).toBe(false);
+  });
+
+  test("clearWorkingSet empties the stack", () => {
+    const store = createTimelineStore();
+    store.getState().expandNode(expansion({ subjectGraphNodeId: "a" }));
+    store.getState().expandNode(expansion({ subjectGraphNodeId: "b" }));
+
+    store.getState().clearWorkingSet();
+
+    expect(store.getState().workingSet).toEqual([]);
+    expect(store.getState().isNodeExpanded("a")).toBe(false);
+  });
+
+  test("working set is independent of the timeline items; the base view stays light", () => {
+    const store = createTimelineStore();
+    store.getState().hydrate(view([
+      record({ graphNodeId: "event-1", validFrom: "1600-01-01" }),
+      record({ graphNodeId: "event-2", validFrom: "1900-01-01" }),
+    ]));
+    expect(store.getState().items.map((item) => item.graphNodeId)).toEqual(["event-1", "event-2"]);
+
+    // Expanding an atemporal archetype loads its relational depth but must not
+    // add it to the dated base view.
+    store.getState().expandNode(expansion({
+      subjectGraphNodeId: "arch-1",
+      subject: node({ graphNodeId: "arch-1", entityType: "Archetype", isTemporal: false }),
+    }));
+
+    expect(store.getState().items.map((item) => item.graphNodeId)).toEqual(["event-1", "event-2"]);
+    expect(store.getState().workingSet.map((entry) => entry.graphNodeId)).toEqual(["arch-1"]);
   });
 });
 

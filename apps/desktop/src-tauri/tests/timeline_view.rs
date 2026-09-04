@@ -402,3 +402,109 @@ fn request_filters_deserialize_as_controlled_contract_values() {
     }))
     .is_err());
 }
+
+#[test]
+fn expand_timeline_node_loads_edges_and_neighbours_with_properties() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("timeline-expand.sqlite");
+    let db = Database::open(&path).unwrap();
+    // Two dated events plus an atemporal archetype; event-1 relates to both.
+    db.connection().execute_batch(r##"
+        INSERT INTO graph_node_metadata(graph_node_id,entity_type,title,content_origin,content_revision,is_temporal,valid_from,temporal_precision,schema_version,sync_state)
+        VALUES
+          ('event-1','Event','Event One','user_authored',1,1,'1900','year',1,'pending'),
+          ('event-2','Event','Event Two','user_authored',1,1,'1910','year',1,'pending'),
+          ('arch-1','Archetype','Archetype','user_authored',1,0,NULL,NULL,1,'pending');
+        INSERT INTO node_document(graph_node_id,body,summary,updated_at,content_origin,content_revision)
+        VALUES
+          ('event-1','event-1 body','face one','2026-07-12T00:00:00Z','user_authored',1),
+          ('event-2','event-2 body','face two','2026-07-12T00:00:00Z','user_authored',1),
+          ('arch-1','arch body','face arch','2026-07-12T00:00:00Z','user_authored',1);
+        INSERT INTO graph_relationship(relationship_id,source_graph_node_id,target_graph_node_id,rel_type,properties_json,source_coordinates_json,evidence_tags_json,origin,sync_state,relationship_revision)
+        VALUES
+          ('rel-1','event-1','arch-1','INSTANTIATES','{"dominance":"dominant","evidence_tags":["documented"],"source_coordinates":["vault/ep-2/timeline.md"]}','[]','[]','seed','synced',0),
+          ('rel-2','event-1','event-2','INFLUENCES','{"temporal_precision":"year"}','[]','[]','seed','synced',0),
+          ('rel-3','event-2','arch-1','ECHOES','{"dominance":"secondary"}','[]','[]','seed','synced',0);
+    "##).unwrap();
+    let workspace_id = timeline_workspace_identity(&path).unwrap();
+
+    let view = load_timeline_view_at_path(
+        &path,
+        LoadTimelineViewRequest {
+            workspace_id: workspace_id.clone(),
+            filters: Default::default(),
+            range: None,
+        },
+    )
+    .unwrap();
+    assert_eq!(view.nodes.len(), 2, "base view stays dated-events-only");
+    assert_eq!(view.nodes[0].node.graph_node_id, "event-1");
+    assert_eq!(view.nodes[1].node.graph_node_id, "event-2");
+
+    let expansion =
+        research_canvas_desktop_lib::commands::timeline::expand_timeline_node_at_path(
+            &path,
+            &workspace_id,
+            "event-1",
+        )
+        .unwrap();
+    assert_eq!(expansion.subject_graph_node_id, "event-1");
+    assert_eq!(expansion.subject.title, "Event One");
+    assert_eq!(expansion.subject.body, "event-1 body");
+    // Deep properties ride through untouched on the edge payloads.
+    assert_eq!(expansion.edges.len(), 2);
+    let instantiates = expansion
+        .edges
+        .iter()
+        .find(|edge| edge.rel_type == "INSTANTIATES")
+        .expect("INSTANTIATES edge");
+    assert_eq!(instantiates.source_graph_node_id, "event-1");
+    assert_eq!(instantiates.target_graph_node_id, "arch-1");
+    assert_eq!(instantiates.properties["dominance"], json!("dominant"));
+    assert_eq!(
+        instantiates.properties["source_coordinates"][0],
+        json!("vault/ep-2/timeline.md")
+    );
+    let influences = expansion
+        .edges
+        .iter()
+        .find(|edge| edge.rel_type == "INFLUENCES")
+        .expect("INFLUENCES edge");
+    assert_eq!(influences.properties["temporal_precision"], json!("year"));
+    // Both neighbours resolved property-complete from the local projection.
+    let neighbour_ids = expansion
+        .neighbours
+        .iter()
+        .map(|node| node.graph_node_id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(neighbour_ids.len(), 2);
+    assert!(neighbour_ids.contains(&"arch-1"));
+    assert!(neighbour_ids.contains(&"event-2"));
+    let arch = expansion
+        .neighbours
+        .iter()
+        .find(|node| node.graph_node_id == "arch-1")
+        .expect("arch neighbour");
+    assert_eq!(arch.body, "arch body");
+
+    // A non-temporal node can also be expanded: the stack is the user's own
+    // exploration surface, not a temporal filter.
+    let arch_expansion =
+        research_canvas_desktop_lib::commands::timeline::expand_timeline_node_at_path(
+            &path,
+            &workspace_id,
+            "arch-1",
+        )
+        .unwrap();
+    assert_eq!(arch_expansion.edges.len(), 2);
+    assert_eq!(arch_expansion.neighbours.len(), 2);
+
+    // Unknown subject fails closed.
+    let missing = research_canvas_desktop_lib::commands::timeline::expand_timeline_node_at_path(
+        &path,
+        &workspace_id,
+        "event-999",
+    )
+    .expect_err("missing subject must error");
+    assert!(missing.contains("does not exist"));
+}

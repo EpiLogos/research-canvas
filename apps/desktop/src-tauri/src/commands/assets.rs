@@ -529,6 +529,12 @@ fn graph_node_from_local_projection(
         evidence_status: metadata.evidence_status,
         temporal_role: metadata.temporal_role,
         place_coverage: metadata.place_coverage,
+        place: metadata
+            .place
+            .as_deref()
+            .map(serde_json::from_str)
+            .transpose()
+            .map_err(|error| format!("stored place projection is not valid JSON: {error}"))?,
         ql_form: metadata.ql_form,
         ql_unit_id: metadata.ql_unit_id,
         ql_arc: metadata.ql_arc,

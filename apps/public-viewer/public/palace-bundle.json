@@ -1,0 +1,1069 @@
+{
+  "formatVersion": 1,
+  "profileScope": "bootstrapping",
+  "scene": {
+    "profileScope": "bootstrapping",
+    "rooms": [
+      {
+        "id": "chamber:container",
+        "title": "container",
+        "anchorGraphNodeId": "container",
+        "center": {
+          "x": -0.3053111144341529,
+          "y": 0,
+          "z": 0.2639556328766048
+        },
+        "size": {
+          "width": 5.721005656477064,
+          "depth": 2.57684909963049,
+          "height": 3.1999440348744392
+        },
+        "rotationY": 3.0487224153430263,
+        "form": "alcove",
+        "interiorFaces": [
+          {
+            "face": "north",
+            "qlPosition": 3
+          },
+          {
+            "face": "south",
+            "qlPosition": 1
+          },
+          {
+            "face": "east",
+            "qlPosition": 2
+          },
+          {
+            "face": "west",
+            "qlPosition": 4
+          },
+          {
+            "face": "floor",
+            "qlPosition": 0
+          },
+          {
+            "face": "ceiling",
+            "qlPosition": 5
+          }
+        ],
+        "exteriorFace": "north",
+        "exteriorConjugate": 2,
+        "members": [
+          {
+            "nodeId": "container",
+            "title": "container",
+            "face": "center",
+            "qlPosition": null
+          },
+          {
+            "nodeId": "council",
+            "title": "Council of Florence",
+            "face": "center",
+            "qlPosition": null
+          },
+          {
+            "nodeId": "florence",
+            "title": "Florence",
+            "face": "center",
+            "qlPosition": null
+          },
+          {
+            "nodeId": "root",
+            "title": "root",
+            "face": "center",
+            "qlPosition": null
+          },
+          {
+            "nodeId": "monopoly",
+            "title": "Monopoly mechanism",
+            "face": "center",
+            "qlPosition": null
+          },
+          {
+            "nodeId": "banda",
+            "title": "Banda genocide",
+            "face": "center",
+            "qlPosition": null
+          }
+        ],
+        "doorways": [
+          "north"
+        ]
+      },
+      {
+        "id": "chamber:tribunal",
+        "title": "Council of Trent",
+        "anchorGraphNodeId": "tribunal",
+        "center": {
+          "x": 9.123551132250578,
+          "y": 0,
+          "z": -0.5169764483347535
+        },
+        "size": {
+          "width": 7.44847151460126,
+          "depth": 6.644950682669878,
+          "height": 3.0736298532783985
+        },
+        "rotationY": 0.8273719236587561,
+        "form": "cube",
+        "interiorFaces": [
+          {
+            "face": "north",
+            "qlPosition": 3
+          },
+          {
+            "face": "south",
+            "qlPosition": 1
+          },
+          {
+            "face": "east",
+            "qlPosition": 2
+          },
+          {
+            "face": "west",
+            "qlPosition": 4
+          },
+          {
+            "face": "floor",
+            "qlPosition": 0
+          },
+          {
+            "face": "ceiling",
+            "qlPosition": 5
+          }
+        ],
+        "exteriorFace": "west",
+        "exteriorConjugate": 0,
+        "members": [
+          {
+            "nodeId": "tribunal",
+            "title": "Council of Trent",
+            "face": "center",
+            "qlPosition": null
+          },
+          {
+            "nodeId": "venice",
+            "title": "Venice",
+            "face": "center",
+            "qlPosition": null
+          }
+        ],
+        "doorways": [
+          "west"
+        ]
+      }
+    ],
+    "connections": [],
+    "objects": [
+      {
+        "id": "obj:council",
+        "roomId": "chamber:container",
+        "kind": "event",
+        "title": "Council of Florence",
+        "graphNodeId": "council",
+        "contentRef": null,
+        "placement": {
+          "surface": "floor",
+          "position": {
+            "x": -1.4685731650481324,
+            "y": 0.25,
+            "z": 0.17973013365747942
+          },
+          "rotationY": 3.0487224153430263,
+          "scale": 0.6
+        },
+        "isCurated": false
+      },
+      {
+        "id": "obj:florence",
+        "roomId": "chamber:container",
+        "kind": "place",
+        "title": "Florence",
+        "graphNodeId": "florence",
+        "contentRef": null,
+        "placement": {
+          "surface": "floor",
+          "position": {
+            "x": 1.0241121139889016,
+            "y": 0.25,
+            "z": 0.22080322518258144
+          },
+          "rotationY": 0.8273719236587561,
+          "scale": 0.6
+        },
+        "isCurated": false
+      },
+      {
+        "id": "obj:root",
+        "roomId": "chamber:container",
+        "kind": "image",
+        "title": "root",
+        "graphNodeId": "root",
+        "contentRef": null,
+        "placement": {
+          "surface": "floor",
+          "position": {
+            "x": 0.8043703145183572,
+            "y": 0.25,
+            "z": 0.5338230388405412
+          },
+          "rotationY": 4.120625939673048,
+          "scale": 0.6
+        },
+        "isCurated": false
+      },
+      {
+        "id": "obj:monopoly",
+        "roomId": "chamber:container",
+        "kind": "image",
+        "title": "Monopoly mechanism",
+        "graphNodeId": "monopoly",
+        "contentRef": null,
+        "placement": {
+          "surface": "floor",
+          "position": {
+            "x": 0.3180431195565728,
+            "y": 0.25,
+            "z": 0.07557179981964701
+          },
+          "rotationY": 5.082776523529705,
+          "scale": 0.6
+        },
+        "isCurated": false
+      },
+      {
+        "id": "obj:banda",
+        "roomId": "chamber:container",
+        "kind": "event",
+        "title": "Banda genocide",
+        "graphNodeId": "banda",
+        "contentRef": null,
+        "placement": {
+          "surface": "floor",
+          "position": {
+            "x": 0.6412400739921038,
+            "y": 0.25,
+            "z": 0.2695760547433575
+          },
+          "rotationY": 2.5238670140831294,
+          "scale": 0.6
+        },
+        "isCurated": false
+      },
+      {
+        "id": "obj:container",
+        "roomId": "chamber:container",
+        "kind": "compressedConstellation",
+        "title": "container",
+        "graphNodeId": "container",
+        "contentRef": null,
+        "placement": {
+          "surface": "plinth",
+          "position": {
+            "x": -0.3053111144341529,
+            "y": 0.2,
+            "z": 0.2639556328766048
+          },
+          "rotationY": 0,
+          "scale": 1.1
+        },
+        "isCurated": false
+      },
+      {
+        "id": "obj:tribunal",
+        "roomId": "chamber:tribunal",
+        "kind": "event",
+        "title": "Council of Trent",
+        "graphNodeId": "tribunal",
+        "contentRef": null,
+        "placement": {
+          "surface": "floor",
+          "position": {
+            "x": 8.247902216720963,
+            "y": 0.25,
+            "z": 1.100493562459656
+          },
+          "rotationY": 3.0487224153430263,
+          "scale": 0.6
+        },
+        "isCurated": false
+      },
+      {
+        "id": "obj:venice",
+        "roomId": "chamber:tribunal",
+        "kind": "place",
+        "title": "Venice",
+        "graphNodeId": "venice",
+        "contentRef": null,
+        "placement": {
+          "surface": "floor",
+          "position": {
+            "x": 7.513714739162944,
+            "y": 0.25,
+            "z": -0.20257069204793382
+          },
+          "rotationY": 0.8273719236587561,
+          "scale": 0.6
+        },
+        "isCurated": false
+      }
+    ],
+    "collections": [
+      {
+        "id": "collection:chamber:container",
+        "roomId": "chamber:container",
+        "title": "container collection",
+        "objectIds": [
+          "obj:council",
+          "obj:florence",
+          "obj:root",
+          "obj:monopoly",
+          "obj:banda"
+        ],
+        "position": {
+          "shelf": 0,
+          "row": 0
+        }
+      },
+      {
+        "id": "collection:chamber:tribunal",
+        "roomId": "chamber:tribunal",
+        "title": "Council of Trent collection",
+        "objectIds": [
+          "obj:tribunal",
+          "obj:venice"
+        ],
+        "position": {
+          "shelf": 0,
+          "row": 0
+        }
+      }
+    ],
+    "fixtures": [
+      {
+        "id": "fixture:chamber:container:plaque",
+        "roomId": "chamber:container",
+        "kind": "titlePlaque",
+        "face": "north",
+        "title": "container",
+        "contentRef": null,
+        "sourceGraphNodeId": "container",
+        "anchor": {
+          "x": -0.3053111144341529,
+          "y": 1.1199804122060537,
+          "z": -1.02446891693864
+        },
+        "rotationY": 0,
+        "width": 1.6,
+        "height": 0.55
+      },
+      {
+        "id": "fixture:chamber:container:container",
+        "roomId": "chamber:container",
+        "kind": "textPanel",
+        "face": "south",
+        "title": "container",
+        "contentRef": null,
+        "sourceGraphNodeId": "container",
+        "anchor": {
+          "x": -2.8158139426726847,
+          "y": 1.1199804122060537,
+          "z": 1.5523801826918497
+        },
+        "rotationY": 3.141592653589793,
+        "width": 1.1,
+        "height": 0.7
+      },
+      {
+        "id": "fixture:chamber:container:council",
+        "roomId": "chamber:container",
+        "kind": "textPanel",
+        "face": "east",
+        "title": "Council of Florence",
+        "contentRef": null,
+        "sourceGraphNodeId": "council",
+        "anchor": {
+          "x": 2.555191713804379,
+          "y": 1.1199804122060537,
+          "z": -0.6744689169386402
+        },
+        "rotationY": 1.5707963267948966,
+        "width": 1.1,
+        "height": 0.7
+      },
+      {
+        "id": "fixture:chamber:container:florence",
+        "roomId": "chamber:container",
+        "kind": "textPanel",
+        "face": "north",
+        "title": "Florence",
+        "contentRef": null,
+        "sourceGraphNodeId": "florence",
+        "anchor": {
+          "x": -2.8158139426726847,
+          "y": 1.1199804122060537,
+          "z": -1.02446891693864
+        },
+        "rotationY": 0,
+        "width": 1.1,
+        "height": 0.7
+      },
+      {
+        "id": "fixture:chamber:container:root",
+        "roomId": "chamber:container",
+        "kind": "textPanel",
+        "face": "west",
+        "title": "root",
+        "contentRef": null,
+        "sourceGraphNodeId": "root",
+        "anchor": {
+          "x": -3.165813942672685,
+          "y": 1.1199804122060537,
+          "z": -0.6744689169386402
+        },
+        "rotationY": -1.5707963267948966,
+        "width": 1.1,
+        "height": 0.7
+      },
+      {
+        "id": "fixture:chamber:container:monopoly",
+        "roomId": "chamber:container",
+        "kind": "textPanel",
+        "face": "south",
+        "title": "Monopoly mechanism",
+        "contentRef": null,
+        "sourceGraphNodeId": "monopoly",
+        "anchor": {
+          "x": -1.811612811377272,
+          "y": 1.1199804122060537,
+          "z": 1.5523801826918497
+        },
+        "rotationY": 3.141592653589793,
+        "width": 1.1,
+        "height": 0.7
+      },
+      {
+        "id": "fixture:chamber:container:banda",
+        "roomId": "chamber:container",
+        "kind": "textPanel",
+        "face": "east",
+        "title": "Banda genocide",
+        "contentRef": null,
+        "sourceGraphNodeId": "banda",
+        "anchor": {
+          "x": 2.555191713804379,
+          "y": 1.1199804122060537,
+          "z": -0.29909909701254217
+        },
+        "rotationY": 1.5707963267948966,
+        "width": 1.1,
+        "height": 0.7
+      },
+      {
+        "id": "fixture:chamber:tribunal:plaque",
+        "roomId": "chamber:tribunal",
+        "kind": "titlePlaque",
+        "face": "west",
+        "title": "Council of Trent",
+        "contentRef": null,
+        "sourceGraphNodeId": "tribunal",
+        "anchor": {
+          "x": 5.399315374949948,
+          "y": 1.0757704486474393,
+          "z": -0.5169764483347535
+        },
+        "rotationY": -1.5707963267948966,
+        "width": 1.6,
+        "height": 0.55
+      },
+      {
+        "id": "fixture:chamber:tribunal:tribunal",
+        "roomId": "chamber:tribunal",
+        "kind": "textPanel",
+        "face": "south",
+        "title": "Council of Trent",
+        "contentRef": null,
+        "sourceGraphNodeId": "tribunal",
+        "anchor": {
+          "x": 5.749315374949948,
+          "y": 1.0757704486474393,
+          "z": 2.8054988930001854
+        },
+        "rotationY": 3.141592653589793,
+        "width": 1.1,
+        "height": 0.7
+      },
+      {
+        "id": "fixture:chamber:tribunal:venice",
+        "roomId": "chamber:tribunal",
+        "kind": "textPanel",
+        "face": "east",
+        "title": "Venice",
+        "contentRef": null,
+        "sourceGraphNodeId": "venice",
+        "anchor": {
+          "x": 12.847786889551207,
+          "y": 1.0757704486474393,
+          "z": -3.489451789669692
+        },
+        "rotationY": 1.5707963267948966,
+        "width": 1.1,
+        "height": 0.7
+      }
+    ],
+    "constellationObjects": [
+      {
+        "id": "constellation:chamber:container",
+        "roomId": "chamber:container",
+        "title": "container",
+        "nodes": [
+          {
+            "id": "container",
+            "title": "container",
+            "position": {
+              "x": 0.04546654276998827,
+              "y": -0.1629989962645979,
+              "z": -0.3340961108397365
+            }
+          },
+          {
+            "id": "council",
+            "title": "Council of Florence",
+            "position": {
+              "x": -1.976538639438369,
+              "y": 0.7264102558966947,
+              "z": 0.35935235862381426
+            }
+          },
+          {
+            "id": "florence",
+            "title": "Florence",
+            "position": {
+              "x": -1.9208333761632532,
+              "y": -0.20597774143667735,
+              "z": -1.2621806224105434
+            }
+          },
+          {
+            "id": "root",
+            "title": "root",
+            "position": {
+              "x": 2.2,
+              "y": -0.022562534302698053,
+              "z": 1.228923503774523
+            }
+          },
+          {
+            "id": "monopoly",
+            "title": "Monopoly mechanism",
+            "position": {
+              "x": 0.04691376851587767,
+              "y": -0.4,
+              "z": 1.1819439304016577
+            }
+          },
+          {
+            "id": "banda",
+            "title": "Banda genocide",
+            "position": {
+              "x": 1.33712635737065,
+              "y": 1.6,
+              "z": -1.0860202568083077
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "root",
+            "target": "container",
+            "relType": "ENCAPSULATES"
+          },
+          {
+            "source": "container",
+            "target": "council",
+            "relType": "ENCAPSULATES"
+          },
+          {
+            "source": "container",
+            "target": "monopoly",
+            "relType": "ENCAPSULATES"
+          },
+          {
+            "source": "container",
+            "target": "banda",
+            "relType": "ENCAPSULATES"
+          },
+          {
+            "source": "container",
+            "target": "florence",
+            "relType": "ENCAPSULATES"
+          },
+          {
+            "source": "council",
+            "target": "florence",
+            "relType": "LOCATED_AT"
+          }
+        ],
+        "center": {
+          "x": -0.3053111144341529,
+          "y": 0,
+          "z": 0.2639556328766048
+        },
+        "scale": 0.8
+      },
+      {
+        "id": "constellation:chamber:tribunal",
+        "roomId": "chamber:tribunal",
+        "title": "Council of Trent",
+        "nodes": [
+          {
+            "id": "tribunal",
+            "title": "Council of Trent",
+            "position": {
+              "x": -0.9141670533943227,
+              "y": -0.022400599530443988,
+              "z": 0.5287294110358471
+            }
+          },
+          {
+            "id": "venice",
+            "title": "Venice",
+            "position": {
+              "x": 0.8338076339950762,
+              "y": 0.03479086117240695,
+              "z": -0.5436760327818033
+            }
+          }
+        ],
+        "edges": [
+          {
+            "source": "tribunal",
+            "target": "venice",
+            "relType": "LOCATED_AT"
+          }
+        ],
+        "center": {
+          "x": 9.123551132250578,
+          "y": 0,
+          "z": -0.5169764483347535
+        },
+        "scale": 0.8
+      }
+    ],
+    "entryRoomId": "chamber:container",
+    "walkOrder": [
+      "chamber:container",
+      "chamber:tribunal"
+    ],
+    "nodeTitles": {
+      "root": "root",
+      "container": "container",
+      "council": "Council of Florence",
+      "monopoly": "Monopoly mechanism",
+      "banda": "Banda genocide",
+      "florence": "Florence",
+      "tribunal": "Council of Trent",
+      "venice": "Venice"
+    },
+    "encapsulationObjects": [
+      {
+        "objectId": "obj:container",
+        "containerNodeId": "container",
+        "roomId": "chamber:container"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "graphNodeId": "root",
+      "entityType": "Constellation",
+      "title": "root",
+      "body": "[]",
+      "summary": "summary of root",
+      "archetypalResonance": null,
+      "coordinate": null,
+      "evidenceTags": [],
+      "sourceKind": null,
+      "contentOrigin": null,
+      "contentRevision": null,
+      "seedSchemaVersion": null,
+      "bodySourceCoordinates": [],
+      "historicity": null,
+      "claimKind": null,
+      "evidenceStatus": null,
+      "temporalRole": null,
+      "placeCoverage": null,
+      "place": null,
+      "qlForm": null,
+      "qlUnitId": null,
+      "qlArc": null,
+      "qlTopology": null,
+      "qlSchemaVersion": null,
+      "qlSourceCoordinates": [],
+      "qlCompletenessStatus": null,
+      "sourceCoordinates": [],
+      "isTemporal": false,
+      "validFrom": null,
+      "validTo": null,
+      "temporalPrecision": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "graphNodeId": "container",
+      "entityType": "Constellation",
+      "title": "container",
+      "body": "[]",
+      "summary": "summary of container",
+      "archetypalResonance": null,
+      "coordinate": null,
+      "evidenceTags": [],
+      "sourceKind": null,
+      "contentOrigin": null,
+      "contentRevision": null,
+      "seedSchemaVersion": null,
+      "bodySourceCoordinates": [],
+      "historicity": null,
+      "claimKind": null,
+      "evidenceStatus": null,
+      "temporalRole": null,
+      "placeCoverage": null,
+      "place": null,
+      "qlForm": null,
+      "qlUnitId": null,
+      "qlArc": null,
+      "qlTopology": null,
+      "qlSchemaVersion": null,
+      "qlSourceCoordinates": [],
+      "qlCompletenessStatus": null,
+      "sourceCoordinates": [],
+      "isTemporal": false,
+      "validFrom": null,
+      "validTo": null,
+      "temporalPrecision": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "graphNodeId": "council",
+      "entityType": "Event",
+      "title": "Council of Florence",
+      "body": "[]",
+      "summary": "summary of council",
+      "archetypalResonance": null,
+      "coordinate": null,
+      "evidenceTags": [],
+      "sourceKind": null,
+      "contentOrigin": null,
+      "contentRevision": null,
+      "seedSchemaVersion": null,
+      "bodySourceCoordinates": [],
+      "historicity": null,
+      "claimKind": null,
+      "evidenceStatus": null,
+      "temporalRole": null,
+      "placeCoverage": null,
+      "place": null,
+      "qlForm": null,
+      "qlUnitId": null,
+      "qlArc": null,
+      "qlTopology": null,
+      "qlSchemaVersion": null,
+      "qlSourceCoordinates": [],
+      "qlCompletenessStatus": null,
+      "sourceCoordinates": [],
+      "isTemporal": true,
+      "validFrom": "1438-01-01",
+      "validTo": "1445-12-31",
+      "temporalPrecision": "year",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "graphNodeId": "monopoly",
+      "entityType": "Archetype",
+      "title": "Monopoly mechanism",
+      "body": "[]",
+      "summary": "summary of monopoly",
+      "archetypalResonance": null,
+      "coordinate": null,
+      "evidenceTags": [],
+      "sourceKind": null,
+      "contentOrigin": null,
+      "contentRevision": null,
+      "seedSchemaVersion": null,
+      "bodySourceCoordinates": [],
+      "historicity": null,
+      "claimKind": null,
+      "evidenceStatus": null,
+      "temporalRole": null,
+      "placeCoverage": null,
+      "place": null,
+      "qlForm": null,
+      "qlUnitId": null,
+      "qlArc": null,
+      "qlTopology": null,
+      "qlSchemaVersion": null,
+      "qlSourceCoordinates": [],
+      "qlCompletenessStatus": null,
+      "sourceCoordinates": [],
+      "isTemporal": false,
+      "validFrom": null,
+      "validTo": null,
+      "temporalPrecision": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "graphNodeId": "banda",
+      "entityType": "Event",
+      "title": "Banda genocide",
+      "body": "[]",
+      "summary": "summary of banda",
+      "archetypalResonance": null,
+      "coordinate": null,
+      "evidenceTags": [],
+      "sourceKind": null,
+      "contentOrigin": null,
+      "contentRevision": null,
+      "seedSchemaVersion": null,
+      "bodySourceCoordinates": [],
+      "historicity": null,
+      "claimKind": null,
+      "evidenceStatus": null,
+      "temporalRole": null,
+      "placeCoverage": null,
+      "place": null,
+      "qlForm": null,
+      "qlUnitId": null,
+      "qlArc": null,
+      "qlTopology": null,
+      "qlSchemaVersion": null,
+      "qlSourceCoordinates": [],
+      "qlCompletenessStatus": null,
+      "sourceCoordinates": [],
+      "isTemporal": true,
+      "validFrom": "1621-01-01",
+      "validTo": "1621-12-31",
+      "temporalPrecision": "year",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "graphNodeId": "florence",
+      "entityType": "Place",
+      "title": "Florence",
+      "body": "[]",
+      "summary": "summary of florence",
+      "archetypalResonance": null,
+      "coordinate": null,
+      "evidenceTags": [],
+      "sourceKind": null,
+      "contentOrigin": null,
+      "contentRevision": null,
+      "seedSchemaVersion": null,
+      "bodySourceCoordinates": [],
+      "historicity": null,
+      "claimKind": null,
+      "evidenceStatus": null,
+      "temporalRole": null,
+      "placeCoverage": null,
+      "place": null,
+      "qlForm": null,
+      "qlUnitId": null,
+      "qlArc": null,
+      "qlTopology": null,
+      "qlSchemaVersion": null,
+      "qlSourceCoordinates": [],
+      "qlCompletenessStatus": null,
+      "sourceCoordinates": [],
+      "isTemporal": false,
+      "validFrom": null,
+      "validTo": null,
+      "temporalPrecision": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "graphNodeId": "tribunal",
+      "entityType": "Event",
+      "title": "Council of Trent",
+      "body": "[]",
+      "summary": "summary of tribunal",
+      "archetypalResonance": null,
+      "coordinate": null,
+      "evidenceTags": [],
+      "sourceKind": null,
+      "contentOrigin": null,
+      "contentRevision": null,
+      "seedSchemaVersion": null,
+      "bodySourceCoordinates": [],
+      "historicity": null,
+      "claimKind": null,
+      "evidenceStatus": null,
+      "temporalRole": null,
+      "placeCoverage": null,
+      "place": null,
+      "qlForm": null,
+      "qlUnitId": null,
+      "qlArc": null,
+      "qlTopology": null,
+      "qlSchemaVersion": null,
+      "qlSourceCoordinates": [],
+      "qlCompletenessStatus": null,
+      "sourceCoordinates": [],
+      "isTemporal": true,
+      "validFrom": "1545-01-01",
+      "validTo": "1563-12-31",
+      "temporalPrecision": "year",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "graphNodeId": "venice",
+      "entityType": "Place",
+      "title": "Venice",
+      "body": "[]",
+      "summary": "summary of venice",
+      "archetypalResonance": null,
+      "coordinate": null,
+      "evidenceTags": [],
+      "sourceKind": null,
+      "contentOrigin": null,
+      "contentRevision": null,
+      "seedSchemaVersion": null,
+      "bodySourceCoordinates": [],
+      "historicity": null,
+      "claimKind": null,
+      "evidenceStatus": null,
+      "temporalRole": null,
+      "placeCoverage": null,
+      "place": null,
+      "qlForm": null,
+      "qlUnitId": null,
+      "qlArc": null,
+      "qlTopology": null,
+      "qlSchemaVersion": null,
+      "qlSourceCoordinates": [],
+      "qlCompletenessStatus": null,
+      "sourceCoordinates": [],
+      "isTemporal": false,
+      "validFrom": null,
+      "validTo": null,
+      "temporalPrecision": null,
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    }
+  ],
+  "relationships": [
+    {
+      "id": "e1",
+      "relType": "ENCAPSULATES",
+      "sourceGraphNodeId": "root",
+      "targetGraphNodeId": "container",
+      "properties": {
+        "mode": "ingoing"
+      }
+    },
+    {
+      "id": "e2",
+      "relType": "ENCAPSULATES",
+      "sourceGraphNodeId": "container",
+      "targetGraphNodeId": "council",
+      "properties": {
+        "mode": "outgoing"
+      }
+    },
+    {
+      "id": "e3",
+      "relType": "ENCAPSULATES",
+      "sourceGraphNodeId": "container",
+      "targetGraphNodeId": "monopoly",
+      "properties": {
+        "mode": "outgoing"
+      }
+    },
+    {
+      "id": "e4",
+      "relType": "ENCAPSULATES",
+      "sourceGraphNodeId": "container",
+      "targetGraphNodeId": "banda",
+      "properties": {
+        "mode": "outgoing"
+      }
+    },
+    {
+      "id": "e5",
+      "relType": "ENCAPSULATES",
+      "sourceGraphNodeId": "container",
+      "targetGraphNodeId": "florence",
+      "properties": {
+        "mode": "outgoing"
+      }
+    },
+    {
+      "id": "e6",
+      "relType": "LOCATED_AT",
+      "sourceGraphNodeId": "council",
+      "targetGraphNodeId": "florence",
+      "properties": {}
+    },
+    {
+      "id": "e7",
+      "relType": "LOCATED_AT",
+      "sourceGraphNodeId": "tribunal",
+      "targetGraphNodeId": "venice",
+      "properties": {}
+    }
+  ],
+  "encapsulationEdges": [
+    {
+      "containerGraphNodeId": "root",
+      "memberGraphNodeId": "container",
+      "mode": "ingoing"
+    },
+    {
+      "containerGraphNodeId": "container",
+      "memberGraphNodeId": "council",
+      "mode": "outgoing"
+    },
+    {
+      "containerGraphNodeId": "container",
+      "memberGraphNodeId": "monopoly",
+      "mode": "outgoing"
+    },
+    {
+      "containerGraphNodeId": "container",
+      "memberGraphNodeId": "banda",
+      "mode": "outgoing"
+    },
+    {
+      "containerGraphNodeId": "container",
+      "memberGraphNodeId": "florence",
+      "mode": "outgoing"
+    }
+  ],
+  "curation": {
+    "chambers": [
+      {
+        "candidateId": "chamber:container",
+        "anchorGraphNodeId": "container",
+        "title": "container",
+        "pinned": false,
+        "excluded": false,
+        "position": 0
+      },
+      {
+        "candidateId": "chamber:tribunal",
+        "anchorGraphNodeId": "tribunal",
+        "title": "Council of Trent",
+        "pinned": false,
+        "excluded": false,
+        "position": 1
+      }
+    ],
+    "objects": [],
+    "fixtures": [],
+    "collections": []
+  }
+}

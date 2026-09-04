@@ -22,4 +22,5 @@ export type {
   TimelineFilters,
   TimelineValueFilter,
   TimelineYearRange,
+  ExpandedTimelineNode,
 } from "@research-canvas/desktop-api";

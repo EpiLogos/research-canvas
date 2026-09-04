@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 
 import { useSearch } from "./useSearch";
 
+import type { LensMode } from "../../layout/useLensMode";
+
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
-  onSetLens?: (lens: "canvas" | "timeline" | "reading") => void;
+  onSetLens?: (lens: LensMode) => void;
   onToggleTerminal?: () => void;
 }
 

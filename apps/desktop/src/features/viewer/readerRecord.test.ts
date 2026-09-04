@@ -26,6 +26,7 @@ const graphNode: GraphNodeContract = {
   sourceCoordinates: ["episodes/2/colonial-power.md#banda"],
   evidenceTags: ["history:documented", "place:banda-islands"],
   sourceKind: "research",
+  place: null,
   contentOrigin: "imported",
   contentRevision: 4,
   seedSchemaVersion: 2,

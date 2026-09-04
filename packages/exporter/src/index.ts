@@ -12,6 +12,13 @@ export { buildSearchIndex } from "./buildSearchIndex";
 export { copyAssets } from "./copyAssets";
 export { buildExportManifest, slugify } from "./manifest";
 export type { ExportManifest, ExportNodePage } from "./manifest";
+export {
+  buildKeepsakeManifest,
+  type KeepsakeInput,
+  type KeepsakeManifest,
+  type KeepsakeScene,
+  type KeepsakeWalkStop,
+} from "./keepsake";
 export { blockNoteJsonToMarkdown, markdownToBlockNoteJson, renderMarkdownToHtml } from "./renderMarkdown";
 export type { BlockNoteBlock, BlockNoteInline } from "./renderMarkdown";
 export {

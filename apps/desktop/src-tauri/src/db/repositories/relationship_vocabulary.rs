@@ -5,6 +5,7 @@ use sha2::{Digest, Sha256};
 /// SQLite projection. The migration runner materialises this exact list in
 /// the SQLite CHECK constraint so the three boundaries cannot drift.
 pub const RELATIONSHIP_TYPES: &[&str] = &[
+    "RELATES_TO",
     "CONTAINS",
     "PART_OF",
     "NESTS",
@@ -20,8 +21,17 @@ pub const RELATIONSHIP_TYPES: &[&str] = &[
     "SUPPORTS",
     "QUALIFIES",
     "CONTESTS",
+    "CONTRADICTS",
+    "ARCHETYPE_EXPRESSES_AT",
     "RESONATES_WITH",
+    "SEQUENCE_NEXT",
     "UNCLASSIFIED_RESEARCH_CONNECTION",
+    // The ONE deliberate substrate-relation addition (refinement-2 D12,
+    // ticket #27): encapsulation is the processual backbone of the system, not
+    // a content category. A constellation encapsulates as a single node into a
+    // parent and unfolds back with data intact; recursion is allowed, cycles
+    // are prohibited (no transitive self-encapsulation).
+    "ENCAPSULATES",
 ];
 
 pub fn validate_rel_type(rel_type: &str) -> Result<&str, String> {
@@ -132,6 +142,12 @@ mod tests {
         }
         assert!(sqlite_check_values().contains("'NESTS'"));
         assert!(sqlite_check_values().contains("'PART_OF'"));
+    }
+
+    #[test]
+    fn encapsulates_is_the_one_deliberate_substrate_addition() {
+        assert_eq!(validate_rel_type("ENCAPSULATES"), Ok("ENCAPSULATES"));
+        assert!(sqlite_check_values().contains("'ENCAPSULATES'"));
     }
 
     #[test]

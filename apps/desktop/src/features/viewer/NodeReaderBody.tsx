@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { CanvasNode } from "@research-canvas/schema";
 import { BlockNoteDocument } from "@research-canvas/viewers";
-import { createWorkspaceTransport, readWorkspaceTextFile } from "@research-canvas/desktop-api";
+import { createWorkspaceServices, readWorkspaceTextFile } from "@research-canvas/desktop-api";
 import type {
   GraphNode,
   LocalNodeDocumentInput,
@@ -90,7 +90,7 @@ export function NodeReaderBody({
 
   const graphNodeId = record?.graphNodeId ?? canvasNode?.graphNodeId ?? null;
   if (graphNodeId) {
-    const transport = createWorkspaceTransport() as unknown as {
+    const transport = createWorkspaceServices() as unknown as {
       readGraphNode: (input: { graphNodeId: string }) => Promise<GraphNode>;
       readLocalNodeDocument: (input: {
         databasePath: string;

@@ -241,6 +241,18 @@ fn bootstrap_workspace_surfaces_root_constellation_portals_and_preserves_layout_
         .find(|constellation| constellation.slug == "root-archetypal-field")
         .expect("root archetypal constellation in bootstrap");
     assert_eq!(bootstrap.active_constellation_id, root.id);
+    assert_eq!(
+        bootstrap.active_project_id, root.id,
+        "bootstrap resolves the active project to the same constellation row"
+    );
+    assert_eq!(
+        bootstrap.active_profile_scope, root.profile_scope,
+        "bootstrap populates the active project's profile scope so lenses have a real scope at first boot"
+    );
+    assert!(
+        !bootstrap.active_profile_scope.is_empty(),
+        "active profile scope is never blank after bootstrap"
+    );
     assert_eq!(root.name, "Root Archetypal Field");
     assert!(
         bootstrap

@@ -7,6 +7,7 @@ declare global {
   interface Window {
     __RESEARCH_CANVAS_BUNDLE__?: ExportBundle;
     __RESEARCH_CANVAS_GRAPH_BUNDLE__?: GraphExportBundle;
+    __RESEARCH_CANVAS_PALACE_BUNDLE__?: unknown;
   }
 }
 

@@ -1,30 +1,117 @@
 import type { ComponentProps, ReactNode } from "react";
 import { useCallback, useMemo, useState } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
+import { useStore } from "zustand";
 
-import { createAnnotationStore, createCanvasStore } from "@research-canvas/canvas";
-import type { CanvasNode } from "@research-canvas/schema";
+import { createAnnotationStore, createCanvasStore, createTabManagerStore } from "@research-canvas/canvas";
+import { createWorkspaceServices } from "@research-canvas/desktop-api";
+import type { AppTab, CanvasNode, SurfaceTabState } from "@research-canvas/schema";
 
 import { CanvasWorkspaceContext, CanvasWorkspaceProvider } from "../features/canvas/CanvasWorkspaceContext";
 
-// Stub the timeline-relevant transport methods so the timeline lens's real
-// createTimelineDataSource (wired in Shell.tsx) never reaches the Tauri
-// bridge. Without this, the "switches the stage surface when a lens is
-// chosen" test below clicks into the timeline lens in jsdom, which triggers
-// a real loadCanvasView() call that rejects with a 404 (no bridge present)
-// — an unhandled rejection that vitest reports once the file has more async
-// tests after it. Mirrors the existing mock in Shell.timeline.test.tsx, but
-// wraps the real transport (rather than replacing it outright) so the other
-// tests in this file — which render via CanvasWorkspaceProvider and rely on
-// its real bootstrapWorkspace()/other transport methods — are unaffected.
+const projectSpies = vi.hoisted(() => ({
+  selectProject: vi.fn(),
+  resolveOrCreateHome: vi.fn(),
+}));
+
+vi.mock("../features/terminal/useTerminal", () => ({
+  useTerminal: vi.fn().mockReturnValue({
+    terminalContainerRef: { current: null },
+    status: "connected",
+    session: { id: "session-1", workdir: "/workspace" },
+  }),
+}));
+
 vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@research-canvas/desktop-api")>();
   return {
     ...actual,
-    createWorkspaceTransport: () => ({
-      ...actual.createWorkspaceTransport(),
+    createWorkspaceServices: () => ({
+      ...actual.createWorkspaceServices(),
+      bootstrapWorkspace: async () => ({
+        activeConstellationId: "root",
+        activeProjectId: "root",
+        activeProfileScope: "bootstrapping",
+        databasePath: "/tmp/workspace.sqlite",
+        workspaceId: "sqlite:/tmp/workspace.sqlite",
+        workspaceRoot: "/workspace",
+        constellations: [
+          {
+            id: "root",
+            name: "Root Archetypal Field",
+            slug: "root-archetypal-field",
+            rootPath: "/workspace",
+            rootType: "directory",
+            profileScope: "bootstrapping",
+            summary: "",
+            parentId: null,
+            children: [],
+          },
+        ],
+      }),
+      resolveOrCreateHome: projectSpies.resolveOrCreateHome.mockResolvedValue({
+        homePath: "/home",
+        projects: [
+          {
+            id: "proj-a",
+            name: "Project A",
+            slug: "project-a",
+            rootPath: "/home/project-a",
+            rootType: "directory",
+            profileScope: "project:project-a",
+            summary: "",
+            parentId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+          },
+          {
+            id: "proj-b",
+            name: "Project B",
+            slug: "project-b",
+            rootPath: "/home/project-b",
+            rootType: "directory",
+            profileScope: "project:project-b",
+            summary: "",
+            parentId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+          },
+        ],
+      }),
+      selectProject: projectSpies.selectProject.mockImplementation(
+        async ({ projectId }: { projectId: string }) => ({
+          projectId,
+          profileScope: `project:${projectId}`,
+          rootType: "directory",
+        }),
+      ),
+      loadConstellationDocument: async ({ databasePath, constellationId }: { databasePath: string; constellationId: string }) => ({
+        canvasId: "c1",
+        databasePath,
+        entries: [],
+        resourceRoots: [],
+        annotations: [],
+        edges: [],
+        nodes: [{ id: "node-a", graphNodeId: "node-a" }],
+        workingRoot: "/workspace",
+        constellation: {
+          id: constellationId,
+          displayName: "Root Archetypal Field",
+          slug: constellationId,
+          parentConstellationId: null,
+          rootPath: "/workspace",
+          rootType: "directory",
+          profileScope: "bootstrapping",
+          primaryCanvasId: "c1",
+          summary: "",
+          coverAssetPath: null,
+          publishSettings: {},
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+        },
+      }),
       loadCanvasView: async () => ({
         canvasId: "c1",
         nodes: [
@@ -85,6 +172,7 @@ vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
             layoutOverride: null,
           },
         ],
+        relationships: [],
         lanes: [],
         diagnostics: [],
       }),
@@ -96,12 +184,27 @@ vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
 
 import { Shell } from "./Shell";
 
-function renderShell() {
+function renderShell(initialEntries?: string[]) {
   return render(
-    <MemoryRouter>
-      <CanvasWorkspaceProvider>
-        <Shell />
-      </CanvasWorkspaceProvider>
+    <MemoryRouter initialEntries={initialEntries}>
+      <Routes>
+        <Route
+          path="/project/:projectId/surface/:surfaceId/constellation/:constellationId/:detailId?"
+          element={
+            <CanvasWorkspaceProvider>
+              <Shell />
+            </CanvasWorkspaceProvider>
+          }
+        />
+        <Route
+          path="*"
+          element={
+            <CanvasWorkspaceProvider>
+              <Shell />
+            </CanvasWorkspaceProvider>
+          }
+        />
+      </Routes>
     </MemoryRouter>,
   );
 }
@@ -168,14 +271,6 @@ function seededPortalNode(id: string, title: string, targetCanvasId: string): Ca
   } as CanvasNode;
 }
 
-// A REAL workspace context value — real canvasStore/annotationStore (so
-// nodes/edges/annotations are reactive via useStore, exactly as in
-// production) and real selection state, wired through selectNode exactly
-// like CanvasWorkspaceProvider does. Only the transport-backed bootstrap
-// side (constellations/files/resources) is stubbed, since it depends on Tauri
-// IPC that isn't present in jsdom. This lets Shell-level tests exercise the
-// real node-selection path (CanvasView's onNodeClick -> workspace.selectNode)
-// without needing the full bootstrapping provider to hydrate over IPC.
 function FakeWorkspaceProvider({
   children,
   nodes,
@@ -205,6 +300,11 @@ function FakeWorkspaceProvider({
     [canvases, store],
   );
 
+  const tabManager = useMemo(() => createTabManagerStore({ tabs: [], activeTabId: null }), []);
+  const tabs = useStore(tabManager, (state) => state.tabs);
+  const activeTabId = useStore(tabManager, (state) => state.activeTabId);
+  const activeTab = activeTabId ? tabs.find((tab) => tab.id === activeTabId) ?? null : null;
+
   const value = useMemo(
     () => ({
       store,
@@ -213,14 +313,36 @@ function FakeWorkspaceProvider({
       errorMessage: null,
       canvasId: CANVAS_ID,
       workspaceId: "sqlite:/canonical/workspace.sqlite",
+      tabManager,
+      activeSurfaceId: activeTab?.surfaceId ?? "canvas",
+      tabs,
+      activeTabId,
+      activeTab,
+      openTab: (tab: AppTab) => tabManager.getState().open(tab),
+      activateTab: (tabId: string) => tabManager.getState().activate(tabId),
+      closeTab: (tabId: string) => tabManager.getState().close(tabId),
+      updateTabState: (state: SurfaceTabState) => {
+        if (activeTabId) {
+          tabManager.getState().updateState(activeTabId, state);
+        }
+      },
+      canvasTabs: [],
+      activeCanvasTabId: null,
+      activeCanvasViewport: null,
       constellationId: "11111111-1111-4111-8111-111111111111",
       databasePath: "/canonical/workspace.sqlite",
       activeConstellation: null,
-      activeConstellationId: null,
+      activeConstellationId: "11111111-1111-4111-8111-111111111111",
+      activeProjectId: "11111111-1111-4111-8111-111111111111",
+      activeProfileScope: "bootstrapping",
+      selectProject: vi.fn().mockResolvedValue(undefined),
+      resolveOrCreateHome: vi.fn().mockResolvedValue({ homePath: "/home", projects: [] }),
+      createProject: vi.fn(),
       constellations: [],
       entries: [],
       resourceRoots: [],
       workingRoot: null,
+      repoRoot: "/workspace",
       selectedEntryId,
       selectedEdgeId,
       selectedNodeId,
@@ -257,22 +379,26 @@ function FakeWorkspaceProvider({
       registerFlyToEdge: vi.fn(),
       captureViewport: () => ({ x: 0, y: 0, zoom: 1 }),
       registerCaptureViewport: vi.fn(),
-      transport: {},
+      transport: createWorkspaceServices(),
       contentLinkingActions: {},
     }) as unknown as ComponentProps<typeof CanvasWorkspaceContext.Provider>["value"],
-    [store, annotationStore, selectedEntryId, selectedEdgeId, selectedNodeId, selectNode, openCanvas],
+    [store, annotationStore, selectedEntryId, selectedEdgeId, selectedNodeId, selectNode, openCanvas, tabManager, tabs, activeTabId, activeTab],
   );
 
   return <CanvasWorkspaceContext.Provider value={value}>{children}</CanvasWorkspaceContext.Provider>;
 }
 
-function renderShellWithNode(node: CanvasNode) {
-  return renderShellWithNodes([node]);
+function renderShellWithNode(node: CanvasNode, initialEntries?: string[]) {
+  return renderShellWithNodes([node], {}, initialEntries);
 }
 
-function renderShellWithNodes(nodes: CanvasNode[], canvases?: Record<string, CanvasNode[]>) {
+function renderShellWithNodes(
+  nodes: CanvasNode[],
+  canvases?: Record<string, CanvasNode[]>,
+  initialEntries?: string[],
+) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <FakeWorkspaceProvider nodes={nodes} canvases={canvases}>
         <Shell />
       </FakeWorkspaceProvider>
@@ -281,39 +407,37 @@ function renderShellWithNodes(nodes: CanvasNode[], canvases?: Record<string, Can
 }
 
 describe("Shell frame", () => {
-  it("renders the persistent chrome and the canvas stage by default", () => {
+  it("renders the new persistent shell frame (top bar, sidebar, stage, inspector, status)", () => {
     renderShell();
-    expect(screen.getByTestId("transport-bar")).toBeVisible();
-    expect(screen.getByTestId("left-rail")).toBeVisible();
+    expect(screen.getByTestId("shell-top-bar")).toBeVisible();
+    expect(screen.getByTestId("shell-left-sidebar")).toBeVisible();
+    expect(screen.getByTestId("shell-stage")).toBeVisible();
     expect(screen.getByTestId("status-strip")).toBeVisible();
-    expect(screen.getByTestId("canvas-pane")).toBeVisible();
   });
 
   it("summoned panels are closed by default", () => {
     renderShell();
-    expect(screen.queryByTestId("bottom-dock")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("inspector-overlay")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("terminal-modal")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("shell-right-inspector")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("reader-pane")).not.toBeInTheDocument();
     expect(screen.getByTestId("left-overlay")).toHaveAttribute("data-open", "false");
     expect(screen.getByTestId("left-overlay")).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("summons the terminal dock via the rail Terminal verb", () => {
+  it("summons the terminal modal via the rail Terminal verb", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Terminal" }));
-    expect(screen.getByTestId("bottom-dock")).toBeVisible();
+    fireEvent.click(within(screen.getByTestId("left-rail")).getByRole("button", { name: "Terminal" }));
+    expect(screen.getByTestId("terminal-modal")).toBeVisible();
   });
 
   it("switches the stage surface when a lens is chosen", async () => {
     renderShellWithNodes([]);
-    expect(screen.queryByTestId("lens-reading")).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("lens-timeline"));
     expect(screen.getByTestId("timeline-pane")).toBeVisible();
     await screen.findByTestId("timeline-node-node-a");
-    fireEvent.keyDown(window, { key: "3", metaKey: true });
-    expect(screen.getByTestId("reading-overlay")).toBeVisible();
   });
 
-  it("opens timeline node reading as an overlay while keeping the timeline context mounted", async () => {
+  it("opens timeline node reading as an inline panel while keeping the timeline context mounted", async () => {
     const nodeA = seededResourceNode("node-a", "Node A");
     renderShellWithNode(nodeA);
 
@@ -322,19 +446,19 @@ describe("Shell frame", () => {
     fireEvent.doubleClick(timelineNode);
 
     expect(screen.getByTestId("timeline-pane")).toBeVisible();
-    expect(screen.getByTestId("reading-overlay")).toBeVisible();
-    expect(screen.queryByTestId("reading-pane")).not.toBeInTheDocument();
+    expect(screen.getByTestId("reader-pane")).toBeVisible();
   });
 
-  it("keeps the rail reachable while in the reading lens (panels must stay reachable while reading)", () => {
-    renderShell();
-    expect(screen.getByTestId("left-rail")).toBeVisible();
-    fireEvent.keyDown(window, { key: "3", metaKey: true });
-    expect(screen.getByTestId("reading-overlay")).toBeVisible();
-    expect(screen.getByTestId("left-rail")).toBeVisible();
+  it("keeps the sidebar reachable while the inline reader is open", () => {
+    const nodeA = seededResourceNode("node-a", "Node A");
+    renderShellWithNode(nodeA);
+
+    fireEvent.doubleClick(document.querySelector('.react-flow__node[data-id="node-a"]') as HTMLElement);
+    expect(screen.getByTestId("reader-pane")).toBeVisible();
+    expect(screen.getByTestId("shell-left-sidebar")).toBeVisible();
   });
 
-  it("closes the reading overlay back to the canvas context", async () => {
+  it("closes the inline reader panel back to the canvas context", async () => {
     const nodeA = seededResourceNode("node-a", "Node A");
     renderShellWithNode(nodeA);
 
@@ -344,14 +468,14 @@ describe("Shell frame", () => {
       return el as HTMLElement;
     });
     fireEvent.doubleClick(canvasNode);
-    expect(screen.getByTestId("reading-overlay")).toBeVisible();
+    expect(screen.getByTestId("reader-pane")).toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: "Close reading" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to canvas" }));
     expect(screen.getByTestId("canvas-pane")).toBeVisible();
-    expect(screen.queryByTestId("reading-overlay")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("reader-pane")).not.toBeInTheDocument();
   });
 
-  it("opens the reading overlay from a note node double-click", async () => {
+  it("opens the inline reader panel from a note node double-click", async () => {
     const nodeA = seededNode("node-a", "Node A");
     renderShellWithNode(nodeA);
 
@@ -362,10 +486,10 @@ describe("Shell frame", () => {
     });
     fireEvent.doubleClick(canvasNode);
 
-    expect(screen.getByTestId("reading-overlay")).toBeVisible();
+    expect(screen.getByTestId("reader-pane")).toBeVisible();
   });
 
-  it("opens a portal's target canvas on double-click instead of opening the reading overlay", async () => {
+  it("opens a portal's target canvas on double-click instead of opening the reader panel", async () => {
     const targetCanvasId = "33333333-3333-4333-8333-333333333333";
     const portal = seededPortalNode("portal-a", "Devil Sixfold", targetCanvasId);
     const childNode = {
@@ -384,10 +508,10 @@ describe("Shell frame", () => {
     await waitFor(() => {
       expect(document.querySelector('.react-flow__node[data-id="child-a"]')).not.toBeNull();
     });
-    expect(screen.queryByTestId("reading-overlay")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("reader-pane")).not.toBeInTheDocument();
   });
 
-  it("returns to the canvas when closing the full-screen node reader (not back into the reading overlay)", async () => {
+  it("returns to the canvas when closing the full-screen node reader", async () => {
     const nodeA = seededResourceNode("node-a", "Node A");
     renderShellWithNode(nodeA);
 
@@ -397,7 +521,7 @@ describe("Shell frame", () => {
       return el as HTMLElement;
     });
     fireEvent.doubleClick(canvasNode);
-    expect(screen.getByTestId("reading-overlay")).toBeVisible();
+    expect(screen.getByTestId("reader-pane")).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "Read full screen" }));
     const backButton = screen.getByRole("button", { name: "Close reading" });
@@ -405,43 +529,53 @@ describe("Shell frame", () => {
 
     fireEvent.click(backButton);
     expect(screen.getByTestId("canvas-pane")).toBeVisible();
-    expect(screen.queryByTestId("reading-overlay")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("reader-pane")).not.toBeInTheDocument();
   });
 
-  it("opens the command palette on Cmd+K", () => {
+  it("opens the command palette from the top bar and via Cmd+K", () => {
     renderShell();
     expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Command palette"));
+    expect(screen.getByRole("dialog", { name: "Command palette" })).toBeVisible();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
+
     fireEvent.keyDown(window, { key: "k", metaKey: true });
     expect(screen.getByRole("dialog", { name: "Command palette" })).toBeVisible();
   });
 
-  it("Files rail verb reopens the Files view after Annotate was active (leftMode isn't stranded on annotations)", () => {
+  it("route change selects the project and activates the matching surface tab", async () => {
+    renderShell(["/project/proj-a/surface/timeline/constellation/root"]);
+    await waitFor(() => {
+      expect(projectSpies.selectProject).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId: "proj-a" }),
+      );
+    }, { timeout: 5_000 });
+    await waitFor(() => {
+      expect(screen.getByTestId("timeline-pane")).toBeVisible();
+    }, { timeout: 5_000 });
+  }, 15_000);
+
+  it("Files rail verb reopens the Files view after Annotate was active", () => {
     renderShell();
-    // Open the browser in annotations mode via the rail Annotate verb.
     fireEvent.click(screen.getByRole("button", { name: "Annotations" }));
     expect(screen.getByTestId("left-overlay")).toBeVisible();
     expect(screen.queryByTestId("browser-files")).not.toBeInTheDocument();
 
-    // Clicking the Files rail verb must always show the Files view — never
-    // leave the browser stranded on the Annotations panel.
     fireEvent.click(screen.getByRole("button", { name: "Files & Constellation" }));
     expect(screen.getByTestId("left-overlay")).toBeVisible();
     expect(screen.getByTestId("browser-files")).toBeInTheDocument();
   });
 
-  it("closing the browser with Escape resets drawingMode (no stuck draw cursor)", () => {
+  it("closing the browser with Escape resets drawingMode", () => {
     renderShell();
-    // Open the browser in annotations mode and start drawing.
     fireEvent.click(screen.getByRole("button", { name: "Annotations" }));
     fireEvent.click(screen.getByRole("button", { name: "Start drawing" }));
     expect(screen.getByRole("button", { name: "Stop drawing" })).toHaveAttribute("data-active", "true");
 
-    // The hover-first explorer has no redundant close affordance; Escape is
-    // the explicit keyboard dismissal and must also turn drawing off.
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.getByTestId("left-overlay")).toHaveAttribute("data-open", "false");
 
-    // Reopen annotations — drawing must not still be "on" from before.
     fireEvent.click(screen.getByRole("button", { name: "Annotations" }));
     expect(screen.getByRole("button", { name: "Start drawing" })).toBeInTheDocument();
   });
@@ -466,7 +600,7 @@ describe("Shell frame", () => {
     expect(screen.getByTestId("browser-filter")).toHaveValue("prometheus");
   });
 
-  it("selecting a node opens the inspector, and it stays closed after an explicit close even after selecting another node", async () => {
+  it("selecting a node opens the right inspector, and an explicit close persists across selections", async () => {
     const nodeA = seededNode("node-a", "Node A");
     renderShellWithNode(nodeA);
 
@@ -477,18 +611,16 @@ describe("Shell frame", () => {
     });
     fireEvent.click(canvasNode);
 
-    expect(await screen.findByTestId("inspector-overlay")).toBeVisible();
+    expect(await screen.findByTestId("shell-right-inspector")).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "Close inspector" }));
-    expect(screen.queryByTestId("inspector-overlay")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("shell-right-inspector")).not.toBeInTheDocument();
 
-    // Selecting again (same node, since only one is seeded) must NOT reopen
-    // the inspector once the user has explicitly dismissed it.
     fireEvent.click(canvasNode);
-    expect(screen.queryByTestId("inspector-overlay")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("shell-right-inspector")).not.toBeInTheDocument();
   });
 
-  it("hides the inspector overlay in the reading lens so it never covers the reading controls, and restores it back in the canvas lens", async () => {
+  it("hides the right inspector while the inline reader is open, and restores it after closing", async () => {
     const nodeA = seededNode("node-a", "Node A");
     renderShellWithNode(nodeA);
 
@@ -498,17 +630,51 @@ describe("Shell frame", () => {
       return el as HTMLElement;
     });
     fireEvent.click(canvasNode);
-    expect(await screen.findByTestId("inspector-overlay")).toBeVisible();
+    expect(await screen.findByTestId("shell-right-inspector")).toBeVisible();
 
-    // Opening the reading overlay must gate the inspector out entirely —
-    // it is a canvas/graph affordance and must never float over the
-    // modal reading surface's controls.
-    fireEvent.keyDown(window, { key: "3", metaKey: true });
-    expect(screen.queryByTestId("inspector-overlay")).not.toBeInTheDocument();
+    fireEvent.doubleClick(canvasNode);
+    expect(screen.getByTestId("reader-pane")).toBeVisible();
+    expect(screen.queryByTestId("shell-right-inspector")).not.toBeInTheDocument();
 
-    // Closing reading restores it (selection + inspectorOpen state were
-    // never cleared — only gated while the reading overlay is open).
-    fireEvent.click(screen.getByRole("button", { name: "Close reading" }));
-    expect(screen.getByTestId("inspector-overlay")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Back to canvas" }));
+    expect(screen.getByTestId("shell-right-inspector")).toBeVisible();
+  });
+
+  it("mounts the projects layer in the left rail and lists home projects in the picker", async () => {
+    renderShell();
+    const trigger = await screen.findByTestId("projects-trigger");
+    fireEvent.click(trigger);
+    const picker = await screen.findByTestId("projects-layer");
+    expect(picker).toBeInTheDocument();
+    expect(await screen.findByTestId("project-row-proj-a")).toHaveTextContent("Project A");
+    expect(screen.getByTestId("project-row-proj-b")).toHaveTextContent("Project B");
+  });
+
+  it("selecting a project from the picker routes through the real transport seam", async () => {
+    renderShell();
+    const trigger = await screen.findByTestId("projects-trigger");
+    fireEvent.click(trigger);
+    const picker = await screen.findByTestId("projects-layer");
+    expect(picker).toBeInTheDocument();
+    fireEvent.click(await screen.findByTestId("project-row-proj-a"));
+    expect(projectSpies.selectProject).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "proj-a" }),
+    );
+  });
+
+  it("resizes the left sidebar by dragging the overlay resize handle", () => {
+    renderShell();
+    fireEvent.click(screen.getByRole("button", { name: "Files & Constellation" }));
+    const shell = screen.getByTestId("shell-left-sidebar").closest(".ishell") as HTMLElement;
+    const before = shell.style.getPropertyValue("--shell-left-sidebar-width");
+    expect(before).toBe("280px");
+
+    const resizeHandle = screen.getByTitle("Drag to resize");
+    fireEvent.pointerDown(resizeHandle, { clientX: 280 });
+    fireEvent.pointerMove(window, { clientX: 340 });
+    fireEvent.pointerUp(window);
+
+    const after = shell.style.getPropertyValue("--shell-left-sidebar-width");
+    expect(after).toBe("340px");
   });
 });

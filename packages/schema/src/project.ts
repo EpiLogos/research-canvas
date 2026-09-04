@@ -6,12 +6,17 @@ export const publishSettingsSchema = z.object({
   theme: z.enum(["paper", "nocturne", "ledger"]).default("paper")
 });
 
+export const PROJECT_ROOT_TYPES = ["directory", "file"] as const;
+export type ProjectRootType = (typeof PROJECT_ROOT_TYPES)[number];
+
 export const projectSchema = z.object({
   id: z.string().uuid(),
   displayName: z.string().min(1),
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/),
   parentConstellationId: z.string().uuid().nullable(),
   rootPath: z.string().min(1),
+  rootType: z.enum(PROJECT_ROOT_TYPES),
+  profileScope: z.string().min(1),
   primaryCanvasId: z.string().uuid(),
   summary: z.string().default(""),
   coverAssetPath: z.string().nullable(),

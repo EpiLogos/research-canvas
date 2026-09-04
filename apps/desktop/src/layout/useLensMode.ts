@@ -1,8 +1,19 @@
 import { useCallback, useState } from "react";
 
-export type LensMode = "canvas" | "timeline" | "reading";
+export type LensMode =
+  | "canvas"
+  | "timeline"
+  | "psychogeographic"
+  | "story"
+  | "palace";
 
-const ORDER: LensMode[] = ["canvas", "timeline", "reading"];
+const ORDER: LensMode[] = [
+  "canvas",
+  "timeline",
+  "psychogeographic",
+  "story",
+  "palace",
+];
 
 export function useLensMode(initial: LensMode = "canvas"): {
   lens: LensMode;

@@ -30,8 +30,10 @@ fn state_with_canvas() -> (tempfile::TempDir, SharedApiState, String) {
     let canvas_id = project.primary_canvas_id.unwrap();
     let state: SharedApiState = Arc::new(Mutex::new(ApiState {
         db_path: Some(db_path.to_string_lossy().to_string()),
-        active_constellation_id: Some(project.id),
+        active_constellation_id: Some(project.id.clone()),
         active_canvas_id: Some(canvas_id.clone()),
+        active_project_id: Some(project.id),
+        active_profile_scope: Some(project.profile_scope.clone()),
     }));
     (dir, state, canvas_id)
 }

@@ -1,8 +1,15 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
 
-import type { ArchetypalLighting, GraphRelationship, TimelineDiagnostic, TimelineLane, TimelineLayoutOverride, TimelineView } from "./contracts";
+import type { ArchetypalLighting, ExpandedTimelineNode, GraphNode, GraphRelationship, TimelineDiagnostic, TimelineLane, TimelineLayoutOverride, TimelineView, TimelineViewNode } from "./contracts";
 import { tierForPixelsPerYear, type ScaleTier } from "./scale";
 import { projectNodes, type TimelineItem, type TimelinePresentation } from "./projection";
+import {
+  frameStateForNode,
+  projectSubTimeline,
+  transTemporalHover,
+  type TimelineFrameState,
+  type TimelineHoverNode,
+} from "./frames";
 import { buildLitMap, type LitMap } from "./lighting";
 import {
   clampPixelsPerYear,
@@ -19,11 +26,31 @@ export interface TimelineVerticalPanBounds {
   max: number;
 }
 
+/**
+ * One entry of the working-set stack (ticket #28, D13 §4.4): a node the user
+ * clicked, its real edges, and its neighbour nodes — all property-complete.
+ * Clicked nodes accumulate on the stack; unloading removes them. The full
+ * graph never floods the timeline.
+ */
+export interface WorkingSetEntry {
+  graphNodeId: string;
+  node: GraphNode;
+  edges: GraphRelationship[];
+  neighbours: GraphNode[];
+  loadedAt: number;
+}
+
 export interface TimelineStoreState {
   centerYear: number;
   pixelsPerYear: number;
   widthPx: number;
   items: TimelineItem[];
+  /** Raw view records retained so a node can be reframed without a reload. */
+  nodes: TimelineViewNode[];
+  /** The active sub-timeline frame; null means the Earth zero-case. */
+  frame: TimelineFrameState | null;
+  /** Trans-temporal nodes hovering above the current frame. */
+  hovering: TimelineHoverNode[];
   relationships: GraphRelationship[];
   lanes: TimelineLane[];
   diagnostics: TimelineDiagnostic[];
@@ -33,6 +60,8 @@ export interface TimelineStoreState {
   /** Transient screen-space camera offset for cards above/below the axis. */
   verticalOffset: number;
   manualViewport: boolean;
+  /** Working-set stack (ticket #28): clicked nodes + their real edges/neighbours. */
+  workingSet: WorkingSetEntry[];
 
   viewport: () => TimelineViewport;
   tier: () => ScaleTier;
@@ -47,6 +76,15 @@ export interface TimelineStoreState {
   setLighting: (lighting: ArchetypalLighting) => void;
   clearLighting: () => void;
   setSelected: (nodeId: string | null) => void;
+  setFrameForNode: (nodeId: string | null) => void;
+  isNodeExpanded: (graphNodeId: string) => boolean;
+  /** Push (or refresh) a node's real expansion onto the working set. */
+  expandNode: (expansion: ExpandedTimelineNode) => void;
+  /** Remove one clicked node (and its edges) from the working set. */
+  collapseNode: (graphNodeId: string) => void;
+  /** Pop the most recent entry off the stack. */
+  popWorkingSet: () => void;
+  clearWorkingSet: () => void;
   updateCardSize: (nodeId: string, size: TimelineCardGeometryUpdate) => void;
   updateCardStyle: (nodeId: string, style: Partial<TimelinePresentation["style"]>) => void;
   applyPersistedLayout: (nodeId: string, layout: TimelineLayoutOverride) => void;
@@ -74,6 +112,9 @@ export function createTimelineStore(
     pixelsPerYear: clampPixelsPerYear(options.initialPixelsPerYear ?? 2),
     widthPx: 1000,
     items: [],
+    nodes: [],
+    frame: null,
+    hovering: [],
     relationships: [],
     lanes: [],
     diagnostics: [],
@@ -82,6 +123,7 @@ export function createTimelineStore(
     lightingOperatorId: null,
     verticalOffset: 0,
     manualViewport: hasRememberedViewport,
+    workingSet: [],
 
     viewport: () => {
       const s = get();
@@ -102,7 +144,24 @@ export function createTimelineStore(
       }
     },
     hydrate: (view, preserveViewport = false) => {
-      const items = projectNodes(view.nodes);
+      const nodes = view.nodes;
+      const allItems = projectNodes(nodes);
+      const relationships = view.relationships ?? [];
+      let items = allItems;
+      let hovering: TimelineHoverNode[] = [];
+      let frame = get().frame;
+      if (frame) {
+        const current = frameStateForNode(nodes, frame.frameNodeId);
+        if (current) {
+          items = projectSubTimeline(allItems, relationships, current);
+          hovering = transTemporalHover(nodes, relationships, current.frameNodeId);
+          frame = current;
+        } else {
+          // The frame node no longer exists in the loaded view; fall back to
+          // the Earth zero-case rather than showing a phantom sub-timeline.
+          frame = null;
+        }
+      }
       // A workspace can survive a graph replacement while the shell still
       // remembers its last camera. Keep a deliberate focus inside this
       // timeline's historical domain, but do not reopen a populated timeline
@@ -110,10 +169,13 @@ export function createTimelineStore(
       const keepCamera = preserveViewport || (get().manualViewport && isCameraNearTimeline(items, get().centerYear));
       set({
         items,
+        nodes,
+        frame,
+        hovering,
         // Older local terminal bridges may return a timeline payload from
         // before temporal relationships were added. Treat that as a readable
         // no-link timeline rather than blanking the whole lens.
-        relationships: view.relationships ?? [],
+        relationships,
         lanes: view.lanes,
         diagnostics: view.diagnostics,
         manualViewport: keepCamera,
@@ -146,6 +208,72 @@ export function createTimelineStore(
       }),
     clearLighting: () => set({ litMap: new Map(), lightingOperatorId: null }),
     setSelected: (nodeId) => set({ selectedNodeId: nodeId }),
+    setFrameForNode: (nodeId) => {
+      const s = get();
+      const allItems = projectNodes(s.nodes);
+      if (nodeId === null) {
+        set({ frame: null, items: allItems, hovering: [] });
+        return;
+      }
+      const frame = frameStateForNode(s.nodes, nodeId);
+      if (!frame) {
+        return;
+      }
+      const items = projectSubTimeline(allItems, s.relationships, frame);
+      const hovering = transTemporalHover(s.nodes, s.relationships, nodeId);
+      set({
+        frame,
+        items,
+        hovering,
+        manualViewport: false,
+        ...(frame.window
+          ? {
+              centerYear: Math.round(
+                (frame.window.startYear + frame.window.endYear) / 2,
+              ),
+            }
+          : {}),
+      });
+    },
+    isNodeExpanded: (graphNodeId) =>
+      get().workingSet.some((entry) => entry.graphNodeId === graphNodeId),
+    expandNode: (expansion) => {
+      const now = Date.now();
+      const entry: WorkingSetEntry = {
+        graphNodeId: expansion.subjectGraphNodeId,
+        node: expansion.subject,
+        edges: expansion.edges,
+        neighbours: expansion.neighbours,
+        loadedAt: now,
+      };
+      set((state) => {
+        const existingIndex = state.workingSet.findIndex(
+          (existing) => existing.graphNodeId === entry.graphNodeId,
+        );
+        if (existingIndex === -1) {
+          // A stack: the latest click sits on top.
+          return { workingSet: [...state.workingSet, entry] };
+        }
+        // Refresh the existing entry in place (the query result can be newer
+        // than the click that stacked it); preserve its stack position.
+        const next = [...state.workingSet];
+        next[existingIndex] = entry;
+        return { workingSet: next };
+      });
+    },
+    collapseNode: (graphNodeId) =>
+      set((state) => ({
+        workingSet: state.workingSet.filter(
+          (entry) => entry.graphNodeId !== graphNodeId,
+        ),
+      })),
+    popWorkingSet: () => {
+      const top = get().workingSet[get().workingSet.length - 1];
+      if (top) {
+        get().collapseNode(top.graphNodeId);
+      }
+    },
+    clearWorkingSet: () => set({ workingSet: [] }),
     updateCardSize: (nodeId, size) =>
       set((state) => ({
         items: state.items.map((item) =>

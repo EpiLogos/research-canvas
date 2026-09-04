@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useCanvasWorkspace } from "../canvas/CanvasWorkspaceContext";
+import { ColourLegend } from "./ColourLegend";
 
 interface SettingsOverlayProps {
   onClose: () => void;
@@ -66,6 +67,11 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps) {
             <label>Theme</label>
             <span>{constellation.publishSettings.theme}</span>
           </div>
+        </section>
+
+        <section className="settings-overlay__section">
+          <h3>Colour legend</h3>
+          <ColourLegend theme={constellation.publishSettings.theme} />
         </section>
 
         <section className="settings-overlay__section">

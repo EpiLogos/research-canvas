@@ -2,14 +2,24 @@ pub mod agent;
 pub mod api;
 pub mod commands {
     pub mod agent_activity;
+    pub mod app_tabs;
     pub mod assets;
     pub mod constellations;
     pub mod export;
     pub mod export_graph_bundle;
+    pub mod fetch_asset;
+    pub mod geography_edges;
     pub mod graph;
+    pub mod keepsake;
     pub mod layout;
     pub mod node_document;
+    pub mod palace;
+    pub mod palace_export;
+    pub mod palace_graph;
+    pub mod places;
+    pub mod scenes;
     pub mod search;
+    pub mod street_view;
     pub mod terminal;
     pub mod timeline;
 }
@@ -18,6 +28,7 @@ pub mod export;
 pub mod fs;
 pub mod pty;
 pub mod workspace;
+pub mod workspace_state;
 
 use std::sync::{Arc, Mutex};
 
@@ -26,6 +37,8 @@ pub struct ApiState {
     pub db_path: Option<String>,
     pub active_constellation_id: Option<String>,
     pub active_canvas_id: Option<String>,
+    pub active_project_id: Option<String>,
+    pub active_profile_scope: Option<String>,
 }
 
 pub type SharedApiState = Arc<Mutex<ApiState>>;
@@ -92,6 +105,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::constellations::bootstrap_workspace_command,
+            commands::constellations::resolve_or_create_home_command,
+            commands::constellations::create_project_command,
             commands::constellations::attach_constellation_resource_root_command,
             commands::constellations::detach_constellation_resource_root_command,
             commands::export::export_constellation_bundle_command,
@@ -107,6 +122,7 @@ pub fn run() {
             commands::terminal::resize_terminal_session,
             commands::terminal::send_terminal_input,
             commands::constellations::activate_canvas_command,
+            commands::constellations::set_active_project_command,
             commands::constellations::read_workspace_text_file_command,
             commands::assets::import_node_image_command,
             commands::assets::attach_node_attachment_command,
@@ -129,9 +145,34 @@ pub fn run() {
             commands::graph::archetypal_lighting_command,
             commands::graph::resonances_for_instance_command,
             commands::graph::load_canvas_view_command,
+            commands::places::list_located_graph_nodes_command,
             commands::timeline::load_timeline_view_command,
             commands::timeline::load_timeline_relation_field_command,
+            commands::timeline::expand_timeline_node_command,
             commands::timeline::upsert_timeline_layout_command,
+            commands::scenes::list_scenes_command,
+            commands::scenes::list_scene_sequences_command,
+            commands::scenes::get_scene_command,
+            commands::scenes::upsert_scene_command,
+            commands::scenes::upsert_scene_sequence_command,
+            commands::scenes::delete_scene_command,
+            commands::scenes::delete_scene_sequence_command,
+            commands::geography_edges::list_geography_edges_command,
+            commands::geography_edges::upsert_geography_edge_command,
+            commands::geography_edges::delete_geography_edge_command,
+            commands::street_view::list_street_view_images_command,
+            commands::street_view::register_street_view_image_command,
+            commands::street_view::stage_street_view_image_command,
+            commands::street_view::add_manual_street_view_region_command,
+            commands::street_view::apply_street_view_redaction_command,
+            commands::street_view::mark_street_view_redaction_none_needed_command,
+            commands::fetch_asset::ingest_fetched_asset_command,
+            commands::fetch_asset::list_fetch_records_command,
+            commands::keepsake::write_keepsake_bundle_command,
+            commands::palace_export::write_palace_bundle_command,
+            commands::palace_graph::load_palace_graph_command,
+            commands::palace::load_palace_curation_command,
+            commands::palace::save_palace_curation_command,
             commands::graph::upsert_node_layout_command,
             commands::graph::upsert_node_layouts_command,
             commands::graph::upsert_edge_layout_command,
@@ -142,6 +183,8 @@ pub fn run() {
             commands::node_document::upsert_local_node_document_command,
             commands::node_document::reconcile_local_node_documents_command,
             commands::node_document::acknowledge_local_node_document_sync_command,
+            commands::app_tabs::load_app_tabs_command,
+            commands::app_tabs::save_app_tabs_command,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Research Canvas");

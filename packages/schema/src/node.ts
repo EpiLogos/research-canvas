@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import { viewportSchema } from "./canvas";
+import { colourTagSchema } from "./colour";
+import { temporalPlaceSchema } from "./place";
 
 const nullToUndefined = <T extends z.ZodTypeAny>(schema: T) =>
   z.preprocess((value) => (value === null ? undefined : value), schema);
@@ -33,6 +35,7 @@ export const ENTITY_TYPES = [
   "Place",
   "Work",
   "Archetype",
+  "ArchetypeExpression",
   "Dynamic",
   "Constellation",
   "PsychoidOperator",
@@ -135,9 +138,9 @@ export const EMPTY_GRAPH_NODE_METADATA = {
   evidenceTags: [] as string[], sourceKind: null, contentOrigin: null,
   contentRevision: null, seedSchemaVersion: null, bodySourceCoordinates: [] as string[],
   historicity: null, claimKind: null, evidenceStatus: null, temporalRole: null,
-  placeCoverage: null, qlForm: null, qlUnitId: null, qlArc: null,
+  placeCoverage: null, place: null, qlForm: null, qlUnitId: null, qlArc: null,
   qlTopology: null, qlSchemaVersion: null, qlSourceCoordinates: [] as string[],
-  qlCompletenessStatus: null,
+  qlCompletenessStatus: null, isArchetype: false,
 } as const;
 
 /**
@@ -150,6 +153,7 @@ export const EMPTY_GRAPH_NODE_METADATA = {
 export const graphNodeSchema = z.strictObject({
   graphNodeId: z.string().min(1),
   entityType: entityTypeSchema,
+  isArchetype: z.boolean().optional(),
   title: z.string(),
   body: z.string(),
   summary: z.string(),
@@ -167,6 +171,9 @@ export const graphNodeSchema = z.strictObject({
   evidenceStatus: evidenceStatusSchema.nullable(),
   temporalRole: temporalRoleSchema.nullable(),
   placeCoverage: placeCoverageSchema.nullable(),
+  /** The Temporal Place projection (locked by ticket #9). Present only on
+   * Place nodes; null everywhere else. Precision never exceeds the source's. */
+  place: temporalPlaceSchema.nullable().default(null),
   qlForm: qlFormSchema.nullable(),
   qlUnitId: z.string().nullable(),
   qlArc: qlArcSchema.nullable(),
@@ -189,7 +196,7 @@ export const legacyGraphNodeInputSchema = graphNodeSchema
     evidenceTags: true, sourceKind: true, contentOrigin: true, contentRevision: true,
     seedSchemaVersion: true, bodySourceCoordinates: true, historicity: true,
     claimKind: true, evidenceStatus: true, temporalRole: true, placeCoverage: true,
-    qlForm: true, qlUnitId: true, qlArc: true, qlTopology: true,
+    place: true, qlForm: true, qlUnitId: true, qlArc: true, qlTopology: true,
     qlSchemaVersion: true, qlSourceCoordinates: true, qlCompletenessStatus: true,
   })
   .transform((input) => graphNodeSchema.parse({ ...EMPTY_GRAPH_NODE_METADATA, ...input }));
@@ -209,6 +216,7 @@ const baseNodeSchema = z.object({
   position: positionSchema,
   size: sizeSchema,
   summary: z.string().default(""),
+  colourTag: colourTagSchema.nullable().optional(),
   dotColour: nullToUndefined(z.string().optional()),
   bgColour: nullToUndefined(z.string().optional()),
   textColour: nullToUndefined(z.string().optional()),
@@ -232,8 +240,16 @@ export const resourceNodeSchema = baseNodeSchema.extend({
 
 export const noteNodeSchema = baseNodeSchema.extend({
   type: z.literal("note"),
-  content: nullToUndefined(z.string().default("")),
+  /** BlockNote JSON block array serialized as a string. Legacy plain-text values
+   * are migrated to a single paragraph block at the canvas/UI boundary. */
+  content: nullToUndefined(z.string().default("[]")),
   tags: z.array(z.string()).default([])
+});
+
+export const imageNodeSchema = baseNodeSchema.extend({
+  type: z.literal("image"),
+  src: z.string().min(1),
+  caption: nullToUndefined(z.string().optional()),
 });
 
 export const groupNodeSchema = baseNodeSchema.extend({
@@ -251,6 +267,7 @@ export const portalNodeSchema = baseNodeSchema.extend({
 export const nodeSchema = z.discriminatedUnion("type", [
   resourceNodeSchema,
   noteNodeSchema,
+  imageNodeSchema,
   groupNodeSchema,
   portalNodeSchema
 ]);
@@ -259,6 +276,7 @@ export type Position = z.infer<typeof positionSchema>;
 export type Size = z.infer<typeof sizeSchema>;
 export type ResourceNode = z.infer<typeof resourceNodeSchema>;
 export type NoteNode = z.infer<typeof noteNodeSchema>;
+export type ImageNode = z.infer<typeof imageNodeSchema>;
 export type GroupNode = z.infer<typeof groupNodeSchema>;
 export type PortalNode = z.infer<typeof portalNodeSchema>;
 export type CanvasNode = z.infer<typeof nodeSchema>;

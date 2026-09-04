@@ -61,6 +61,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   return createPortal(
     <div
       className="context-menu"
+      data-testid="canvas-context-menu"
       ref={ref}
       style={{ left: adjustedX, top: adjustedY, position: "fixed", zIndex: 9999 }}
       role="menu"
