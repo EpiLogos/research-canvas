@@ -387,6 +387,10 @@ test("full project journey restores tabs, active surface and persisted surface s
   const palaceTabBefore = await tabItem(page, "Palace");
   await expect(palaceTabBefore).toHaveAttribute("data-active", "true");
 
+  // Palace curation/layout writes are asynchronous. Cross the restart boundary
+  // only after the real repository reports the integrated edit as durable.
+  await expect(page.getByTestId("palace-save-state")).toHaveText("Saved", { timeout: 10_000 });
+
   // Repository-owned restore proof: browser localStorage is deliberately
   // erased before reload. Tabs/surface/domain state must still come back from
   // the mutable bridge + SQLite session repository.
