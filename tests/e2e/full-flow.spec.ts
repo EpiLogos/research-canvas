@@ -22,7 +22,26 @@ function errorCollector(page: Page): string[] {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
   page.on("console", (message) => {
-    if (message.type() === "error") errors.push(`console: ${message.text()}`);
+    if (message.type() !== "error") return;
+    const text = message.text();
+    // Hosted Chromium intentionally has no Neo4j. The browser bridge reports
+    // that optional graph canvas read as 503, after which Canvas hydrates from
+    // its canonical local document projection. Chromium also emits a generic
+    // console error for that handled response; classify the concrete response
+    // below instead of double-counting this browser-generated line.
+    if (text.includes("Failed to load resource") && text.includes("503 (Service Unavailable)")) return;
+    errors.push(`console: ${text}`);
+  });
+  page.on("response", (response) => {
+    if (response.status() < 400) return;
+    const url = new URL(response.url());
+    const local = url.hostname === "127.0.0.1" || url.hostname === "localhost";
+    const expectedHostedGraphFallback = local
+      && response.status() === 503
+      && url.pathname === "/graph/canvas-view";
+    if (!expectedHostedGraphFallback) {
+      errors.push(`response: ${response.status()} ${url.pathname}`);
+    }
   });
   return errors;
 }
@@ -286,10 +305,31 @@ test("full project journey restores tabs, active surface and persisted surface s
   await expect(page.getByTestId(`timeline-node-${MEDICI}`)).toBeAttached({ timeout: 15_000 });
   await expect(page.getByTestId(`timeline-node-${VOC}`)).toBeAttached({ timeout: 15_000 });
   await fit.click();
+
+  // Reuse T11's proven semantic-zoom gesture: anchor the wheel at Medici's
+  // actual time position. Zooming at the track centre can legitimately narrow
+  // the requested century range around another era and unload every expected
+  // historical node, which is not a Timeline persistence failure.
   const track = page.getByTestId("timeline-track");
+  const mediciMarker = page.getByTestId(`timeline-node-marker-${MEDICI}`);
+  await expect(mediciMarker).toBeVisible({ timeout: 15_000 });
+  const markerBox = await mediciMarker.boundingBox();
   const trackBox = await track.boundingBox();
+  const browserViewport = page.viewportSize();
+  expect(markerBox).not.toBeNull();
   expect(trackBox).not.toBeNull();
-  await page.mouse.move(trackBox!.x + trackBox!.width / 2, trackBox!.y + trackBox!.height / 2);
+  expect(browserViewport).not.toBeNull();
+  const trackLeft = Math.max(0, trackBox!.x);
+  const trackRight = Math.min(browserViewport!.width - 1, trackBox!.x + trackBox!.width - 1);
+  const trackTop = Math.max(0, trackBox!.y);
+  const trackBottom = Math.min(browserViewport!.height - 1, trackBox!.y + trackBox!.height - 1);
+  expect(trackRight).toBeGreaterThan(trackLeft);
+  expect(trackBottom).toBeGreaterThan(trackTop);
+  const mediciAnchorX = markerBox!.x + markerBox!.width / 2;
+  await page.mouse.move(
+    Math.min(trackRight, Math.max(trackLeft, mediciAnchorX)),
+    trackTop + (trackBottom - trackTop) / 2,
+  );
   await page.mouse.wheel(0, -600);
   await expect(page.getByTestId("timeline-tier")).toHaveText("century", { timeout: 15_000 });
   const mediciCard = page.getByTestId(`timeline-node-card-${MEDICI}`);
