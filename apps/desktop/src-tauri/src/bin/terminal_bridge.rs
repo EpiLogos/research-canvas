@@ -47,7 +47,7 @@ use research_canvas_desktop_lib::{
         },
     },
     db::{
-        canvas_service::CanvasService,
+        canvas_service::{load_local_canvas_view_at_path, CanvasService},
         connection::Database,
         neo4j::{self, config::Neo4jConfig},
         repositories::{
@@ -248,9 +248,9 @@ fn handle_request(
         })?;
         let hits = search_constellation_command(SearchConstellationRequest {
             database_path,
+            limit,
             constellation_id,
             query,
-            limit,
         })?;
         return respond_json(request, StatusCode(200), hits);
     }
@@ -544,22 +544,27 @@ fn handle_request(
     }
 
     if method == Method::Get && path == "/graph/canvas-view" {
-        let graph_state = match graph_state.as_ref() {
-            Some(state) => state,
-            None => return respond_error(request, StatusCode(503), "Neo4j is not configured"),
-        };
         let canvas_id = query_param(&url, "canvasId")
             .ok_or_else(|| "missing canvasId query parameter".to_string())?;
         let lens = query_param(&url, "lens").unwrap_or_else(|| "canvas".to_string());
         let database_path = session_database_path(&request)?
             .to_string_lossy()
             .to_string();
-        let repo = GraphRepository::new(graph_state.graph.clone(), graph_state.database.clone());
-        let service = CanvasService::new(repo, database_path);
-        let payload = graph_state
-            .runtime
-            .block_on(service.load_canvas_view(&canvas_id, &lens))?;
-        return respond_json(request, StatusCode(200), payload);
+        // Absence of a configured graph is a supported local-first mode, not
+        // an intentional failed browser request. Both paths return the same
+        // CanvasView contract; corrupt canonical data still fails explicitly.
+        let payload = match graph_state.as_ref() {
+            Some(state) => {
+                let repo = GraphRepository::new(state.graph.clone(), state.database.clone());
+                let service = CanvasService::new(repo, database_path);
+                state.runtime.block_on(service.load_canvas_view(&canvas_id, &lens))
+            }
+            None => load_local_canvas_view_at_path(&database_path, &canvas_id, &lens),
+        };
+        return match payload {
+            Ok(view) => respond_json(request, StatusCode(200), view),
+            Err(error) => respond_error(request, StatusCode(500), &error),
+        };
     }
 
     if method == Method::Get && path == "/graph/places" {
