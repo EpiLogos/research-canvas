@@ -108,6 +108,17 @@ const offlineTileSource = {
   attribution: "Natural Earth",
 };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+async function expectPlaces(renderer: RecordingRenderer, ids: string[]) {
+  await waitFor(() => expect(renderer.placeCalls.at(-1)?.places.map((place) => place.graphNodeId)).toEqual(ids));
+}
+
 describe("PsychogeographicMap", () => {
   test("queries the project repository and draws all located + archetypal markers", async () => {
     const renderer = recordingRenderer();
@@ -133,6 +144,99 @@ describe("PsychogeographicMap", () => {
     expect(screen.getByTestId("places-connection-status")).toHaveTextContent("Offline");
   });
 
+  test("geography arriving before style readiness is drawn once ready, never erased by the startup snapshot", async () => {
+    const startup = deferred<void>();
+    const renderer = recordingRenderer();
+    renderer.create = vi.fn(() => startup.promise);
+    render(
+      <PsychogeographicMap repository={repository()} projectId="project:one"
+        tileSource={offlineTileSource} policy={createLiveServicePolicy()} renderer={renderer} />,
+    );
+    await screen.findByTestId("geography-lane-voc:mediterranean");
+    expect(screen.getByTestId("places-globe")).toHaveAttribute("data-ready", "false");
+    expect(renderer.placeCalls).toEqual([]);
+    expect(renderer.laneCalls).toEqual([]);
+
+    await act(async () => startup.resolve(undefined));
+    await expectPlaces(renderer, [florence.graphNodeId, istanbul.graphNodeId]);
+    expect(renderer.placeCalls.at(-1)?.expressions).toHaveLength(1);
+    expect(renderer.laneCalls.at(-1)).toEqual([vocLane]);
+    expect(renderer.create).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("psychogeographic-error")).not.toBeInTheDocument();
+  });
+
+  test("geography arriving after style readiness updates the same renderer", async () => {
+    const data = deferred<LocatedGraphNode[]>();
+    const repo = repository();
+    repo.getLocatedNodes = () => data.promise;
+    const renderer = recordingRenderer();
+    renderer.create = vi.fn(async () => {});
+    render(
+      <PsychogeographicMap repository={repo} projectId="project:one"
+        tileSource={offlineTileSource} policy={createLiveServicePolicy()} renderer={renderer} />,
+    );
+    await waitFor(() => expect(screen.getByTestId("places-globe")).toHaveAttribute("data-ready", "true"));
+    await expectPlaces(renderer, []);
+    await act(async () => data.resolve([florence, istanbul]));
+    await expectPlaces(renderer, [florence.graphNodeId, istanbul.graphNodeId]);
+    expect(renderer.create).toHaveBeenCalledTimes(1);
+  });
+
+  test("refresh re-queries geography and rejects an older in-flight response without resetting the camera", async () => {
+    const oldData = deferred<LocatedGraphNode[]>();
+    const repo = repository();
+    repo.getLocatedNodes = vi.fn()
+      .mockImplementationOnce(() => oldData.promise)
+      .mockResolvedValueOnce([florence]);
+    const renderer = recordingRenderer();
+    renderer.create = vi.fn(async () => {});
+    renderer.flyTo = vi.fn(async () => {});
+    const props = {
+      repository: repo, projectId: "project:one", tileSource: offlineTileSource,
+      policy: createLiveServicePolicy(), renderer,
+      initialViewState: { latitude: 43, longitude: 11, zoom: 3 },
+    };
+    const { rerender } = render(<PsychogeographicMap {...props} refreshVersion={0} />);
+    await waitFor(() => expect(screen.getByTestId("places-globe")).toHaveAttribute("data-ready", "true"));
+    rerender(<PsychogeographicMap {...props} refreshVersion={1} />);
+    await expectPlaces(renderer, [florence.graphNodeId]);
+    await act(async () => oldData.resolve([istanbul]));
+    await expectPlaces(renderer, [florence.graphNodeId]);
+    expect(repo.getLocatedNodes).toHaveBeenCalledTimes(2);
+    expect(renderer.create).toHaveBeenCalledTimes(1);
+    expect(renderer.flyTo).toHaveBeenCalledExactlyOnceWith(43, 11, 3);
+  });
+
+  test("a renderer finishing after unmount cannot publish handlers or redraw", async () => {
+    const startup = deferred<void>();
+    const renderer = recordingRenderer();
+    renderer.create = () => startup.promise;
+    renderer.destroy = vi.fn();
+    const { unmount } = render(
+      <PsychogeographicMap repository={repository()} projectId="project:one"
+        tileSource={offlineTileSource} policy={createLiveServicePolicy()} renderer={renderer} />,
+    );
+    await screen.findByTestId("geography-lane-voc:mediterranean");
+    unmount();
+    await act(async () => startup.resolve(undefined));
+    expect(renderer.destroy).toHaveBeenCalledTimes(1);
+    expect(renderer.placeClick).toBeNull();
+    expect(renderer.placeCalls).toEqual([]);
+    expect(renderer.laneCalls).toEqual([]);
+  });
+
+  test("renderer initialization failure is visible rather than an unhandled rejection", async () => {
+    const renderer = recordingRenderer();
+    renderer.create = async () => { throw new Error("style unavailable"); };
+    render(
+      <PsychogeographicMap repository={repository()} projectId="project:one"
+        tileSource={offlineTileSource} policy={createLiveServicePolicy()} renderer={renderer} />,
+    );
+    expect(await screen.findByTestId("psychogeographic-error")).toHaveTextContent("style unavailable");
+    expect(renderer.placeCalls).toEqual([]);
+    expect(screen.getByTestId("places-flat-toggle")).toBeDisabled();
+  });
+
   test("marker click opens a location panel with relation and archetype context", async () => {
     const renderer = recordingRenderer();
     render(
@@ -144,7 +248,7 @@ describe("PsychogeographicMap", () => {
         renderer={renderer}
       />,
     );
-    await waitFor(() => expect(renderer.placeClick).not.toBeNull());
+    await expectPlaces(renderer, [florence.graphNodeId, istanbul.graphNodeId]);
 
     act(() => renderer.placeClick?.(florence.graphNodeId));
     const panel = await screen.findByTestId("places-location-panel");
@@ -169,8 +273,8 @@ describe("PsychogeographicMap", () => {
         onOpenCanvasNode={openCanvasNode}
       />,
     );
-    await waitFor(() => expect(renderer.placeDoubleClick).not.toBeNull());
-    act(() => renderer.placeDoubleClick?.(istanbul.graphNodeId));
+    await expectPlaces(renderer, [florence.graphNodeId, istanbul.graphNodeId]);
+    await act(async () => renderer.placeDoubleClick?.(istanbul.graphNodeId));
     expect(openCanvasNode).toHaveBeenCalledWith(istanbul.graphNodeId);
   });
 
@@ -185,7 +289,7 @@ describe("PsychogeographicMap", () => {
         renderer={renderer}
       />,
     );
-    await waitFor(() => expect(renderer.placeCalls.length).toBeGreaterThan(0));
+    await expectPlaces(renderer, [florence.graphNodeId, istanbul.graphNodeId]);
     const beforeFlatPlaces = renderer.placeCalls.length;
     const beforeFlatLanes = renderer.laneCalls.length;
     fireEvent.click(screen.getByTestId("places-flat-toggle"));
@@ -216,6 +320,7 @@ describe("PsychogeographicMap", () => {
         renderer={liveRenderer}
       />,
     );
+    await waitFor(() => expect(screen.getByTestId("places-globe")).toHaveAttribute("data-ready", "true"));
     fireEvent.click(screen.getByTestId("psychogeographic-opt-in-live"));
     fireEvent.click(screen.getByTestId("psychogeographic-refresh-tiles"));
     await waitFor(() => expect(screen.getByTestId("places-connection-status")).toHaveTextContent("Live tiles"));
@@ -233,6 +338,7 @@ describe("PsychogeographicMap", () => {
         renderer={fallbackRenderer}
       />,
     );
+    await waitFor(() => expect(screen.getByTestId("places-globe")).toHaveAttribute("data-ready", "true"));
     fireEvent.click(screen.getByTestId("psychogeographic-opt-in-live"));
     fireEvent.click(screen.getByTestId("psychogeographic-refresh-tiles"));
     await waitFor(() => expect(screen.getByTestId("places-connection-status")).toHaveTextContent("offline fallback"));
