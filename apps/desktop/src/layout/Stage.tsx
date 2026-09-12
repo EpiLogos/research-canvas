@@ -7,6 +7,7 @@ import { StoryLens } from "../features/story/StoryLens";
 import { PalaceLensHost } from "../features/palace/PalaceLensHost";
 import { TimelineLens } from "../features/timeline/TimelineLens";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
+import { tabConstellationId } from "../features/canvas/workspaceTabIdentity";
 import type { ReaderRecord } from "../features/viewer/readerRecord";
 import type { LensMode } from "./useLensMode";
 
@@ -65,6 +66,12 @@ export function Stage({
   const placesTabState = workspace.activeTab?.state.surfaceId === "places"
     ? workspace.activeTab.state
     : null;
+  const tabOwner = tabConstellationId(workspace.activeTab);
+  const lensSurfaceId = lens === "psychogeographic" ? "places" : lens;
+  const surfaceMatches = workspace.activeSurfaceId === lensSurfaceId
+    || (workspace.activeSurfaceId === "projects" && lens === "canvas");
+  const workspaceReady = workspace.isHydrated && surfaceMatches
+    && (!tabOwner || tabOwner === workspace.activeConstellationId);
 
   const openPlaceOnCanvas = async (graphNodeId: string) => {
     const constellationId = workspace.activeConstellationId;
@@ -73,6 +80,21 @@ export function Stage({
     workspace.selectNode(graphNodeId);
   };
 
+  // Restored tabs arrive before their workspace document. Mounting Palace in
+  // that interval used to generate/cache a different project's spatial state.
+  // Keep shell navigation available, but do not instantiate a scoped surface
+  // until document, project/profile, active tab and lens all agree.
+  if (!workspaceReady) {
+    return (
+      <div className="shell-stage" data-testid="shell-stage" aria-busy={!workspace.errorMessage}>
+        <div role={workspace.errorMessage ? "alert" : "status"} data-testid="workspace-restoring">
+          {workspace.errorMessage ?? "Restoring workspace…"}
+        </div>
+      </div>
+    );
+  }
+
+  const surfaceKey = `${workspace.activeConstellationId}:${activeProfileScope}`;
   return (
     <div className="shell-stage" data-testid="shell-stage">
       {lens === "canvas" && (
@@ -89,13 +111,14 @@ export function Stage({
 
       {lens === "timeline" && (
         <section className="canvas-pane" data-testid="timeline-pane" style={commonStageSurfaceStyle}>
-          <TimelineLens onOpenNodeDocument={onOpenNodeDocument} />
+          <TimelineLens key={surfaceKey} onOpenNodeDocument={onOpenNodeDocument} />
         </section>
       )}
 
       {lens === "psychogeographic" && databasePath && workspaceId && activeProfileScope && workspace.activeProjectId && (
         <section className="canvas-pane" data-testid="psychogeographic-pane" style={commonStageSurfaceStyle}>
           <PsychogeographicLens
+            key={surfaceKey}
             transport={workspaceTransport}
             projectId={workspace.activeProjectId}
             databasePath={databasePath}
@@ -135,6 +158,7 @@ export function Stage({
       {lens === "story" && databasePath && workspaceId && activeProfileScope && workspace.activeConstellationId && (
         <section className="canvas-pane" data-testid="story-pane" style={commonStageSurfaceStyle}>
           <StoryLens
+            key={surfaceKey}
             transport={workspaceTransport}
             constellationId={workspace.activeConstellationId}
             databasePath={databasePath}
@@ -148,6 +172,7 @@ export function Stage({
       {lens === "palace" && databasePath && workspaceId && activeProfileScope && workspace.activeConstellationId && (
         <section className="canvas-pane" data-testid="palace-pane" style={commonStageSurfaceStyle}>
           <PalaceLensHost
+            key={surfaceKey}
             transport={workspaceTransport}
             constellationId={workspace.activeConstellationId}
             databasePath={databasePath}
