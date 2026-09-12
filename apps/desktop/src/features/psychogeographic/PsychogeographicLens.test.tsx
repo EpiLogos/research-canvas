@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type {
   MapSurfaceRenderer,
@@ -134,6 +134,44 @@ describe("PsychogeographicLens", () => {
       expect(lanes?.map((edge) => edge.seedKey)).toEqual(["voc:mediterranean"]);
     });
     expect(await screen.findByTestId("geography-lane-voc:mediterranean")).toBeInTheDocument();
+  });
+
+  test("refresh discovers newly saved canonical geography and imagery without resetting the map", async () => {
+    let currentNodes: LocatedGraphNode[] = [];
+    let currentLanes: GeographyEdge[] = [];
+    const repository = makeRepository();
+    repository.getLocatedNodes = vi.fn(async () => currentNodes);
+    repository.getGeographyEdges = vi.fn(async () => currentLanes);
+    const transport = makeTransport();
+    const listImages = vi.spyOn(transport, "listStreetViewImages");
+    const { renderer, drawPlaces, drawLanes } = makeRenderer();
+    render(
+      <PsychogeographicLens
+        transport={transport} projectId="project:one" databasePath="/tmp/ws.sqlite"
+        workspaceId="sqlite:/tmp/ws" profileScope="bootstrapping"
+        renderer={renderer} placesRepository={repository}
+        initialViewState={{ latitude: 43, longitude: 11, zoom: 3 }}
+      />,
+    );
+    await screen.findByTestId("psychogeographic-empty");
+    await waitFor(() => expect(renderer.flyTo).toHaveBeenCalledWith(43, 11, 3));
+    await waitFor(() => expect(listImages).toHaveBeenCalledTimes(1));
+
+    currentNodes = [florence];
+    currentLanes = [vocLane];
+    fireEvent.click(screen.getByRole("button", { name: "Refresh project geography" }));
+    await waitFor(() => {
+      const places = drawPlaces.mock.calls.at(-1)?.[0] as PlaceRenderMarker[] | undefined;
+      expect(places?.map((place) => place.graphNodeId)).toEqual([florence.graphNodeId]);
+      expect(drawLanes.mock.calls.at(-1)?.[0]).toEqual([vocLane]);
+    });
+    expect(repository.getLocatedNodes).toHaveBeenCalledTimes(2);
+    expect(repository.getGeographyEdges).toHaveBeenCalledTimes(2);
+    expect(repository.getArchetypeExpressionsForPlace).toHaveBeenCalledWith("project:one", florence.graphNodeId);
+    await waitFor(() => expect(listImages).toHaveBeenCalledTimes(2));
+    expect(renderer.create).toHaveBeenCalledTimes(1);
+    expect(renderer.flyTo).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId("psychogeographic-empty")).not.toBeInTheDocument();
   });
 
   test("an empty project shows the canonical Places empty state, not a walk error", async () => {
