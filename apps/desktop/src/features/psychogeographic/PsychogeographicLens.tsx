@@ -128,6 +128,7 @@ export function PsychogeographicLens({
       <PsychogeographicMap
         repository={repository}
         projectId={projectId}
+        refreshVersion={refreshVersion}
         tileSource={tileSource}
         policy={policy}
         renderer={renderer}
