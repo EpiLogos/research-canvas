@@ -11,9 +11,7 @@ function externalRequestCollector(page: Page): string[] {
   const external: string[] = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
-    if (url.hostname !== "127.0.0.1" && url.hostname !== "localhost") {
-      external.push(request.url());
-    }
+    if (url.hostname !== "127.0.0.1" && url.hostname !== "localhost") external.push(request.url());
   });
   return external;
 }
@@ -22,41 +20,22 @@ function errorCollector(page: Page): string[] {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
   page.on("console", (message) => {
-    if (message.type() !== "error") return;
-    const text = message.text();
-    // Hosted Chromium intentionally has no Neo4j. The browser bridge reports
-    // that optional graph canvas read as 503, after which Canvas hydrates from
-    // its canonical local document projection. Chromium also emits a generic
-    // console error for that handled response; classify the concrete response
-    // below instead of double-counting this browser-generated line.
-    if (text.includes("Failed to load resource") && text.includes("503 (Service Unavailable)")) return;
-    errors.push(`console: ${text}`);
+    if (message.type() === "error") errors.push(`console: ${message.text()}`);
   });
   page.on("response", (response) => {
-    if (response.status() < 400) return;
-    const url = new URL(response.url());
-    const local = url.hostname === "127.0.0.1" || url.hostname === "localhost";
-    const expectedHostedGraphFallback = local
-      && response.status() === 503
-      && url.pathname === "/graph/canvas-view";
-    if (!expectedHostedGraphFallback) {
-      errors.push(`response: ${response.status()} ${url.pathname}`);
-    }
+    if (response.status() >= 400) errors.push(`response: ${response.status()} ${new URL(response.url()).pathname}`);
   });
+  // #46 requires zero errors, including browser-generated resource errors.
+  // Offline operation must succeed through a real local contract; no endpoint
+  // or HTTP status is exempted from this acceptance boundary.
   return errors;
 }
 
 async function openFiles(page: Page): Promise<void> {
   const sidebar = page.getByTestId("shell-left-sidebar");
-  const files = page
-    .getByTestId("left-rail")
-    .getByRole("button", { name: "Files & Constellation", exact: true });
-  if (await sidebar.getAttribute("data-open") !== "true") {
-    await files.dispatchEvent("click");
-  }
-  // `bootstrapping` is a legitimate canonical profile for the root field, so
-  // it cannot double as a workspace-readiness sentinel. Callers wait on the
-  // concrete project/profile/surface they actually require.
+  const files = page.getByTestId("left-rail").getByRole("button", { name: "Files & Constellation", exact: true });
+  if (await sidebar.getAttribute("data-open") !== "true") await files.dispatchEvent("click");
+  // `bootstrapping` is a legitimate Root profile, not a readiness sentinel.
   await expect(page.getByTestId("lo-project-scope-profile")).toBeAttached({ timeout: 35_000 });
 }
 
@@ -70,76 +49,101 @@ async function closeLeftSidebar(page: Page): Promise<void> {
   }
 }
 
-async function selectRootProject(page: Page): Promise<void> {
+async function expectWorkspace(page: Page, name: string, profileScope?: string): Promise<void> {
   await openFiles(page);
-  // The seeded Root Archetypal Field is the canonical default project but its
-  // vault root intentionally lives outside the user research-canvas home.
-  // ProjectsLayer lists only home-owned projects, so a fresh browser session
-  // proves the root through the active workspace scope rather than looking for
-  // an impossible home-project row.
-  await expect(page.getByTestId("lo-project-scope-name")).toContainText(ROOT_PROJECT_NAME, {
-    timeout: 35_000,
-  });
+  await expect(page.getByTestId("lo-project-scope-name")).toContainText(name, { timeout: 35_000 });
+  if (profileScope) await expect(page.getByTestId("lo-project-scope-profile")).toContainText(profileScope);
   await closeLeftSidebar(page);
 }
 
-async function selectHistoricalForms(page: Page): Promise<void> {
+async function selectRootProject(page: Page): Promise<void> {
+  // Root's vault lives outside the home-owned Projects picker.
+  await expectWorkspace(page, ROOT_PROJECT_NAME, "bootstrapping");
+}
+
+async function selectHistoricalForms(page: Page): Promise<{ projectId: string; profileScope: string }> {
   await openFiles(page);
   const constellations = page.getByTestId("lo-constellations");
   await expect(constellations.getByRole("button").first()).toBeAttached({ timeout: 35_000 });
   const historical = constellations.getByRole("button", { name: new RegExp(`^${HISTORICAL_FORMS}\\b`) });
   await expect(historical).toBeAttached({ timeout: 15_000 });
+  const selectionResponse = page.waitForResponse((response) =>
+    response.request().method() === "POST" && new URL(response.url()).pathname === "/workspace/project",
+  );
   await historical.dispatchEvent("click");
+  const selected = await selectionResponse;
+  expect(selected.ok()).toBe(true);
+  const identity = await selected.json() as { projectId: string; profileScope: string };
+  expect(identity.projectId).toBeTruthy();
+  expect(identity.profileScope).toBeTruthy();
   await expect(historical).toHaveAttribute("data-active", "true", { timeout: 15_000 });
+  await expect(page.getByTestId("lo-project-scope-name")).toContainText(HISTORICAL_FORMS);
+  await expect(page.getByTestId("lo-project-scope-profile")).toContainText(identity.profileScope);
   await closeLeftSidebar(page);
+  return identity;
+}
+
+interface DurableTabIdentity {
+  activeTabId: string | null;
+  tabs: Array<{ id: string; surfaceId: string; constellationId: string | null }>;
+}
+
+async function durableTabIdentity(page: Page): Promise<DurableTabIdentity> {
+  return page.evaluate(async () => {
+    const sessionId = document.cookie.split(";").map((entry) => entry.trim())
+      .find((entry) => entry.startsWith("research_canvas_session_id="))?.slice("research_canvas_session_id=".length);
+    if (!sessionId) throw new Error("research-canvas session cookie was not established");
+    const response = await fetch("http://127.0.0.1:4789/workspace/app-tabs", {
+      headers: { "X-Research-Canvas-Session": sessionId },
+    });
+    if (!response.ok) throw new Error(`Persisted tabs read failed (${response.status})`);
+    const snapshot = await response.json() as {
+      activeTabId: string | null;
+      tabs: Array<{ id: string; surfaceId: string; state: { constellationId?: string } }>;
+    };
+    return {
+      activeTabId: snapshot.activeTabId,
+      tabs: snapshot.tabs.map((tab) => ({ id: tab.id, surfaceId: tab.surfaceId, constellationId: tab.state.constellationId ?? null })),
+    };
+  });
+}
+
+async function waitForDurablePalace(page: Page, owner: string): Promise<DurableTabIdentity> {
+  await expect.poll(async () => {
+    const snapshot = await durableTabIdentity(page);
+    const active = snapshot.tabs.find((tab) => tab.id === snapshot.activeTabId);
+    return { surfaceId: active?.surfaceId, constellationId: active?.constellationId };
+  }).toEqual({ surfaceId: "palace", constellationId: owner });
+  const saved = await durableTabIdentity(page);
+  expect(saved.tabs.filter((tab) => tab.surfaceId !== "projects").every((tab) => Boolean(tab.constellationId))).toBe(true);
+  return saved;
 }
 
 async function attachCanonicalBandaPlace(page: Page): Promise<void> {
   await page.evaluate(async ({ graphNodeId }) => {
-    const sessionId = document.cookie
-      .split(";")
-      .map((entry) => entry.trim())
-      .find((entry) => entry.startsWith("research_canvas_session_id="))
-      ?.slice("research_canvas_session_id=".length);
+    const sessionId = document.cookie.split(";").map((entry) => entry.trim())
+      .find((entry) => entry.startsWith("research_canvas_session_id="))?.slice("research_canvas_session_id=".length);
     if (!sessionId) throw new Error("research-canvas browser session cookie was not established");
-
     const response = await fetch("http://127.0.0.1:4789/graph/node/update", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Research-Canvas-Session": sessionId,
-      },
+      headers: { "Content-Type": "application/json", "X-Research-Canvas-Session": sessionId },
       body: JSON.stringify({
         graphNodeId,
         patch: {
           placeCoverage: "resolved",
           place: {
-            graphNodeId,
-            names: [{ language: "en", name: "Banda Islands" }],
-            coordinate: {
-              precision: "approximate",
-              latitude: -4.55,
-              longitude: 129.9,
-            },
-            hierarchy: [],
-            externalRefs: [],
-            provenance: { sourceRefs: [] },
+            graphNodeId, names: [{ language: "en", name: "Banda Islands" }],
+            coordinate: { precision: "approximate", latitude: -4.55, longitude: 129.9 },
+            hierarchy: [], externalRefs: [], provenance: { sourceRefs: [] },
           },
         },
       }),
     });
-    if (!response.ok) {
-      throw new Error(`local Place update failed (${response.status}): ${await response.text()}`);
-    }
+    if (!response.ok) throw new Error(`local Place update failed (${response.status}): ${await response.text()}`);
   }, { graphNodeId: BANDA });
 }
 
-async function addStoryScene(
-  page: Page,
-  title: string,
-  narration: string,
-  transition: "fade" | "dissolve",
-): Promise<void> {
+async function addStoryScene(page: Page, title: string, narration: string, transition: "fade" | "dissolve"): Promise<void> {
   await page.getByTestId("story-add-scene").click();
   await expect(page.getByTestId("story-scene-editor")).toBeVisible();
   await page.getByTestId("story-scene-title").fill(title);
@@ -158,22 +162,18 @@ async function tabItem(page: Page, surface: string, title?: string): Promise<Loc
   if (title) item = item.filter({ has: page.locator(".app-tabbar__label", { hasText: title }) });
   return item.first();
 }
-
 async function activateSurfaceTab(page: Page, surface: string, title?: string): Promise<void> {
   const item = await tabItem(page, surface, title);
   await expect(item).toBeVisible({ timeout: 15_000 });
   await item.getByRole("tab").click();
   await expect(item).toHaveAttribute("data-active", "true");
 }
-
 async function tabSnapshot(page: Page): Promise<string[]> {
-  return page.getByTestId("app-tabbar").locator(".app-tabbar__item").evaluateAll((items) =>
-    items.map((item) => {
-      const surface = item.querySelector(".app-tabbar__surface")?.textContent?.trim() ?? "";
-      const label = item.querySelector(".app-tabbar__label")?.textContent?.trim() ?? "";
-      return `${surface}|${label}`;
-    }),
-  );
+  return page.getByTestId("app-tabbar").locator(".app-tabbar__item").evaluateAll((items) => items.map((item) => {
+    const surface = item.querySelector(".app-tabbar__surface")?.textContent?.trim() ?? "";
+    const label = item.querySelector(".app-tabbar__label")?.textContent?.trim() ?? "";
+    return `${surface}|${label}`;
+  }));
 }
 
 test("a non-default project remains the active project after restart", async ({ page }) => {
@@ -181,12 +181,10 @@ test("a non-default project remains the active project after restart", async ({ 
   const external = externalRequestCollector(page);
   const errors = errorCollector(page);
   const projectName = "T17 Restart Project";
-
   await page.goto("/");
   await expect(page.getByTestId("canvas-pane")).toBeVisible({ timeout: 20_000 });
   await openFiles(page);
   await expect(page.getByTestId("lo-project-scope-name")).toContainText(ROOT_PROJECT_NAME);
-
   await page.getByTestId("projects-trigger").dispatchEvent("click");
   await expect(page.getByTestId("projects-layer")).toBeVisible();
   await page.getByTestId("projects-new-name").fill(projectName);
@@ -194,12 +192,10 @@ test("a non-default project remains the active project after restart", async ({ 
   await expect(page.getByTestId("projects-layer")).not.toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId("lo-project-scope-name")).toContainText(projectName, { timeout: 15_000 });
   await expect(page.getByTestId("lo-project-scope-profile")).toContainText("project:t17-restart-project", { timeout: 20_000 });
-
   await page.reload();
   await openFiles(page);
   await expect(page.getByTestId("lo-project-scope-name")).toContainText(projectName, { timeout: 35_000 });
   await expect(page.getByTestId("lo-project-scope-profile")).toContainText("project:t17-restart-project", { timeout: 35_000 });
-
   expect(errors).toEqual([]);
   expect(external).toEqual([]);
 });
@@ -209,66 +205,37 @@ test("full project journey restores tabs, active surface and persisted surface s
   const external = externalRequestCollector(page);
   const errors = errorCollector(page);
   const journeyTitle = `T17 integrated journey ${Date.now()}`;
-
   await page.goto("/");
   await expect(page.getByTestId("canvas-pane")).toBeVisible({ timeout: 20_000 });
   await selectRootProject(page);
   await waitForSeededGraphReady(page);
   await closeLeftSidebar(page);
 
-  // Surface #1 · Canvas: prove the canonical spectral lineage is repository-backed,
-  // then author a real note + image and connect them through the editor.
-  await expect(page.locator(".canvas-flow")).toContainText("Christ Sixfold Spectral Lineage", {
-    timeout: 20_000,
-  });
+  // Canvas: real canonical lineage, an authored note and image, and their edge.
+  await expect(page.locator(".canvas-flow")).toContainText("Christ Sixfold Spectral Lineage", { timeout: 20_000 });
   const pane = page.getByTestId("canvas-pane");
   await pane.click({ button: "right", position: { x: 340, y: 230 } });
   await page.getByRole("menuitem", { name: /^Add note\b/ }).click();
   const note = page.locator(".react-flow__node-note").last();
   await expect(note).toBeVisible();
-
   const paneBox = await pane.boundingBox();
   expect(paneBox).not.toBeNull();
   const imageEntry = JSON.stringify({
-    id: "t17-image-drop",
-    kind: "image",
-    name: "dropped-image.png",
-    relativePath: "fixtures/dropped-image.png",
-    absolutePath: "/fixtures/dropped-image.png",
+    id: "t17-image-drop", kind: "image", name: "dropped-image.png",
+    relativePath: "fixtures/dropped-image.png", absolutePath: "/fixtures/dropped-image.png",
   });
-  const flow = page.locator(".react-flow");
-  const flowElement = await flow.elementHandle();
+  const flowElement = await page.locator(".react-flow").elementHandle();
   if (!flowElement) throw new Error("React Flow surface was not available for image drop");
-  await flowElement.evaluate(
-    (element, { data, dropX, dropY }) => {
-      const dataTransfer = new DataTransfer();
-      dataTransfer.setData("application/x-canvas-entry", data);
-      dataTransfer.effectAllowed = "copy";
-      dataTransfer.dropEffect = "copy";
-      element.dispatchEvent(new DragEvent("dragover", {
-        bubbles: true,
-        cancelable: true,
-        clientX: dropX,
-        clientY: dropY,
-        dataTransfer,
-      }));
-      element.dispatchEvent(new DragEvent("drop", {
-        bubbles: true,
-        cancelable: true,
-        clientX: dropX,
-        clientY: dropY,
-        dataTransfer,
-      }));
-    },
-    {
-      data: imageEntry,
-      dropX: paneBox!.x + Math.min(paneBox!.width - 80, 620),
-      dropY: paneBox!.y + 230,
-    },
-  );
+  await flowElement.evaluate((element, { data, dropX, dropY }) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData("application/x-canvas-entry", data);
+    dataTransfer.effectAllowed = "copy";
+    dataTransfer.dropEffect = "copy";
+    element.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, clientX: dropX, clientY: dropY, dataTransfer }));
+    element.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, clientX: dropX, clientY: dropY, dataTransfer }));
+  }, { data: imageEntry, dropX: paneBox!.x + Math.min(paneBox!.width - 80, 620), dropY: paneBox!.y + 230 });
   const image = page.locator(".react-flow__node-image").last();
   await expect(image).toBeVisible({ timeout: 15_000 });
-
   const noteId = await note.getAttribute("data-id");
   const imageId = await image.getAttribute("data-id");
   expect(noteId).toBeTruthy();
@@ -284,13 +251,9 @@ test("full project journey restores tabs, active surface and persisted surface s
   await target.dispatchEvent("click", { button: 0, bubbles: true, cancelable: true });
   await expect(page.locator("[data-testid^='edge-']")).toHaveCount(edgeCountBeforeConnect + 1, { timeout: 15_000 });
   const edgeCountAfterConnect = edgeCountBeforeConnect + 1;
+  const historicalIdentity = await selectHistoricalForms(page);
 
-  // Work on the real historical constellation for the mature relational surfaces.
-  await selectHistoricalForms(page);
-
-  // Surface #2 · Timeline: enter via the real keyboard command palette, then
-  // persist a genuine semantic camera tier + selected graph node. Both Medici
-  // and VOC are canonical repository records in this historical constellation.
+  // Timeline: the real command palette, canonical nodes and semantic camera.
   await page.keyboard.press("Control+k");
   const palette = page.getByRole("dialog", { name: "Command palette" });
   await expect(palette).toBeVisible();
@@ -305,11 +268,7 @@ test("full project journey restores tabs, active surface and persisted surface s
   await expect(page.getByTestId(`timeline-node-${MEDICI}`)).toBeAttached({ timeout: 15_000 });
   await expect(page.getByTestId(`timeline-node-${VOC}`)).toBeAttached({ timeout: 15_000 });
   await fit.click();
-
-  // Reuse T11's proven semantic-zoom gesture: anchor the wheel at Medici's
-  // actual time position. Zooming at the track centre can legitimately narrow
-  // the requested century range around another era and unload every expected
-  // historical node, which is not a Timeline persistence failure.
+  // Anchor semantic zoom at Medici's actual time, not an unrelated century.
   const track = page.getByTestId("timeline-track");
   const mediciMarker = page.getByTestId(`timeline-node-marker-${MEDICI}`);
   await expect(mediciMarker).toBeVisible({ timeout: 15_000 });
@@ -326,10 +285,7 @@ test("full project journey restores tabs, active surface and persisted surface s
   expect(trackRight).toBeGreaterThan(trackLeft);
   expect(trackBottom).toBeGreaterThan(trackTop);
   const mediciAnchorX = markerBox!.x + markerBox!.width / 2;
-  await page.mouse.move(
-    Math.min(trackRight, Math.max(trackLeft, mediciAnchorX)),
-    trackTop + (trackBottom - trackTop) / 2,
-  );
+  await page.mouse.move(Math.min(trackRight, Math.max(trackLeft, mediciAnchorX)), trackTop + (trackBottom - trackTop) / 2);
   await page.mouse.wheel(0, -600);
   await expect(page.getByTestId("timeline-tier")).toHaveText("century", { timeout: 15_000 });
   const mediciCard = page.getByTestId(`timeline-node-card-${MEDICI}`);
@@ -337,9 +293,7 @@ test("full project journey restores tabs, active surface and persisted surface s
   await mediciCard.click({ modifiers: ["Shift"] });
   await expect(page.getByTestId(`timeline-working-set-entry-${MEDICI}`)).toBeVisible();
 
-  // Surface #3 · Places: reuse the mature T12/T16 path. Enrich the existing
-  // Banda genocide graph node through the ordinary local metadata command,
-  // then select that same repository record on the real MapLibre globe.
+  // Places: enrich and select the same canonical Banda record on MapLibre.
   await attachCanonicalBandaPlace(page);
   await page.getByTestId("lens-psychogeographic").click();
   const globe = page.getByTestId("places-globe");
@@ -355,7 +309,7 @@ test("full project journey restores tabs, active surface and persisted surface s
   const placesCenter = await globe.getAttribute("data-center");
   expect(placesCenter).toBeTruthy();
 
-  // Surface #4 · Story: author a durable two-scene journey.
+  // Story: author and persist a real two-scene journey.
   await page.getByTestId("lens-story").click();
   await expect(page.getByTestId("story-surface")).toBeVisible({ timeout: 20_000 });
   await page.getByTestId("story-new-journey-title").fill(journeyTitle);
@@ -365,7 +319,7 @@ test("full project journey restores tabs, active surface and persisted surface s
   await addStoryScene(page, "Aftermath", "The second integrated scene.", "dissolve");
   await expect(page.getByTestId("story-scene-strip").locator('button[data-testid^="story-scene-"]')).toHaveCount(2);
 
-  // Surface #5 · Palace: regenerate/adopt the mature palace, add a durable room and wall object.
+  // Palace: generated rooms plus a manually authored room and wall object.
   await page.getByTestId("lens-palace").click();
   await expect(page.getByTestId("palace-surface")).toBeVisible({ timeout: 25_000 });
   const rooms = page.getByTestId("palace-rooms-panel").locator("li");
@@ -382,69 +336,58 @@ test("full project journey restores tabs, active surface and persisted surface s
   await page.getByTestId("palace-wall-face-east").click();
   await page.getByTestId("palace-place-confirm").click();
   await expect(page.locator('[data-testid^="palace-wall-object-manual:object:"]')).toHaveCount(1);
-
   const tabsBeforeRestart = await tabSnapshot(page);
-  const palaceTabBefore = await tabItem(page, "Palace");
-  await expect(palaceTabBefore).toHaveAttribute("data-active", "true");
-
-  // Palace curation/layout writes are asynchronous. Cross the restart boundary
-  // only after the real repository reports the integrated edit as durable.
+  await expect(await tabItem(page, "Palace")).toHaveAttribute("data-active", "true");
   await expect(page.getByTestId("palace-save-state")).toHaveText("Saved", { timeout: 10_000 });
+  const identityBeforeRestart = await waitForDurablePalace(page, historicalIdentity.projectId);
 
-  // Repository-owned restore proof: browser localStorage is deliberately
-  // erased before reload. Tabs/surface/domain state must still come back from
-  // the mutable bridge + SQLite session repository.
+  // Repository-owned restore: erase localStorage, but keep the session cookie.
   await page.evaluate(() => window.localStorage.clear());
   await page.reload();
   await expect(page.getByTestId("palace-surface")).toBeVisible({ timeout: 35_000 });
+  await expectWorkspace(page, HISTORICAL_FORMS, historicalIdentity.profileScope);
+  expect(await waitForDurablePalace(page, historicalIdentity.projectId)).toEqual(identityBeforeRestart);
   await expect(page.getByTestId(`palace-room-${manualRoomId}`)).toBeVisible();
   await expect(page.locator('[data-testid^="palace-wall-object-manual:object:"]')).toHaveCount(1);
-  const tabsAfterReload = await tabSnapshot(page);
-  expect(tabsAfterReload).toEqual(tabsBeforeRestart);
-  const palaceTabAfterReload = await tabItem(page, "Palace");
-  await expect(palaceTabAfterReload).toHaveAttribute("data-active", "true");
+  expect(await tabSnapshot(page)).toEqual(tabsBeforeRestart);
+  await expect(await tabItem(page, "Palace")).toHaveAttribute("data-active", "true");
 
-  // Mature close/reopen boundary: keep the browser context (and therefore the
-  // real bridge session cookie), close the app page, and launch a fresh page.
-  // The reopened app must reconstruct the same project, tabs and active Palace
-  // state from SQLite before any manual surface navigation.
+  // Fresh-page restore must reconstruct the same owner, not merely its title.
   await page.close();
   const reopenedPage = await context.newPage();
   const reopenedExternal = externalRequestCollector(reopenedPage);
   const reopenedErrors = errorCollector(reopenedPage);
   await reopenedPage.goto("/");
   await expect(reopenedPage.getByTestId("palace-surface")).toBeVisible({ timeout: 35_000 });
+  await expectWorkspace(reopenedPage, HISTORICAL_FORMS, historicalIdentity.profileScope);
+  expect(await waitForDurablePalace(reopenedPage, historicalIdentity.projectId)).toEqual(identityBeforeRestart);
   await expect(reopenedPage.getByTestId(`palace-room-${manualRoomId}`)).toBeVisible();
   await expect(reopenedPage.locator('[data-testid^="palace-wall-object-manual:object:"]')).toHaveCount(1);
   expect(await tabSnapshot(reopenedPage)).toEqual(tabsBeforeRestart);
-  const palaceTabAfterReopen = await tabItem(reopenedPage, "Palace");
-  await expect(palaceTabAfterReopen).toHaveAttribute("data-active", "true");
-  await openFiles(reopenedPage);
-  await expect(reopenedPage.getByTestId("lo-project-scope-name")).toContainText(ROOT_PROJECT_NAME, { timeout: 20_000 });
-  await closeLeftSidebar(reopenedPage);
+  await expect(await tabItem(reopenedPage, "Palace")).toHaveAttribute("data-active", "true");
 
   await activateSurfaceTab(reopenedPage, "Story");
   const restoredJourney = reopenedPage.getByTestId("story-journey-list").getByRole("button", { name: new RegExp(journeyTitle) });
   await expect(restoredJourney).toBeVisible({ timeout: 20_000 });
   await restoredJourney.click();
   await expect(reopenedPage.getByTestId("story-scene-strip").locator('button[data-testid^="story-scene-"]')).toHaveCount(2);
-
   await activateSurfaceTab(reopenedPage, "Places");
   const restoredGlobe = reopenedPage.getByTestId("places-globe");
   await expect(restoredGlobe).toBeVisible({ timeout: 25_000 });
   await expect(reopenedPage.getByTestId("places-location-panel")).toContainText("Banda Genocide", { timeout: 20_000 });
   await expect(reopenedPage.getByTestId("place-coordinates")).toContainText("-4.55000, 129.90000");
   await expect.poll(async () => restoredGlobe.getAttribute("data-center")).toBe(placesCenter);
-
   await activateSurfaceTab(reopenedPage, "Timeline");
   await expect(reopenedPage.getByTestId("timeline-surface")).toBeVisible({ timeout: 20_000 });
   await expect(reopenedPage.getByTestId("timeline-tier")).toHaveText("century", { timeout: 20_000 });
 
+  // Returning to Root's Canvas restores Root, rather than moving its authored
+  // cards into the currently active Historical Forms project.
   await activateSurfaceTab(reopenedPage, "Canvas", ROOT_PROJECT_NAME);
+  await expectWorkspace(reopenedPage, ROOT_PROJECT_NAME, "bootstrapping");
   await expect(reopenedPage.locator(`.react-flow__node[data-id="${noteId}"]`)).toBeAttached({ timeout: 20_000 });
   await expect(reopenedPage.locator(`.react-flow__node[data-id="${imageId}"]`)).toBeAttached({ timeout: 20_000 });
   await expect(reopenedPage.locator("[data-testid^='edge-']")).toHaveCount(edgeCountAfterConnect, { timeout: 20_000 });
-
   expect(errors).toEqual([]);
   expect(external).toEqual([]);
   expect(reopenedErrors).toEqual([]);
