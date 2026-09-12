@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
   DesktopTimelineRepository,
+  type ConstellationTreeNode,
   type GraphNode,
   type TimelineRelationField,
 } from "@research-canvas/desktop-api";
-import type { SurfaceId, SurfaceTabState } from "@research-canvas/schema";
+import { SURFACE_IDS, type AppTab, type SurfaceId, type SurfaceTabState } from "@research-canvas/schema";
 
 import { FullScreenReader } from "./FullScreenReader";
 import { StatusStrip } from "./StatusStrip";
@@ -27,6 +28,7 @@ import { readerRecordFromGraphNode } from "../features/viewer/readerRecord";
 
 import { useShellLayout } from "./useShellLayout";
 import { useCanvasWorkspace } from "../features/canvas/CanvasWorkspaceContext";
+import { bindSurfaceTab, tabConstellationId } from "../features/canvas/workspaceTabIdentity";
 import { SequencesManager } from "../features/sequences/SequencesManager";
 import { SettingsOverlay } from "../features/settings/SettingsOverlay";
 import { CommandPalette } from "../features/search/CommandPalette";
@@ -71,6 +73,20 @@ function defaultTabState(surfaceId: SurfaceId): SurfaceTabState {
   }
 }
 
+function findSurfaceTab(tabs: AppTab[], surfaceId: SurfaceId, owner: string | null) {
+  return tabs.find((tab) => tab.surfaceId === surfaceId && tabConstellationId(tab) === owner)
+    ?? tabs.find((tab) => tab.surfaceId === surfaceId && tabConstellationId(tab) === null);
+}
+
+function findConstellation(nodes: ConstellationTreeNode[], id: string | null): ConstellationTreeNode | undefined {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    const child = findConstellation(node.children, id);
+    if (child) return child;
+  }
+  return undefined;
+}
+
 export function Shell() {
   const layout = useShellLayout();
   const terminalManager = useTerminalManager();
@@ -100,9 +116,9 @@ export function Shell() {
     }
   }, [workspace.activeSurfaceId, lens, setLens]);
 
-  // Route-driven workspace activation only needs the bootstrapped database
-  // identity. Requiring full Canvas hydration here can strand a valid deep
-  // link when the initially active Canvas is unavailable or malformed.
+  // A deep link has explicit identity authority. Resolve that owner through
+  // the same port as tab navigation, then choose a tab in that constellation;
+  // never activate another project's first tab merely because its lens fits.
   const applyingRouteRef = useRef(false);
   useEffect(() => {
     const routeKey = `${projectId ?? ""}:${surfaceId ?? ""}:${constellationId ?? ""}:${detailId ?? ""}`;
@@ -110,26 +126,29 @@ export function Shell() {
     applyingRouteRef.current = true;
 
     const applyRoute = async () => {
-      if (projectId && projectId !== workspace.activeProjectId) {
-        await workspace.selectProject(projectId);
+      const owner = constellationId ?? projectId ?? workspace.activeConstellationId;
+      if (owner && owner !== workspace.activeConstellationId) {
+        await workspace.selectProject(owner);
       }
 
-      if (surfaceId) {
-        if (surfaceId === "canvas" && constellationId) {
-          await workspace.selectConstellation(constellationId);
+      if (surfaceId && (SURFACE_IDS as readonly string[]).includes(surfaceId)) {
+        const targetSurface = surfaceId as SurfaceId;
+        if (targetSurface === "canvas" && owner) {
+          await workspace.selectConstellation(owner);
         } else {
-          const existing = workspace.tabs.find((tab) => tab.surfaceId === surfaceId);
+          const existing = findSurfaceTab(workspace.tabs, targetSurface, owner);
           if (existing) {
             workspace.activateTab(existing.id);
           } else {
-            const title = workspace.activeConstellation?.displayName ?? "Untitled";
-            workspace.openTab({
+            const title = findConstellation(workspace.constellations, owner)?.name
+              ?? workspace.activeConstellation?.displayName ?? "Untitled";
+            workspace.openTab(bindSurfaceTab({
               id: crypto.randomUUID(),
-              surfaceId: surfaceId as SurfaceId,
+              surfaceId: targetSurface,
               title,
               pinned: false,
-              state: defaultTabState(surfaceId as SurfaceId),
-            });
+              state: defaultTabState(targetSurface),
+            }, owner));
           }
         }
       }
@@ -139,7 +158,12 @@ export function Shell() {
       }
     };
 
-    void applyRoute().finally(() => {
+    void applyRoute().catch((error: unknown) => {
+      // The selection port exposes the failure in the workspace; retain the
+      // shell so another project/tab can be chosen instead of rejecting the
+      // route effect as an unhandled promise.
+      console.warn("Could not activate workspace route", error);
+    }).finally(() => {
       applyingRouteRef.current = false;
       appliedRouteRef.current = routeKey;
     });
@@ -216,19 +240,22 @@ export function Shell() {
       setReaderRelationField(null);
       setLens(mode);
       const surfaceId: SurfaceId = mode === "psychogeographic" ? "places" : mode;
-      const existing = workspace.tabs.find((tab) => tab.surfaceId === surfaceId);
+      const owner = workspace.activeConstellationId;
+      const existing = findSurfaceTab(workspace.tabs, surfaceId, owner);
       if (existing) {
         workspace.activateTab(existing.id);
         return;
       }
       if (surfaceId !== "canvas") {
-        workspace.openTab({
+        workspace.openTab(bindSurfaceTab({
           id: crypto.randomUUID(),
           surfaceId,
           title: workspace.activeConstellation?.displayName ?? "Untitled",
           pinned: false,
           state: defaultTabState(surfaceId),
-        });
+        }, owner));
+      } else if (owner) {
+        void workspace.openConstellationTab(owner);
       }
     },
     [setLens, workspace],
