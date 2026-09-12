@@ -20,6 +20,8 @@ export interface PsychogeographicMapProps {
   tileSource: MapTileSource;
   policy: LiveServicePolicy;
   renderer?: MapSurfaceRenderer;
+  /** Invalidates repository reads without recreating the map or its camera. */
+  refreshVersion?: number;
   initialViewState?: MapViewState;
   initialSelectedGraphNodeId?: string | null;
   onViewStateChange?: (viewState: MapViewState) => void;
@@ -40,6 +42,7 @@ export function PsychogeographicMap({
   tileSource,
   policy,
   renderer: rendererProp,
+  refreshVersion = 0,
   initialViewState,
   initialSelectedGraphNodeId = null,
   onViewStateChange,
@@ -58,6 +61,7 @@ export function PsychogeographicMap({
   onSelectedGraphNodeIdChangeRef.current = onSelectedGraphNodeIdChange;
 
   const [renderer, setRenderer] = useState<MapSurfaceRenderer | null>(rendererProp ?? null);
+  const [readyRenderer, setReadyRenderer] = useState<MapSurfaceRenderer | null>(null);
   const [view, setView] = useState<"globe" | "flat">("globe");
   const [viewState, setViewState] = useState<MapViewState>(() =>
     initialViewState ?? { latitude: 20, longitude: 0, zoom: 1 },
@@ -112,7 +116,7 @@ export function PsychogeographicMap({
     return () => {
       cancelled = true;
     };
-  }, [projectId, repository]);
+  }, [projectId, refreshVersion, repository]);
 
   const placeMarkers = useMemo<PlaceRenderMarker[]>(() => nodes.flatMap((node) => {
     const point = pointForPlace(node);
@@ -201,6 +205,8 @@ export function PsychogeographicMap({
     () => lanes.find((lane) => lane.id === selectedLaneId) ?? null,
     [lanes, selectedLaneId],
   );
+  const renderDataRef = useRef({ placeMarkers, expressionMarkers, filteredLanes });
+  renderDataRef.current = { placeMarkers, expressionMarkers, filteredLanes };
 
   const selectPlace = useCallback((graphNodeId: string) => {
     const node = nodes.find((candidate) => candidate.graphNodeId === graphNodeId);
@@ -238,6 +244,8 @@ export function PsychogeographicMap({
     }
     void createMaplibreRenderer().then((adapter) => {
       if (!cancelled) setRenderer(adapter);
+    }).catch((cause: unknown) => {
+      if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
     });
     return () => {
       cancelled = true;
@@ -246,63 +254,81 @@ export function PsychogeographicMap({
 
   useEffect(() => {
     if (!renderer || !containerRef.current) return;
-    mountedRenderer.current = renderer;
-    renderer.create(containerRef.current, tileSource, { projection: "globe" })
-      .then(() => {
+    let cancelled = false;
+    setReadyRenderer(null);
+    // Map construction and repository reads race legitimately. Do not draw a
+    // captured startup snapshot here: a late style load used to erase newer
+    // markers with the empty list captured when create() began. Readiness is
+    // its own invalidation signal; the effects below always see current data.
+    void renderer.create(containerRef.current, tileSource, { projection: "globe" })
+      .then(async () => {
+        if (cancelled) return;
         renderer.setPlaceClickHandler?.((graphNodeId) => placeClickRef.current(graphNodeId));
         renderer.setPlaceDoubleClickHandler?.((graphNodeId) => placeDoubleClickRef.current(graphNodeId));
         renderer.setLaneClickHandler?.((laneId) => laneClickRef.current(laneId));
         renderer.onViewChange?.((nextViewState) => {
+          if (cancelled) return;
           setViewState(nextViewState);
           onViewStateChangeRef.current?.(nextViewState);
         });
         const restoredViewState = initialViewStateRef.current;
         if (restoredViewState) {
-          void renderer.flyTo?.(
+          await renderer.flyTo?.(
             restoredViewState.latitude,
             restoredViewState.longitude,
             restoredViewState.zoom,
           );
         }
-        return Promise.all([
-          renderer.drawPlaces?.(placeMarkers, expressionMarkers),
-          renderer.drawLanes?.(filteredLanes),
-        ]);
+        if (cancelled) return;
+        mountedRenderer.current = renderer;
+        setReadyRenderer(renderer);
       })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
+      .catch((cause: unknown) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
+      });
     return () => {
-      mountedRenderer.current = null;
+      cancelled = true;
+      if (mountedRenderer.current === renderer) mountedRenderer.current = null;
       renderer.destroy();
     };
-    // Data redraws are handled by dedicated effects below; recreating the map
-    // would reset the user's camera on every repository result.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [renderer, tileSource]);
 
   useEffect(() => {
-    if (!mountedRenderer.current) return;
-    void mountedRenderer.current.drawPlaces?.(placeMarkers, expressionMarkers);
-  }, [expressionMarkers, placeMarkers]);
-
-  useEffect(() => {
-    if (!mountedRenderer.current) return;
-    void mountedRenderer.current.drawLanes?.(filteredLanes);
-  }, [filteredLanes]);
+    if (!readyRenderer || mountedRenderer.current !== readyRenderer) return;
+    let cancelled = false;
+    void Promise.all([
+      readyRenderer.drawPlaces?.(placeMarkers, expressionMarkers),
+      readyRenderer.drawLanes?.(filteredLanes),
+    ]).catch((cause: unknown) => {
+      if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
+    });
+    return () => { cancelled = true; };
+  }, [expressionMarkers, filteredLanes, placeMarkers, readyRenderer]);
 
   const setProjection = useCallback((next: "globe" | "flat") => {
-    setView(next);
     const currentRenderer = mountedRenderer.current;
     if (!currentRenderer) return;
+    setView(next);
     void (async () => {
-      await currentRenderer.setProjection?.(next);
-      await Promise.all([
-        currentRenderer.drawPlaces?.(placeMarkers, expressionMarkers),
-        currentRenderer.drawLanes?.(filteredLanes),
-      ]);
+      try {
+        await currentRenderer.setProjection?.(next);
+        if (mountedRenderer.current !== currentRenderer) return;
+        const latest = renderDataRef.current;
+        await Promise.all([
+          currentRenderer.drawPlaces?.(latest.placeMarkers, latest.expressionMarkers),
+          currentRenderer.drawLanes?.(latest.filteredLanes),
+        ]);
+      } catch (cause) {
+        if (mountedRenderer.current === currentRenderer) {
+          setError(cause instanceof Error ? cause.message : String(cause));
+        }
+      }
     })();
-  }, [expressionMarkers, filteredLanes, placeMarkers]);
+  }, []);
 
   const refreshLiveTiles = useCallback(async () => {
+    const currentRenderer = mountedRenderer.current;
+    if (!currentRenderer) return;
     if (policy.requestLiveAction("tile_refresh", "refresh live basemap tiles") !== "granted") return;
     const liveSource: MapTileSource = {
       kind: "raster",
@@ -310,14 +336,16 @@ export function PsychogeographicMap({
       attribution: "© OpenStreetMap contributors",
     };
     try {
-      await mountedRenderer.current?.setLiveTileSource(liveSource);
+      await currentRenderer.setLiveTileSource(liveSource);
+      if (mountedRenderer.current !== currentRenderer) return;
       setLiveTilesActive(true);
       setLiveFallback(false);
     } catch {
+      if (mountedRenderer.current !== currentRenderer) return;
       setLiveTilesActive(false);
       setLiveFallback(true);
       try {
-        await mountedRenderer.current?.setLiveTileSource(tileSource);
+        await currentRenderer.setLiveTileSource(tileSource);
       } catch {
         // The original offline surface stays mounted even if a source swap is
         // unsupported by a test/static renderer.
@@ -356,9 +384,9 @@ export function PsychogeographicMap({
           backdropFilter: "blur(12px)",
         }}
       >
-        <button type="button" data-testid="places-globe-toggle" data-active={view === "globe"} onClick={() => setProjection("globe")}>Globe</button>
-        <button type="button" data-testid="places-flat-toggle" data-active={view === "flat"} onClick={() => setProjection("flat")}>Flat</button>
-        <button type="button" data-testid="places-zoom-fit" disabled={placeMarkers.length === 0} onClick={() => void mountedRenderer.current?.fitToPlaces?.(placeMarkers)}>Zoom to fit</button>
+        <button type="button" data-testid="places-globe-toggle" disabled={!readyRenderer} data-active={view === "globe"} onClick={() => setProjection("globe")}>Globe</button>
+        <button type="button" data-testid="places-flat-toggle" disabled={!readyRenderer} data-active={view === "flat"} onClick={() => setProjection("flat")}>Flat</button>
+        <button type="button" data-testid="places-zoom-fit" disabled={!readyRenderer || placeMarkers.length === 0} onClick={() => void mountedRenderer.current?.fitToPlaces?.(placeMarkers)}>Zoom to fit</button>
         {!tileRefreshOptedIn ? (
           <button
             type="button"
@@ -374,6 +402,7 @@ export function PsychogeographicMap({
           <button
             type="button"
             data-testid="psychogeographic-refresh-tiles"
+            disabled={!readyRenderer}
             onClick={() => void refreshLiveTiles()}
           >
             Refresh tiles
@@ -385,6 +414,7 @@ export function PsychogeographicMap({
         ref={containerRef}
         className="psychogeographic-map"
         data-testid={view === "globe" ? "places-globe" : "places-flat-map"}
+        data-ready={readyRenderer !== null}
         data-center={`${viewState.longitude.toFixed(4)},${viewState.latitude.toFixed(4)}`}
         style={{ position: "absolute", inset: 0 }}
       />
