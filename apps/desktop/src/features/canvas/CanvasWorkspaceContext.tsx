@@ -33,6 +33,7 @@ import {
 } from "./pendingGraphNodeSync";
 import { canvasViewToCanvasNodes } from "./canvasViewToNodes";
 import { selectLegacyNodesNeedingImport, importLegacyCanvasNodes } from "./legacyNodeImport";
+import { bindSurfaceTab, createSerialWorkspaceQueue, restoreTabWorkspace, tabConstellationId } from "./workspaceTabIdentity";
 import type { AppTab, CanvasNode, CanvasEdge, SurfaceId, Viewport } from "@research-canvas/schema";
 import {
   createWorkspaceServices,
@@ -243,6 +244,9 @@ export function CanvasWorkspaceProvider({
       { onPersist: (snapshot) => persistTabsRef.current(snapshot) },
     ),
   );
+  const [enqueueTabSave] = useState(createSerialWorkspaceQueue);
+  const [enqueueProjectSelection] = useState(createSerialWorkspaceQueue);
+  const navigationVersionRef = useRef(0);
   const [constellations, setConstellations] = useState<ConstellationTreeNode[]>([]);
   const [databasePath, setDatabasePath] = useState<string | null>(null);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
@@ -278,12 +282,12 @@ export function CanvasWorkspaceProvider({
     async (snapshot: { tabs: AppTab[]; activeTabId: string | null }) => {
       if (!databasePath || typeof transport.saveAppTabs !== "function") return;
       try {
-        await transport.saveAppTabs({ databasePath, tabs: snapshot.tabs, activeTabId: snapshot.activeTabId });
+        await enqueueTabSave(() => transport.saveAppTabs({ databasePath, tabs: snapshot.tabs, activeTabId: snapshot.activeTabId }));
       } catch (error) {
-        console.warn("failed to persist app tabs", error);
+        setErrorMessage(error instanceof Error ? error.message : "failed to persist app tabs");
       }
     },
-    [databasePath, transport],
+    [databasePath, enqueueTabSave, transport],
   );
 
   useEffect(() => {
@@ -402,22 +406,21 @@ export function CanvasWorkspaceProvider({
         } catch (error) {
           console.warn("failed to restore app tabs; continuing with the active project", error);
         }
-        if (cancelled) {
-          return;
-        }
-
-        tabManager.getState().hydrate(persistedTabs);
-        setConstellations(workspace.constellations);
-        setDatabasePath(workspace.databasePath);
-        setWorkspaceId(workspace.workspaceId);
-        setRepoRoot(workspace.workspaceRoot);
-        setActiveConstellationId((current) =>
-          current && workspace.constellations.some((constellation) => constellation.id === current)
-            ? current
-            : workspace.activeConstellationId
-        );
-        setActiveProjectId(workspace.activeProjectId);
-        setActiveProfileScope(workspace.activeProfileScope);
+        if (cancelled) return;
+        // A restored Palace/Story/Timeline tab has the same identity authority
+        // as a Canvas tab. Resolve its owner before any surface can mount.
+        const restored = await restoreTabWorkspace(transport, workspace, persistedTabs);
+        if (cancelled) return;
+        const active = restored.snapshot.tabs.find((tab) => tab.id === restored.snapshot.activeTabId);
+        pendingCanvasTabIdRef.current = active?.surfaceId === "canvas" ? active.id : null;
+        tabManager.getState().hydrate(restored.snapshot);
+        setConstellations(restored.workspace.constellations);
+        setDatabasePath(restored.workspace.databasePath);
+        setWorkspaceId(restored.workspace.workspaceId);
+        setRepoRoot(restored.workspace.workspaceRoot);
+        setActiveConstellationId(restored.workspace.activeConstellationId);
+        setActiveProjectId(restored.workspace.activeProjectId);
+        setActiveProfileScope(restored.workspace.activeProfileScope);
         setErrorMessage(null);
       })
       .catch((error: Error) => {
@@ -804,8 +807,7 @@ export function CanvasWorkspaceProvider({
       appState: {},
     });
     if (result === false) {
-      setErrorMessage("failed to persist canvas layout");
-      return;
+      throw new Error("failed to persist canvas layout");
     }
 
     const writeSubstance = shouldWriteSubstanceOnLayoutFlush();
@@ -830,6 +832,48 @@ export function CanvasWorkspaceProvider({
       viewport: captureViewportRef.current(),
     });
   }, [tabManager, rememberCanvasTabSession]);
+
+  // All navigation, not only the Projects picker, crosses this durable port.
+  // Queue writes and discard stale completions so both the backend and React
+  // finish on the latest requested project even under rapid tab switching.
+  const selectProjectIdentity = useCallback(async (projectId: string): Promise<boolean> => {
+    if (!databasePath) throw new Error("selectProject: no database path yet");
+    const version = ++navigationVersionRef.current;
+    setIsHydrated(false);
+    try {
+      return await enqueueProjectSelection(async () => {
+        if (version !== navigationVersionRef.current) return false;
+        await flushActiveCanvas();
+        if (version !== navigationVersionRef.current) return false;
+        const selected = await transport.selectProject({ databasePath, projectId });
+        if (version !== navigationVersionRef.current) return false;
+        if (selected.projectId !== projectId) {
+          throw new Error(`Project selection returned ${selected.projectId} instead of ${projectId}`);
+        }
+        setActiveProjectId(selected.projectId);
+        setActiveProfileScope(selected.profileScope);
+        selectedEdgeIdRef.current = null;
+        selectedNodeIdRef.current = null;
+        setSelectedEdgeId(null);
+        setSelectedNodeId(null);
+        setActiveConstellationId(selected.projectId);
+        setIsHydrated(activeConstellation?.id === selected.projectId);
+        setErrorMessage(null);
+        return true;
+      });
+    } catch (error) {
+      if (version === navigationVersionRef.current) {
+        setErrorMessage(error instanceof Error ? error.message : "failed to select project");
+      }
+      throw error;
+    }
+  }, [activeConstellation, databasePath, enqueueProjectSelection, flushActiveCanvas, transport]);
+
+  const selectProject = useCallback(async (projectId: string): Promise<void> => {
+    captureActiveCanvasTabSession();
+    pendingCanvasTabIdRef.current = null;
+    await selectProjectIdentity(projectId);
+  }, [captureActiveCanvasTabSession, selectProjectIdentity]);
 
   const openCanvas = useCallback(
     async (canvasId: string, options: { captureCurrent?: boolean } = {}) => {
@@ -889,19 +933,20 @@ export function CanvasWorkspaceProvider({
     [activeConstellation, captureActiveCanvasTabSession, databasePath, ensureCanvasTab, flushActiveCanvas, tabManager, transport],
   );
 
-  const activateCanvasTabById = useCallback(async (tabId: string): Promise<void> => {
+  const activateCanvasTabById = useCallback(async (
+    tabId: string,
+    options: { captureCurrent?: boolean } = {},
+  ): Promise<void> => {
     const manager = tabManager.getState();
     const target = toCanvasTab(manager.tabs.find((tab) => tab.id === tabId) ?? null);
-    if (!target || target.id === manager.activeTabId) return;
+    if (!target) return;
+    if (target.id === manager.activeTabId && target.constellationId === activeConstellationId
+      && target.canvasId === activeCanvasId) return;
 
-    captureActiveCanvasTabSession();
+    if (options.captureCurrent !== false) captureActiveCanvasTabSession();
     pendingCanvasTabIdRef.current = tabId;
     if (target.constellationId !== activeConstellationId) {
-      selectedEdgeIdRef.current = null;
-      selectedNodeIdRef.current = null;
-      setSelectedEdgeId(null);
-      setSelectedNodeId(null);
-      setActiveConstellationId(target.constellationId);
+      await selectProjectIdentity(target.constellationId);
       return;
     }
     if (target.canvasId !== activeCanvasId) {
@@ -909,12 +954,13 @@ export function CanvasWorkspaceProvider({
       return;
     }
 
+    pendingCanvasTabIdRef.current = null;
     manager.activate(tabId);
     selectedEdgeIdRef.current = target.selectedEdgeId;
     selectedNodeIdRef.current = target.selectedNodeId;
     setSelectedEdgeId(target.selectedEdgeId);
     setSelectedNodeId(target.selectedNodeId);
-  }, [activeCanvasId, activeConstellationId, captureActiveCanvasTabSession, openCanvas, tabManager]);
+  }, [activeCanvasId, activeConstellationId, captureActiveCanvasTabSession, openCanvas, selectProjectIdentity, tabManager]);
 
   const openConstellationTab = useCallback(async (constellationId: string) => {
     const existing = tabManager.getState().tabs.find(
@@ -929,33 +975,31 @@ export function CanvasWorkspaceProvider({
 
     captureActiveCanvasTabSession();
     pendingCanvasTabIdRef.current = null;
-    selectedEdgeIdRef.current = null;
-    selectedNodeIdRef.current = null;
-    setSelectedEdgeId(null);
-    setSelectedNodeId(null);
-    setActiveConstellationId(constellationId);
-  }, [activateCanvasTabById, activeConstellationId, captureActiveCanvasTabSession, tabManager]);
+    await selectProjectIdentity(constellationId);
+  }, [activateCanvasTabById, activeConstellationId, captureActiveCanvasTabSession, selectProjectIdentity, tabManager]);
 
-  const selectProject = useCallback(
-    async (projectId: string) => {
-      if (!databasePath) {
-        throw new Error("selectProject: no database path yet");
-      }
-      const selected = await transport.selectProject({ databasePath, projectId });
-      // Guard against stale state: the active scope always follows the
-      // selected project, and the canvas re-hydrates from the project's
-      // primary canvas because activeConstellationId changes too.
-      setActiveProjectId(selected.projectId);
-      setActiveProfileScope(selected.profileScope);
-      selectedEdgeIdRef.current = null;
-      selectedNodeIdRef.current = null;
-      setSelectedEdgeId(null);
-      setSelectedNodeId(null);
-      setActiveConstellationId(selected.projectId);
-      setErrorMessage(null);
-    },
-    [databasePath, transport],
-  );
+  const activateGlobalTab = useCallback(async (
+    tabId: string,
+    options: { captureCurrent?: boolean } = {},
+  ): Promise<void> => {
+    const manager = tabManager.getState();
+    const existing = manager.tabs.find((tab) => tab.id === tabId);
+    if (!existing) return;
+    if (existing.surfaceId === "canvas") {
+      await activateCanvasTabById(tabId, options);
+      return;
+    }
+    if (options.captureCurrent !== false) captureActiveCanvasTabSession();
+    pendingCanvasTabIdRef.current = null;
+    const target = bindSurfaceTab(existing, activeConstellationId);
+    const owner = tabConstellationId(target);
+    if (owner && owner !== activeConstellationId) {
+      if (!await selectProjectIdentity(owner)) return;
+    }
+    if (!tabManager.getState().tabs.some((tab) => tab.id === tabId)) return;
+    if (target !== existing) tabManager.getState().updateState(tabId, target.state);
+    tabManager.getState().activate(tabId);
+  }, [activateCanvasTabById, activeConstellationId, captureActiveCanvasTabSession, selectProjectIdentity, tabManager]);
 
   const resolveOrCreateHome = useCallback(
     (input: ResolveHomeInput) => transport.resolveOrCreateHome(input),
@@ -992,31 +1036,11 @@ export function CanvasWorkspaceProvider({
 
     const wasActive = manager.activeTabId === tabId;
     if (wasActive) captureActiveCanvasTabSession();
-
     manager.close(tabId);
-
     if (!wasActive) return;
     const successorId = tabManager.getState().activeTabId;
-    if (!successorId) return;
-    const successor = tabManager.getState().tabs.find((candidate) => candidate.id === successorId);
-    if (!successor) return;
-
-    pendingCanvasTabIdRef.current = successor.id;
-    if (successor.surfaceId === "canvas" && "constellationId" in successor.state) {
-      const { constellationId, canvasId } = successor.state;
-      if (constellationId !== activeConstellationId) {
-        selectedEdgeIdRef.current = null;
-        selectedNodeIdRef.current = null;
-        setSelectedEdgeId(null);
-        setSelectedNodeId(null);
-        setActiveConstellationId(constellationId);
-        return;
-      }
-      if (canvasId !== activeCanvasId) {
-        await openCanvas(canvasId, { captureCurrent: false });
-      }
-    }
-  }, [activeCanvasId, activeConstellationId, captureActiveCanvasTabSession, openCanvas, tabManager]);
+    if (successorId) await activateGlobalTab(successorId, { captureCurrent: false });
+  }, [activateGlobalTab, captureActiveCanvasTabSession, tabManager]);
 
   const selectEntry = useCallback((entryId: string | null) => {
     selectedEntryIdRef.current = entryId;
@@ -1042,21 +1066,29 @@ export function CanvasWorkspaceProvider({
       activeTabId,
       activeTab,
       openTab: (tab) => {
-        if (tab.surfaceId !== "canvas") pendingCanvasTabIdRef.current = null;
-        tabManager.getState().open(tab);
+        const bound = bindSurfaceTab(tab, activeConstellationId);
+        tabManager.getState().open(bound, { activate: false });
+        void activateGlobalTab(bound.id).catch((error: unknown) => {
+          setErrorMessage(error instanceof Error ? error.message : "failed to activate tab");
+        });
       },
       activateTab: (tabId) => {
-        const manager = tabManager.getState();
-        const target = manager.tabs.find((tab) => tab.id === tabId);
-        if (target?.surfaceId !== "canvas") pendingCanvasTabIdRef.current = null;
-        manager.activate(tabId);
+        void activateGlobalTab(tabId).catch((error: unknown) => {
+          setErrorMessage(error instanceof Error ? error.message : "failed to activate tab");
+        });
       },
-      closeTab: (tabId) => tabManager.getState().close(tabId),
+      closeTab: (tabId) => {
+        void closeCanvasTab(tabId).catch((error: unknown) => {
+          setErrorMessage(error instanceof Error ? error.message : "failed to restore successor tab");
+        });
+      },
       updateTabState: (state) => {
         const manager = tabManager.getState();
-        if (manager.activeTabId) {
-          manager.updateState(manager.activeTabId, state);
-        }
+        const current = manager.tabs.find((tab) => tab.id === manager.activeTabId);
+        if (!current || current.state.surfaceId !== state.surfaceId) return;
+        const owner = tabConstellationId(current);
+        if (owner && "constellationId" in state && state.constellationId && state.constellationId !== owner) return;
+        manager.updateState(current.id, bindSurfaceTab({ ...current, state }, owner ?? activeConstellationId).state);
       },
       activeConstellation,
       activeConstellationId,
@@ -1070,7 +1102,7 @@ export function CanvasWorkspaceProvider({
       workspaceId,
       entries,
       errorMessage,
-      isHydrated,
+      isHydrated: isHydrated && activeConstellation?.id === activeConstellationId && activeProjectId === activeConstellationId,
       constellationId: activeConstellation?.id ?? EMPTY_CONSTELLATION_ID,
       constellations,
       resourceRoots,
@@ -1516,6 +1548,7 @@ export function CanvasWorkspaceProvider({
       openCanvas,
       openConstellationTab,
       activateCanvasTabById,
+      activateGlobalTab,
       closeCanvasTab,
       selectEntry,
       selectEdge,
