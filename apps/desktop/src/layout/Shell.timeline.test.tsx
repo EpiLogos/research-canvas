@@ -11,12 +11,10 @@ vi.mock("../features/terminal/useTerminal", () => ({
     session: { id: "session-1", workdir: "/workspace" },
   }),
 }));
+// These tests exercise the real Timeline and reader within Shell. Canvas has
+// separate provider/renderer tests and need not own a real ReactFlow store here.
+vi.mock("./CanvasPane", () => ({ CanvasPane: () => <div data-testid="canvas-pane" /> }));
 
-// Stub the workspace context so the Shell mounts without a live backend.
-// The brief's baseline mock only supplies {selectNode, canvasId, activeConstellationId};
-// Shell's descendants (LeftOverlay, CanvasScreen, StatusStrip, FullScreenReader) read
-// additional workspace fields on every render, so those are filled in here with
-// empty/neutral defaults to let the Shell mount without a live backend.
 const selectNode = vi.fn();
 const resizeNode = vi.fn();
 const updateNodeTimelineCard = vi.fn();
@@ -71,8 +69,8 @@ vi.mock("../features/canvas/CanvasWorkspaceContext", () => ({
       activeConstellationId: "p1",
       activeProjectId: "p1",
       activeProfileScope: "bootstrapping",
-      activeConstellation: null,
-      isHydrated: false,
+      activeConstellation: { id: "p1", displayName: "Research", primaryCanvasId: "c1", rootPath: "/canonical" },
+      isHydrated: workspaceId !== null,
       errorMessage: null,
       constellations: [],
       selectProject,
@@ -162,6 +160,7 @@ describe("Shell timeline lens", () => {
     updateNodeTimelineCard.mockClear();
     upsertTimelineLayout.mockClear();
     workspaceId = "sqlite:/server-canonical/workspace.sqlite";
+    tabManager.getState().hydrate({ tabs: [], activeTabId: null });
   });
 
   test("switching to the timeline lens renders the timeline and its nodes", async () => {
@@ -182,7 +181,8 @@ describe("Shell timeline lens", () => {
     workspaceId = null;
     const rendered = render(<Shell />);
     fireEvent.click(screen.getByTestId("lens-timeline"));
-    expect(screen.getByTestId("timeline-workspace-loading")).toBeInTheDocument();
+    expect(screen.getByTestId("workspace-restoring")).toBeInTheDocument();
+    expect(screen.queryByTestId("timeline-lens")).not.toBeInTheDocument();
     expect(loadTimelineView).not.toHaveBeenCalled();
 
     workspaceId = "sqlite:/private/var/server-canonical.sqlite";
