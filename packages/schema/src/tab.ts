@@ -8,6 +8,11 @@ export { SURFACE_IDS };
 // Surface-tab state discriminated union
 // -----------------------------------------------------------------------------
 
+// Older non-Canvas tabs did not record their owning constellation. Keep those
+// snapshots readable, but retain the binding on every newly opened scoped tab.
+// A title is presentation, never a substitute for this persistent identity.
+const optionalConstellationId = z.string().min(1).optional();
+
 export const canvasTabStateSchema = z.object({
   surfaceId: z.literal("canvas"),
   canvasId: z.string().min(1),
@@ -19,6 +24,7 @@ export const canvasTabStateSchema = z.object({
 
 const timelineTabStateSchema = z.object({
   surfaceId: z.literal("timeline"),
+  constellationId: optionalConstellationId,
   centerYear: z.number(),
   pixelsPerYear: z.number().positive(),
   selectedGraphNodeId: z.string().nullable().optional(),
@@ -26,6 +32,7 @@ const timelineTabStateSchema = z.object({
 
 const placesTabStateSchema = z.object({
   surfaceId: z.literal("places"),
+  constellationId: optionalConstellationId,
   viewport: viewportSchema,
   selectedGraphNodeId: z.string().nullable().optional(),
 });
@@ -36,10 +43,12 @@ const projectsTabStateSchema = z.object({
 
 const storyTabStateSchema = z.object({
   surfaceId: z.literal("story"),
+  constellationId: optionalConstellationId,
 });
 
 const palaceTabStateSchema = z.object({
   surfaceId: z.literal("palace"),
+  constellationId: optionalConstellationId,
 });
 
 export const surfaceTabStateSchema = z.discriminatedUnion("surfaceId", [
