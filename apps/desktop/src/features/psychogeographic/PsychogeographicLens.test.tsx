@@ -115,6 +115,31 @@ describe("PsychogeographicLens", () => {
     expect(await screen.findByTestId("street-view-surface")).toBeInTheDocument();
   });
 
+  test("bounds Street View as a companion panel instead of laying it across the globe", async () => {
+    const { renderer } = makeRenderer();
+    render(
+      <PsychogeographicLens
+        transport={makeTransport()}
+        projectId="project:one"
+        databasePath="/tmp/ws.sqlite"
+        workspaceId="sqlite:/tmp/ws"
+        profileScope="bootstrapping"
+        renderer={renderer}
+        placesRepository={makeRepository()}
+      />,
+    );
+
+    await screen.findByTestId("street-view-surface");
+    const companion = screen.getByTestId("street-view-companion");
+    expect(companion).toHaveAttribute("aria-label", "Street view companion");
+    expect(companion).toHaveStyle({
+      position: "absolute",
+      left: "14px",
+      bottom: "14px",
+      width: "min(22rem, calc(100% - 28px))",
+    });
+  });
+
   test("passes durable project movement lanes to the globe renderer", async () => {
     const { renderer, drawLanes } = makeRenderer();
     render(

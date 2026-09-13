@@ -163,12 +163,31 @@ export function PsychogeographicLens({
         </div>
       )}
 
-      <StreetViewSurface
-        images={streetImages}
-        policy={policy}
-        resolveAsset={assetResolver}
-        onImport={mediaRoot ? () => setImportOpen(true) : undefined}
-      />
+      <aside
+        aria-label="Street view companion"
+        data-testid="street-view-companion"
+        style={{
+          position: "absolute",
+          left: 14,
+          bottom: 14,
+          zIndex: 11,
+          width: "min(22rem, calc(100% - 28px))",
+          maxHeight: "min(42vh, 24rem)",
+          overflow: "auto",
+          border: "1px solid rgba(244, 232, 208, 0.12)",
+          borderRadius: 10,
+          background: "rgba(10, 10, 22, 0.92)",
+          boxShadow: "0 18px 42px rgba(0, 0, 0, 0.36)",
+          backdropFilter: "blur(12px)",
+        }}
+      >
+        <StreetViewSurface
+          images={streetImages}
+          policy={policy}
+          resolveAsset={assetResolver}
+          onImport={mediaRoot ? () => setImportOpen(true) : undefined}
+        />
+      </aside>
       {importOpen && mediaRoot && (
         <StreetViewImportDialog
           repository={streetRepository}
