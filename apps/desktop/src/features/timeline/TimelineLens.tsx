@@ -10,6 +10,7 @@ import {
 import type { SurfaceTabState } from "@research-canvas/schema";
 import { useCanvasWorkspace } from "../canvas/CanvasWorkspaceContext";
 import { createTimelineDataSource } from "./createTimelineDataSource";
+import { persistTimelineTabState } from "./persistTimelineTabState";
 
 const GLOBAL_TIMELINE_PIXELS_PER_YEAR = 0.05;
 const LEGACY_NEW_TAB_PIXELS_PER_YEAR = 20;
@@ -25,6 +26,7 @@ interface TimelineLensProps {
 export function TimelineLens({ onOpenNodeDocument }: TimelineLensProps): JSX.Element {
   const workspace = useCanvasWorkspace();
   const constellationId = workspace.activeConstellationId;
+  const originatingTabId = workspace.activeTabId;
 
   const repository = useMemo(() => {
     if (!workspace.workspaceId || !workspace.databasePath || !constellationId) return null;
@@ -47,17 +49,13 @@ export function TimelineLens({ onOpenNodeDocument }: TimelineLensProps): JSX.Ele
   const initialState = timelineViewStateFromTab(workspace.activeTab?.state ?? null);
 
   const persistViewState = useCallback((state: TimelineViewState) => {
-    const manager = workspace.tabManager.getState();
-    const tabId = manager.activeTabId;
-    const tab = tabId ? manager.tabs.find((candidate) => candidate.id === tabId) : null;
-    if (!tabId || tab?.surfaceId !== "timeline") return;
-    manager.updateState(tabId, {
-      surfaceId: "timeline",
-      centerYear: state.centerYear,
-      pixelsPerYear: state.pixelsPerYear,
-      selectedGraphNodeId: state.selectedNodeId,
-    });
-  }, [workspace.tabManager]);
+    persistTimelineTabState(
+      workspace.tabManager.getState(),
+      originatingTabId,
+      constellationId,
+      state,
+    );
+  }, [constellationId, originatingTabId, workspace.tabManager]);
 
   const openCanvasNode = useCallback(async (graphNodeId: string) => {
     if (!constellationId) return;
@@ -71,6 +69,9 @@ export function TimelineLens({ onOpenNodeDocument }: TimelineLensProps): JSX.Ele
 
   return (
     <TimelineSurface
+      // Each tab restores its own camera. A same-constellation tab switch must
+      // not reuse the previous surface's mount-only initialState/store.
+      key={`${constellationId}:${originatingTabId ?? "unbound"}`}
       repository={repository}
       constellationId={constellationId}
       dataSource={dataSource}
