@@ -26,6 +26,7 @@ vi.mock("../features/terminal/useTerminal", () => ({
 
 vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@research-canvas/desktop-api")>();
+  const { EMPTY_GRAPH_NODE_METADATA } = await import("@research-canvas/schema");
   return {
     ...actual,
     createWorkspaceServices: () => ({
@@ -96,7 +97,7 @@ vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
         }),
       ),
       loadConstellationDocument: async ({ databasePath, constellationId }: { databasePath: string; constellationId: string }) => ({
-        canvasId: "c1",
+        canvasId: "22222222-2222-4222-8222-222222222222",
         databasePath,
         entries: [],
         resourceRoots: [],
@@ -112,7 +113,7 @@ vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
           rootPath: constellationId === "root" ? "/workspace" : `/home/${constellationId}`,
           rootType: "directory",
           profileScope: constellationId === "root" ? "bootstrapping" : `project:${constellationId}`,
-          primaryCanvasId: "c1",
+          primaryCanvasId: "22222222-2222-4222-8222-222222222222",
           summary: "",
           coverAssetPath: null,
           publishSettings: {},
@@ -121,10 +122,11 @@ vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
         },
       }),
       loadCanvasView: async () => ({
-        canvasId: "c1",
+        canvasId: "22222222-2222-4222-8222-222222222222",
         nodes: [
           {
             node: {
+              ...EMPTY_GRAPH_NODE_METADATA,
               graphNodeId: "node-a",
               entityType: "Event",
               title: "Node A",
@@ -142,7 +144,7 @@ vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
             },
             layout: {
               graphNodeId: "node-a",
-              canvasId: "c1",
+              canvasId: "22222222-2222-4222-8222-222222222222",
               positionX: 0,
               positionY: 0,
               width: 280,
@@ -161,6 +163,7 @@ vi.mock("@research-canvas/desktop-api", async (importOriginal) => {
         nodes: [
           {
             node: {
+              ...EMPTY_GRAPH_NODE_METADATA,
               graphNodeId: "node-a",
               entityType: "Event",
               title: "Node A",
@@ -433,6 +436,7 @@ describe("Shell frame", () => {
     await waitFor(() => expect(screen.getByTestId("timeline-pane")).toBeVisible());
     expect(screen.getByTestId("shell-top-bar")).toHaveTextContent("Project A");
     expect(projectSpies.selectProject.mock.calls.every(([input]) => input.projectId === "proj-a")).toBe(true);
+    expect(projectSpies.selectProject).toHaveBeenCalledTimes(1);
   });
 
   it("Files rail verb reopens the Files view after Annotate was active", () => {

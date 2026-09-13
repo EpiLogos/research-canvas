@@ -116,57 +116,56 @@ export function Shell() {
     }
   }, [workspace.activeSurfaceId, lens, setLens]);
 
-  // A deep link has explicit identity authority. Resolve that owner through
-  // the same port as tab navigation, then choose a tab in that constellation;
-  // never activate another project's first tab merely because its lens fits.
-  const applyingRouteRef = useRef(false);
+  // Resolve route identity first, then apply the surface from the committed,
+  // hydrated workspace on a later render. An async closure from the old project
+  // cannot safely open the new project's tab: it would select that owner twice
+  // and could mark an already hydrated document as still restoring.
+  const requestedRouteRef = useRef<string | null>(null);
   useEffect(() => {
     const routeKey = `${projectId ?? ""}:${surfaceId ?? ""}:${constellationId ?? ""}:${detailId ?? ""}`;
-    if (!workspace.databasePath || applyingRouteRef.current || routeKey === appliedRouteRef.current) return;
-    applyingRouteRef.current = true;
+    if (!workspace.databasePath || routeKey === appliedRouteRef.current) return;
+    const owner = constellationId ?? projectId ?? workspace.activeConstellationId;
+    const supersedesPendingRoute = requestedRouteRef.current !== null
+      && requestedRouteRef.current !== routeKey;
+    if (owner && (owner !== workspace.activeConstellationId || supersedesPendingRoute)) {
+      if (requestedRouteRef.current === routeKey) return;
+      requestedRouteRef.current = routeKey;
+      void workspace.selectProject(owner).catch((error: unknown) => {
+        // The provider exposes the failure, and shell navigation stays usable.
+        console.warn("Could not activate workspace route", error);
+      });
+      return;
+    }
+    if (!workspace.isHydrated) return;
 
-    const applyRoute = async () => {
-      const owner = constellationId ?? projectId ?? workspace.activeConstellationId;
-      if (owner && owner !== workspace.activeConstellationId) {
-        await workspace.selectProject(owner);
+    requestedRouteRef.current = null;
+    appliedRouteRef.current = routeKey;
+    if (surfaceId && (SURFACE_IDS as readonly string[]).includes(surfaceId)) {
+      const targetSurface = surfaceId as SurfaceId;
+      if (targetSurface === "canvas" && owner) {
+        void Promise.resolve(workspace.selectConstellation(owner)).then(() => {
+          if (detailId) workspace.selectNode(detailId);
+        }).catch((error: unknown) => {
+          console.warn("Could not activate workspace route", error);
+        });
+        return;
       }
-
-      if (surfaceId && (SURFACE_IDS as readonly string[]).includes(surfaceId)) {
-        const targetSurface = surfaceId as SurfaceId;
-        if (targetSurface === "canvas" && owner) {
-          await workspace.selectConstellation(owner);
-        } else {
-          const existing = findSurfaceTab(workspace.tabs, targetSurface, owner);
-          if (existing) {
-            workspace.activateTab(existing.id);
-          } else {
-            const title = findConstellation(workspace.constellations, owner)?.name
-              ?? workspace.activeConstellation?.displayName ?? "Untitled";
-            workspace.openTab(bindSurfaceTab({
-              id: crypto.randomUUID(),
-              surfaceId: targetSurface,
-              title,
-              pinned: false,
-              state: defaultTabState(targetSurface),
-            }, owner));
-          }
-        }
+      const existing = findSurfaceTab(workspace.tabs, targetSurface, owner);
+      if (existing) {
+        workspace.activateTab(existing.id);
+      } else {
+        const title = findConstellation(workspace.constellations, owner)?.name
+          ?? workspace.activeConstellation?.displayName ?? "Untitled";
+        workspace.openTab(bindSurfaceTab({
+          id: crypto.randomUUID(),
+          surfaceId: targetSurface,
+          title,
+          pinned: false,
+          state: defaultTabState(targetSurface),
+        }, owner));
       }
-
-      if (detailId) {
-        workspace.selectNode(detailId);
-      }
-    };
-
-    void applyRoute().catch((error: unknown) => {
-      // The selection port exposes the failure in the workspace; retain the
-      // shell so another project/tab can be chosen instead of rejecting the
-      // route effect as an unhandled promise.
-      console.warn("Could not activate workspace route", error);
-    }).finally(() => {
-      applyingRouteRef.current = false;
-      appliedRouteRef.current = routeKey;
-    });
+    }
+    if (detailId) workspace.selectNode(detailId);
   }, [projectId, surfaceId, constellationId, detailId, workspace]);
 
   const closeFullScreen = useCallback(() => {

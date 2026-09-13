@@ -11,60 +11,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  reproduction:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout exact PR head
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Capture tracked application source
-        shell: bash
-        run: |
-          git rev-parse HEAD > "$RUNNER_TEMP/source-head.txt"
-          # The immutable research-media corpus stays in the canonical CI
-          # checkout. This smaller archive reproduces frontend compilation
-          # and unit tests; it is not a substitute for full acceptance.
-          paths=(apps packages tests scripts docs .github)
-          while IFS= read -r path; do
-            if [[ -f "$path" ]]; then paths+=("$path"); fi
-          done < <(git ls-tree --name-only HEAD)
-          git archive --format=tar.gz HEAD "${paths[@]}" > "$RUNNER_TEMP/source.tar.gz"
-      - name: Retain source reproduction snapshot
-        uses: actions/upload-artifact@v4
-        with:
-          name: redemption-t17-source-${{ github.event.pull_request.head.sha }}
-          path: |
-            ${{ runner.temp }}/source-head.txt
-            ${{ runner.temp }}/source.tar.gz
-          retention-days: 1
-          if-no-files-found: error
-          compression-level: 0
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.25.0
-          run_install: false
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - name: Install locked dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Capture dependency tree with workspace links
-        run: tar -czf "$RUNNER_TEMP/js-dependencies.tar.gz" node_modules apps/*/node_modules packages/*/node_modules
-      - name: Retain locked JS dependencies for offline reproduction
-        uses: actions/upload-artifact@v4
-        with:
-          name: redemption-t17-js-${{ github.event.pull_request.head.sha }}
-          path: ${{ runner.temp }}/js-dependencies.tar.gz
-          retention-days: 1
-          if-no-files-found: error
-          compression-level: 0
-
   acceptance:
     runs-on: ubuntu-latest
     timeout-minutes: 60

@@ -990,8 +990,10 @@ export function CanvasWorkspaceProvider({
             let body = "[]";
             const entityType = entityTypeForNodeType(original.type as "note" | "group" | "resource" | "portal");
             if (original.graphNodeId) body = (await nodeRepository.getNode(original.graphNodeId))?.body ?? "[]";
-            await transport.createGraphNode({ entityType, title: original.title, body, isTemporal: false, sourceCoordinates: [], graphNodeId: newId }
-              as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string });
+            await transport.createGraphNode({
+              entityType, title: original.title, body, isTemporal: false,
+              sourceCoordinates: [], graphNodeId: newId,
+            } as Parameters<typeof transport.createGraphNode>[0] & { graphNodeId: string });
           } catch (error) {
             console.warn("duplicate createGraphNode sync failed; node kept locally", error);
           }
