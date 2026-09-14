@@ -8,8 +8,14 @@ export default defineConfig({
       "@research-canvas/canvas": fileURLToPath(
         new URL("./packages/canvas/src/index.ts", import.meta.url),
       ),
+      "@research-canvas/domain": fileURLToPath(
+        new URL("./packages/domain/src/index.ts", import.meta.url),
+      ),
       "@research-canvas/exporter": fileURLToPath(
         new URL("./packages/exporter/src/index.ts", import.meta.url),
+      ),
+      "@research-canvas/geography": fileURLToPath(
+        new URL("./packages/geography/src/index.ts", import.meta.url),
       ),
       "@research-canvas/desktop-api": fileURLToPath(
         new URL("./packages/desktop-api/src/index.ts", import.meta.url),
@@ -41,6 +47,6 @@ export default defineConfig({
       "apps/**/*.test.tsx",
       "tests/docs/**/*.test.ts"
     ],
-    setupFiles: ["./tests/setup/vitest.setup.ts"]
+    setupFiles: [fileURLToPath(new URL("./tests/setup/vitest.setup.ts", import.meta.url))],
   }
 });

@@ -7,7 +7,11 @@ export function App() {
     <BrowserRouter>
       <CanvasWorkspaceProvider>
         <Routes>
-          <Route element={<Shell />} path="*" />
+          <Route
+            path="/project/:projectId/surface/:surfaceId/constellation/:constellationId/:detailId?"
+            element={<Shell />}
+          />
+          <Route path="*" element={<Shell />} />
         </Routes>
       </CanvasWorkspaceProvider>
     </BrowserRouter>

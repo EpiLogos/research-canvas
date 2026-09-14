@@ -85,6 +85,29 @@ export function canvasViewToCanvasNodes(view: CanvasView): {
         createdAt,
         updatedAt,
       });
+    } else if (sidecar?.type === "image") {
+      parsed = nodeSchema.parse({
+        type: "image",
+        id: node.graphNodeId,
+        graphNodeId: node.graphNodeId,
+        graph: node,
+        canvasId: view.canvasId,
+        title,
+        summary: node.summary ?? "",
+        position: { x: layout.positionX, y: layout.positionY },
+        size: { width: layout.width, height: layout.height },
+        dotColour: layout.style.dotColour ?? null,
+        bgColour: layout.style.bgColour ?? null,
+        textColour: layout.style.textColour ?? null,
+        thumbnail: layout.style.thumbnail ?? null,
+        timelineCard: layout.style.__timelineCard ?? null,
+        src: sidecar.src,
+        caption: sidecar.caption ?? null,
+        sequenceCaption: null,
+        sequenceViewport: null,
+        createdAt,
+        updatedAt,
+      });
     } else if (sidecar?.type === "portal") {
       parsed = nodeSchema.parse({
         type: "portal",

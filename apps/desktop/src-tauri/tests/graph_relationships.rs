@@ -63,3 +63,50 @@ fn connect_list_and_disconnect_relationship() {
         });
     }
 }
+
+#[test]
+fn located_at_relationship_carries_time_bounded_validity_properties() {
+    let (graph, run_id, database) = support::neo4j_test_graph();
+    let repo = GraphRepository::new(graph.clone(), database.clone());
+    support::block_on(repo.ensure_schema()).expect("schema");
+
+    let event = mk(&repo, &run_id, "Council", "Event", true);
+    let place = mk(&repo, &run_id, "Florence", "Place", true);
+
+    // A LOCATED_AT edge with time-bounded validity: the council sat in
+    // Florence only while it was in session (vision §3.4, ticket #9).
+    let rel = support::block_on(repo.connect_nodes(
+        &event,
+        &place,
+        "LOCATED_AT",
+        serde_json::json!({
+            "validFrom": "1438-04-09",
+            "validTo": "1445-08-07",
+        }),
+    ))
+    .expect("connect located_at");
+
+    assert_eq!(rel.properties["validFrom"], "1438-04-09");
+    assert_eq!(rel.properties["validTo"], "1445-08-07");
+
+    let for_node = support::block_on(repo.relationships_for_node(&event)).expect("for_node");
+    let persisted = for_node
+        .iter()
+        .find(|r| r.id == rel.id)
+        .expect("relationship persisted");
+    assert_eq!(persisted.properties["validFrom"], "1438-04-09");
+    assert_eq!(persisted.properties["validTo"], "1445-08-07");
+
+    support::block_on(repo.disconnect(&rel.id)).expect("disconnect");
+    for id in [event, place] {
+        support::block_on(async {
+            graph
+                .run_on(
+                    &database,
+                    query("MATCH (n {graph_node_id: $id}) DETACH DELETE n").param("id", id),
+                )
+                .await
+                .expect("cleanup");
+        });
+    }
+}

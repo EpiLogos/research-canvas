@@ -44,6 +44,7 @@ function renderInspector() {
     evidenceStatus: "documented",
     temporalRole: "occurred_at",
     placeCoverage: "resolved",
+    place: null,
     qlForm: "quaternity",
     qlUnitId: "unit-a",
     qlArc: "day",

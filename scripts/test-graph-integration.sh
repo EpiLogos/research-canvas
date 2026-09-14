@@ -24,6 +24,7 @@ graph_targets=(
   graph_seed_operators
   graph_node_client_id
   ws4a_cutover_roundtrip
+  encapsulation_roundtrip
   graph_bundle_lighting_index
   root_archetypal_field_seed
   graph_test_harness

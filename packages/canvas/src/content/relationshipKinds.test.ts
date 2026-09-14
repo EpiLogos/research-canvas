@@ -9,6 +9,7 @@ import {
 describe("relationshipKinds", () => {
   it("distinguishes structural, historical, epistemic, geographic, and archetypal relationships", () => {
     expect(RELATIONSHIP_KINDS.map((option) => option.kind)).toEqual([
+      "RELATES_TO",
       "CONTAINS",
       "PART_OF",
       "NESTS",
@@ -24,8 +25,12 @@ describe("relationshipKinds", () => {
       "SUPPORTS",
       "QUALIFIES",
       "CONTESTS",
+      "CONTRADICTS",
+      "ARCHETYPE_EXPRESSES_AT",
       "RESONATES_WITH",
+      "SEQUENCE_NEXT",
       "UNCLASSIFIED_RESEARCH_CONNECTION",
+      "ENCAPSULATES",
     ]);
   });
 

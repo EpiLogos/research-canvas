@@ -49,7 +49,7 @@ export function SearchPanel() {
   }, [workspace]);
 
   return (
-    <div className="search-panel">
+    <div className="search-panel" data-testid="search-panel">
       <div className="search-panel__input-row">
         <input
           ref={inputRef}

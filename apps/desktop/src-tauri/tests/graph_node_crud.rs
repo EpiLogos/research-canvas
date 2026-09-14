@@ -3,8 +3,8 @@ mod support;
 use neo4rs::query;
 use research_canvas_desktop_lib::db::repositories::graph::{
     ClaimKind, ContentOrigin, EntityType, EvidenceStatus, GraphRepository, Historicity,
-    NewGraphNode, NewGraphNodeMetadata, PlaceCoverage, QlArc, QlCompletenessStatus, QlForm,
-    QlTopology, SeedGraphNode, TemporalRole,
+    GraphNodePatch, NewGraphNode, NewGraphNodeMetadata, PlaceCoverage, QlArc,
+    QlCompletenessStatus, QlForm, QlTopology, SeedGraphNode, TemporalRole,
 };
 
 fn seed_input(id: &str, revision: i64, body: &str) -> SeedGraphNode {
@@ -28,6 +28,7 @@ fn seed_input(id: &str, revision: i64, body: &str) -> SeedGraphNode {
         evidence_status: Some(EvidenceStatus::Contested),
         temporal_role: Some(TemporalRole::ClaimAboutTime),
         place_coverage: Some(PlaceCoverage::Unknown),
+        place: None,
         ql_form: None,
         ql_unit_id: None,
         ql_arc: None,
@@ -74,6 +75,7 @@ fn create_then_get_node_round_trips_substance_and_labels() {
             evidence_status: Some(EvidenceStatus::Documented),
             temporal_role: Some(TemporalRole::ActiveDuring),
             place_coverage: Some(PlaceCoverage::Resolved),
+            place: None,
             ql_form: Some(QlForm::PartialPositionalMap),
             ql_unit_id: Some("ql-cosimo".into()),
             ql_arc: Some(QlArc::Braided),
@@ -168,6 +170,102 @@ fn create_then_get_node_round_trips_substance_and_labels() {
     assert!(missing.is_none());
 
     // Teardown
+    support::block_on(async {
+        graph
+            .run_on(
+                &database,
+                query("MATCH (n {graph_node_id: $id}) DETACH DELETE n")
+                    .param("id", created.graph_node_id.clone()),
+            )
+            .await
+            .expect("cleanup");
+    });
+}
+
+#[test]
+fn temporal_place_projection_round_trips_and_patches_through_neo4j() {
+    let (graph, run_id, database) = support::neo4j_test_graph();
+    let repo = GraphRepository::new(graph.clone(), database.clone());
+    support::block_on(repo.ensure_schema()).expect("schema");
+
+    let place_projection = serde_json::json!({
+        "graphNodeId": format!("{run_id}:constantinople"),
+        "names": [
+            { "language": "el", "name": "Κωνσταντινούπολις", "validFrom": "0330-05-11", "validTo": "1453-05-29" },
+            { "language": "tr", "name": "İstanbul", "validFrom": "1453", "validTo": null }
+        ],
+        "coordinate": { "precision": "exact", "latitude": 41.0082, "longitude": 28.9784 },
+        "hierarchy": [{ "parentPlaceId": "place-region", "relationValidFrom": "0330", "relationValidTo": null }],
+        "identityValidFrom": "0330",
+        "identityValidTo": null,
+        "externalRefs": [{ "gazetteer": "pleiades", "id": "520998" }],
+        "provenance": {
+            "sourceRefs": [
+                { "artifactId": "transcript-001", "unit": { "kind": "text_span", "startOffset": 12, "endOffset": 34 } }
+            ]
+        }
+    });
+
+    let created = support::block_on(repo.create_node_with_metadata(
+        NewGraphNode {
+            graph_node_id: Some(format!("{run_id}:place")),
+            entity_type: "Place".into(),
+            title: format!("Constantinople {run_id}"),
+            body: "[]".into(),
+            coordinate: None,
+            source_coordinates: vec![],
+            is_temporal: true,
+            valid_from: Some("0330".into()),
+            valid_to: None,
+            temporal_precision: Some("year".into()),
+        },
+        NewGraphNodeMetadata {
+            place_coverage: Some(PlaceCoverage::Resolved),
+            place: Some(place_projection.clone()),
+            ..Default::default()
+        },
+    ))
+    .expect("create place with temporal projection");
+
+    assert_eq!(
+        created.place.as_ref().expect("place projection"),
+        &place_projection
+    );
+
+    let fetched = support::block_on(repo.get_node(&created.graph_node_id))
+        .expect("get")
+        .expect("node exists");
+    assert_eq!(
+        fetched.place.as_ref().expect("fetched place projection"),
+        &place_projection
+    );
+
+    // Patching the projection (e.g. a curator corrects the precision) must
+    // update the stored payload rather than leaving a stale copy.
+    let refined = serde_json::json!({
+        "graphNodeId": created.graph_node_id,
+        "names": [
+            { "language": "tr", "name": "İstanbul", "validFrom": "1453", "validTo": null }
+        ],
+        "coordinate": { "precision": "approximate", "latitude": 41.0082, "longitude": 28.9784 },
+        "hierarchy": [],
+        "externalRefs": [{ "gazetteer": "pleiades", "id": "520998" }],
+        "provenance": {
+            "sourceRefs": [
+                { "artifactId": "transcript-001", "unit": { "kind": "text_span", "startOffset": 12, "endOffset": 34 } }
+            ]
+        }
+    });
+    let patched = support::block_on(repo.update_node(
+        &created.graph_node_id,
+        GraphNodePatch {
+            place: Some(Some(refined.clone())),
+            ..Default::default()
+        },
+    ))
+    .expect("patch place projection");
+    assert_eq!(patched.place.as_ref().expect("patched projection"), &refined);
+
     support::block_on(async {
         graph
             .run_on(

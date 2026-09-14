@@ -47,12 +47,14 @@ function fixtureBundle(): GraphExportBundle {
       id: "11111111-1111-4111-8111-111111111111",
       parentConstellationId: null,
       primaryCanvasId: "c1",
+      profileScope: "bootstrapping",
       publishSettings: {
         includeResources: true,
         mobileSequenceFirst: true,
         theme: "paper"
       },
       rootPath: "/tmp/antichrist",
+      rootType: "directory",
       slug: "antichrist",
       summary: "Theory graph",
       updatedAt: "2026-06-28T12:00:00Z"
@@ -340,5 +342,18 @@ describe("createStaticBundleTransport", () => {
         appState: {}
       })
     ).toThrow("read-only web build");
+    await expect(
+      transport.listFetchRecords({ databasePath: "x", profileScope: "bootstrapping" })
+    ).rejects.toThrow("read-only web build");
+    await expect(
+      transport.ingestFetchedAsset({
+        databasePath: "x",
+        mediaRoot: "x",
+        agentSessionId: "s",
+        sourceUrl: "https://upload.wikimedia.org/x.png",
+        license: "public domain",
+        sourcePath: "/tmp/x.png"
+      })
+    ).rejects.toThrow("read-only web build");
   });
 });

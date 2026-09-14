@@ -5,6 +5,25 @@ pub(crate) use super::relationship_vocabulary::{
     canonical_relationship_key, canonicalize_relationship_properties, validate_rel_type,
 };
 
+/// The one deliberate substrate-relation addition (refinement-2 D12,
+/// ticket #27): encapsulation is the processual backbone of the system, not a
+/// content category. A constellation encapsulates as a single node into a
+/// parent and unfolds back with data intact.
+pub const ENCAPSULATES: &str = "ENCAPSULATES";
+pub const ENCAPSULATES_MODE_OUTGOING: &str = "outgoing";
+pub const ENCAPSULATES_MODE_INGOING: &str = "ingoing";
+
+/// Validate the processual reading of an ENCAPSULATES edge. `outgoing` (0/1,
+/// bimba) unfolds a node into its constellation; `ingoing` (1/0, pratibimba)
+/// compresses a constellation into a single node in a parent.
+pub fn validate_encapsulation_mode(mode: &str) -> Result<&str, String> {
+    match mode {
+        ENCAPSULATES_MODE_OUTGOING => Ok(ENCAPSULATES_MODE_OUTGOING),
+        ENCAPSULATES_MODE_INGOING => Ok(ENCAPSULATES_MODE_INGOING),
+        other => Err(format!("unknown ENCAPSULATES mode: {other}")),
+    }
+}
+
 macro_rules! controlled_string_enum {
     ($name:ident { $($variant:ident => $value:literal),+ $(,)? }) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -114,7 +133,7 @@ controlled_string_enum!(TemporalPrecision {
 controlled_string_enum!(EntityType {
     Figure => "Figure", People => "People", Event => "Event", Institution => "Institution",
     Source => "Source", Claim => "Claim", Myth => "Myth", Interpretation => "Interpretation",
-    Place => "Place", Work => "Work", Archetype => "Archetype", Dynamic => "Dynamic",
+    Place => "Place", Work => "Work", Archetype => "Archetype", ArchetypeExpression => "ArchetypeExpression", Dynamic => "Dynamic",
     Constellation => "Constellation", PsychoidOperator => "PsychoidOperator",
 });
 
@@ -142,6 +161,8 @@ pub struct GraphNode {
     pub evidence_status: Option<EvidenceStatus>,
     pub temporal_role: Option<TemporalRole>,
     pub place_coverage: Option<PlaceCoverage>,
+    #[serde(default)]
+    pub place: Option<serde_json::Value>,
     pub ql_form: Option<QlForm>,
     pub ql_unit_id: Option<String>,
     pub ql_arc: Option<QlArc>,
@@ -247,6 +268,8 @@ pub struct NewGraphNodeMetadata {
     #[serde(default)]
     pub place_coverage: Option<PlaceCoverage>,
     #[serde(default)]
+    pub place: Option<serde_json::Value>,
+    #[serde(default)]
     pub ql_form: Option<QlForm>,
     #[serde(default)]
     pub ql_unit_id: Option<String>,
@@ -296,6 +319,8 @@ pub struct GraphNodePatch {
     #[serde(default, deserialize_with = "deserialize_present_nullable")]
     pub place_coverage: Option<Option<PlaceCoverage>>,
     #[serde(default, deserialize_with = "deserialize_present_nullable")]
+    pub place: Option<Option<serde_json::Value>>,
+    #[serde(default, deserialize_with = "deserialize_present_nullable")]
     pub ql_form: Option<Option<QlForm>>,
     #[serde(default, deserialize_with = "deserialize_present_nullable")]
     pub ql_unit_id: Option<Option<String>>,
@@ -315,16 +340,6 @@ pub struct GraphNodePatch {
     pub valid_to: Option<Option<String>>,
     #[serde(default, deserialize_with = "deserialize_present_nullable")]
     pub temporal_precision: Option<Option<TemporalPrecision>>,
-}
-
-fn deserialize_explicit_nullable_string<'de, D>(
-    deserializer: D,
-) -> Result<Option<Option<String>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = Option::<String>::deserialize(deserializer)?;
-    Ok(Some(value))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -374,6 +389,7 @@ pub struct SeedGraphNode {
     pub evidence_status: Option<EvidenceStatus>,
     pub temporal_role: Option<TemporalRole>,
     pub place_coverage: Option<PlaceCoverage>,
+    pub place: Option<serde_json::Value>,
     pub ql_form: Option<QlForm>,
     pub ql_unit_id: Option<String>,
     pub ql_arc: Option<QlArc>,
@@ -459,6 +475,21 @@ fn optional_string_from_neo(node: &neo4rs::Node, property: &str) -> Result<Optio
     node.get::<String>(property)
         .map(Some)
         .map_err(|error| format!("Neo4j property `{property}` has wrong type: {error}"))
+}
+
+fn optional_json_from_neo(
+    node: &neo4rs::Node,
+    property: &str,
+) -> Result<Option<serde_json::Value>, String> {
+    if !has_neo_property(node, property) {
+        return Ok(None);
+    }
+    let raw = node
+        .get::<String>(property)
+        .map_err(|error| format!("Neo4j property `{property}` has wrong type: {error}"))?;
+    serde_json::from_str(&raw)
+        .map(Some)
+        .map_err(|error| format!("Neo4j property `{property}` is not valid JSON: {error}"))
 }
 
 fn string_from_neo(
@@ -586,6 +617,7 @@ fn node_from_neo(node: neo4rs::Node) -> Result<GraphNode, String> {
         evidence_status: controlled_from_neo(&node, "evidence_status")?,
         temporal_role: controlled_from_neo(&node, "temporal_role")?,
         place_coverage: controlled_from_neo(&node, "place_coverage")?,
+        place: optional_json_from_neo(&node, "place")?,
         ql_form: controlled_from_neo(&node, "ql_form")?,
         ql_unit_id: optional_string_from_neo(&node, "ql_unit_id")?,
         ql_arc: controlled_from_neo(&node, "ql_arc")?,
@@ -682,7 +714,7 @@ impl GraphRepository {
                 body_source_coordinates: $body_source_coordinates,
                 historicity: $historicity, claim_kind: $claim_kind,
                 evidence_status: $evidence_status, temporal_role: $temporal_role,
-                place_coverage: $place_coverage, ql_form: $ql_form,
+                place_coverage: $place_coverage, place: $place, ql_form: $ql_form,
                 ql_unit_id: $ql_unit_id, ql_arc: $ql_arc, ql_topology: $ql_topology,
                 ql_schema_version: $ql_schema_version,
                 ql_source_coordinates: $ql_source_coordinates,
@@ -741,6 +773,10 @@ impl GraphRepository {
                 metadata
                     .place_coverage
                     .map(|value| value.as_str().to_string()),
+            )
+            .param(
+                "place",
+                metadata.place.clone().map(|value| value.to_string()),
             )
             .param(
                 "ql_form",
@@ -852,6 +888,9 @@ impl GraphRepository {
         if patch.place_coverage.is_some() {
             sets.push("n.place_coverage = $place_coverage".into());
         }
+        if patch.place.is_some() {
+            sets.push("n.place = $place".into());
+        }
         if patch.ql_form.is_some() {
             sets.push("n.ql_form = $ql_form".into());
         }
@@ -936,6 +975,9 @@ impl GraphRepository {
         }
         if let Some(v) = patch.place_coverage {
             q = q.param("place_coverage", v.map(|value| value.as_str().to_string()));
+        }
+        if let Some(v) = patch.place {
+            q = q.param("place", v.map(|value| value.to_string()));
         }
         if let Some(v) = patch.ql_form {
             q = q.param("ql_form", v.map(|value| value.as_str().to_string()));
@@ -1167,6 +1209,7 @@ impl GraphRepository {
                  n.evidence_status = $evidence_status, \
                  n.temporal_role = $temporal_role, \
                  n.place_coverage = $place_coverage, \
+                 n.place = $place, \
                  n.ql_form = $ql_form, n.ql_unit_id = $ql_unit_id, \
                  n.ql_arc = $ql_arc, n.ql_topology = $ql_topology, \
                  n.ql_schema_version = $ql_schema_version, \
@@ -1191,6 +1234,7 @@ impl GraphRepository {
                  n.evidence_status = CASE WHEN newer_seed THEN $evidence_status ELSE n.evidence_status END, \
                  n.temporal_role = CASE WHEN newer_seed THEN $temporal_role ELSE n.temporal_role END, \
                  n.place_coverage = CASE WHEN newer_seed THEN $place_coverage ELSE n.place_coverage END, \
+                 n.place = CASE WHEN newer_seed THEN $place ELSE n.place END, \
                  n.ql_form = CASE WHEN newer_seed THEN $ql_form ELSE n.ql_form END, n.ql_unit_id = CASE WHEN newer_seed THEN $ql_unit_id ELSE n.ql_unit_id END, \
                  n.ql_arc = CASE WHEN newer_seed THEN $ql_arc ELSE n.ql_arc END, n.ql_topology = CASE WHEN newer_seed THEN $ql_topology ELSE n.ql_topology END, \
                  n.ql_schema_version = CASE WHEN newer_seed THEN $ql_schema_version ELSE n.ql_schema_version END, \
@@ -1228,6 +1272,7 @@ impl GraphRepository {
             .param("evidence_status", input.evidence_status.map(|v| v.as_str()))
             .param("temporal_role", input.temporal_role.map(|v| v.as_str()))
             .param("place_coverage", input.place_coverage.map(|v| v.as_str()))
+            .param("place", input.place.clone().map(|value| value.to_string()))
             .param("ql_form", input.ql_form.map(|v| v.as_str()))
             .param("ql_unit_id", input.ql_unit_id.clone())
             .param("ql_arc", input.ql_arc.map(|v| v.as_str()))
@@ -1349,6 +1394,148 @@ impl GraphRepository {
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "connect_nodes: endpoints not found".to_string())?;
         relationship_from_row(&row, properties)
+    }
+
+    /// `ENCAPSULATES` (refinement-2 D12, ticket #27): the one deliberate
+    /// substrate-relation addition. A constellation encapsulates as a single
+    /// node into a parent and unfolds back with data intact. Direction is
+    /// container → member; `mode` is the processual reading:
+    /// - `outgoing` (0/1, bimba) — the container node unfolds into its
+    ///   constellation (ground → articulation).
+    /// - `ingoing` (1/0, pratibimba) — the member constellation compresses
+    ///   into a single node included in a parent (articulation → ground).
+    /// Recursion allowed; cycles prohibited (no transitive self-encapsulation).
+    pub async fn encapsulate(
+        &self,
+        container_graph_node_id: &str,
+        member_graph_node_id: &str,
+        mode: &str,
+        properties: serde_json::Value,
+    ) -> Result<GraphRelationship, String> {
+        let mode = validate_encapsulation_mode(mode)?;
+        if container_graph_node_id == member_graph_node_id {
+            return Err(format!(
+                "ENCAPSULATES self-cycle prohibited: {container_graph_node_id}"
+            ));
+        }
+        if self
+            .encapsulation_path_exists(member_graph_node_id, container_graph_node_id)
+            .await?
+        {
+            return Err(format!(
+                "ENCAPSULATES cycle prohibited: member {member_graph_node_id} already \
+                 transitively contains container {container_graph_node_id}"
+            ));
+        }
+        let rel = validate_rel_type(ENCAPSULATES)?;
+        let mut properties = properties
+            .as_object()
+            .cloned()
+            .ok_or_else(|| "ENCAPSULATES properties must be a JSON object".to_string())?;
+        properties.insert("mode".to_string(), serde_json::Value::String(mode.to_string()));
+        let properties = serde_json::Value::Object(properties);
+        let properties = relationship_properties_with_canonical_key(
+            container_graph_node_id,
+            member_graph_node_id,
+            rel,
+            properties,
+        )?;
+        let canonical_key = canonical_relationship_key(
+            container_graph_node_id,
+            member_graph_node_id,
+            rel,
+            &properties,
+        );
+        let props_str = serde_json::to_string(&properties).map_err(|e| e.to_string())?;
+        let cypher = format!(
+            "MATCH (s:TheoryNode {{graph_node_id: $src}}), (t:TheoryNode {{graph_node_id: $tgt}}) \
+             MERGE (s)-[r:{rel} {{canonicalKey: $canonical_key}}]->(t) \
+             SET r.mode = $mode, r += apoc.convert.fromJsonMap($props) \
+             RETURN elementId(r) AS id, type(r) AS rel_type, \
+                    s.graph_node_id AS src, t.graph_node_id AS tgt, $props AS props"
+        );
+        let q = query(&cypher)
+            .param("src", container_graph_node_id.to_string())
+            .param("tgt", member_graph_node_id.to_string())
+            .param("canonical_key", canonical_key)
+            .param("mode", mode)
+            .param("props", props_str);
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("encapsulate failed: {e}"))?;
+        let row = rows
+            .next()
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "encapsulate: endpoints not found".to_string())?;
+        relationship_from_row(&row, properties)
+    }
+
+    /// True when `from` can reach `to` through one or more ENCAPSULATES edges.
+    /// Used for acyclicity: adding `container → member` is prohibited when
+    /// `member` already transitively contains `container`.
+    pub async fn encapsulation_path_exists(
+        &self,
+        from_graph_node_id: &str,
+        to_graph_node_id: &str,
+    ) -> Result<bool, String> {
+        if from_graph_node_id == to_graph_node_id {
+            return Ok(true);
+        }
+        let q = query(
+            "MATCH (from {graph_node_id: $from})-[:ENCAPSULATES*1..]->(to {graph_node_id: $to}) \
+             RETURN count(*) > 0 AS reachable",
+        )
+        .param("from", from_graph_node_id.to_string())
+        .param("to", to_graph_node_id.to_string());
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("encapsulation_path_exists failed: {e}"))?;
+        let row = rows
+            .next()
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "encapsulation_path_exists returned no row".to_string())?;
+        let reachable: bool = row.get("reachable").map_err(|e| e.to_string())?;
+        Ok(reachable)
+    }
+
+    /// Unfold a container constellation: returns its direct member nodes.
+    pub async fn unfold_constellation(
+        &self,
+        container_graph_node_id: &str,
+    ) -> Result<Vec<GraphNode>, String> {
+        let q = query(
+            "MATCH (c {graph_node_id: $id})-[:ENCAPSULATES]->(m) \
+             RETURN m ORDER BY m.title",
+        )
+        .param("id", container_graph_node_id.to_string());
+        let mut rows = self
+            .graph
+            .execute_on(&self.database, q)
+            .await
+            .map_err(|e| format!("unfold_constellation failed: {e}"))?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            let node: neo4rs::Node = row.get("m").map_err(|e| e.to_string())?;
+            out.push(node_from_neo(node)?);
+        }
+        Ok(out)
+    }
+
+    /// List every ENCAPSULATES relationship (container → member) with its mode.
+    pub async fn list_encapsulation_edges(&self) -> Result<Vec<GraphRelationship>, String> {
+        let q = query(
+            "MATCH (s:TheoryNode)-[r:ENCAPSULATES]->(t) \
+             RETURN elementId(r) AS id, type(r) AS rel_type, \
+                    s.graph_node_id AS src, t.graph_node_id AS tgt, \
+                    apoc.convert.toJson(properties(r)) AS props",
+        );
+        self.collect_relationships(q).await
     }
 
     /// Idempotently materialize a vault file as a typed `Source` node.  This
@@ -1773,7 +1960,8 @@ fn relationship_properties_with_canonical_key(
 #[cfg(test)]
 mod tests {
     use super::{
-        relationship_properties_with_canonical_key, GraphRepository, RELATIONSHIPS_INVOLVING_CYPHER,
+        relationship_properties_with_canonical_key, validate_encapsulation_mode, GraphRepository,
+        RELATIONSHIPS_INVOLVING_CYPHER,
     };
 
     #[test]
@@ -1805,6 +1993,14 @@ mod tests {
             GraphRepository::normalize_context_search_limit(500),
             Some(100)
         );
+    }
+
+    #[test]
+    fn encapsulation_mode_is_controlled_to_the_two_spanda_readings() {
+        assert_eq!(validate_encapsulation_mode("outgoing"), Ok("outgoing"));
+        assert_eq!(validate_encapsulation_mode("ingoing"), Ok("ingoing"));
+        assert!(validate_encapsulation_mode("sideways").is_err());
+        assert!(validate_encapsulation_mode("").is_err());
     }
 
     #[test]

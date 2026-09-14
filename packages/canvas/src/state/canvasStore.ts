@@ -1,6 +1,15 @@
 import { createStore } from "zustand/vanilla";
 
-import { edgeSchema, nodeSchema, type CanvasEdge, type CanvasNode, type GraphNodeContract } from "@research-canvas/schema";
+import {
+  DEFAULT_RELATIONSHIP_KIND,
+  edgeSchema,
+  nodeSchema,
+  type CanvasEdge,
+  type CanvasNode,
+  type GraphNodeContract,
+  type ImageNode,
+  type RelationshipKind,
+} from "@research-canvas/schema";
 
 export interface CanvasSnapshot {
   edges: CanvasEdge[];
@@ -22,6 +31,16 @@ interface CreateGroupNodeInput {
   title: string;
   x: number;
   y: number;
+  id?: string;
+  graphNodeId?: string;
+}
+
+interface CreateImageNodeInput {
+  src: string;
+  caption?: string;
+  title: string;
+  x?: number;
+  y?: number;
   id?: string;
   graphNodeId?: string;
 }
@@ -67,6 +86,7 @@ export interface CanvasStoreState {
   cycleEdgeDirectionality: (edgeId: string) => void;
   connectNodes: (input: ConnectNodesInput) => CanvasEdge;
   createGroupNode: (input: CreateGroupNodeInput) => CanvasNode;
+  createImageNode: (input: CreateImageNodeInput) => ImageNode;
   createNoteNode: (input: CreateNoteNodeInput) => CanvasNode;
   createPortalNode: (input: CreatePortalNodeInput) => CanvasNode;
   createResourceNode: (input: CreateResourceNodeInput) => CanvasNode;
@@ -84,6 +104,7 @@ export interface CanvasStoreState {
   updateEdgeRelationKind: (edgeId: string, relationKind: string) => void;
   updateEdgeNote: (edgeId: string, note: string) => void;
   updateNodeContent: (nodeId: string, content: string) => void;
+  updateImageCaption: (nodeId: string, caption: string) => void;
   /** Replaces the cache of canonical graph substance after a successful graph write. */
   updateNodeGraph: (nodeId: string, graph: GraphNodeContract) => void;
   updateNodePosition: (
@@ -159,6 +180,7 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
       return edge;
     },
     createNoteNode: ({ content, title, id, graphNodeId }) => {
+      const noteContent = migrateNoteContent(content ?? "");
       const node = nodeSchema.parse({
         id: id ?? crypto.randomUUID(),
         graphNodeId: graphNodeId ?? null,
@@ -167,8 +189,8 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
         title,
         position: nextPosition(get().nodes.length),
         size: { width: 240, height: 160 },
-        summary: content,
-        content,
+        summary: deriveNoteSummary(noteContent),
+        content: noteContent,
         tags: ["note"],
         createdAt: now(),
         updatedAt: now()
@@ -195,6 +217,25 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
 
       set((state) => ({ nodes: [...state.nodes, node] }));
       return node;
+    },
+    createImageNode: ({ src, caption, title, x, y, id, graphNodeId }) => {
+      const node = nodeSchema.parse({
+        id: id ?? crypto.randomUUID(),
+        graphNodeId: graphNodeId ?? null,
+        canvasId,
+        type: "image",
+        title,
+        position: x !== undefined && y !== undefined ? { x, y } : nextPosition(get().nodes.length),
+        size: { width: 260, height: 200 },
+        summary: caption ?? "",
+        src,
+        caption: caption ?? null,
+        createdAt: now(),
+        updatedAt: now(),
+      });
+
+      set((state) => ({ nodes: [...state.nodes, node as CanvasNode] }));
+      return node as ImageNode;
     },
     createPortalNode: ({
       title,
@@ -287,7 +328,17 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
     edges: [],
     hydrate: (snapshot) => {
       set({
-        nodes: snapshot.nodes.map((node) => nodeSchema.parse(node)),
+        nodes: snapshot.nodes.map((node) => {
+          if (node.type === "note") {
+            const migrated = migrateNoteContent(node.content ?? "");
+            return nodeSchema.parse({
+              ...node,
+              content: migrated,
+              summary: deriveNoteSummary(migrated),
+            });
+          }
+          return nodeSchema.parse(node);
+        }),
         edges: snapshot.edges.map((edge) => edgeSchema.parse(edge))
       });
     },
@@ -379,6 +430,15 @@ export function createCanvasStore({ canvasId }: CreateCanvasStoreOptions) {
                 updatedAt: now(),
               }
             : n,
+        ),
+      }));
+    },
+    updateImageCaption: (nodeId, caption) => {
+      set((state) => ({
+        nodes: state.nodes.map((n) =>
+          n.id === nodeId && n.type === "image"
+            ? { ...n, caption, updatedAt: now() }
+            : n
         ),
       }));
     },
@@ -505,12 +565,64 @@ function mimeTypeFor(resourceKind: CreateResourceNodeInput["resourceKind"]) {
 }
 
 function deriveNoteSummary(content: string) {
-  const summary = content
-    .replace(/^#{1,6}\s+/gmu, "")
+  const blocks = parseBlockNoteBlocks(content);
+  const text = blocks
+    .map((block) => extractBlockText(block))
+    .join(" ")
     .replace(/\s+/gu, " ")
     .trim();
 
-  return summary.length > 140 ? `${summary.slice(0, 137).trimEnd()}...` : summary;
+  const stripped = text.replace(/^#+\s*/u, "").trim();
+  return stripped.length > 140 ? `${stripped.slice(0, 137).trimEnd()}...` : stripped;
+}
+
+function isBlockNoteBlockArray(value: unknown): value is unknown[] {
+  if (!Array.isArray(value)) return false;
+  return value.every(
+    (item) =>
+      typeof item === "object" &&
+      item !== null &&
+      typeof (item as Record<string, unknown>).type === "string",
+  );
+}
+
+function parseBlockNoteBlocks(content: string): unknown[] {
+  const trimmed = content.trim();
+  if (trimmed === "" || trimmed === "[]") return [];
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (isBlockNoteBlockArray(parsed)) {
+      return parsed;
+    }
+  } catch {
+    // fall through to legacy plain-text wrapping
+  }
+  // Legacy plain-text note: wrap the whole string as one paragraph block.
+  return [{ type: "paragraph", content: [{ type: "text", text: trimmed }] }];
+}
+
+export function migrateNoteContent(content: string): string {
+  return JSON.stringify(parseBlockNoteBlocks(content));
+}
+
+function extractBlockText(block: unknown): string {
+  if (typeof block !== "object" || block === null) return "";
+  const typed = block as Record<string, unknown>;
+  const content = typed.content;
+  if (!Array.isArray(content)) return String(typed.text ?? "");
+  return content
+    .map((item) => {
+      if (typeof item === "object" && item !== null) {
+        const text = (item as Record<string, unknown>).text;
+        return typeof text === "string" ? text : "";
+      }
+      return "";
+    })
+    .join("");
+}
+
+export function defaultRelationshipKind(): RelationshipKind {
+  return DEFAULT_RELATIONSHIP_KIND;
 }
 
 function nextDirectionality(directionality: CanvasEdge["directionality"]) {
@@ -532,9 +644,9 @@ function now() {
 }
 
 export function entityTypeForNodeType(
-  type: "note" | "group" | "resource" | "portal"
+  type: "note" | "group" | "resource" | "portal" | "image"
 ): "Work" | "Source" | "Constellation" {
-  if (type === "resource") return "Source";
+  if (type === "resource" || type === "image") return "Source";
   if (type === "portal") return "Constellation";
   return "Work";
 }

@@ -83,7 +83,7 @@ fn walk(
     Ok(())
 }
 
-fn classify_file(path: &Path) -> IndexedEntryKind {
+pub(crate) fn classify_file(path: &Path) -> IndexedEntryKind {
     match path
         .extension()
         .and_then(|extension| extension.to_str())

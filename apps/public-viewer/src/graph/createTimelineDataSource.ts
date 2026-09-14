@@ -8,7 +8,7 @@ import type {
 
 type TimelineTransport = Pick<
   WorkspaceTransport,
-  "loadTimelineView" | "archetypalLighting" | "resonancesForInstance"
+  "loadTimelineView" | "archetypalLighting" | "resonancesForInstance" | "expandTimelineNode"
 >;
 
 /**
@@ -34,6 +34,9 @@ export function createTimelineDataSource(input: {
     },
     async resonancesForInstance(graphNodeId: string): Promise<LitInstance[]> {
       return transport.resonancesForInstance({ graphNodeId });
+    },
+    async expandNode(graphNodeId: string) {
+      return transport.expandTimelineNode({ workspaceId, graphNodeId });
     },
   };
 }

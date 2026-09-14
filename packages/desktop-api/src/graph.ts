@@ -55,6 +55,7 @@ export interface GraphRelationship {
 export type CanvasNodeSidecar =
   | { type: "note"; title: string; content: string; tags: string[] }
   | { type: "resource"; title: string; resourceKind: string; absolutePath: string; relativePath: string; mimeType: string; fileFingerprint: string }
+  | { type: "image"; title: string; src: string; caption?: string }
   | { type: "group"; title: string; color: string; childNodeIds: string[] }
   | { type: "portal"; title: string; targetCanvasId: string; constellationKind?: "standard" | "ql-unit" };
 
@@ -180,6 +181,22 @@ export interface TimelineView {
 }
 
 /**
+ * The palace subgraph surface (`loadPalaceGraph`): the timeline view's nodes
+ * and relationships plus the real ENCAPSULATES edges read through the graph
+ * repository layer (Task-6 `GraphRepository::list_encapsulation_edges`). The
+ * palace host consumes this surface instead of filtering the timeline view's
+ * bounded relationship neighbourhood, so full-form shaping (full → room,
+ * partial → alcove/corridor/wallSection, compressed → single object) is driven
+ * by the repository surface the design names.
+ */
+export interface PalaceGraphView {
+  workspaceId: string;
+  nodes: TimelineViewNode[];
+  relationships: GraphRelationship[];
+  encapsulationEdges: GraphRelationship[];
+}
+
+/**
  * The complete canonical relation neighbourhood for one focused historical
  * event. Contextual nodes intentionally have no timeline anchor: their
  * relationship to history is disclosed through the focused event, not by
@@ -189,6 +206,21 @@ export interface TimelineRelationField {
   subjectGraphNodeId: string;
   relationships: GraphRelationship[];
   contextualNodes: GraphNode[];
+}
+
+/**
+ * Lazy timeline relational expansion (ticket #28, D13 §4.4): one node's
+ * edges and neighbour nodes, property-complete, loaded on demand through the
+ * repository layer. The timeline base view stays dated-events-only; clicking a
+ * node fires this query and accumulates the result into the working-set stack.
+ * Any node may be expanded — the stack is the user's own exploration surface,
+ * not a temporal filter.
+ */
+export interface ExpandedTimelineNode {
+  subjectGraphNodeId: string;
+  subject: GraphNode;
+  edges: GraphRelationship[];
+  neighbours: GraphNode[];
 }
 
 export interface CanvasView {

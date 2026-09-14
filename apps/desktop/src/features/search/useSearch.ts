@@ -13,7 +13,7 @@ export interface SearchPaletteItem {
 }
 
 interface UseSearchOptions {
-  onSetLens?: (lens: "canvas" | "timeline" | "reading") => void;
+  onSetLens?: (lens: import("../../layout/useLensMode").LensMode) => void;
   onToggleTerminal?: () => void;
 }
 
@@ -74,13 +74,6 @@ export function useSearch(query: string, options: UseSearchOptions = {}) {
           summary: "Switch to the timeline lens",
           onSelect: () => onSetLens("timeline")
         },
-        {
-          id: "command:lens-reading",
-          kind: "command",
-          title: "Go to Reading",
-          summary: "Switch to the reading lens",
-          onSelect: () => onSetLens("reading")
-        }
       );
     }
     if (onToggleTerminal) {

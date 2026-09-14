@@ -8,9 +8,20 @@ export default defineConfig({
   test: {
     environment: "jsdom",
   },
+  optimizeDeps: {
+    // maplibre-gl spawns a module worker (`maplibre-gl-worker.mjs`) whose URL
+    // breaks when Vite pre-bundles the library into .vite/deps. Excluding it
+    // serves the source module so Vite rewrites the worker URL correctly (the
+    // dev-server dep-optimizer warning + `net::ERR_FAILED` both come from
+    // pre-bundling). Production build is unaffected (optimizeDeps is dev-only).
+    exclude: ["maplibre-gl"],
+  },
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: {
+      "@research-canvas/canvas/styles/shell.css": fileURLToPath(
+        new URL("../../packages/canvas/src/styles/shell.css", import.meta.url),
+      ),
       "@research-canvas/canvas": fileURLToPath(
         new URL("../../packages/canvas/src/index.ts", import.meta.url),
       ),

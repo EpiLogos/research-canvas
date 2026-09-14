@@ -1,6 +1,7 @@
 import { describe, expect, it, test } from "vitest";
 
 import { createCanvasStore, entityTypeForNodeType } from "./canvasStore";
+import type { CanvasNode } from "@research-canvas/schema";
 
 describe("deleteNode", () => {
   it("removes the node from the store", () => {
@@ -188,6 +189,7 @@ describe("updateNodeTitle", () => {
       evidenceStatus: "documented",
       temporalRole: "occurred_at",
       placeCoverage: "resolved",
+      place: null,
       qlForm: null,
       qlUnitId: null,
       qlArc: null,
@@ -500,6 +502,56 @@ describe("pre-minted id and graphNodeId", () => {
     });
     expect(node.id).toBe(PRE_MINTED);
     expect(node.graphNodeId).toBe(PRE_MINTED);
+  });
+});
+
+describe("note content migration", () => {
+  it("createNoteNode stores plain text as BlockNote paragraph blocks", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const node = store.getState().createNoteNode({ title: "Legacy", content: "hello world" });
+    expect(node.type).toBe("note");
+    expect((node as { content: string }).content).toBe(
+      JSON.stringify([
+        { type: "paragraph", content: [{ type: "text", text: "hello world" }] },
+      ]),
+    );
+  });
+
+  it("createNoteNode keeps existing BlockNote JSON intact", () => {
+    const blocks = [{ type: "heading", props: { level: 1 }, content: [{ type: "text", text: "Hi" }] }];
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const node = store.getState().createNoteNode({
+      title: "Modern",
+      content: JSON.stringify(blocks),
+    });
+    expect(node.type).toBe("note");
+    expect(JSON.parse((node as { content: string }).content)).toEqual(blocks);
+  });
+
+  it("hydrate migrates legacy plain-text note content to BlockNote blocks", () => {
+    const store = createCanvasStore({ canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f" });
+    const legacyNote = {
+      id: "n1",
+      canvasId: "4204b10c-26f9-4280-8e7c-878eaed29e4f",
+      graphNodeId: null,
+      type: "note" as const,
+      title: "Legacy note",
+      position: { x: 0, y: 0 },
+      size: { width: 240, height: 160 },
+      summary: "",
+      content: "plain text body",
+      tags: ["note"],
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    };
+    store.getState().hydrate({ nodes: [legacyNote as CanvasNode], edges: [] });
+    const hydrated = store.getState().nodes[0];
+    expect(hydrated).toBeDefined();
+    expect(hydrated!.type).toBe("note");
+    expect(JSON.parse((hydrated as { content: string }).content)).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "plain text body" }] },
+    ]);
+    expect(hydrated!.summary).toBe("plain text body");
   });
 });
 

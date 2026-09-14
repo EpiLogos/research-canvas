@@ -224,6 +224,13 @@ pub fn ensure_root_archetypal_local_projection(
         .collect::<Result<Vec<_>, String>>()?;
 
     let metadata_repo = GraphNodeMetadataRepository::new(connection);
+    // Seed nodes whose metadata was legitimately advanced past the seed by a
+    // pipeline/user mutation (e.g. the pipeline dates an atemporal seed via
+    // update_node_metadata_at_path) are tolerated and preserved: the hydration
+    // must not reject them loudly, and re-seeding must not clobber the
+    // mutation back to the canonical seed shape. Genuine corruption — content
+    // fields diverged, or metadata behind the document — still rejects loudly.
+    let mut tolerated_advanced = std::collections::HashSet::new();
     for seed in &seeds {
         let mut metadata = metadata_record(seed)?;
         let document = NodeDocumentRepository::new(connection)
@@ -238,13 +245,20 @@ pub fn ensure_root_archetypal_local_projection(
             } else {
                 SyncState::Pending
             };
-            if document.content_origin != current_metadata.content_origin
-                || document.content_revision != current_metadata.content_revision
-                || document.body_source_coordinates != current_metadata.body_source_coordinates
-                || document_sync_state != current_metadata.sync_state
-                || (current_metadata.sync_state == SyncState::Synced
-                    && current_metadata.remote_revision != Some(current_metadata.content_revision))
+            let content_fields_match = document.content_origin == current_metadata.content_origin
+                && document.body_source_coordinates == current_metadata.body_source_coordinates;
+            if content_fields_match && current_metadata.content_revision > document.content_revision
             {
+                tolerated_advanced.insert(seed.graph_node_id.clone());
+                continue;
+            }
+            let projection_matches = content_fields_match
+                && document.content_revision == current_metadata.content_revision
+                && document_sync_state == current_metadata.sync_state
+                && !(current_metadata.sync_state == SyncState::Synced
+                    && current_metadata.remote_revision
+                        != Some(current_metadata.content_revision));
+            if !projection_matches {
                 return Err(format!(
                     "local document and graph metadata projection diverged for {}",
                     seed.graph_node_id
@@ -336,6 +350,21 @@ pub fn ensure_root_archetypal_local_projection(
                     seed.graph_node_id
                 )
             })?;
+        if tolerated_advanced.contains(&seed.graph_node_id) {
+            // A tolerated advanced seed is preserved exactly as the mutation
+            // left it; only content fields must still agree and the metadata
+            // must not be behind the document.
+            if document.content_origin != metadata.content_origin
+                || document.body_source_coordinates != metadata.body_source_coordinates
+                || metadata.content_revision < document.content_revision
+            {
+                return Err(format!(
+                    "legitimately-advanced seed postcondition failed for {}",
+                    seed.graph_node_id
+                ));
+            }
+            continue;
+        }
         let expected_sync_state = if document.neo4j_synced {
             SyncState::Synced
         } else {
@@ -406,6 +435,7 @@ fn metadata_record(seed: &SeedGraphNode) -> Result<GraphNodeMetadataRecord, Stri
         evidence_status: seed.evidence_status,
         temporal_role: seed.temporal_role,
         place_coverage: seed.place_coverage,
+        place: seed.place.as_ref().map(serde_json::Value::to_string),
         ql_form: seed.ql_form,
         ql_unit_id: seed.ql_unit_id.clone(),
         ql_arc: seed.ql_arc,
@@ -424,6 +454,7 @@ fn metadata_record(seed: &SeedGraphNode) -> Result<GraphNodeMetadataRecord, Stri
         schema_version: 1,
         sync_state: SyncState::Pending,
         remote_revision: None,
+        is_archetype: false,
     })
 }
 
@@ -553,6 +584,7 @@ impl NodeSeed {
             } else {
                 crate::db::repositories::graph::PlaceCoverage::NotApplicable
             }),
+            place: None,
             ql_form: ql_metadata.map(|metadata| metadata.form),
             ql_unit_id: ql_metadata.map(|_| self.slug.to_string()),
             ql_arc: ql_metadata.map(|metadata| metadata.arc),
@@ -764,16 +796,20 @@ fn ensure_root_constellation(
                 ROOT_CONSTELLATION_SLUG.to_string(),
                 None,
                 root_path.to_string(),
+                "directory".to_string(),
+                "bootstrapping".to_string(),
                 Some(ROOT_CONSTELLATION_SUMMARY.to_string()),
                 None,
                 serde_json::json!({ "includeResources": true, "theme": "dark" }),
             )
         } else {
-            repository.create(
+            repository.create_project(
                 ROOT_CONSTELLATION_TITLE.to_string(),
                 ROOT_CONSTELLATION_SLUG.to_string(),
                 None,
                 root_path.to_string(),
+                "directory".to_string(),
+                "bootstrapping".to_string(),
                 Some(ROOT_CONSTELLATION_SUMMARY.to_string()),
                 None,
                 serde_json::json!({ "includeResources": true, "theme": "dark" }),
@@ -851,6 +887,8 @@ fn ensure_constellation_canvases(
                         seed.slug.to_string(),
                         Some(root_constellation_id.to_string()),
                         root_path.to_string(),
+                        "directory".to_string(),
+                        "bootstrapping".to_string(),
                         Some(seed.canvas_summary.to_string()),
                         None,
                         serde_json::json!({
@@ -4057,6 +4095,34 @@ fn corpus_node_seeds() -> Vec<NodeSeed> {
             None,
         ),
         n(
+            "place-kimberley",
+            "Place",
+            "Kimberley",
+            "Place node for the diamond fields that Rhodes shuttled between and Oxford across the 1870s, the route carried by the movement-stream geography.",
+            None,
+            &[REPORT_3_SOURCE, TIMELINE_SOURCE],
+            &["place", "historical_geography", "documented"],
+            Some("place"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
+            "place-vienna",
+            "Place",
+            "Vienna",
+            "Place node for the Habsburg seat Rudolf II abandoned when he moved his capital to Prague in 1583, the route carried by the movement-stream geography.",
+            None,
+            &[REPORT_8_SOURCE, TIMELINE_SOURCE],
+            &["place", "historical_geography", "documented"],
+            Some("place"),
+            false,
+            None,
+            None,
+            None,
+        ),
+        n(
             "place-paris",
             "Place",
             "Paris",
@@ -4680,6 +4746,13 @@ fn corpus_relationship_seeds() -> Vec<RelSeed> {
         ),
         r(
             "event-rudolf-ii-prague",
+            "LOCATED_AT",
+            "place-vienna",
+            None,
+            &["documented"],
+        ),
+        r(
+            "event-rudolf-ii-prague",
             "SOURCED_FROM",
             "source-report-8-power-metamorphosis",
             None,
@@ -4724,6 +4797,13 @@ fn corpus_relationship_seeds() -> Vec<RelSeed> {
             "event-bank-of-amsterdam",
             "SOURCED_FROM",
             "source-report-8-power-metamorphosis",
+            None,
+            &["documented"],
+        ),
+        r(
+            "figure-cecil-rhodes",
+            "LOCATED_AT",
+            "place-kimberley",
             None,
             &["documented"],
         ),
@@ -5310,14 +5390,33 @@ mod tests {
         let temporal_ids = timeline
             .nodes
             .iter()
+            .filter(|node| !node.relation_companion)
+            .map(|node| node.node.graph_node_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        let view_ids = timeline
+            .nodes
+            .iter()
             .map(|node| node.node.graph_node_id.as_str())
             .collect::<std::collections::BTreeSet<_>>();
         assert!(timeline.relationships.iter().all(|relationship| {
-            temporal_ids.contains(relationship.source_graph_node_id.as_str())
-                && temporal_ids.contains(relationship.target_graph_node_id.as_str())
+            view_ids.contains(relationship.source_graph_node_id.as_str())
+                && view_ids.contains(relationship.target_graph_node_id.as_str())
                 && relationship.target_graph_node_id != "root-test:lamb-sheep"
         }));
-        assert!(timeline.nodes.iter().all(|node| !node.relation_companion));
+        // Temporal rows are never companions; atemporal LOCATED_AT places
+        // appear only as relation data with an invalid anchor.
+        assert!(timeline.nodes.iter().all(|node| {
+            if node.relation_companion {
+                !node.node.is_temporal
+                    && node.anchor.valid_from == "invalid"
+                    && node.node.entity_type == crate::db::repositories::graph::EntityType::Place
+            } else {
+                temporal_ids.contains(node.node.graph_node_id.as_str())
+            }
+        }));
+        assert!(timeline.relationships.iter().any(|relationship| {
+            relationship.rel_type == "LOCATED_AT"
+        }));
         let relation_field = crate::commands::timeline::load_timeline_relation_field_at_path(
             &path,
             &workspace_id,
@@ -5366,6 +5465,95 @@ mod tests {
         assert!(place_relation.source_coordinates.iter().any(|coordinate| {
             coordinate == "antichrist-vault/episodes/2/ep-0.2-(now-ep-2.0-to-2.5)/Research/Report8.md#the-banda-genocide-corporate-sovereignty-s-first-atrocity"
         }));
+    }
+
+    #[test]
+    fn metadata_mutation_survives_reprojection_without_clobbering_or_rejecting() {
+        let directory = tempfile::tempdir().expect("temporary root projection directory");
+        let path = directory.path().join("root-projection-mutation.sqlite");
+        let database = Database::open(&path).expect("migrated SQLite database");
+        let namespace = "mutation-test";
+        ensure_root_archetypal_local_projection(
+            database.connection(),
+            &directory.path().to_string_lossy(),
+            namespace,
+        )
+        .expect("initial local root projection");
+
+        // The pipeline dates an atemporal archetype seed (bull-ox) through the
+        // real metadata-update seam, exactly like the flow view's "Send to
+        // timeline" action (update_node_metadata_at_path -> GraphNodePatch).
+        let bull_ox = format!("{namespace}:bull-ox");
+        crate::commands::graph::update_node_metadata_at_path(
+            &path,
+            &crate::commands::graph::UpdateGraphNodeRequest {
+                graph_node_id: bull_ox.clone(),
+                patch: crate::db::repositories::GraphNodePatch {
+                    is_temporal: Some(true),
+                    valid_from: Some(Some("1600".into())),
+                    temporal_precision: Some(Some(
+                        crate::db::repositories::graph::TemporalPrecision::Year,
+                    )),
+                    ..Default::default()
+                },
+            },
+        )
+        .expect("date the seed via the pipeline seam");
+
+        // Re-hydrating must neither reject loudly nor clobber the mutation.
+        ensure_root_archetypal_local_projection(
+            database.connection(),
+            &directory.path().to_string_lossy(),
+            namespace,
+        )
+        .expect("re-hydration tolerates a legitimately-advanced seed");
+
+        let metadata = GraphNodeMetadataRepository::new(database.connection())
+            .get(&bull_ox)
+            .expect("read metadata")
+            .expect("bull-ox metadata exists");
+        assert!(metadata.is_temporal, "dating survives re-hydration");
+        assert_eq!(metadata.valid_from.as_deref(), Some("1600"));
+        assert_eq!(
+            metadata.temporal_precision,
+            Some(crate::db::repositories::graph::TemporalPrecision::Year)
+        );
+    }
+
+    #[test]
+    fn genuine_projection_corruption_is_still_rejected() {
+        let directory = tempfile::tempdir().expect("temporary root projection directory");
+        let path = directory.path().join("root-projection-corruption.sqlite");
+        let database = Database::open(&path).expect("migrated SQLite database");
+        let namespace = "corruption-test";
+        ensure_root_archetypal_local_projection(
+            database.connection(),
+            &directory.path().to_string_lossy(),
+            namespace,
+        )
+        .expect("initial local root projection");
+
+        let bull_ox = format!("{namespace}:bull-ox");
+        // Genuine corruption: a content field diverges from the seed document
+        // (content_origin rewritten to user_authored) WITHOUT a legitimate
+        // revision advance — this must still reject loudly.
+        database
+            .connection()
+            .execute(
+                "UPDATE graph_node_metadata SET content_origin='user_authored' WHERE graph_node_id=?1",
+                [&bull_ox],
+            )
+            .expect("corrupt the projection");
+        let error = ensure_root_archetypal_local_projection(
+            database.connection(),
+            &directory.path().to_string_lossy(),
+            namespace,
+        )
+        .expect_err("genuine corruption must still reject loudly");
+        assert!(
+            error.contains("projection diverged"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]

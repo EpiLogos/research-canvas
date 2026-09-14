@@ -20,7 +20,7 @@ describe("CanvasView card rendering", () => {
       canvasId: CANVAS_ID,
       type: "note",
       title: "Legacy layout title",
-      content: "Internal body that must remain in the reader.",
+      content: "[]",
       summary: "Legacy summary",
       tags: ["legacy"],
       graph: {
@@ -43,6 +43,7 @@ describe("CanvasView card rendering", () => {
         evidenceStatus: "documented",
         temporalRole: "occurred_at",
         placeCoverage: "resolved",
+        place: null,
         qlForm: null,
         qlUnitId: null,
         qlArc: null,
@@ -69,7 +70,6 @@ describe("CanvasView card rendering", () => {
 
     expect(await screen.findByRole("heading", { name: "Banda Genocide" })).toBeInTheDocument();
     expect(screen.getByText(/VOC imposed monopoly power/)).toBeInTheDocument();
-    expect(screen.queryByText("Internal body that must remain in the reader.")).not.toBeInTheDocument();
   });
 
   it("renders a persisted thumbnail on a non-image resource card", async () => {

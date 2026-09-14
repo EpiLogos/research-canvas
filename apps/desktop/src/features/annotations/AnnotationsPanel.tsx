@@ -25,7 +25,7 @@ export function AnnotationsPanel({
   };
 
   return (
-    <div className="annotations-panel">
+    <div className="annotations-panel" data-testid="annotations-panel">
       <div className="annotations-panel__tools">
         <div className="annotations-panel__section-title">Drawing</div>
         <button

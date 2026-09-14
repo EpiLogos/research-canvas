@@ -21,10 +21,11 @@ use crate::db::{
             canonical_relationship_key, canonicalize_relationship_properties,
             durable_relationship_id,
         },
-        GraphNodeMetadataRepository, NodeRelationshipRecord, NodeRelationshipRepository,
-        RelationshipMutation, SyncState,
+        GraphMetadataMutation, GraphNodeMetadataRecord, GraphNodeMetadataRepository,
+        NodeRelationshipRecord, NodeRelationshipRepository, RelationshipMutation, SyncState,
     },
 };
+use crate::commands::timeline::graph_node_from_local_projection;
 use crate::SharedApiState;
 
 /// Tauri managed state: the shared bolt pool, active database name, and a
@@ -92,6 +93,8 @@ pub struct CreateGraphNodeRequest {
     pub temporal_role: Option<TemporalRole>,
     #[serde(default)]
     pub place_coverage: Option<PlaceCoverage>,
+    #[serde(default)]
+    pub place: Option<serde_json::Value>,
     #[serde(default)]
     pub ql_form: Option<QlForm>,
     #[serde(default)]
@@ -430,6 +433,135 @@ pub async fn connect_graph_nodes_local_first_at_path(
     Ok(local)
 }
 
+/// Local SQLite metadata update (browser bridge / offline path): applies a
+/// `GraphNodePatch` to the local projection's metadata row with optimistic
+/// concurrency, mirroring the ownership-aware semantics of the full graph
+/// update. Substance remains the raw graph; this projection is the offline
+/// face the lenses read, so dating/locating edits made here surface in the
+/// timeline/places lenses immediately and stay pending for a later remote
+/// sync.
+pub fn update_node_metadata_at_path(
+    path: impl AsRef<Path>,
+    request: &UpdateGraphNodeRequest,
+) -> Result<GraphNode, String> {
+    let database = Database::open(path).map_err(|error| error.to_string())?;
+    let repository = GraphNodeMetadataRepository::new(database.connection());
+    let current = repository
+        .get_with_timestamps(&request.graph_node_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("graph node not found: {}", request.graph_node_id))?;
+
+    let mut record = current.metadata.clone();
+    apply_metadata_patch(&mut record, &request.patch);
+
+    if record == current.metadata {
+        return Ok(graph_node_from_local_projection(&current, None));
+    }
+
+    record.content_revision = current.metadata.content_revision + 1;
+    match repository
+        .save(&record, Some(current.metadata.content_revision))
+        .map_err(|error| error.to_string())?
+    {
+        GraphMetadataMutation::Updated | GraphMetadataMutation::Preserved => {
+            let updated = repository
+                .get_with_timestamps(&request.graph_node_id)
+                .map_err(|error| error.to_string())?
+                .ok_or_else(|| {
+                    format!(
+                        "graph node disappeared after update: {}",
+                        request.graph_node_id
+                    )
+                })?;
+            Ok(graph_node_from_local_projection(&updated, None))
+        }
+        GraphMetadataMutation::Created => Err(
+            "graph node metadata was concurrently created during update".into(),
+        ),
+        GraphMetadataMutation::Conflict {
+            current_revision,
+            reason,
+        } => Err(format!(
+            "graph node metadata conflict at revision {current_revision}: {reason}"
+        )),
+    }
+}
+
+fn apply_metadata_patch(record: &mut GraphNodeMetadataRecord, patch: &GraphNodePatch) {
+    if let Some(value) = &patch.title {
+        record.title = value.clone();
+    }
+    if let Some(value) = &patch.archetypal_resonance {
+        record.archetypal_resonance = value.clone();
+    }
+    if let Some(value) = &patch.coordinate {
+        record.coordinate = value.clone();
+    }
+    if let Some(value) = &patch.source_coordinates {
+        record.source_coordinates = value.clone();
+    }
+    if let Some(value) = &patch.evidence_tags {
+        record.evidence_tags = value.clone();
+    }
+    if let Some(value) = &patch.source_kind {
+        record.source_kind = value.clone();
+    }
+    if let Some(value) = &patch.seed_schema_version {
+        record.seed_schema_version = value.clone();
+    }
+    if let Some(value) = &patch.historicity {
+        record.historicity = value.clone();
+    }
+    if let Some(value) = &patch.claim_kind {
+        record.claim_kind = value.clone();
+    }
+    if let Some(value) = &patch.evidence_status {
+        record.evidence_status = value.clone();
+    }
+    if let Some(value) = &patch.temporal_role {
+        record.temporal_role = value.clone();
+    }
+    if let Some(value) = &patch.place_coverage {
+        record.place_coverage = value.clone();
+    }
+    if let Some(value) = &patch.place {
+        record.place = value.clone().map(|raw| raw.to_string());
+    }
+    if let Some(value) = &patch.ql_form {
+        record.ql_form = value.clone();
+    }
+    if let Some(value) = &patch.ql_unit_id {
+        record.ql_unit_id = value.clone();
+    }
+    if let Some(value) = &patch.ql_arc {
+        record.ql_arc = value.clone();
+    }
+    if let Some(value) = &patch.ql_topology {
+        record.ql_topology = value.clone();
+    }
+    if let Some(value) = &patch.ql_schema_version {
+        record.ql_schema_version = value.clone();
+    }
+    if let Some(value) = &patch.ql_source_coordinates {
+        record.ql_source_coordinates = value.clone();
+    }
+    if let Some(value) = &patch.ql_completeness_status {
+        record.ql_completeness_status = value.clone();
+    }
+    if let Some(value) = patch.is_temporal {
+        record.is_temporal = value;
+    }
+    if let Some(value) = &patch.valid_from {
+        record.valid_from = value.clone();
+    }
+    if let Some(value) = &patch.valid_to {
+        record.valid_to = value.clone();
+    }
+    if let Some(value) = &patch.temporal_precision {
+        record.temporal_precision = value.clone();
+    }
+}
+
 /// Locally tombstones a relationship and returns the semantic contract
 /// required to remove a remote projection. Existing remote-only ids are
 /// intentionally left to the legacy compatibility fallback in the wrapper.
@@ -581,6 +713,7 @@ pub async fn create_graph_node_command(
                 evidence_status: request.evidence_status,
                 temporal_role: request.temporal_role,
                 place_coverage: request.place_coverage,
+                place: request.place,
                 ql_form: request.ql_form,
                 ql_unit_id: request.ql_unit_id,
                 ql_arc: request.ql_arc,
@@ -941,6 +1074,104 @@ mod local_relationship_command_tests {
             .contextual_nodes
             .iter()
             .any(|node| node.graph_node_id == source_id));
+    }
+}
+
+#[cfg(test)]
+mod update_node_metadata_command_tests {
+    use super::*;
+    use crate::db::root_archetypal_seed::ensure_root_archetypal_local_projection;
+
+    fn seed_workspace(test_slug: &str) -> (tempfile::TempDir, std::path::PathBuf, Database) {
+        let directory = tempfile::tempdir().expect("temporary metadata workspace");
+        let path = directory.path().join("node-metadata.sqlite");
+        let database = Database::open(&path).expect("migrated SQLite database");
+        ensure_root_archetypal_local_projection(
+            database.connection(),
+            &directory.path().to_string_lossy(),
+            test_slug,
+        )
+        .expect("root bootstrap seeds real graph node metadata");
+        (directory, path, database)
+    }
+
+    #[test]
+    fn dating_a_non_temporal_node_writes_is_temporal_valid_from_and_precision() {
+        let (_directory, path, _database) = seed_workspace("date-non-temporal");
+        let graph_node_id = format!("date-non-temporal:bull-ox");
+
+        let updated = update_node_metadata_at_path(
+            &path,
+            &UpdateGraphNodeRequest {
+                graph_node_id: graph_node_id.clone(),
+                patch: GraphNodePatch {
+                    is_temporal: Some(true),
+                    valid_from: Some(Some("1888".into())),
+                    temporal_precision: Some(Some(TemporalPrecision::Year)),
+                    ..Default::default()
+                },
+            },
+        )
+        .expect("dating a non-temporal node succeeds");
+
+        assert_eq!(updated.graph_node_id, graph_node_id);
+        assert!(updated.is_temporal, "node becomes temporal after dating");
+        assert_eq!(updated.valid_from.as_deref(), Some("1888"));
+        assert_eq!(updated.temporal_precision, Some(TemporalPrecision::Year));
+
+        let repository = GraphNodeMetadataRepository::new(_database.connection());
+        let persisted = repository
+            .get_with_timestamps(&graph_node_id)
+            .expect("read persisted metadata")
+            .expect("dated node remains durable");
+        assert!(persisted.metadata.is_temporal);
+        assert_eq!(persisted.metadata.valid_from.as_deref(), Some("1888"));
+        assert_eq!(
+            persisted.metadata.temporal_precision,
+            Some(TemporalPrecision::Year)
+        );
+    }
+
+    #[test]
+    fn a_temporal_nodes_valid_from_can_be_revised() {
+        let (_directory, path, _database) = seed_workspace("revise-temporal");
+        let graph_node_id = format!("revise-temporal:banda-genocide");
+
+        let updated = update_node_metadata_at_path(
+            &path,
+            &UpdateGraphNodeRequest {
+                graph_node_id: graph_node_id.clone(),
+                patch: GraphNodePatch {
+                    valid_from: Some(Some("1622-01-01".into())),
+                    ..Default::default()
+                },
+            },
+        )
+        .expect("revising valid_from on a temporal node succeeds");
+
+        assert_eq!(updated.valid_from.as_deref(), Some("1622-01-01"));
+        assert!(updated.is_temporal);
+        assert_eq!(updated.temporal_precision, Some(TemporalPrecision::Year));
+    }
+
+    #[test]
+    fn updating_missing_node_metadata_errors() {
+        let (_directory, path, _database) = seed_workspace("missing-metadata");
+        let error = update_node_metadata_at_path(
+            &path,
+            &UpdateGraphNodeRequest {
+                graph_node_id: "missing-metadata:no-such-node".into(),
+                patch: GraphNodePatch {
+                    title: Some("ghost".into()),
+                    ..Default::default()
+                },
+            },
+        )
+        .expect_err("unknown graph node reports a not-found error");
+        assert!(
+            error.contains("no-such-node"),
+            "error names the missing node: {error}"
+        );
     }
 }
 

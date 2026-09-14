@@ -718,4 +718,46 @@ describe("TimelineLens", () => {
     expect(screen.queryByTestId("timeline-node-ql-unit")).not.toBeInTheDocument();
     expect(screen.getByTestId("timeline-node-banda")).toBeInTheDocument();
   });
+
+  test("framing a node opens a window-bounded sub-timeline with hovering trans-temporal chips", async () => {
+    render(
+      <TimelineLens
+        dataSource={makeDataSource({
+          loadTimelineView: async () => ({
+            workspaceId: "sqlite:/test",
+            lanes: [{ id: "events" }],
+            diagnostics: [],
+            relationships: [
+              { id: "r1", relType: "LOCATED_AT", sourceGraphNodeId: "council", targetGraphNodeId: "florence", properties: {} },
+              { id: "r2", relType: "INSTANTIATES", sourceGraphNodeId: "council", targetGraphNodeId: "monopoly", properties: {} },
+            ],
+            nodes: [
+              timelineRecord({ ...event("florence", "Florence", "1400-01-01"), entityType: "Place", validTo: "1500-12-31" }, layout("florence", 280, 92)),
+              timelineRecord(event("council", "Council of Florence", "1438-04-09"), layout("council", 240, 72)),
+              timelineRecord(event("balfour", "Balfour Declaration", "1917-01-01"), layout("balfour", 240, 72)),
+              timelineRecord(archetype("monopoly", "Monopoly mechanism"), layout("monopoly", 240, 72)),
+            ],
+          }),
+        })}
+        onOpenNode={() => {}}
+      />,
+    );
+
+    await screen.findByTestId("timeline-node-council");
+    fireEvent.click(screen.getByTestId("timeline-node-council"));
+    fireEvent.click(await screen.findByTestId("timeline-open-subtimeline"));
+
+    expect(screen.getByTestId("timeline-frame-crumb")).toHaveTextContent("Earth / Council of Florence");
+    expect(screen.getByTestId("timeline-hover-lane")).toHaveTextContent("Monopoly mechanism");
+    expect(screen.queryByTestId("timeline-node-balfour")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("timeline-back-to-earth"));
+    expect(screen.queryByTestId("timeline-frame")).not.toBeInTheDocument();
+    // The camera stays where the frame left it (the council's window), so the
+    // Florence anchor remains visible; Balfour is outside the render band.
+    expect(screen.getByTestId("timeline-node-florence")).toBeInTheDocument();
+    // With the frame closed and a temporal node still selected, the lens is
+    // ready to frame again.
+    expect(screen.getByTestId("timeline-open-subtimeline")).toBeInTheDocument();
+  });
 });

@@ -8,7 +8,7 @@ vi.mock("../canvas/CanvasWorkspaceContext", () => ({
 }));
 
 vi.mock("@research-canvas/desktop-api", () => ({
-  createWorkspaceTransport: () => ({}),
+  createWorkspaceServices: () => ({}),
   readWorkspaceTextFile: vi.fn().mockResolvedValue("# Resource body"),
 }));
 

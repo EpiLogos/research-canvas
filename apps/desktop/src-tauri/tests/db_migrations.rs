@@ -786,3 +786,241 @@ fn database_open_configures_file_wal_timeout_and_keeps_memory_databases_working(
     );
     assert!(table_exists(memory.connection(), "graph_node_metadata"));
 }
+
+#[test]
+fn db_migrations_0033_upgrades_a_real_0032_projection_preserving_tombstones_and_gains_encapsulates() {
+    let dir = tempdir().expect("temp dir");
+    let path = dir.path().join("encapsulation-upgrade.sqlite");
+    let connection = Connection::open(&path).expect("fixture database");
+    MigrationRunner::migrate_through(&connection, "0032_fetch_records")
+        .expect("apply the historical 0032 schema");
+    // 0016 substitutes the live relationship vocabulary, so a freshly-migrated
+    // 0032 table already carries ENCAPSULATES; the pre-upgrade signal that
+    // matters is that the 0033-only constellations table does not exist yet.
+    assert!(!table_exists(&connection, "constellations"));
+
+    connection
+        .execute_batch(
+            "INSERT INTO graph_node_metadata(
+                graph_node_id, entity_type, title, content_origin, content_revision,
+                schema_version, sync_state
+             ) VALUES
+                ('legacy-root', 'Constellation', 'Legacy root', 'seed', 4, 1, 'synced'),
+                ('legacy-unit', 'Constellation', 'Legacy unit', 'corpus_compiled', 7, 1, 'pending');
+             INSERT INTO graph_relationship(
+                relationship_id, source_graph_node_id, target_graph_node_id, rel_type,
+                properties_json, source_coordinates_json, evidence_tags_json, origin,
+                sync_state, relationship_revision, remote_revision, created_at, updated_at,
+                is_tombstone
+             ) VALUES (
+                'legacy-active', 'legacy-root', 'legacy-unit', 'INSTANTIATES',
+                '{\"canonicalKey\":\"legacy-root:INSTANTIATES:legacy-unit\",\"reading\":\"preserve me\"}',
+                '[\"episodes/2/timeline.md#1888\"]', '[\"documented\",\"timeline\"]',
+                'corpus_compiled', 'conflict', 12, 34,
+                '2024-01-02T03:04:05.000Z', '2025-06-07T08:09:10.000Z', 0
+             );
+             INSERT INTO graph_relationship(
+                relationship_id, source_graph_node_id, target_graph_node_id, rel_type,
+                properties_json, source_coordinates_json, evidence_tags_json, origin,
+                sync_state, relationship_revision, remote_revision, created_at, updated_at,
+                is_tombstone
+             ) VALUES (
+                'legacy-tombstone', 'legacy-unit', 'legacy-root', 'LOCATED_AT',
+                '{}', '[\"corpus.md#tombstone\"]', '[]',
+                'seed', 'synced', 5, 5,
+                '2024-03-01T00:00:00.000Z', '2024-03-02T00:00:00.000Z', 1
+             );",
+        )
+        .expect("insert valid historical relationship rows");
+
+    MigrationRunner::migrate(&connection)
+        .expect("upgrade applied constellation encapsulation migration");
+
+    let active: (String, String, String, String, String, String, String, String, String, i64, Option<i64>, i64, String, String) = connection
+        .query_row(
+            "SELECT relationship_id, source_graph_node_id, target_graph_node_id, rel_type,
+                    properties_json, source_coordinates_json, evidence_tags_json, origin,
+                    sync_state, relationship_revision, remote_revision, is_tombstone, created_at, updated_at
+             FROM graph_relationship WHERE relationship_id='legacy-active'",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, String>(8)?,
+                    row.get::<_, i64>(9)?,
+                    row.get::<_, Option<i64>>(10)?,
+                    row.get::<_, i64>(11)?,
+                    row.get::<_, String>(12)?,
+                    row.get::<_, String>(13)?,
+                ))
+            },
+        )
+        .expect("active relationship survives 0033 rebuild");
+    assert_eq!(active.0, "legacy-active");
+    assert_eq!(active.3, "INSTANTIATES");
+    assert_eq!(
+        active.4,
+        "{\"canonicalKey\":\"legacy-root:INSTANTIATES:legacy-unit\",\"reading\":\"preserve me\"}"
+    );
+    assert_eq!(active.9, 12);
+    assert_eq!(active.10, Some(34));
+    assert_eq!(active.11, 0, "active relationship stays active");
+
+    let tombstone: (String, String, i64) = connection
+        .query_row(
+            "SELECT relationship_id, rel_type, is_tombstone
+             FROM graph_relationship WHERE relationship_id='legacy-tombstone'",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            },
+        )
+        .expect("tombstone relationship survives 0033 rebuild");
+    assert_eq!(tombstone.0, "legacy-tombstone");
+    assert_eq!(tombstone.1, "LOCATED_AT");
+    assert_eq!(tombstone.2, 1, "tombstone bit is preserved");
+
+    connection
+        .execute(
+            "INSERT INTO graph_relationship(
+                relationship_id, source_graph_node_id, target_graph_node_id, rel_type,
+                properties_json, source_coordinates_json, evidence_tags_json, origin,
+                sync_state, relationship_revision
+             ) VALUES (?1, ?2, ?3, 'ENCAPSULATES', '{}', '[]', '[]', 'seed', 'pending', 1)",
+            ["encapsulates-after-upgrade", "legacy-root", "legacy-unit"],
+        )
+        .expect("upgraded local schema accepts ENCAPSULATES");
+    assert!(table_exists(&connection, "constellations"));
+    let applied_migrations: i64 = connection
+        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
+        .expect("migration count after upgrade");
+    assert_eq!(
+        applied_migrations,
+        MigrationRunner::migration_count() as i64
+    );
+}
+
+#[test]
+fn db_migrations_re_migrating_a_real_workspace_never_replays_or_drops_data() {
+    let (_dir, database) = open_temp_database();
+    let connection = database.connection();
+
+    connection
+        .execute_batch(
+            "INSERT INTO graph_node_metadata(
+                graph_node_id, entity_type, title, content_origin, content_revision,
+                schema_version, sync_state
+             ) VALUES
+                ('workspace-root', 'Constellation', 'Workspace root', 'seed', 1, 1, 'pending');
+             INSERT INTO graph_relationship(
+                relationship_id, source_graph_node_id, target_graph_node_id, rel_type,
+                properties_json, source_coordinates_json, evidence_tags_json, origin,
+                sync_state, relationship_revision
+             ) VALUES (
+                'workspace-live', 'workspace-root', 'workspace-root', 'ENCAPSULATES',
+                '{\"reading\":\"keep me\"}', '[]', '[]', 'seed', 'pending', 1
+             );",
+        )
+        .expect("seed a real workspace row after the full chain");
+
+    let count_before: i64 = connection
+        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
+        .expect("migration count before re-run");
+    assert_eq!(count_before, MigrationRunner::migration_count() as i64);
+
+    MigrationRunner::migrate(connection).expect("re-run migrations on live workspace");
+
+    let count_after: i64 = connection
+        .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
+        .expect("migration count after re-run");
+    assert_eq!(count_after, count_before, "no migration is replayed");
+
+    let preserved: (String, String, i64) = connection
+        .query_row(
+            "SELECT relationship_id, rel_type, is_tombstone
+             FROM graph_relationship WHERE relationship_id='workspace-live'",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            },
+        )
+        .expect("workspace data survives a re-run");
+    assert_eq!(preserved.0, "workspace-live");
+    assert_eq!(preserved.1, "ENCAPSULATES");
+    assert_eq!(preserved.2, 0);
+}
+
+#[test]
+fn db_migrations_0036_adds_colour_tag_columns_to_canvas_nodes() {
+    let dir = tempdir().expect("temp dir");
+    let path = dir.path().join("colour-tags.sqlite");
+    let connection = Connection::open(&path).expect("fixture database");
+    MigrationRunner::migrate_through(&connection, "0035_project_persistence")
+        .expect("apply through pre-colour-tag schema");
+
+    connection
+        .execute_batch(
+            "INSERT INTO projects(id, display_name, slug, root_path) VALUES ('project-a', 'Project A', 'project-a', '/project-a');
+             INSERT INTO canvases(id, project_id, name) VALUES ('canvas-a', 'project-a', 'Canvas A');
+             INSERT INTO canvas_nodes(id, canvas_id, type, title, position_x, position_y, width, height)
+                VALUES ('node-a', 'canvas-a', 'note', 'A', 0, 0, 100, 100);",
+        )
+        .expect("insert pre-colour-tag row with old columns only");
+
+    MigrationRunner::migrate(&connection).expect("apply colour-tag migration");
+
+    let columns: Vec<String> = connection
+        .prepare("PRAGMA table_info(canvas_nodes)")
+        .expect("table info")
+        .query_map([], |row| row.get::<_, String>(1))
+        .expect("column rows")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("decode columns");
+    for column in ["colour_tag", "custom_dot_colour", "custom_bg_colour", "custom_text_colour"] {
+        assert!(
+            columns.iter().any(|c| c == column),
+            "canvas_nodes should gain {column}"
+        );
+    }
+
+    let migrated: (Option<String>, Option<String>, Option<String>, Option<String>) = connection
+        .query_row(
+            "SELECT colour_tag, custom_dot_colour, custom_bg_colour, custom_text_colour
+             FROM canvas_nodes WHERE id='node-a'",
+            [],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                ))
+            },
+        )
+        .expect("read migrated row");
+    assert_eq!(migrated.0, None);
+    assert_eq!(migrated.1, None);
+    assert_eq!(migrated.2, None);
+    assert_eq!(migrated.3, None);
+}

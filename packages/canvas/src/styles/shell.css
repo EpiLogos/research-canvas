@@ -1,0 +1,146 @@
+
+/* Floating terminal modal anchored to the bottom center of the stage. */
+.terminal-modal {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  min-width: var(--terminal-modal-min-width);
+  max-width: var(--terminal-modal-max-width);
+  min-height: var(--terminal-modal-min-height);
+  max-height: var(--terminal-modal-max-height);
+  background: rgba(var(--ob-bg-2-rgb, 13 17 24), var(--terminal-modal-opacity, 0.85));
+  border: 1px solid var(--ob-line);
+  border-bottom: 0;
+  border-radius: var(--terminal-modal-radius) var(--terminal-modal-radius) 0 0;
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.45);
+  z-index: var(--shell-z-terminal);
+  overflow: hidden;
+  color: var(--ob-ink);
+}
+
+.terminal-modal__header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ob-line);
+  background: rgba(var(--ob-bg-2-rgb, 13 17 24), calc(var(--terminal-modal-opacity, 0.85) + 0.08));
+  font-size: 12px;
+  user-select: none;
+}
+
+.terminal-modal__cwd {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--ob-mono);
+  color: var(--ob-dim);
+}
+
+.terminal-modal__processes {
+  color: var(--ob-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.terminal-modal__opacity {
+  color: var(--ob-faint);
+  margin-left: auto;
+}
+
+.terminal-modal__opacity-slider {
+  width: 80px;
+  cursor: pointer;
+}
+
+.terminal-modal__close {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ob-faint);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.terminal-modal__close:hover {
+  color: var(--ob-ink);
+  background: var(--ob-line);
+}
+
+.terminal-modal__body {
+  flex: 1;
+  min-height: 0;
+  padding: 6px;
+}
+
+.terminal-modal__viewport {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.terminal-modal__resize {
+  position: absolute;
+  z-index: 1;
+}
+
+.terminal-modal__resize--height {
+  top: -4px;
+  left: 16px;
+  right: 16px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.terminal-modal__resize--width {
+  top: 16px;
+  right: -4px;
+  bottom: 16px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+/* Status strip terminal indicator. */
+.ishell-status {
+  position: relative;
+}
+
+.ishell-status__terminal {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ob-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.ishell-status__terminal[data-active="true"] {
+  color: var(--ob-accent);
+}
+
+.ishell-status__terminal-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+}
+
+.ishell-status__terminal[data-active="true"] .ishell-status__terminal-dot {
+  opacity: 1;
+}

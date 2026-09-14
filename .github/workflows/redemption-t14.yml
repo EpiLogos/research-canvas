@@ -1,0 +1,104 @@
+name: Redemption T14 acceptance
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/redemption-t14.yml"
+      - "packages/domain/src/ports/palaceRepository.ts"
+      - "packages/domain/src/index.ts"
+      - "packages/canvas/src/palace/**"
+      - "packages/canvas/src/index.ts"
+      - "apps/desktop/src/features/palace/**"
+      - "apps/desktop/src/layout/Stage.tsx"
+      - "tests/e2e/palace.spec.ts"
+      - "tests/e2e/palace-editing.spec.ts"
+      - "playwright.config.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: redemption-t14-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install canonical Linux bridge build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Check and prebuild canonical browser bridge
+        run: |
+          cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --bin terminal_bridge
+          cargo build --manifest-path apps/desktop/src-tauri/Cargo.toml --bin terminal_bridge
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Typecheck workspace
+        run: pnpm exec tsc -b
+
+      - name: Run focused Palace repository/editor/renderer acceptance
+        run: >-
+          pnpm vitest run
+          apps/desktop/src/features/palace/DesktopPalaceRepository.test.ts
+          apps/desktop/src/features/palace/PalaceLensHost.test.tsx
+          packages/canvas/src/palace
+          --reporter=verbose
+
+      - name: Run real Chromium Palace editing and mature-renderer acceptance
+        run: >-
+          pnpm playwright test
+          tests/e2e/palace-editing.spec.ts
+          tests/e2e/palace.spec.ts
+          --project=chromium
+          --workers=1
+
+      - name: Verify checkout remained read-only
+        run: git diff --exit-code
+
+      - name: Upload Playwright evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redemption-t14-playwright-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7

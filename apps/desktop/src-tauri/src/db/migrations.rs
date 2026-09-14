@@ -110,6 +110,66 @@ const MIGRATIONS: &[Migration] = &[
         version: "0024_node_attachment_primary_roles",
         sql: include_str!("../../migrations/0024_node_attachment_primary_roles.sql"),
     },
+    Migration {
+        version: "0025_place_temporal",
+        sql: include_str!("../../migrations/0025_place_temporal.sql"),
+    },
+    Migration {
+        version: "0026_scenes",
+        sql: include_str!("../../migrations/0026_scenes.sql"),
+    },
+    Migration {
+        version: "0027_scene_consent",
+        sql: include_str!("../../migrations/0027_scene_consent.sql"),
+    },
+    Migration {
+        version: "0028_street_view",
+        sql: include_str!("../../migrations/0028_street_view.sql"),
+    },
+    Migration {
+        version: "0029_palace_curations",
+        sql: include_str!("../../migrations/0029_palace_curations.sql"),
+    },
+    Migration {
+        version: "0030_project_profile_scope",
+        sql: include_str!("../../migrations/0030_project_profile_scope.sql"),
+    },
+    Migration {
+        version: "0031_geography_edges",
+        sql: include_str!("../../migrations/0031_geography_edges.sql"),
+    },
+    Migration {
+        version: "0032_fetch_records",
+        sql: include_str!("../../migrations/0032_fetch_records.sql"),
+    },
+    Migration {
+        version: "0033_constellation_encapsulation",
+        sql: include_str!("../../migrations/0033_constellation_encapsulation.sql"),
+    },
+    Migration {
+        version: "0034_is_archetype",
+        sql: include_str!("../../migrations/0034_is_archetype.sql"),
+    },
+    Migration {
+        version: "0035_project_persistence",
+        sql: include_str!("../../migrations/0035_project_persistence.sql"),
+    },
+    Migration {
+        version: "0036_colour_tags",
+        sql: include_str!("../../migrations/0036_colour_tags.sql"),
+    },
+    Migration {
+        version: "0037_app_tabs",
+        sql: include_str!("../../migrations/0037_app_tabs.sql"),
+    },
+    Migration {
+        version: "0038_relationship_vocabulary_t10",
+        sql: include_str!("../../migrations/0038_relationship_vocabulary_t10.sql"),
+    },
+    Migration {
+        version: "0039_workspace_state",
+        sql: include_str!("../../migrations/0039_workspace_state.sql"),
+    },
 ];
 
 impl MigrationRunner {
@@ -164,9 +224,17 @@ impl MigrationRunner {
 
 /// 0015 is immutable history. 0016 deliberately consumes the one canonical
 /// runtime vocabulary while rebuilding the old local projection, so root
-/// seeding, remote writes, and SQLite checks cannot drift apart.
+/// seeding, remote writes, and SQLite checks cannot drift apart. 0033 does the
+/// same when admitting the one deliberate substrate addition ENCAPSULATES
+/// (ticket #27), so an existing workspace's CHECK constraint gains the new
+/// relation atomically.
 fn migration_sql(migration: &Migration) -> Cow<'static, str> {
-    if migration.version == "0016_graph_relationship_structural_vocabulary_repair" {
+    if matches!(
+        migration.version,
+        "0016_graph_relationship_structural_vocabulary_repair"
+            | "0033_constellation_encapsulation"
+            | "0038_relationship_vocabulary_t10"
+    ) {
         return Cow::Owned(migration.sql.replace(
             "__RELATIONSHIP_TYPES__",
             &super::repositories::relationship_vocabulary::sqlite_check_values(),

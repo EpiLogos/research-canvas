@@ -17,6 +17,7 @@
     "baseUrl": ".",
     "paths": {
       "@research-canvas/canvas": ["packages/canvas/src/index.ts"],
+      "@research-canvas/domain": ["packages/domain/src/index.ts"],
       "@research-canvas/exporter": ["packages/exporter/src/index.ts"],
       "@research-canvas/desktop-api": ["packages/desktop-api/src/index.ts"],
       "@research-canvas/search": ["packages/search/src/index.ts"],

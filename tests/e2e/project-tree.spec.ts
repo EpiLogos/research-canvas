@@ -1,20 +1,27 @@
 import { expect, test } from "@playwright/test";
-import { openFilesBrowserView, waitForWorkspace } from "./support/canvas";
+import { openProjectsBrowserView, waitForWorkspace } from "./support/canvas";
 
-test("shows the root constellation and indexed vault entries in the left rail", async ({
-  page
+test("shows the project tree and opens a constellation in a canvas tab", async ({
+  page,
 }) => {
   await page.goto("/");
   await waitForWorkspace(page);
 
-  await expect(
-    page.locator(".lo-constellation-item", { hasText: "Root Archetypal Field" }),
-  ).toBeAttached();
-  await openFilesBrowserView(page);
-  await expect(
-    page.locator(".lo-file-row", { hasText: "episodes" }).first(),
-  ).toBeAttached();
-  await expect(
-    page.locator(".lo-file-row", { hasText: "episode-1-2-archetypal-resonance.md" }),
-  ).toBeAttached();
+  await openProjectsBrowserView(page);
+
+  await expect(page.getByTestId("project-root-picker")).toHaveText(
+    "Open project root…",
+  );
+
+  const rootConstellation = page.locator("[data-testid^='constellation-node-']", {
+    hasText: "Root Archetypal Field",
+  });
+  await expect(rootConstellation).toBeAttached();
+  await rootConstellation.dispatchEvent("click");
+
+  const globalTab = page.getByTestId("app-tabbar").getByRole("tab", {
+    name: "Root Archetypal Field",
+  });
+  await expect(globalTab).toBeVisible();
+  await expect(globalTab).toHaveAttribute("aria-selected", "true");
 });

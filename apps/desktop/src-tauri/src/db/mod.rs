@@ -1,4 +1,5 @@
 pub mod canvas_service;
+pub mod constellation_ingestion;
 pub mod connection;
 pub(crate) mod corpus_knowledge;
 pub mod migrations;

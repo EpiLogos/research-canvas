@@ -1,0 +1,100 @@
+name: Redemption T13 acceptance
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/redemption-t13.yml"
+      - "packages/domain/src/ports/storyRepository.ts"
+      - "packages/domain/src/index.ts"
+      - "packages/canvas/src/story/**"
+      - "packages/canvas/src/index.ts"
+      - "apps/desktop/src/features/story/**"
+      - "apps/desktop/src/layout/Stage.tsx"
+      - "tests/e2e/story.spec.ts"
+      - "playwright.config.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: redemption-t13-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+          run_install: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install canonical Linux bridge build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Check and prebuild canonical browser bridge
+        run: |
+          cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --bin terminal_bridge
+          cargo build --manifest-path apps/desktop/src-tauri/Cargo.toml --bin terminal_bridge
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Typecheck workspace
+        run: pnpm exec tsc -b
+
+      - name: Run focused Story authoring and publication acceptance
+        run: >-
+          pnpm vitest run
+          apps/desktop/src/features/story/DesktopStoryRepository.test.ts
+          apps/desktop/src/features/story/StoryLens.test.tsx
+          packages/canvas/src/story/StoryComposerSurface.test.tsx
+          packages/canvas/src/story/StorySurface.test.tsx
+          packages/canvas/src/story/storyPresentation.test.ts
+          --reporter=verbose
+
+      - name: Run real Chromium Story authoring acceptance
+        run: pnpm playwright test tests/e2e/story.spec.ts --project=chromium
+
+      - name: Verify checkout remained read-only
+        run: git diff --exit-code
+
+      - name: Upload Playwright evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redemption-t13-playwright-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7

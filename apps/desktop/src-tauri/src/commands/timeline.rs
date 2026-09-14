@@ -269,7 +269,27 @@ pub struct TimelineRelationFieldRequest {
     pub graph_node_id: String,
 }
 
-fn graph_node_from_local_projection(
+/// Timeline lazy relational expansion (ticket #28, D13 §4.4): one node's
+/// edges and neighbour nodes loaded on demand through the repository layer.
+/// The timeline base view stays dated-events-only; relational depth is one
+/// click away and never materialises the full graph.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExpandTimelineNodeRequest {
+    pub workspace_id: String,
+    pub graph_node_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExpandTimelineNodeView {
+    pub subject_graph_node_id: String,
+    pub subject: GraphNode,
+    pub edges: Vec<GraphRelationship>,
+    pub neighbours: Vec<GraphNode>,
+}
+
+pub fn graph_node_from_local_projection(
     record: &TemporalGraphNodeMetadataRecord,
     document: Option<LocalNodeDocument>,
 ) -> GraphNode {
@@ -311,6 +331,13 @@ fn graph_node_from_local_projection(
         evidence_status: metadata.evidence_status,
         temporal_role: metadata.temporal_role,
         place_coverage: metadata.place_coverage,
+        // The `place_json` column carries a json_valid CHECK, so this parse
+        // can only fail on storage corruption; a corrupt projection is
+        // surfaced as absent rather than silently fabricating place data.
+        place: metadata
+            .place
+            .as_deref()
+            .and_then(|raw| serde_json::from_str(raw).ok()),
         ql_form: metadata.ql_form,
         ql_unit_id: metadata.ql_unit_id.clone(),
         ql_arc: metadata.ql_arc,
@@ -377,7 +404,7 @@ fn timeline_relation_companions(
         .collect()
 }
 
-fn merge_relationships_by_canonical_key(
+pub fn merge_relationships_by_canonical_key(
     local: impl IntoIterator<Item = GraphRelationship>,
     remote: impl IntoIterator<Item = GraphRelationship>,
 ) -> Vec<GraphRelationship> {
@@ -555,17 +582,60 @@ pub fn load_timeline_view_at_path(
     // The snapshot carries only the bounded relationship neighbourhood of the
     // temporal rows just read. It never scans the global graph, and it keeps
     // atemporal endpoints as relation data rather than assigning them dates.
-    let relationships = NodeRelationshipRepository::new(database.connection())
+    let relationship_repository = NodeRelationshipRepository::new(database.connection());
+    let candidate_relationships = relationship_repository
         .list_involving(&temporal_ids)
         .map_err(|error| error.to_string())?
         .into_iter()
         .filter(|relationship| !relationship.is_tombstone)
         .filter(|relationship| {
-            temporal_ids.contains(&relationship.source_graph_node_id)
-                && temporal_ids.contains(&relationship.target_graph_node_id)
-        })
-        .filter(|relationship| {
             matches_string_value(&relationship.rel_type, &request.filters.relation_types)
+        })
+        .collect::<Vec<_>>();
+    // LOCATED_AT links a temporal event to an atemporal gazetted place. The
+    // place is included as relation data (invalid anchor, companion flag) so
+    // consumers such as the psychogeographic assembler can resolve the walk
+    // without fabricating a temporal anchor for the place itself.
+    let located_place_ids = candidate_relationships
+        .iter()
+        .filter(|relationship| relationship.rel_type == "LOCATED_AT")
+        .flat_map(|relationship| {
+            [
+                relationship.source_graph_node_id.as_str(),
+                relationship.target_graph_node_id.as_str(),
+            ]
+        })
+        .filter(|endpoint_id| !temporal_ids.contains(*endpoint_id))
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
+    for endpoint_id in &located_place_ids {
+        let Some(row) = metadata_repository
+            .get_with_timestamps(endpoint_id)
+            .map_err(|error| error.to_string())?
+        else {
+            continue;
+        };
+        nodes.push(TimelineNode {
+            node: graph_node_from_local_projection(&row, None),
+            anchor: TimelineAnchor {
+                valid_from: "invalid".into(),
+                valid_to: None,
+                precision: TemporalPrecision::Year,
+            },
+            layout_override: None,
+            relation_companion: true,
+        });
+    }
+    let view_endpoint_ids = temporal_ids
+        .iter()
+        .chain(located_place_ids.iter())
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let relationships = candidate_relationships
+        .into_iter()
+        .filter(|relationship| {
+            view_endpoint_ids.contains(&relationship.source_graph_node_id)
+                && view_endpoint_ids.contains(&relationship.target_graph_node_id)
         })
         .map(|relationship| relationship.as_graph_relationship())
         .collect();
@@ -636,6 +706,77 @@ pub fn load_timeline_relation_field_at_path(
         subject_graph_node_id: graph_node_id.to_string(),
         relationships,
         contextual_nodes,
+    })
+}
+
+/// Lazy relational expansion (ticket #28): the subject node, its edges, and
+/// its neighbour nodes, property-complete, through the local projection first
+/// (offline-first) so the timeline stays light. Any node may be expanded —
+/// temporal or not — because the working-set stack is the user's own
+/// exploration of relational depth, not a filtered timeline read.
+pub fn expand_timeline_node_at_path(
+    path: impl AsRef<std::path::Path>,
+    workspace_id: &str,
+    graph_node_id: &str,
+) -> Result<ExpandTimelineNodeView, String> {
+    let expected_workspace = timeline_workspace_identity(&path)?;
+    if workspace_id != expected_workspace {
+        return Err(format!(
+            "workspaceId does not match active SQLite workspace: expected {expected_workspace}"
+        ));
+    }
+    if graph_node_id.trim().is_empty() {
+        return Err("graphNodeId must not be empty".into());
+    }
+    let database = Database::open(path).map_err(|error| error.to_string())?;
+    let metadata_repository = GraphNodeMetadataRepository::new(database.connection());
+    let documents = NodeDocumentRepository::new(database.connection());
+    let Some(subject_metadata) = metadata_repository
+        .get_with_timestamps(graph_node_id)
+        .map_err(|error| error.to_string())?
+    else {
+        return Err("expand subject graph node does not exist".into());
+    };
+    let subject_document = documents
+        .get_node_document(graph_node_id)
+        .map_err(|error| error.to_string())?;
+    let subject = graph_node_from_local_projection(&subject_metadata, subject_document);
+
+    let relationships = NodeRelationshipRepository::new(database.connection())
+        .list_involving(&BTreeSet::from([graph_node_id.to_string()]))
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .filter(|relationship| !relationship.is_tombstone)
+        .map(|relationship| relationship.as_graph_relationship())
+        .collect::<Vec<_>>();
+    let neighbour_ids = relationships
+        .iter()
+        .flat_map(|relationship| {
+            [
+                relationship.source_graph_node_id.as_str(),
+                relationship.target_graph_node_id.as_str(),
+            ]
+        })
+        .filter(|endpoint_id| *endpoint_id != graph_node_id)
+        .collect::<BTreeSet<_>>();
+    let mut neighbours = Vec::with_capacity(neighbour_ids.len());
+    for endpoint_id in neighbour_ids {
+        let Some(metadata) = metadata_repository
+            .get_with_timestamps(endpoint_id)
+            .map_err(|error| error.to_string())?
+        else {
+            continue;
+        };
+        let document = documents
+            .get_node_document(endpoint_id)
+            .map_err(|error| error.to_string())?;
+        neighbours.push(graph_node_from_local_projection(&metadata, document));
+    }
+    Ok(ExpandTimelineNodeView {
+        subject_graph_node_id: graph_node_id.to_string(),
+        subject,
+        edges: relationships,
+        neighbours,
     })
 }
 
@@ -962,6 +1103,88 @@ pub async fn load_timeline_relation_field_command(
 }
 
 #[tauri::command]
+pub async fn expand_timeline_node_command(
+    request: ExpandTimelineNodeRequest,
+    api_state: tauri::State<'_, SharedApiState>,
+    app_handle: tauri::AppHandle,
+) -> Result<ExpandTimelineNodeView, String> {
+    let path = api_state
+        .lock()
+        .map_err(|_| "API state lock poisoned".to_string())?
+        .db_path
+        .clone()
+        .ok_or_else(|| "App not bootstrapped yet".to_string())?;
+    let mut view =
+        expand_timeline_node_at_path(&path, &request.workspace_id, &request.graph_node_id)?;
+    let Some(graph_state) = app_handle.try_state::<SharedGraphState>() else {
+        return Ok(view);
+    };
+    let graph = crate::db::repositories::graph::GraphRepository::new(
+        graph_state.graph.clone(),
+        graph_state.database.clone(),
+    );
+    let tombstones = local_relationship_tombstones_at_path(
+        &path,
+        &BTreeSet::from([request.graph_node_id.clone()]),
+    )?;
+    let tombstoned_keys = tombstones
+        .iter()
+        .map(|relationship| {
+            canonical_relationship_key(
+                &relationship.source_graph_node_id,
+                &relationship.target_graph_node_id,
+                &relationship.rel_type,
+                &relationship.properties,
+            )
+        })
+        .collect::<BTreeSet<_>>();
+    for tombstone in &tombstones {
+        let _ = graph.disconnect_by_canonical_relationship(tombstone).await;
+    }
+    let Ok(remote_relationships) = graph.relationships_for_node(&request.graph_node_id).await
+    else {
+        return Ok(view);
+    };
+    view.edges = merge_relationships_by_canonical_key(
+        std::mem::take(&mut view.edges),
+        remote_relationships.into_iter().filter(|relationship| {
+            !tombstoned_keys.contains(&canonical_relationship_key(
+                &relationship.source_graph_node_id,
+                &relationship.target_graph_node_id,
+                &relationship.rel_type,
+                &relationship.properties,
+            ))
+        }),
+    );
+    let known_ids = view
+        .neighbours
+        .iter()
+        .map(|node| node.graph_node_id.clone())
+        .collect::<BTreeSet<_>>();
+    let missing_ids = view
+        .edges
+        .iter()
+        .flat_map(|relationship| {
+            [
+                relationship.source_graph_node_id.as_str(),
+                relationship.target_graph_node_id.as_str(),
+            ]
+        })
+        .filter(|node_id| *node_id != request.graph_node_id && !known_ids.contains(*node_id))
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
+    if !missing_ids.is_empty() {
+        if let Ok(nodes) = graph
+            .get_nodes(&missing_ids.into_iter().collect::<Vec<_>>())
+            .await
+        {
+            view.neighbours.extend(nodes);
+        }
+    }
+    Ok(view)
+}
+
+#[tauri::command]
 pub async fn upsert_timeline_layout_command(
     request: UpsertTimelineLayoutRequest,
     api_state: tauri::State<'_, SharedApiState>,
@@ -1020,6 +1243,7 @@ mod local_relationship_projection_tests {
             evidence_status: Some(EvidenceStatus::Documented),
             temporal_role: is_temporal.then_some(TemporalRole::OccurredAt),
             place_coverage: Some(PlaceCoverage::Resolved),
+            place: None,
             ql_form: None,
             ql_unit_id: None,
             ql_arc: None,
@@ -1034,6 +1258,7 @@ mod local_relationship_projection_tests {
             schema_version: 1,
             sync_state: SyncState::Pending,
             remote_revision: None,
+            is_archetype: false,
         }
     }
 
@@ -1103,6 +1328,140 @@ mod local_relationship_projection_tests {
             layout_override: None,
             relation_companion: false,
         }
+    }
+
+    #[test]
+    fn located_at_places_flow_through_the_snapshot_as_relation_companions() {
+        let directory = tempfile::tempdir().expect("temporary SQLite directory");
+        let path = directory.path().join("located-at.sqlite");
+
+        {
+            let database = Database::open(&path).expect("migrated SQLite database");
+            let metadata_repository = GraphNodeMetadataRepository::new(database.connection());
+            for (graph_node_id, entity_type, is_temporal) in [
+                ("event-1888", EntityType::Event, true),
+                ("place-gazette", EntityType::Place, false),
+            ] {
+                assert_eq!(
+                    metadata_repository
+                        .save(&metadata(graph_node_id, entity_type, is_temporal), None)
+                        .expect("persist graph metadata"),
+                    GraphMetadataMutation::Created
+                );
+            }
+            assert_eq!(
+                NodeRelationshipRepository::new(database.connection())
+                    .merge(
+                        &relationship(
+                            "event-1888-located-at-place-gazette",
+                            "event-1888",
+                            "place-gazette",
+                            "LOCATED_AT",
+                        ),
+                        None,
+                    )
+                    .expect("persist located-at relationship"),
+                RelationshipMutation::Created
+            );
+        }
+
+        let workspace_id = timeline_workspace_identity(&path).expect("workspace identity");
+        let timeline = load_timeline_view_at_path(
+            &path,
+            LoadTimelineViewRequest {
+                workspace_id,
+                filters: TimelineFilters::default(),
+                range: None,
+            },
+        )
+        .expect("load offline timeline");
+
+        assert_eq!(timeline.nodes.len(), 2, "temporal event plus place companion");
+        assert_eq!(timeline.relationships.len(), 1);
+        assert_eq!(timeline.relationships[0].rel_type, "LOCATED_AT");
+        assert_eq!(
+            timeline.relationships[0].source_graph_node_id,
+            "event-1888"
+        );
+        assert_eq!(
+            timeline.relationships[0].target_graph_node_id,
+            "place-gazette"
+        );
+
+        let place_companion = timeline
+            .nodes
+            .iter()
+            .find(|node| node.node.graph_node_id == "place-gazette")
+            .expect("place endpoint present in snapshot");
+        assert!(place_companion.relation_companion);
+        assert_eq!(place_companion.node.entity_type, EntityType::Place);
+        assert_eq!(place_companion.anchor.valid_from, "invalid");
+        assert!(place_companion.layout_override.is_none());
+
+        let temporal_event = timeline
+            .nodes
+            .iter()
+            .find(|node| node.node.graph_node_id == "event-1888")
+            .expect("temporal event still present");
+        assert!(!temporal_event.relation_companion);
+        assert_eq!(temporal_event.anchor.valid_from, "1888");
+    }
+
+    #[test]
+    fn relation_type_filter_excludes_located_at_places() {
+        let directory = tempfile::tempdir().expect("temporary SQLite directory");
+        let path = directory.path().join("located-at-filtered.sqlite");
+
+        {
+            let database = Database::open(&path).expect("migrated SQLite database");
+            let metadata_repository = GraphNodeMetadataRepository::new(database.connection());
+            for (graph_node_id, entity_type, is_temporal) in [
+                ("event-1888", EntityType::Event, true),
+                ("place-gazette", EntityType::Place, false),
+            ] {
+                assert_eq!(
+                    metadata_repository
+                        .save(&metadata(graph_node_id, entity_type, is_temporal), None)
+                        .expect("persist graph metadata"),
+                    GraphMetadataMutation::Created
+                );
+            }
+            assert_eq!(
+                NodeRelationshipRepository::new(database.connection())
+                    .merge(
+                        &relationship(
+                            "event-1888-located-at-place-gazette",
+                            "event-1888",
+                            "place-gazette",
+                            "LOCATED_AT",
+                        ),
+                        None,
+                    )
+                    .expect("persist located-at relationship"),
+                RelationshipMutation::Created
+            );
+        }
+
+        let workspace_id = timeline_workspace_identity(&path).expect("workspace identity");
+        let timeline = load_timeline_view_at_path(
+            &path,
+            LoadTimelineViewRequest {
+                workspace_id,
+                filters: TimelineFilters {
+                    relation_types: TimelineValueFilter {
+                        include: vec!["INSTANTIATES".into()],
+                        exclude: vec![],
+                    },
+                    ..TimelineFilters::default()
+                },
+                range: None,
+            },
+        )
+        .expect("load filtered timeline");
+
+        assert_eq!(timeline.nodes.len(), 1, "place companion is gated by the relation filter");
+        assert!(timeline.relationships.is_empty());
+        assert_eq!(timeline.nodes[0].node.graph_node_id, "event-1888");
     }
 
     #[test]

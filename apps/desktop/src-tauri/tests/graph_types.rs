@@ -41,6 +41,7 @@ fn graph_node_serializes_camel_case() {
         evidence_status: Some(EvidenceStatus::Documented),
         temporal_role: Some(TemporalRole::ActiveDuring),
         place_coverage: Some(PlaceCoverage::Resolved),
+        place: None,
         ql_form: Some(QlForm::PartialPositionalMap),
         ql_unit_id: Some("ql-cosimo".into()),
         ql_arc: Some(QlArc::Braided),

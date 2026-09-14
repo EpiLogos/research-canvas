@@ -17,6 +17,9 @@
     },
     {
       "path": "../schema"
+    },
+    {
+      "path": "../viewers"
     }
   ],
   "include": ["src"],

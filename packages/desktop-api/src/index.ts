@@ -1,9 +1,11 @@
 import type {
   Annotation,
+  AppTab,
   CanvasEdge,
   CanvasNode,
   ExportAsset,
   ExportBundle,
+  ProjectRootType,
   PublishSettings,
 } from "@research-canvas/schema";
 
@@ -23,7 +25,9 @@ export type {
   LoadTimelineViewRequest,
   NewGraphNodeInput,
   NodeLayout,
+  PalaceGraphView,
   TimelineView,
+  ExpandedTimelineNode,
   TimelineRelationField,
   TimelineAnchor,
   TimelineDiagnostic,
@@ -38,6 +42,80 @@ export type {
   TimelineNodeRecord,
   TemporalPrecision,
 } from "./graph";
+export type {
+  ListSceneSequencesRequest,
+  ListScenesRequest,
+  Scene,
+  SceneIdRequest,
+  SceneSequence,
+  UpsertSceneRequest,
+  UpsertSceneSequenceRequest,
+} from "./scenes";
+export type {
+  AddStreetViewRegionRequest,
+  ApplyStreetViewRedactionRequest,
+  ListStreetViewImagesRequest,
+  RegisterStreetViewImageRequest,
+  StageStreetViewImageInput,
+  StreetViewIdRequest,
+  StreetViewImageRecord,
+  StreetViewRedactionReason,
+  StreetViewRedactionStatus,
+  StreetViewRegion,
+} from "./streetView";
+export type {
+  GeographyEdge,
+  GeographyEdgeIdRequest,
+  ListGeographyEdgesRequest,
+  UpsertGeographyEdgeRequest,
+} from "./geographyEdges";
+export type {
+  FetchRecord,
+  FetchRecordRedactionStatus,
+  FetchValidation,
+  IngestFetchedAssetRequest,
+  ListFetchRecordsRequest,
+} from "./fetchRecords";
+import {
+  sceneFromWire,
+  sceneSequenceFromWire,
+  sceneSequenceToWire,
+  sceneToWire,
+  type ListSceneSequencesRequest,
+  type ListScenesRequest,
+  type Scene,
+  type SceneIdRequest,
+  type SceneSequence,
+  type SceneSequenceWire,
+  type SceneWire,
+  type UpsertSceneRequest,
+  type UpsertSceneSequenceRequest,
+} from "./scenes";
+import type {
+  AddStreetViewRegionRequest,
+  ApplyStreetViewRedactionRequest,
+  ListStreetViewImagesRequest,
+  RegisterStreetViewImageRequest,
+  StageStreetViewImageInput,
+  StreetViewIdRequest,
+  StreetViewImageRecord,
+} from "./streetView";
+import {
+  geographyEdgeFromWire,
+  geographyEdgeToWire,
+  type GeographyEdge,
+  type GeographyEdgeIdRequest,
+  type ListGeographyEdgesRequest,
+  type UpsertGeographyEdgeRequest,
+} from "./geographyEdges";
+import {
+  fetchRecordFromWire,
+  type FetchRecord,
+  type IngestFetchedAssetRequest,
+  type ListFetchRecordsRequest,
+} from "./fetchRecords";
+
+export * from "./repositories";
 
 export type NodeDocumentMutation =
   | { kind: "created" }
@@ -171,6 +249,7 @@ import type {
   CanvasView,
   ContentOrigin,
   EntityType,
+  ExpandedTimelineNode,
   GraphNode,
   GraphNodePatch,
   GraphRelationship,
@@ -180,6 +259,7 @@ import type {
   NewGraphNodeInput,
   NodeLayout,
   EdgeLayout,
+  PalaceGraphView,
   TimelineView,
   TimelineRelationField,
   TimelineLayoutOverride,
@@ -212,6 +292,8 @@ export interface ConstellationTreeNode {
   name: string;
   slug: string;
   rootPath: string;
+  rootType: ProjectRootType;
+  profileScope: string;
   summary: string;
   parentId: string | null;
   children: ConstellationTreeNode[];
@@ -223,6 +305,8 @@ export interface WorkspaceConstellation {
   slug: string;
   parentConstellationId: string | null;
   rootPath: string;
+  rootType: ProjectRootType;
+  profileScope: string;
   primaryCanvasId: string;
   summary: string;
   coverAssetPath: string | null;
@@ -242,6 +326,10 @@ export interface ResourceRoot {
 
 export interface WorkspaceBootstrap {
   activeConstellationId: string;
+  /** The active project — projects ARE constellations, so this is the same row as `activeConstellationId`. */
+  activeProjectId: string;
+  /** The active project's profile scope; lenses read their surface data through this scope. */
+  activeProfileScope: string;
   databasePath: string;
   /** Server-derived identity of the canonical SQLite path. */
   workspaceId: string;
@@ -253,6 +341,44 @@ export interface WorkspaceBootstrap {
    * use this, not a constellation's `rootPath`.
    */
   workspaceRoot: string;
+}
+
+export interface ActiveProject {
+  projectId: string;
+  profileScope: string;
+  rootType: ProjectRootType;
+}
+
+export interface HomeProject {
+  id: string;
+  name: string;
+  slug: string;
+  rootPath: string;
+  rootType: ProjectRootType;
+  profileScope: string;
+  summary: string;
+  parentId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ResolveHomeResult {
+  homePath: string;
+  projects: HomeProject[];
+}
+
+export interface ResolveHomeInput {
+  databasePath?: string;
+  homePath?: string;
+}
+
+export interface CreateProjectInput {
+  databasePath: string;
+  homePath: string;
+  name: string;
+  rootType: ProjectRootType;
+  sourcePath?: string;
+  summary?: string;
 }
 
 export interface ConstellationDocument {
@@ -378,6 +504,13 @@ export function nodeLayoutFromCanvasNode(node: CanvasNode): NodeLayout {
       title: node.title,
       targetCanvasId: node.targetCanvasId,
       constellationKind: node.constellationKind,
+    };
+  } else if (node.type === "image") {
+    canvasNode = {
+      type: "image",
+      title: node.title,
+      src: node.src,
+      caption: node.caption,
     };
   } else {
     canvasNode = {
@@ -536,11 +669,18 @@ export function mapAgentActivityRow(row: RawAgentActivityRow): AgentActivity {
   };
 }
 
+export type WorkspaceServices = WorkspaceTransport;
+
 export interface WorkspaceTransport {
   attachConstellationResourceRoot(
     request: ResourceRootMutationRequest
   ): Promise<ResourceRoot>;
   bootstrapWorkspace(): Promise<WorkspaceBootstrap>;
+  selectProject(input: { databasePath: string; projectId: string }): Promise<ActiveProject>;
+  /** Resolve-or-create the research-canvas home directory (the parent of all projects) and list the projects under it. */
+  resolveOrCreateHome(input: ResolveHomeInput): Promise<ResolveHomeResult>;
+  /** Create a directory or file project under the home. Idempotent per project slug. */
+  createProject(input: CreateProjectInput): Promise<WorkspaceConstellation>;
   detachConstellationResourceRoot(request: {
     databasePath: string;
     constellationId: string;
@@ -572,6 +712,58 @@ export interface WorkspaceTransport {
   createSavedSequence(input: { databasePath: string; constellationId: string; canvasId: string; name: string }): Promise<SavedSequence>;
   updateSavedSequence(input: { databasePath: string; id: string; name: string; rootNodeId: string | null; edgeIds: string[] }): Promise<SavedSequence>;
   deleteSavedSequence(input: { databasePath: string; id: string }): Promise<void>;
+
+  // ---- Profile scenes and scene sequences (SQLite; vision §3.7/§3.15) ----
+  listScenes(input: ListScenesRequest): Promise<Scene[]>;
+  listSceneSequences(input: ListSceneSequencesRequest): Promise<SceneSequence[]>;
+  getScene(input: SceneIdRequest): Promise<Scene | null>;
+  upsertScene(input: UpsertSceneRequest): Promise<Scene>;
+  upsertSceneSequence(input: UpsertSceneSequenceRequest): Promise<SceneSequence>;
+  deleteScene(input: SceneIdRequest): Promise<void>;
+  deleteSceneSequence(input: SceneIdRequest): Promise<void>;
+
+  // ---- Street-view imagery (SQLite + local redaction pipeline) ----
+  listStreetViewImages(input: ListStreetViewImagesRequest): Promise<StreetViewImageRecord[]>;
+  registerStreetViewImage(input: RegisterStreetViewImageRequest): Promise<StreetViewImageRecord>;
+  stageStreetViewImage(input: StageStreetViewImageInput): Promise<{ artifactPath: string }>;
+  addManualStreetViewRegion(input: AddStreetViewRegionRequest): Promise<StreetViewImageRecord>;
+  applyStreetViewRedaction(input: ApplyStreetViewRedactionRequest): Promise<StreetViewImageRecord>;
+  markStreetViewRedactionNoneNeeded(input: StreetViewIdRequest): Promise<StreetViewImageRecord>;
+
+  // ---- Geography edges (SQLite surface movement streams; ticket #19) ----
+  listGeographyEdges(input: ListGeographyEdgesRequest): Promise<GeographyEdge[]>;
+  upsertGeographyEdge(input: UpsertGeographyEdgeRequest): Promise<GeographyEdge>;
+  deleteGeographyEdge(input: GeographyEdgeIdRequest): Promise<void>;
+
+  // ---- Fetch records (agentic asset gathering gate; ticket #20) ----
+  // The gate is offline-first: it validates bytes already on disk. Rejected
+  // attempts return a record with `validation.all_ok() === false`.
+  listFetchRecords(input: ListFetchRecordsRequest): Promise<FetchRecord[]>;
+  ingestFetchedAsset(input: IngestFetchedAssetRequest): Promise<FetchRecord>;
+
+  // ---- Keepsake export (self-contained static bundle) ----
+  writeKeepsakeBundle(input: {
+    outputDir: string;
+    mediaRoot: string;
+    manifestJson: string;
+  }): Promise<{ mediaCopied: number; manifestPath: string }>;
+
+  // ---- Mind-palace curation (SQLite; vision §3.12) ----
+  loadPalaceCuration(input: {
+    databasePath: string;
+    profileScope?: string;
+  }): Promise<{ profileScope: string; curation: unknown }>;
+  savePalaceCuration(input: {
+    databasePath: string;
+    profileScope?: string;
+    curation: unknown;
+  }): Promise<{ profileScope: string; curation: unknown }>;
+
+  // ---- Palace export (self-contained palace-bundle.json for the public viewer) ----
+  writePalaceBundle(input: {
+    outputDir: string;
+    bundleJson: string;
+  }): Promise<{ bundlePath: string }>;
 
   // ---- Substance (Neo4j) ----
   readGraphNode(input: { graphNodeId: string }): Promise<GraphNode>;
@@ -610,7 +802,14 @@ export interface WorkspaceTransport {
   // ---- Joined reads (both targets) ----
   loadCanvasView(input: { databasePath?: string; canvasId: string; lens: "canvas" | "timeline" }): Promise<CanvasView>;
   loadTimelineView(input: LoadTimelineViewRequest): Promise<TimelineView>;
+  /** Palace subgraph surface: timeline nodes/relationships plus the real
+   * ENCAPSULATES edges read through the graph repository layer. */
+  loadPalaceGraph(input: { workspaceId: string }): Promise<PalaceGraphView>;
   loadTimelineRelationField?(input: { workspaceId: string; graphNodeId: string }): Promise<TimelineRelationField>;
+  /** Lazy relational expansion (ticket #28): one node's edges + neighbours,
+   * property-complete, through the repository layer. Opt-in per click; the
+   * timeline base view is never full-graph materialised. */
+  expandTimelineNode(input: { workspaceId: string; graphNodeId: string }): Promise<ExpandedTimelineNode>;
   upsertTimelineLayout(input: UpsertTimelineLayoutInput): Promise<TimelineLayoutMutationResult>;
 
   // ---- Two-lens / archetypal lighting ----
@@ -647,6 +846,10 @@ export interface WorkspaceTransport {
     expectedRevision: number;
     expectedOrigin: ContentOrigin;
   }): Promise<SyncAcknowledgementMutation>;
+
+  // ---- Global tabs (T7) ----
+  loadAppTabs(input: { databasePath?: string }): Promise<{ tabs: AppTab[]; activeTabId: string | null }>;
+  saveAppTabs(input: { databasePath?: string; tabs: AppTab[]; activeTabId: string | null }): Promise<void>;
 }
 
 const DEFAULT_BRIDGE_PORT = 4789;
@@ -661,6 +864,10 @@ export function createWorkspaceTransport(): WorkspaceTransport {
   return isTauriRuntime()
     ? createTauriWorkspaceTransport()
     : createBrowserBridgeTransport();
+}
+
+export function createWorkspaceServices(): WorkspaceServices {
+  return createWorkspaceTransport();
 }
 
 export function createReadLayerTransport(
@@ -689,6 +896,7 @@ export async function readWorkspaceTextFile(absolutePath: string) {
 
 function createTauriWorkspaceTransport(): WorkspaceTransport {
   let activeDatabasePath: string | undefined;
+  let activeProfileScope: string | undefined;
 
   return {
     async attachConstellationResourceRoot(request) {
@@ -699,7 +907,26 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async bootstrapWorkspace() {
       const result = await invokeTauri<WorkspaceBootstrap>("bootstrap_workspace_command");
       activeDatabasePath = result.databasePath;
+      activeProfileScope = result.activeProfileScope;
       return result;
+    },
+    async selectProject({ databasePath, projectId }) {
+      const result = await invokeTauri<ActiveProject>("set_active_project_command", {
+        request: { databasePath, projectId }
+      });
+      activeProfileScope = result.profileScope;
+      return result;
+    },
+    async resolveOrCreateHome(input) {
+      return invokeTauri<ResolveHomeResult>("resolve_or_create_home_command", {
+        request: {
+          databasePath: input.databasePath ?? null,
+          homePath: input.homePath ?? null,
+        },
+      });
+    },
+    async createProject(input) {
+      return invokeTauri<WorkspaceConstellation>("create_project_command", { request: input });
     },
     async detachConstellationResourceRoot(request) {
       await invokeTauri<void>("detach_constellation_resource_root_command", {
@@ -774,6 +1001,166 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async deleteSavedSequence(request) {
       await invokeTauri<void>("delete_saved_sequence_command", { request });
     },
+    async listScenes({ databasePath, profileScope }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listScenes: no profileScope in input or active project");
+      }
+      const wires = await invokeTauri<SceneWire[]>("list_scenes_command", {
+        request: { databasePath, profileScope: scope },
+      });
+      return wires.map(sceneFromWire);
+    },
+    async listSceneSequences({ databasePath, profileScope }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listSceneSequences: no profileScope in input or active project");
+      }
+      const wires = await invokeTauri<SceneSequenceWire[]>("list_scene_sequences_command", {
+        request: { databasePath, profileScope: scope },
+      });
+      return wires.map(sceneSequenceFromWire);
+    },
+    async getScene({ databasePath, id }) {
+      const wire = await invokeTauri<SceneWire | null>("get_scene_command", {
+        request: { databasePath, id },
+      });
+      return wire ? sceneFromWire(wire) : null;
+    },
+    async upsertScene({ databasePath, scene }) {
+      const saved = await invokeTauri<SceneWire>("upsert_scene_command", {
+        request: { databasePath, scene: sceneToWire(scene) },
+      });
+      return sceneFromWire(saved);
+    },
+    async upsertSceneSequence({ databasePath, sequence }) {
+      const saved = await invokeTauri<SceneSequenceWire>("upsert_scene_sequence_command", {
+        request: { databasePath, sequence: sceneSequenceToWire(sequence) },
+      });
+      return sceneSequenceFromWire(saved);
+    },
+    async deleteScene({ databasePath, id }) {
+      await invokeTauri<void>("delete_scene_command", {
+        request: { databasePath, id },
+      });
+    },
+    async deleteSceneSequence({ databasePath, id }) {
+      await invokeTauri<void>("delete_scene_sequence_command", {
+        request: { databasePath, id },
+      });
+    },
+    async listStreetViewImages({ databasePath, profileScope }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listStreetViewImages: no profileScope in input or active project");
+      }
+      return invokeTauri<StreetViewImageRecord[]>("list_street_view_images_command", {
+        request: { databasePath, profileScope: scope },
+      });
+    },
+    async registerStreetViewImage({ databasePath, mediaRoot, image }) {
+      return invokeTauri<StreetViewImageRecord>("register_street_view_image_command", {
+        request: { databasePath, mediaRoot, image },
+      });
+    },
+    async stageStreetViewImage({ mediaRoot, profileScope, fileName, bytes }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("stageStreetViewImage: no profileScope in input or active project");
+      }
+      return invokeTauri<{ artifactPath: string }>("stage_street_view_image_command", {
+        request: {
+          mediaRoot,
+          profileScope: scope,
+          fileName,
+          bytes: Array.from(bytes),
+        },
+      });
+    },
+    async addManualStreetViewRegion({ databasePath, id, region }) {
+      return invokeTauri<StreetViewImageRecord>("add_manual_street_view_region_command", {
+        request: { databasePath, id, region },
+      });
+    },
+    async applyStreetViewRedaction({ databasePath, mediaRoot, id }) {
+      return invokeTauri<StreetViewImageRecord>("apply_street_view_redaction_command", {
+        request: { databasePath, mediaRoot, id },
+      });
+    },
+    async markStreetViewRedactionNoneNeeded({ databasePath, id }) {
+      return invokeTauri<StreetViewImageRecord>(
+        "mark_street_view_redaction_none_needed_command",
+        { request: { databasePath, id } },
+      );
+    },
+    async listGeographyEdges({ databasePath, profileScope }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listGeographyEdges: no profileScope in input or active project");
+      }
+      const wires = await invokeTauri<GeographyEdge[]>("list_geography_edges_command", {
+        request: { databasePath, profileScope: scope },
+      });
+      return wires.map(geographyEdgeFromWire);
+    },
+    async upsertGeographyEdge({ databasePath, edge }) {
+      const saved = await invokeTauri<GeographyEdge>("upsert_geography_edge_command", {
+        request: { databasePath, edge: geographyEdgeToWire(edge) },
+      });
+      return geographyEdgeFromWire(saved);
+    },
+    async deleteGeographyEdge({ databasePath, id }) {
+      await invokeTauri<void>("delete_geography_edge_command", {
+        request: { databasePath, id },
+      });
+    },
+    async listFetchRecords({ databasePath, profileScope }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listFetchRecords: no profileScope in input or active project");
+      }
+      const wires = await invokeTauri<FetchRecord[]>("list_fetch_records_command", {
+        request: { databasePath, profileScope: scope },
+      });
+      return wires.map(fetchRecordFromWire);
+    },
+    async ingestFetchedAsset(input) {
+      return invokeTauri<FetchRecord>("ingest_fetched_asset_command", {
+        request: input,
+      });
+    },
+    async writeKeepsakeBundle(input) {
+      return invokeTauri<{ mediaCopied: number; manifestPath: string }>(
+        "write_keepsake_bundle_command",
+        { request: input },
+      );
+    },
+    async loadPalaceCuration(input) {
+      const scope = input.profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("loadPalaceCuration: no profileScope in input or active project");
+      }
+      return invokeTauri<{ profileScope: string; curation: unknown }>(
+        "load_palace_curation_command",
+        { request: { databasePath: input.databasePath, profileScope: scope } },
+      );
+    },
+    async savePalaceCuration(input) {
+      const scope = input.profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("savePalaceCuration: no profileScope in input or active project");
+      }
+      return invokeTauri<{ profileScope: string; curation: unknown }>(
+        "save_palace_curation_command",
+        { request: { databasePath: input.databasePath, profileScope: scope, curation: input.curation } },
+      );
+    },
+    async writePalaceBundle(input) {
+      return invokeTauri<{ bundlePath: string }>(
+        "write_palace_bundle_command",
+        { request: input },
+      );
+    },
     async readGraphNode(input) {
       return invokeTauri<GraphNode>("read_graph_node_command", { request: input });
     },
@@ -813,14 +1200,38 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
     async upsertCanvasAppState(input) {
       await invokeTauri<void>("upsert_canvas_app_state_command", { request: input });
     },
+    async loadAppTabs(input) {
+      const databasePath = input.databasePath ?? activeDatabasePath;
+      if (!databasePath) {
+        throw new Error("loadAppTabs: no database path in input or context");
+      }
+      return invokeTauri<{ tabs: AppTab[]; activeTabId: string | null }>("load_app_tabs_command", {
+        request: { databasePath },
+      });
+    },
+    async saveAppTabs(input) {
+      const databasePath = input.databasePath ?? activeDatabasePath;
+      if (!databasePath) {
+        throw new Error("saveAppTabs: no database path in input or context");
+      }
+      await invokeTauri<void>("save_app_tabs_command", {
+        request: { databasePath, tabs: input.tabs, activeTabId: input.activeTabId },
+      });
+    },
     async loadCanvasView(input) {
       return invokeTauri<CanvasView>("load_canvas_view_command", { request: input });
     },
     async loadTimelineView(input) {
       return invokeTauri<TimelineView>("load_timeline_view_command", { request: input });
     },
+    async loadPalaceGraph(input) {
+      return invokeTauri<PalaceGraphView>("load_palace_graph_command", { request: input });
+    },
     async loadTimelineRelationField(input) {
       return invokeTauri<TimelineRelationField>("load_timeline_relation_field_command", { request: input });
+    },
+    async expandTimelineNode(input) {
+      return invokeTauri<ExpandedTimelineNode>("expand_timeline_node_command", { request: input });
     },
     async upsertTimelineLayout(input) {
       return invokeTauri<TimelineLayoutMutationResult>("upsert_timeline_layout_command", { request: input });
@@ -880,6 +1291,7 @@ function createTauriWorkspaceTransport(): WorkspaceTransport {
 
 export function createBrowserBridgeTransport(): WorkspaceTransport {
   let activeDatabasePath: string | undefined;
+  let activeProfileScope: string | undefined;
 
   return {
     async attachConstellationResourceRoot(request) {
@@ -897,7 +1309,31 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     async bootstrapWorkspace() {
       const result = await requestJsonWithRetry<WorkspaceBootstrap>("/workspace/bootstrap");
       activeDatabasePath = result.databasePath;
+      activeProfileScope = result.activeProfileScope;
       return result;
+    },
+    async selectProject({ databasePath, projectId }) {
+      const result = await requestJsonWithRetry<ActiveProject>("/workspace/project", {
+        body: { databasePath, projectId },
+        method: "POST",
+      });
+      activeProfileScope = result.profileScope;
+      return result;
+    },
+    async resolveOrCreateHome(input) {
+      const params = new URLSearchParams();
+      if (input.databasePath) params.set("databasePath", input.databasePath);
+      if (input.homePath) params.set("homePath", input.homePath);
+      const query = params.toString();
+      return requestJsonWithRetry<ResolveHomeResult>(
+        `/workspace/home${query ? `?${query}` : ""}`
+      );
+    },
+    async createProject(input) {
+      return requestJsonWithRetry<WorkspaceConstellation>("/workspace/projects", {
+        method: "POST",
+        body: input,
+      });
     },
     async detachConstellationResourceRoot({ constellationId, rootPath }) {
       await requestJsonWithRetry<void>(
@@ -1000,6 +1436,191 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
         { method: "DELETE" }
       );
     },
+    async listScenes({ databasePath: _, profileScope }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listScenes: no profileScope in input or active project");
+      }
+      const params = new URLSearchParams({ profileScope: scope });
+      const wires = await requestJsonWithRetry<SceneWire[]>(
+        `/workspace/scenes?${params.toString()}`,
+      );
+      return wires.map(sceneFromWire);
+    },
+    async listSceneSequences({ databasePath: _, profileScope }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listSceneSequences: no profileScope in input or active project");
+      }
+      const params = new URLSearchParams({ profileScope: scope });
+      const wires = await requestJsonWithRetry<SceneSequenceWire[]>(
+        `/workspace/scene-sequences?${params.toString()}`,
+      );
+      return wires.map(sceneSequenceFromWire);
+    },
+    async getScene({ databasePath: _, id }) {
+      const wire = await requestJsonWithRetry<SceneWire | null>(
+        `/workspace/scenes/${encodeURIComponent(id)}`,
+      );
+      return wire ? sceneFromWire(wire) : null;
+    },
+    async upsertScene({ databasePath: _, scene }) {
+      const saved = await requestJsonWithRetry<SceneWire>("/workspace/scenes", {
+        method: "POST",
+        body: sceneToWire(scene),
+      });
+      return sceneFromWire(saved);
+    },
+    async upsertSceneSequence({ databasePath: _, sequence }) {
+      const saved = await requestJsonWithRetry<SceneSequenceWire>("/workspace/scene-sequences", {
+        method: "POST",
+        body: sceneSequenceToWire(sequence),
+      });
+      return sceneSequenceFromWire(saved);
+    },
+    async deleteScene({ databasePath: _, id }) {
+      await requestJsonWithRetry<void>(`/workspace/scenes/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+    },
+    async deleteSceneSequence({ databasePath: _, id }) {
+      await requestJsonWithRetry<void>(
+        `/workspace/scene-sequences/${encodeURIComponent(id)}`,
+        { method: "DELETE" },
+      );
+    },
+    async listStreetViewImages({ databasePath: _, profileScope }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listStreetViewImages: no profileScope in input or active project");
+      }
+      const params = new URLSearchParams({ profileScope: scope });
+      return requestJsonWithRetry<StreetViewImageRecord[]>(
+        `/workspace/street-view?${params.toString()}`,
+      );
+    },
+    async registerStreetViewImage({ databasePath: _, mediaRoot, image }) {
+      return requestJsonWithRetry<StreetViewImageRecord>("/workspace/street-view", {
+        method: "POST",
+        body: { mediaRoot, image },
+      });
+    },
+    async stageStreetViewImage({ mediaRoot, profileScope, fileName, bytes }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("stageStreetViewImage: no profileScope in input or active project");
+      }
+      const params = new URLSearchParams({ mediaRoot, profileScope: scope, fileName });
+      const response = await fetch(
+        `${BRIDGE_BASE_URL}/workspace/street-view/stage?${params.toString()}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/octet-stream" },
+          body: bytes.buffer.slice(
+            bytes.byteOffset,
+            bytes.byteOffset + bytes.byteLength,
+          ) as ArrayBuffer,
+        },
+      );
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        throw new Error(
+          `stage street view image failed (${response.status}): ${detail.slice(0, 240)}`,
+        );
+      }
+      return response.json() as Promise<{ artifactPath: string }>;
+    },
+    async addManualStreetViewRegion({ databasePath: _, id, region }) {
+      return requestJsonWithRetry<StreetViewImageRecord>(
+        `/workspace/street-view/${encodeURIComponent(id)}/regions`,
+        { method: "POST", body: { region } },
+      );
+    },
+    async applyStreetViewRedaction({ databasePath: _, mediaRoot, id }) {
+      return requestJsonWithRetry<StreetViewImageRecord>(
+        `/workspace/street-view/${encodeURIComponent(id)}/redact`,
+        { method: "POST", body: { mediaRoot } },
+      );
+    },
+    async markStreetViewRedactionNoneNeeded({ databasePath: _, id }) {
+      return requestJsonWithRetry<StreetViewImageRecord>(
+        `/workspace/street-view/${encodeURIComponent(id)}/none-needed`,
+        { method: "POST" },
+      );
+    },
+    async listGeographyEdges({ databasePath: _, profileScope }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listGeographyEdges: no profileScope in input or active project");
+      }
+      const params = new URLSearchParams({ profileScope: scope });
+      const wires = await requestJsonWithRetry<GeographyEdge[]>(
+        `/workspace/geography-edges?${params.toString()}`,
+      );
+      return wires.map(geographyEdgeFromWire);
+    },
+    async upsertGeographyEdge({ databasePath: _, edge }) {
+      const saved = await requestJsonWithRetry<GeographyEdge>("/workspace/geography-edges", {
+        method: "POST",
+        body: geographyEdgeToWire(edge),
+      });
+      return geographyEdgeFromWire(saved);
+    },
+    async deleteGeographyEdge({ databasePath: _, id }) {
+      await requestJsonWithRetry<void>(
+        `/workspace/geography-edges/${encodeURIComponent(id)}`,
+        { method: "DELETE" },
+      );
+    },
+    async listFetchRecords({ databasePath: _, profileScope }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("listFetchRecords: no profileScope in input or active project");
+      }
+      const params = new URLSearchParams({ profileScope: scope });
+      const wires = await requestJsonWithRetry<FetchRecord[]>(
+        `/workspace/fetch-records?${params.toString()}`,
+      );
+      return wires.map(fetchRecordFromWire);
+    },
+    async ingestFetchedAsset(input) {
+      return requestJsonWithRetry<FetchRecord>("/workspace/fetch-records/ingest", {
+        method: "POST",
+        body: input,
+      });
+    },
+    async writeKeepsakeBundle(input) {
+      return requestJsonWithRetry<{ mediaCopied: number; manifestPath: string }>(
+        "/workspace/keepsake",
+        { method: "POST", body: input },
+      );
+    },
+    async loadPalaceCuration({ databasePath: _, profileScope }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("loadPalaceCuration: no profileScope in input or active project");
+      }
+      const params = new URLSearchParams({ profileScope: scope });
+      return requestJsonWithRetry<{ profileScope: string; curation: unknown }>(
+        `/workspace/palace-curation?${params.toString()}`,
+      );
+    },
+    async savePalaceCuration({ databasePath: _, profileScope, curation }) {
+      const scope = profileScope ?? activeProfileScope;
+      if (!scope) {
+        throw new Error("savePalaceCuration: no profileScope in input or active project");
+      }
+      return requestJsonWithRetry<{ profileScope: string; curation: unknown }>(
+        "/workspace/palace-curation",
+        { method: "POST", body: { profileScope: scope, curation } },
+      );
+    },
+    async writePalaceBundle(input) {
+      return requestJsonWithRetry<{ bundlePath: string }>(
+        "/workspace/palace-bundle",
+        { method: "POST", body: input },
+      );
+    },
     async readGraphNode(input) {
       return requestJsonWithRetry<GraphNode>(
         `/graph/node/${encodeURIComponent(input.graphNodeId)}`,
@@ -1021,8 +1642,25 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
         body: input,
       });
     },
+    async loadPalaceGraph(input) {
+      return requestJsonWithRetry<PalaceGraphView>("/workspace/palace-graph", {
+        method: "POST",
+        body: input,
+      });
+    },
     async loadTimelineRelationField() { throw new Error("read-only web build"); },
-    async upsertTimelineLayout() { throw new Error("read-only web build"); },
+    async expandTimelineNode(input) {
+      return requestJsonWithRetry<ExpandedTimelineNode>("/graph/timeline-expand", {
+        method: "POST",
+        body: input,
+      });
+    },
+    async upsertTimelineLayout(input) {
+      return requestJsonWithRetry<TimelineLayoutMutationResult>("/graph/timeline-layout", {
+        method: "POST",
+        body: input,
+      });
+    },
     async archetypalLighting(input) {
       return requestJsonWithRetry<ArchetypalLighting>(
         `/graph/lighting/${encodeURIComponent(input.operatorGraphNodeId)}`,
@@ -1034,7 +1672,12 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
       );
     },
     async createGraphNode() { throw new Error("read-only web build"); },
-    async updateGraphNode() { throw new Error("read-only web build"); },
+    async updateGraphNode(input) {
+      return requestJsonWithRetry<GraphNode>("/graph/node/update", {
+        method: "POST",
+        body: input,
+      });
+    },
     async compareAndSwapGraphNodeContent() { throw new Error("read-only web build"); },
     async deleteGraphNode() { throw new Error("read-only web build"); },
     async connectGraphNodes() { throw new Error("read-only web build"); },
@@ -1057,6 +1700,19 @@ export function createBrowserBridgeTransport(): WorkspaceTransport {
     async listPendingNodeDocumentSyncs() { throw new Error("read-only web build"); },
     async upsertLocalNodeDocument() { throw new Error("read-only web build"); },
     async acknowledgeLocalNodeDocumentSync() { throw new Error("read-only web build"); },
+    async loadAppTabs(input) {
+      const databasePath = input.databasePath ?? activeDatabasePath;
+      if (!databasePath) throw new Error("loadAppTabs: no database path in input or context");
+      return requestJsonWithRetry<{ tabs: AppTab[]; activeTabId: string | null }>("/workspace/app-tabs");
+    },
+    async saveAppTabs(input) {
+      const databasePath = input.databasePath ?? activeDatabasePath;
+      if (!databasePath) throw new Error("saveAppTabs: no database path in input or context");
+      await requestJsonWithRetry<void>("/workspace/app-tabs", {
+        method: "POST",
+        body: { tabs: input.tabs, activeTabId: input.activeTabId },
+      });
+    },
   };
 }
 
@@ -1386,11 +2042,16 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
   const readOnlyThrow = (): never => {
     throw new Error(READ_ONLY_MESSAGE);
   };
+  const readOnlyEmptyTabs = (): Promise<{ tabs: AppTab[]; activeTabId: null }> =>
+    Promise.resolve({ tabs: [], activeTabId: null });
 
   return {
     // ---- existing constellation/file/annotation methods: not served by the static bundle ----
     attachConstellationResourceRoot: readOnlyReject,
     bootstrapWorkspace: readOnlyReject,
+    selectProject: readOnlyReject,
+    resolveOrCreateHome: readOnlyReject,
+    createProject: readOnlyReject,
     detachConstellationResourceRoot: readOnlyReject,
     listConstellationResourceRoots: readOnlyReject,
     loadConstellationDocument: readOnlyReject,
@@ -1402,6 +2063,29 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
     createSavedSequence: readOnlyReject,
     updateSavedSequence: readOnlyReject,
     deleteSavedSequence: readOnlyReject,
+    listScenes: readOnlyReject,
+    listSceneSequences: readOnlyReject,
+    getScene: readOnlyReject,
+    upsertScene: readOnlyReject,
+    upsertSceneSequence: readOnlyReject,
+    deleteScene: readOnlyReject,
+    deleteSceneSequence: readOnlyReject,
+    listStreetViewImages: readOnlyReject,
+    registerStreetViewImage: readOnlyReject,
+    stageStreetViewImage: readOnlyReject,
+    addManualStreetViewRegion: readOnlyReject,
+    applyStreetViewRedaction: readOnlyReject,
+    markStreetViewRedactionNoneNeeded: readOnlyReject,
+    listGeographyEdges: readOnlyReject,
+    upsertGeographyEdge: readOnlyReject,
+    deleteGeographyEdge: readOnlyReject,
+    listFetchRecords: readOnlyReject,
+    ingestFetchedAsset: readOnlyReject,
+    writeKeepsakeBundle: readOnlyReject,
+    loadPalaceCuration: readOnlyReject,
+    savePalaceCuration: readOnlyReject,
+    writePalaceBundle: readOnlyReject,
+    loadPalaceGraph: readOnlyReject,
 
     // ---- substance reads ----
     async readGraphNode({ graphNodeId }) {
@@ -1520,6 +2204,29 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
         });
       return { subjectGraphNodeId: graphNodeId, relationships, contextualNodes };
     },
+    async expandTimelineNode({ workspaceId, graphNodeId }) {
+      const canonicalWorkspaceId = `static:${bundle.project.id}`;
+      if (workspaceId.trim() === "" || workspaceId !== canonicalWorkspaceId) {
+        throw new Error(`workspaceId does not match static bundle: expected ${canonicalWorkspaceId}`);
+      }
+      const subject = nodeById.get(graphNodeId);
+      if (!subject) {
+        throw new Error(`graph node not found: ${graphNodeId}`);
+      }
+      const edges = bundle.relationships.filter((relationship) =>
+        relationship.sourceGraphNodeId === graphNodeId || relationship.targetGraphNodeId === graphNodeId,
+      );
+      const neighbours = [...new Set(edges.flatMap((relationship) => [
+        relationship.sourceGraphNodeId,
+        relationship.targetGraphNodeId,
+      ]))]
+        .filter((nodeId) => nodeId !== graphNodeId)
+        .flatMap((nodeId) => {
+          const node = nodeById.get(nodeId);
+          return node ? [node] : [];
+        });
+      return { subjectGraphNodeId: graphNodeId, subject, edges, neighbours };
+    },
     async upsertTimelineLayout() { throw new Error("read-only static bundle"); },
     async archetypalLighting({ operatorGraphNodeId }) {
       const operator = nodeById.get(operatorGraphNodeId);
@@ -1572,7 +2279,11 @@ export function createStaticBundleTransport(bundle: GraphExportBundle): Workspac
     readLocalNodeDocument: readOnlyReject,
     listPendingNodeDocumentSyncs: readOnlyReject,
     upsertLocalNodeDocument: readOnlyReject,
-    acknowledgeLocalNodeDocumentSync: readOnlyReject
+    acknowledgeLocalNodeDocumentSync: readOnlyReject,
+
+    // ---- global tabs: not persisted in the static bundle ----
+    loadAppTabs: readOnlyEmptyTabs,
+    saveAppTabs: readOnlyReject,
   };
 }
 

@@ -22,6 +22,7 @@
     "compile:corpus-knowledge": "node scripts/compile-corpus-knowledge.mjs",
     "audit:corpus-knowledge": "node scripts/audit-corpus-knowledge.mjs --strict",
     "audit:vault-media": "node scripts/audit-vault-media.mjs antichrist-vault --summary",
+    "audit:hardcoded": "node scripts/audit-hardcoded.mjs",
     "test:e2e": "playwright test",
     "prebuild": "pnpm test:workspace-declarations && pnpm test:vite-workspace-resolution",
     "build": "pnpm -r --if-present build"

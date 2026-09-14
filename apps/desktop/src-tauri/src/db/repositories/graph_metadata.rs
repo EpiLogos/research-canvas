@@ -59,6 +59,7 @@ pub struct GraphNodeMetadataRecord {
     pub evidence_status: Option<EvidenceStatus>,
     pub temporal_role: Option<TemporalRole>,
     pub place_coverage: Option<PlaceCoverage>,
+    pub place: Option<String>,
     pub ql_form: Option<QlForm>,
     pub ql_unit_id: Option<String>,
     pub ql_arc: Option<QlArc>,
@@ -73,6 +74,7 @@ pub struct GraphNodeMetadataRecord {
     pub schema_version: i64,
     pub sync_state: SyncState,
     pub remote_revision: Option<i64>,
+    pub is_archetype: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,10 +113,10 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
                 "SELECT graph_node_id, entity_type, title, archetypal_resonance, coordinate,
              source_coordinates_json, evidence_tags_json, source_kind, content_origin,
              content_revision, seed_schema_version, body_source_coordinates_json, historicity,
-             claim_kind, evidence_status, temporal_role, place_coverage, ql_form, ql_unit_id,
+             claim_kind, evidence_status, temporal_role, place_coverage, place_json, ql_form, ql_unit_id,
              ql_arc, ql_topology, ql_schema_version, ql_source_coordinates_json,
              ql_completeness_status, is_temporal, valid_from, valid_to, temporal_precision,
-             schema_version, sync_state, remote_revision
+             schema_version, sync_state, remote_revision, is_archetype
              FROM graph_node_metadata WHERE graph_node_id = ?1",
                 [graph_node_id],
                 record_from_row,
@@ -134,19 +136,19 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
                 "SELECT graph_node_id, entity_type, title, archetypal_resonance, coordinate,
              source_coordinates_json, evidence_tags_json, source_kind, content_origin,
              content_revision, seed_schema_version, body_source_coordinates_json, historicity,
-             claim_kind, evidence_status, temporal_role, place_coverage, ql_form, ql_unit_id,
+             claim_kind, evidence_status, temporal_role, place_coverage, place_json, ql_form, ql_unit_id,
              ql_arc, ql_topology, ql_schema_version, ql_source_coordinates_json,
              ql_completeness_status, is_temporal, valid_from, valid_to, temporal_precision,
-             schema_version, sync_state, remote_revision, created_at, updated_at,
+             schema_version, sync_state, remote_revision, is_archetype, created_at, updated_at,
              COALESCE((SELECT summary FROM node_document WHERE graph_node_id = graph_node_metadata.graph_node_id), '')
              FROM graph_node_metadata WHERE graph_node_id = ?1",
                 [graph_node_id],
                 |row| {
                     Ok(TemporalGraphNodeMetadataRecord {
                         metadata: record_from_row(row)?,
-                        created_at: row.get(31)?,
-                        updated_at: row.get(32)?,
-                        summary: row.get(33)?,
+                        created_at: row.get(33)?,
+                        updated_at: row.get(34)?,
+                        summary: row.get(35)?,
                     })
                 },
             )
@@ -159,19 +161,19 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
             "SELECT graph_node_id, entity_type, title, archetypal_resonance, coordinate,
              source_coordinates_json, evidence_tags_json, source_kind, content_origin,
              content_revision, seed_schema_version, body_source_coordinates_json, historicity,
-             claim_kind, evidence_status, temporal_role, place_coverage, ql_form, ql_unit_id,
+             claim_kind, evidence_status, temporal_role, place_coverage, place_json, ql_form, ql_unit_id,
              ql_arc, ql_topology, ql_schema_version, ql_source_coordinates_json,
              ql_completeness_status, is_temporal, valid_from, valid_to, temporal_precision,
-             schema_version, sync_state, remote_revision, created_at, updated_at,
+             schema_version, sync_state, remote_revision, is_archetype, created_at, updated_at,
              COALESCE((SELECT summary FROM node_document WHERE graph_node_id = graph_node_metadata.graph_node_id), '')
              FROM graph_node_metadata WHERE is_temporal=1 ORDER BY graph_node_id",
         )?;
         let rows = statement.query_map([], |row| {
             Ok(TemporalGraphNodeMetadataRecord {
                 metadata: record_from_row(row)?,
-                created_at: row.get(31)?,
-                updated_at: row.get(32)?,
-                summary: row.get(33)?,
+                created_at: row.get(33)?,
+                updated_at: row.get(34)?,
+                summary: row.get(35)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -190,10 +192,10 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
             "SELECT graph_node_id, entity_type, title, archetypal_resonance, coordinate,
              source_coordinates_json, evidence_tags_json, source_kind, content_origin,
              content_revision, seed_schema_version, body_source_coordinates_json, historicity,
-             claim_kind, evidence_status, temporal_role, place_coverage, ql_form, ql_unit_id,
+             claim_kind, evidence_status, temporal_role, place_coverage, place_json, ql_form, ql_unit_id,
              ql_arc, ql_topology, ql_schema_version, ql_source_coordinates_json,
              ql_completeness_status, is_temporal, valid_from, valid_to, temporal_precision,
-             schema_version, sync_state, remote_revision, created_at, updated_at,
+             schema_version, sync_state, remote_revision, is_archetype, created_at, updated_at,
              COALESCE((SELECT summary FROM node_document WHERE graph_node_id = graph_node_metadata.graph_node_id), '')
              FROM graph_node_metadata
              WHERE is_temporal=1
@@ -205,9 +207,9 @@ impl<'conn> GraphNodeMetadataRepository<'conn> {
         let rows = statement.query_map([start_year, end_year], |row| {
             Ok(TemporalGraphNodeMetadataRecord {
                 metadata: record_from_row(row)?,
-                created_at: row.get(31)?,
-                updated_at: row.get(32)?,
-                summary: row.get(33)?,
+                created_at: row.get(33)?,
+                updated_at: row.get(34)?,
+                summary: row.get(35)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -393,6 +395,7 @@ fn mutation_params(
         Box::new(record.evidence_status.map(|v| v.as_str())),
         Box::new(record.temporal_role.map(|v| v.as_str())),
         Box::new(record.place_coverage.map(|v| v.as_str())),
+        Box::new(record.place.clone()),
         Box::new(record.ql_form.map(|v| v.as_str())),
         Box::new(record.ql_unit_id.clone()),
         Box::new(record.ql_arc.map(|v| v.as_str())),
@@ -407,6 +410,7 @@ fn mutation_params(
         Box::new(record.schema_version),
         Box::new(record.sync_state.as_str()),
         Box::new(record.remote_revision),
+        Box::new(record.is_archetype as i64),
     ])
 }
 
@@ -420,10 +424,10 @@ fn insert_record(
          graph_node_id, entity_type, title, archetypal_resonance, coordinate,
          source_coordinates_json, evidence_tags_json, source_kind, content_origin, content_revision,
          seed_schema_version, body_source_coordinates_json, historicity, claim_kind, evidence_status,
-         temporal_role, place_coverage, ql_form, ql_unit_id, ql_arc, ql_topology, ql_schema_version,
-         ql_source_coordinates_json, ql_completeness_status, is_temporal, valid_from, valid_to,
-         temporal_precision, schema_version, sync_state, remote_revision)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31)
+         temporal_role, place_coverage, place_json, ql_form, ql_unit_id, ql_arc, ql_topology,
+         ql_schema_version, ql_source_coordinates_json, ql_completeness_status, is_temporal,
+         valid_from, valid_to, temporal_precision, schema_version, sync_state, remote_revision, is_archetype)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33)
          ON CONFLICT(graph_node_id) DO NOTHING",
         rusqlite::params_from_iter(values.iter()),
     )?;
@@ -441,11 +445,11 @@ fn update_record(
          source_coordinates_json=?6, evidence_tags_json=?7, source_kind=?8, content_origin=?9,
          content_revision=?10, seed_schema_version=?11, body_source_coordinates_json=?12,
          historicity=?13, claim_kind=?14, evidence_status=?15, temporal_role=?16, place_coverage=?17,
-         ql_form=?18, ql_unit_id=?19, ql_arc=?20, ql_topology=?21, ql_schema_version=?22,
-         ql_source_coordinates_json=?23, ql_completeness_status=?24, is_temporal=?25, valid_from=?26,
-         valid_to=?27, temporal_precision=?28, schema_version=?29, sync_state=?30, remote_revision=?31,
-         updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
-         WHERE graph_node_id=?1 AND content_revision=?32",
+         place_json=?18, ql_form=?19, ql_unit_id=?20, ql_arc=?21, ql_topology=?22, ql_schema_version=?23,
+         ql_source_coordinates_json=?24, ql_completeness_status=?25, is_temporal=?26, valid_from=?27,
+         valid_to=?28, temporal_precision=?29, schema_version=?30, sync_state=?31, remote_revision=?32,
+         is_archetype=?33, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+         WHERE graph_node_id=?1 AND content_revision=?34",
         rusqlite::params_from_iter(values.iter().map(|v| v.as_ref()).chain(std::iter::once(&current_revision as &dyn rusqlite::ToSql))),
     )?;
     Ok(affected == 1)
@@ -503,19 +507,21 @@ fn record_from_row(row: &rusqlite::Row<'_>) -> SqlResult<GraphNodeMetadataRecord
         evidence_status: optional_controlled(row, 14)?,
         temporal_role: optional_controlled(row, 15)?,
         place_coverage: optional_controlled(row, 16)?,
-        ql_form: optional_controlled(row, 17)?,
-        ql_unit_id: row.get(18)?,
-        ql_arc: optional_controlled(row, 19)?,
-        ql_topology: optional_controlled(row, 20)?,
-        ql_schema_version: row.get(21)?,
-        ql_source_coordinates: string_vec(row, 22)?,
-        ql_completeness_status: optional_controlled(row, 23)?,
-        is_temporal: row.get::<_, i64>(24)? != 0,
-        valid_from: row.get(25)?,
-        valid_to: row.get(26)?,
-        temporal_precision: optional_controlled(row, 27)?,
-        schema_version: row.get(28)?,
-        sync_state: controlled(row, 29)?,
-        remote_revision: row.get(30)?,
+        place: row.get(17)?,
+        ql_form: optional_controlled(row, 18)?,
+        ql_unit_id: row.get(19)?,
+        ql_arc: optional_controlled(row, 20)?,
+        ql_topology: optional_controlled(row, 21)?,
+        ql_schema_version: row.get(22)?,
+        ql_source_coordinates: string_vec(row, 23)?,
+        ql_completeness_status: optional_controlled(row, 24)?,
+        is_temporal: row.get::<_, i64>(25)? != 0,
+        valid_from: row.get(26)?,
+        valid_to: row.get(27)?,
+        temporal_precision: optional_controlled(row, 28)?,
+        schema_version: row.get(29)?,
+        sync_state: controlled(row, 30)?,
+        remote_revision: row.get(31)?,
+        is_archetype: row.get::<_, i64>(32)? != 0,
     })
 }

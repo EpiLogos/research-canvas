@@ -1,16 +1,21 @@
 // apps/desktop/src-tauri/src/db/canvas_service.rs
 use std::collections::{BTreeSet, HashMap};
 
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
-use crate::db::{
-    connection::Database,
-    repositories::{
-        graph::{
-            canonical_relationship_key, EntityType, GraphNode, GraphRelationship, GraphRepository,
+use crate::{
+    commands::timeline::graph_node_from_local_projection,
+    db::{
+        connection::Database,
+        repositories::{
+            graph::{
+                canonical_relationship_key, EntityType, GraphNode, GraphRelationship, GraphRepository,
+            },
+            layout::{CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord},
+            GraphNodeMetadataRepository, NodeAttachmentRepository, NodeDocumentRepository,
+            NodeRelationshipRepository,
         },
-        layout::{CanvasAppStateRecord, EdgeLayoutRecord, LayoutRepository, NodeLayoutRecord},
-        NodeAttachmentRepository, NodeRelationshipRepository,
     },
 };
 
@@ -77,7 +82,7 @@ struct LocalCanvasProjection {
 }
 
 /// Default title used when a layout row has no `__canvasNode` sidecar (or the
-/// sidecar has no usable title) and no matching Neo4j node — should only
+/// sidecar has no usable title) and no matching canonical node — should only
 /// happen for layout rows written before the sidecar carried a title.
 const SYNTHESIZED_DEFAULT_TITLE: &str = "Untitled";
 
@@ -86,38 +91,20 @@ impl CanvasService {
         Self { graph, db_path }
     }
 
-    pub async fn load_canvas_view(
-        &self,
-        canvas_id: &str,
-        lens: &str,
-    ) -> Result<CanvasView, String> {
-        if lens != "canvas" && lens != "timeline" {
-            return Err(format!("unknown lens: {lens}"));
-        }
-
-        // 1. Layout from SQLite — the LOCAL, LAYOUT-AUTHORITATIVE source of
-        // truth for "what nodes are on this canvas". A node that only exists
-        // locally (best-effort Neo4j sync hasn't landed, or Neo4j is
-        // unreachable) must still render. Scoped in a block so the
-        // non-`Send` `Connection`/`LayoutRepository` are dropped before the
-        // Neo4j `.await`s below (required for this future to be `Send`,
-        // which `#[tauri::command]` needs).
-        let LocalCanvasProjection {
-            layout_rows,
-            canonical_cover_paths,
-            edge_rows,
-            app_state,
-            tombstones,
-        } = load_local_canvas_projection_at_path(&self.db_path, canvas_id)?;
-
-        let tombstoned_canonical_keys = tombstones
+    pub async fn load_canvas_view(&self, canvas_id: &str, lens: &str) -> Result<CanvasView, String> {
+        validate_lens(lens)?;
+        // Drop the non-Send SQLite connection before the Neo4j awaits below.
+        // Layout remains authoritative for which cards belong on this canvas.
+        let local = load_local_canvas_projection_at_path(&self.db_path, canvas_id)?;
+        let tombstoned_canonical_keys = local
+            .tombstones
             .iter()
             .map(canonical_key_for_relationship)
             .collect::<BTreeSet<_>>();
         // Tombstones form the local delete outbox for canvas reads too. A
         // stale remote edge must neither reappear nor prevent layout loading;
         // every online canvas refresh retries its canonical deletion.
-        for tombstone in &tombstones {
+        for tombstone in &local.tombstones {
             let _ = self
                 .graph
                 .disconnect_by_canonical_relationship(tombstone)
@@ -128,82 +115,159 @@ impl CanvasService {
             &tombstoned_canonical_keys,
         );
 
-        // 2. Substance from Neo4j, batch-fetched for exactly the layout rows'
-        // ids. Contract/decoding failures are fatal: synthesizing on a batch
-        // error would silently turn temporal nodes into non-temporal fallbacks.
-        let ids: Vec<String> = layout_rows
+        // Substance is fetched for exactly the layout rows' ids. Contract or
+        // decoding failures stay fatal: do not turn a failed graph batch into
+        // non-temporal synthesized nodes under the guise of offline support.
+        let ids = local
+            .layout_rows
             .iter()
-            .map(|r| r.graph_node_id.clone())
-            .collect();
-        let mut nodes_by_id: std::collections::HashMap<String, GraphNode> =
-            std::collections::HashMap::new();
+            .map(|row| row.graph_node_id.clone())
+            .collect::<Vec<_>>();
         let found = self
             .graph
             .get_nodes(&ids)
             .await
             .map_err(|error| format!("load_canvas_view graph contract failed: {error}"))?;
-        for node in found {
-            nodes_by_id.insert(node.graph_node_id.clone(), node);
-        }
-
-        // 3. For each layout row: use the real Neo4j node if present, else
-        // synthesize a GraphNode from the __canvasNode sidecar so the row is
-        // never dropped.
-        let mut joined = Vec::with_capacity(layout_rows.len());
-        for row in layout_rows {
-            let node = match nodes_by_id.remove(&row.graph_node_id) {
-                Some(node) => node,
-                None => synthesize_node_from_layout(&row),
-            };
-            let style = project_canonical_cover(
-                serde_json::from_str(&row.style_json).unwrap_or_else(|_| serde_json::json!({})),
-                canonical_cover_paths.get(&row.graph_node_id),
-            );
-            let layout = NodeLayoutDto {
-                graph_node_id: row.graph_node_id.clone(),
-                canvas_id: row.canvas_id.clone(),
-                position_x: row.position_x,
-                position_y: row.position_y,
-                width: row.width,
-                height: row.height,
-                style,
-            };
-            joined.push(JoinedCanvasNode { node, layout });
-        }
-
-        // 4. Lens filter (mirrors list_nodes_for_lens: timeline shows only
-        // is_temporal nodes). A synthesized node is always is_temporal =
-        // false, so it is naturally excluded from the timeline lens.
-        if lens == "timeline" {
-            joined.retain(|j| j.node.is_temporal);
-        }
-
-        let edges = edge_rows
+        let nodes_by_id = found
             .into_iter()
-            .map(edge_dto_from_record)
-            .collect::<Vec<_>>();
-
-        let (viewport, app_state_json) = match app_state {
-            Some(state) => (
-                serde_json::from_str(&state.viewport_json)
-                    .unwrap_or_else(|_| serde_json::json!({ "x": 0, "y": 0, "zoom": 1 })),
-                serde_json::from_str(&state.app_state_json)
-                    .unwrap_or_else(|_| serde_json::json!({})),
-            ),
-            None => (
-                serde_json::json!({ "x": 0, "y": 0, "zoom": 1 }),
-                serde_json::json!({}),
-            ),
-        };
-
-        Ok(CanvasView {
-            canvas_id: canvas_id.to_string(),
-            nodes: joined,
-            edges,
+            .map(|node| (node.graph_node_id.clone(), node))
+            .collect();
+        Ok(join_canvas_projection(
+            canvas_id,
+            lens,
+            local,
+            nodes_by_id,
             relationships,
-            viewport,
-            app_state: app_state_json,
-        })
+        ))
+    }
+}
+
+/// A real offline CanvasView, not an HTTP-error exemption or an empty mock.
+/// Canonical metadata/documents, semantic relationships, layouts, cover choice
+/// and viewport are read from one SQLite snapshot. This reuses the same node
+/// projection as Timeline and Places, preserving temporal/place/provenance
+/// fields. Only an actually absent canonical node uses the legacy sidecar;
+/// metadata/document decoding failures are returned to the caller unchanged.
+pub fn load_local_canvas_view_at_path(
+    database_path: impl AsRef<std::path::Path>,
+    canvas_id: &str,
+    lens: &str,
+) -> Result<CanvasView, String> {
+    validate_lens(lens)?;
+    let database = Database::open(database_path).map_err(|error| error.to_string())?;
+    let transaction = database
+        .connection()
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    let local = load_local_canvas_projection(&transaction, canvas_id)?;
+    let metadata = GraphNodeMetadataRepository::new(&transaction);
+    let documents = NodeDocumentRepository::new(&transaction);
+    let mut nodes_by_id = HashMap::new();
+    let mut ids = BTreeSet::new();
+    for row in &local.layout_rows {
+        ids.insert(row.graph_node_id.clone());
+        if let Some(record) = metadata
+            .get_with_timestamps(&row.graph_node_id)
+            .map_err(|error| error.to_string())?
+        {
+            let document = documents
+                .get_node_document(&row.graph_node_id)
+                .map_err(|error| error.to_string())?;
+            nodes_by_id.insert(
+                row.graph_node_id.clone(),
+                graph_node_from_local_projection(&record, document),
+            );
+        }
+    }
+    let tombstoned_canonical_keys = local
+        .tombstones
+        .iter()
+        .map(canonical_key_for_relationship)
+        .collect::<BTreeSet<_>>();
+    let relationships = NodeRelationshipRepository::new(&transaction)
+        .list_involving(&ids)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .filter(|relationship| !relationship.is_tombstone)
+        .map(|relationship| relationship.as_graph_relationship())
+        .collect();
+    let view = join_canvas_projection(
+        canvas_id,
+        lens,
+        local,
+        nodes_by_id,
+        filter_tombstoned_relationships(relationships, &tombstoned_canonical_keys),
+    );
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(view)
+}
+
+fn validate_lens(lens: &str) -> Result<(), String> {
+    if lens != "canvas" && lens != "timeline" {
+        return Err(format!("unknown lens: {lens}"));
+    }
+    Ok(())
+}
+
+/// The presentation join is shared by online and offline reads, so changing
+/// availability cannot change layout membership, cover choice or viewport.
+fn join_canvas_projection(
+    canvas_id: &str,
+    lens: &str,
+    local: LocalCanvasProjection,
+    mut nodes_by_id: HashMap<String, GraphNode>,
+    relationships: Vec<GraphRelationship>,
+) -> CanvasView {
+    let mut joined = Vec::with_capacity(local.layout_rows.len());
+    for row in local.layout_rows {
+        let node = match nodes_by_id.remove(&row.graph_node_id) {
+            Some(node) => node,
+            None => synthesize_node_from_layout(&row),
+        };
+        let style = project_canonical_cover(
+            serde_json::from_str(&row.style_json).unwrap_or_else(|_| serde_json::json!({})),
+            local.canonical_cover_paths.get(&row.graph_node_id),
+        );
+        let layout = NodeLayoutDto {
+            graph_node_id: row.graph_node_id.clone(),
+            canvas_id: row.canvas_id.clone(),
+            position_x: row.position_x,
+            position_y: row.position_y,
+            width: row.width,
+            height: row.height,
+            style,
+        };
+        joined.push(JoinedCanvasNode { node, layout });
+    }
+    // Canonical temporal nodes remain temporal offline. An absent node's
+    // minimal sidecar fallback is non-temporal, exactly as on the online path.
+    if lens == "timeline" {
+        joined.retain(|joined| joined.node.is_temporal);
+    }
+    let edges = local
+        .edge_rows
+        .into_iter()
+        .map(edge_dto_from_record)
+        .collect();
+    let (viewport, app_state) = match local.app_state {
+        Some(state) => (
+            serde_json::from_str(&state.viewport_json)
+                .unwrap_or_else(|_| serde_json::json!({ "x": 0, "y": 0, "zoom": 1 })),
+            serde_json::from_str(&state.app_state_json)
+                .unwrap_or_else(|_| serde_json::json!({})),
+        ),
+        None => (
+            serde_json::json!({ "x": 0, "y": 0, "zoom": 1 }),
+            serde_json::json!({}),
+        ),
+    };
+    CanvasView {
+        canvas_id: canvas_id.to_string(),
+        nodes: joined,
+        edges,
+        relationships,
+        viewport,
+        app_state,
     }
 }
 
@@ -227,10 +291,20 @@ fn load_local_canvas_projection_at_path(
     database_path: impl AsRef<std::path::Path>,
     canvas_id: &str,
 ) -> Result<LocalCanvasProjection, String> {
-    // This scope intentionally ends before callers make Neo4j requests: the
-    // rusqlite connection is not Send, whereas Tauri command futures are.
     let database = Database::open(database_path).map_err(|error| error.to_string())?;
-    let connection = database.connection();
+    let transaction = database
+        .connection()
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    let projection = load_local_canvas_projection(&transaction, canvas_id)?;
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(projection)
+}
+
+fn load_local_canvas_projection(
+    connection: &Connection,
+    canvas_id: &str,
+) -> Result<LocalCanvasProjection, String> {
     let layout = LayoutRepository::new(connection);
     let layout_rows = layout
         .list_node_layout(canvas_id)
@@ -331,11 +405,8 @@ fn entity_type_for_sidecar_type(node_type: &str) -> EntityType {
     }
 }
 
-/// Builds a GraphNode's substance from a layout row's `__canvasNode` sidecar
-/// when no Neo4j node exists for its `graph_node_id` — e.g. a node created
-/// locally whose best-effort Neo4j sync hasn't landed (or Neo4j was
-/// unreachable at creation time). Always `is_temporal: false` so a
-/// synthesized node is naturally excluded from the timeline lens.
+/// Builds a minimal GraphNode from a layout row only when the canonical node
+/// is absent. Always non-temporal; never used to conceal decoding failures.
 fn synthesize_node_from_layout(row: &NodeLayoutRecord) -> GraphNode {
     let sidecar: Option<CanvasNodeSidecar> =
         serde_json::from_str::<StyleWithSidecar>(&row.style_json)
@@ -373,6 +444,7 @@ fn synthesize_node_from_layout(row: &NodeLayoutRecord) -> GraphNode {
         evidence_status: None,
         temporal_role: None,
         place_coverage: None,
+        place: None,
         ql_form: None,
         ql_unit_id: None,
         ql_arc: None,
@@ -580,5 +652,130 @@ mod tests {
             projection.edge_rows.is_empty(),
             "a global semantic tombstone suppresses graph:<relationship-id> even without endpoints"
         );
+        let view = load_local_canvas_view_at_path(&database_path, &canvas_id, "canvas")
+            .expect("offline canvas view honors the same global tombstone");
+        assert!(view.edges.is_empty());
+        assert!(view.relationships.is_empty());
+    }
+
+    fn offline_fixture() -> (tempfile::TempDir, std::path::PathBuf, String, String) {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("offline-canvas.sqlite");
+        let database = Database::open(&path).unwrap();
+        ensure_root_archetypal_local_projection(
+            database.connection(),
+            &directory.path().to_string_lossy(),
+            "offline-canvas-test",
+        )
+        .unwrap();
+        let constellation = ConstellationRepository::new(database.connection())
+            .create(
+                "Offline research".into(),
+                "offline-research".into(),
+                None,
+                directory.path().to_string_lossy().into_owned(),
+                None,
+                None,
+                serde_json::json!({}),
+            )
+            .unwrap();
+        let canvas_id = constellation.primary_canvas_id.unwrap();
+        let node_id = "offline-canvas-test:banda-genocide".to_string();
+        let layouts = LayoutRepository::new(database.connection());
+        layouts
+            .upsert_node_layout(&NodeLayoutRecord {
+                graph_node_id: node_id.clone(),
+                canvas_id: canvas_id.clone(),
+                position_x: 123.0,
+                position_y: -45.0,
+                width: 320.0,
+                height: 180.0,
+                style_json: serde_json::json!({
+                    "__canvasNode": { "type": "note", "title": "stale layout title" }
+                })
+                .to_string(),
+                created_at: "2026-07-14T00:00:00Z".into(),
+                updated_at: "2026-07-14T00:00:00Z".into(),
+            })
+            .unwrap();
+        layouts
+            .upsert_app_state(&CanvasAppStateRecord {
+                canvas_id: canvas_id.clone(),
+                viewport_json: serde_json::json!({ "x": 71, "y": -18, "zoom": 1.7 }).to_string(),
+                app_state_json: serde_json::json!({ "selection": "authored" }).to_string(),
+                updated_at: "2026-07-14T00:00:00Z".into(),
+            })
+            .unwrap();
+        (directory, path, canvas_id, node_id)
+    }
+
+    #[test]
+    fn offline_canvas_joins_canonical_substance_without_losing_layout_or_viewport() {
+        let (_directory, path, canvas_id, node_id) = offline_fixture();
+        let expected = {
+            let database = Database::open(&path).unwrap();
+            let record = GraphNodeMetadataRepository::new(database.connection())
+                .get_with_timestamps(&node_id)
+                .unwrap()
+                .unwrap();
+            let document = NodeDocumentRepository::new(database.connection())
+                .get_node_document(&node_id)
+                .unwrap();
+            graph_node_from_local_projection(&record, document)
+        };
+        let view = load_local_canvas_view_at_path(&path, &canvas_id, "canvas").unwrap();
+        assert_eq!(view.nodes.len(), 1, "other locally projected nodes are not canvas members");
+        assert_eq!(
+            serde_json::to_value(&view.nodes[0].node).unwrap(),
+            serde_json::to_value(expected).unwrap()
+        );
+        assert!(view.nodes[0].node.is_temporal);
+        assert_ne!(view.nodes[0].node.title, "stale layout title");
+        assert_eq!(view.nodes[0].layout.position_x, 123.0);
+        assert_eq!(view.nodes[0].layout.position_y, -45.0);
+        assert_eq!(view.nodes[0].layout.width, 320.0);
+        assert_eq!(view.viewport, serde_json::json!({ "x": 71, "y": -18, "zoom": 1.7 }));
+        assert_eq!(view.app_state, serde_json::json!({ "selection": "authored" }));
+        let timeline = load_local_canvas_view_at_path(&path, &canvas_id, "timeline").unwrap();
+        assert_eq!(timeline.nodes.len(), 1, "offline temporal metadata must not be synthesized away");
+        assert!(load_local_canvas_view_at_path(&path, "empty-canvas", "canvas")
+            .unwrap()
+            .nodes
+            .is_empty());
+        assert!(load_local_canvas_view_at_path(&path, &canvas_id, "unknown")
+            .unwrap_err()
+            .contains("unknown lens"));
+    }
+
+    #[test]
+    fn offline_canvas_retains_a_genuinely_unprojected_local_draft() {
+        let (_directory, path, canvas_id, _) = offline_fixture();
+        {
+            let database = Database::open(&path).unwrap();
+            LayoutRepository::new(database.connection())
+                .upsert_node_layout(&NodeLayoutRecord {
+                    graph_node_id: "local-draft".into(),
+                    canvas_id: canvas_id.clone(),
+                    position_x: 9.0,
+                    position_y: 8.0,
+                    width: 200.0,
+                    height: 100.0,
+                    style_json: serde_json::json!({
+                        "__canvasNode": { "type": "note", "title": "Unsynced draft" }
+                    })
+                    .to_string(),
+                    created_at: "2026-07-14T00:00:00Z".into(),
+                    updated_at: "2026-07-14T00:00:00Z".into(),
+                })
+                .unwrap();
+        }
+        let view = load_local_canvas_view_at_path(&path, &canvas_id, "canvas").unwrap();
+        let draft = view.nodes.iter().find(|joined| joined.node.graph_node_id == "local-draft").unwrap();
+        assert_eq!(draft.node.title, "Unsynced draft");
+        assert!(!draft.node.is_temporal);
+        assert_eq!(draft.layout.position_x, 9.0);
+        let timeline = load_local_canvas_view_at_path(&path, &canvas_id, "timeline").unwrap();
+        assert_eq!(timeline.nodes.len(), 1);
+        assert!(timeline.nodes.iter().all(|joined| joined.node.graph_node_id != "local-draft"));
     }
 }

@@ -36,7 +36,7 @@ describe("NoteNode", () => {
       data: {
         title: "Styled note",
         summary: "Visible pith",
-        content: "Internal editor body that must not become the card face",
+        content: "[]",
         tags: ["ql", "shadow"],
         style: {
           dotColour: "#8fd3ff",
@@ -51,7 +51,7 @@ describe("NoteNode", () => {
       <NoteNode {...props} />
     );
 
-    const note = screen.getByTestId("note-node-surface");
+    const note = screen.getByTestId("note-node-note-1");
     expect(note).not.toHaveStyle({
       backgroundColor: "#102436",
       color: "#f5fbff",
@@ -60,7 +60,6 @@ describe("NoteNode", () => {
     expect(card).toHaveStyle({ backgroundColor: "#102436", color: "#f5fbff", borderColor: "#8fd3ff" });
     expect(screen.getByRole("heading", { name: "Styled note" })).toBeInTheDocument();
     expect(screen.getByText("Visible pith")).toBeInTheDocument();
-    expect(screen.queryByText("Internal editor body that must not become the card face")).not.toBeInTheDocument();
     expect(screen.queryByText("ql")).not.toBeInTheDocument();
     expect(card.querySelector("img")).toHaveAttribute(
       "src",

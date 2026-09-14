@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { GraphNodePatch } from "@research-canvas/desktop-api";
 import { walkSequenceGraph } from "@research-canvas/canvas";
 import { useCanvasWorkspace } from "../canvas/CanvasWorkspaceContext";
@@ -58,7 +58,7 @@ function ColourRow({
   );
 }
 
-export function InspectorTab() {
+export function InspectorTab({ flowView }: { flowView?: ReactNode }) {
   const workspace = useCanvasWorkspace();
   const node = workspace.nodes.find((n) => n.id === workspace.selectedNodeId) ?? null;
 
@@ -99,6 +99,12 @@ export function InspectorTab() {
 
   return (
     <div className="inspector-tab">
+      {flowView && (
+        <>
+          <div className="inspector-section-title">Pipeline</div>
+          <div className="inspector-flow">{flowView}</div>
+        </>
+      )}
       <div className="inspector-field">
         <label className="inspector-label">Title</label>
         <input
