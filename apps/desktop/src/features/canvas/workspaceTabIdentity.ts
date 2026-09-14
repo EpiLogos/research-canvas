@@ -25,10 +25,29 @@ function containsConstellation(nodes: ConstellationTreeNode[], id: string): bool
   return nodes.some((node) => node.id === id || containsConstellation(node.children, id));
 }
 
+function canvasTabForConstellation(
+  snapshot: WorkspaceTabSnapshot,
+  constellationId: string,
+): AppTab | null {
+  return snapshot.tabs.find((tab) =>
+    tab.surfaceId === "canvas" && tabConstellationId(tab) === constellationId,
+  ) ?? null;
+}
+
 /** Resolve the active tab's owner through the canonical project-selection port
  * before publishing bootstrap state. Never infer ownership from a tab title or
  * independently manufacture a profile scope. An invalid persisted owner is an
  * explicit restoration failure, not permission to generate Palace under Root.
+ *
+ * Canvas is the one deliberate exception to tab-owner precedence: its owner is
+ * a second representation of the selected project. Project selection is saved
+ * by the native project boundary before React can finish hydrating/activating a
+ * new Canvas tab, so a crash or fast reload may leave an older Canvas active in
+ * the tab snapshot. When those two durable records disagree, the native active
+ * project wins and we reactivate its Canvas (or leave activation empty so the
+ * provider creates the primary Canvas). Scoped non-Canvas surfaces still own
+ * their project identity and restore that owner through `selectProject`.
+ *
  * Legacy unbound tabs retain their former current-workspace semantics until
  * first activation; only the active one can be bound unambiguously here. */
 export async function restoreTabWorkspace(
@@ -39,7 +58,15 @@ export async function restoreTabWorkspace(
   const active = snapshot.tabs.find((tab) => tab.id === snapshot.activeTabId);
   const owner = tabConstellationId(active);
   let restored = workspace;
-  if (owner && owner !== workspace.activeConstellationId) {
+  let activeTabId = snapshot.activeTabId;
+
+  if (
+    active?.surfaceId === "canvas"
+    && owner
+    && owner !== workspace.activeConstellationId
+  ) {
+    activeTabId = canvasTabForConstellation(snapshot, workspace.activeConstellationId)?.id ?? null;
+  } else if (owner && owner !== workspace.activeConstellationId) {
     if (!containsConstellation(workspace.constellations, owner)) {
       throw new Error(`Cannot restore tab ${active!.id}: constellation ${owner} is not in this workspace`);
     }
@@ -54,11 +81,13 @@ export async function restoreTabWorkspace(
       activeProfileScope: selected.profileScope,
     };
   }
+
   return {
     workspace: restored,
     snapshot: {
       ...snapshot,
-      tabs: snapshot.tabs.map((tab) => tab.id === snapshot.activeTabId
+      activeTabId,
+      tabs: snapshot.tabs.map((tab) => tab.id === activeTabId
         ? bindSurfaceTab(tab, restored.activeConstellationId)
         : tab),
     },
