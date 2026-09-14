@@ -242,7 +242,7 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
             "overland",
             GEOGRAPHY_EDGE_COLORS.overland,
             "inland_water",
-            GEOGRAPHY_EDGE_COLORS.inlandWater,
+            GEOGRAPHY_EDGE_COLORS.inland_water,
             GLOBE.arc,
           ],
           "line-width": 2,
