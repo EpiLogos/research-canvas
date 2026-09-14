@@ -27,6 +27,21 @@ function palace(owner?: string): AppTab {
   };
 }
 
+function canvas(owner: string): AppTab {
+  return {
+    id: `canvas-${owner}`,
+    surfaceId: "canvas",
+    title: `${owner} canvas`,
+    pinned: owner === "root",
+    state: {
+      surfaceId: "canvas",
+      constellationId: owner,
+      canvasId: `primary-${owner}`,
+      viewport: { x: 0, y: 0, zoom: 1 },
+    },
+  };
+}
+
 function selectionPort() {
   return { selectProject: vi.fn(async ({ projectId }: { databasePath: string; projectId: string }) => ({
     projectId, profileScope: "scope:stored-by-backend", rootType: "directory" as const,
@@ -59,6 +74,48 @@ describe("persistent surface ownership", () => {
     expect(bindSurfaceTab(original, "root")).toBe(original);
     const projects: AppTab = { id: "projects", surfaceId: "projects", title: "Projects", pinned: false, state: { surfaceId: "projects" } };
     expect(bindSurfaceTab(projects, "historical")).toBe(projects);
+  });
+
+  it("keeps the native selected project when a stale active Canvas points at the previous project", async () => {
+    const transport = selectionPort();
+    const historicalWorkspace: WorkspaceBootstrap = {
+      ...workspace,
+      activeConstellationId: "historical",
+      activeProjectId: "historical",
+      activeProfileScope: "scope:stored-by-backend",
+    };
+    const staleRoot = canvas("root");
+    const durableHistorical = canvas("historical");
+
+    const restored = await restoreTabWorkspace(transport, historicalWorkspace, {
+      tabs: [staleRoot, durableHistorical],
+      activeTabId: staleRoot.id,
+    });
+
+    expect(transport.selectProject).not.toHaveBeenCalled();
+    expect(restored.workspace).toBe(historicalWorkspace);
+    expect(restored.snapshot.activeTabId).toBe(durableHistorical.id);
+    expect(tabConstellationId(restored.snapshot.tabs.find((tab) => tab.id === restored.snapshot.activeTabId))).toBe("historical");
+  });
+
+  it("lets hydration create the selected project's primary Canvas when the only active Canvas is stale", async () => {
+    const transport = selectionPort();
+    const historicalWorkspace: WorkspaceBootstrap = {
+      ...workspace,
+      activeConstellationId: "historical",
+      activeProjectId: "historical",
+      activeProfileScope: "scope:stored-by-backend",
+    };
+    const staleRoot = canvas("root");
+
+    const restored = await restoreTabWorkspace(transport, historicalWorkspace, {
+      tabs: [staleRoot],
+      activeTabId: staleRoot.id,
+    });
+
+    expect(transport.selectProject).not.toHaveBeenCalled();
+    expect(restored.workspace).toBe(historicalWorkspace);
+    expect(restored.snapshot.activeTabId).toBeNull();
   });
 
   it("resolves an active Palace owner before publishing any restored workspace state", async () => {
