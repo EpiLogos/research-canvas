@@ -110,6 +110,12 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
         container: el,
         style: createOfflineMapStyle(tileSource, { projection }) as StyleSpecification,
         attributionControl: { compact: false },
+        // Keep renderer bootstrap identical to PsychogeographicMap's declared
+        // default state. MapLibre otherwise boots at 0,0 and can publish a
+        // late moveend after the surface has subscribed, persisting a camera
+        // the application never selected.
+        center: [0, 20],
+        zoom: 1,
       });
       map.on("moveend", emitViewChange);
       map.on("click", "psychogeographic-marker-layer", (event) => {
@@ -236,7 +242,7 @@ export async function createMaplibreRenderer(): Promise<MapSurfaceRenderer> {
             "overland",
             GEOGRAPHY_EDGE_COLORS.overland,
             "inland_water",
-            GEOGRAPHY_EDGE_COLORS.inland_water,
+            GEOGRAPHY_EDGE_COLORS.inlandWater,
             GLOBE.arc,
           ],
           "line-width": 2,
